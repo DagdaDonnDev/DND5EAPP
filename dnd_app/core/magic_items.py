@@ -8,7 +8,7 @@ Date: 2026-08-20
 
 from __future__ import annotations
 
-from dnd_app.data.magic_items import get_item_effect, get_magic_item
+from dnd_app.data.phbCommon.magic_items import get_item_effect, get_magic_item
 import re as _re
 
 
@@ -39,16 +39,12 @@ def attunement_prereq_met(char: dict, item_name: str) -> tuple[bool, str]:
     """Checks a magic item's 'requires attunement by X' restriction (a
     class, race/species, or alignment, or the catch-all 'a spellcaster')
     against the character's real data — same shape and same reasoning as
-    levelup_panel.py's feat_prereq_met(), which the D&D 5e Discord
-    confirmed was the established pattern for this kind of gating in this
-    app. Confirmed via direct grep this had zero enforcement anywhere
-    before: attune_req was only ever prose inside the item's own
-    description, never checked against the character at attune time.
-    Returns (met, reason_if_not_met); complex/narrative requirements this
-    can't parse (e.g. "a creature that has slain a dragon") are left
-    unenforced, same as feat_prereq_met leaves campaign-specific feat
-    prereqs unenforced — the requirement still reads in the item's own
-    description for the player/DM to adjudicate by hand."""
+    levelup_panel.py's feat_prereq_met(). Returns (met, reason_if_not_met);
+    complex/narrative requirements this can't parse (e.g. "a creature that
+    has slain a dragon") are left unenforced, same as feat_prereq_met
+    leaves campaign-specific feat prereqs unenforced — the requirement
+    still reads in the item's own description for the player/DM to
+    adjudicate by hand."""
     item = get_magic_item(item_name)
     if not item:
         return True, ""
@@ -127,11 +123,10 @@ def parse_material_prefix(name: str) -> tuple[str, str]:
     'Adamantine Longsword' -> ('Longsword', 'Adamantine').
     Returns (name, "") if no recognized prefix.
 
-    Confirmed a real, significant bug this fixes: before this function
-    existed, naming a weapon "Silvered X" or "Adamantine X" wasn't
-    recognized by the weapon-name lookup at all (only the "+1"/"+2"/"+3"
-    suffix was handled), so it silently fell through to the generic
-    named-magic-weapon fallback and got corrupted stats — e.g. a
+    Needed because the weapon-name lookup only recognizes the
+    "+1"/"+2"/"+3" suffix on its own — without stripping this prefix
+    first, "Silvered X"/"Adamantine X" falls through to the generic
+    named-magic-weapon fallback and gets corrupted stats — e.g. a
     Silvered Dagger would render with the fallback's flat 1d8 slashing
     damage and no properties, instead of the real dagger's 1d4
     piercing with Finesse/Light/Thrown.
@@ -145,11 +140,9 @@ def parse_material_prefix(name: str) -> tuple[str, str]:
 
 def _active_item_names(char: dict) -> list[str]:
     """Items that apply mechanical effects: attuned items must ALSO be
-    equipped (not just sitting attuned in a backpack — confirmed this
-    was previously not checked at all for the attuned_items list, a
-    real gap since the attunement toggle itself never required
-    "equipped" either), and non-attunement items just need to be
-    equipped."""
+    equipped (not just sitting attuned in a backpack — the attunement
+    toggle itself never requires "equipped" either), and non-attunement
+    items just need to be equipped."""
     names: list[str] = []
     attuned = set(char.get("attuned_items", []))
     equipped_lookup = {}
@@ -418,7 +411,7 @@ def apply_equipment_skill_effects(char: dict) -> None:
     from mundane armor properties (PHB p.144: armor that imposes Stealth
     disadvantage does so for ANY wearer, not just magic armor).
     """
-    from dnd_app.data.items import ARMOR_DICT
+    from dnd_app.data.phbCommon.items import ARMOR_DICT
 
     armor_name = char.get("armor_worn", "No Armor")
     base_armor_name, _ = parse_magic_suffix(armor_name)
@@ -435,10 +428,8 @@ def apply_equipment_skill_effects(char: dict) -> None:
 def _is_infusion_target_equipped(char: dict, target_item: str, infusion_name: str) -> bool:
     """Whether the specific item an infusion was applied to is actually
     equipped right now, using the correct mechanism for its slot type
-    (weapon/armor/shield each track "equipped" completely differently).
-    Confirmed this check didn't exist anywhere before — infusion-based
-    charge items had no equip-prerequisite enforcement at all."""
-    from dnd_app.data.classes import ARTIFICER_INFUSION_TARGETS
+    (weapon/armor/shield each track "equipped" completely differently)."""
+    from dnd_app.data.phb2014.classes import ARTIFICER_INFUSION_TARGETS
     target_type = ARTIFICER_INFUSION_TARGETS.get(infusion_name)
     if target_type == "weapon":
         return target_item in char.get("equipped_weapons", [])
@@ -460,13 +451,12 @@ def sync_item_charges(char: dict) -> None:
     and recharge condition are kept in sync with the catalog.
 
     Also covers infusion-based charge items (Armor of Magical Strength,
-    Mind Sharpener, Radiant Weapon, Repulsion Shield) — confirmed these
-    had zero charge tracking at all, a completely separate data path
-    from the catalog-based magic_items system since they enchant an
-    existing equipment item rather than creating a standalone entry.
-    Correctly requires the specific infused item to be equipped (not
-    just the infusion being known/active), using each slot type's real
-    equipped-status mechanism.
+    Mind Sharpener, Radiant Weapon, Repulsion Shield) — a completely
+    separate data path from the catalog-based magic_items system since
+    they enchant an existing equipment item rather than creating a
+    standalone entry. Correctly requires the specific infused item to
+    be equipped (not just the infusion being known/active), using each
+    slot type's real equipped-status mechanism.
     """
     tracked = char.setdefault("item_charges", {})
     active = set(_active_item_names(char))
@@ -496,7 +486,7 @@ def sync_item_charges(char: dict) -> None:
             else:
                 tracked[name] = {"current": uses, "max": uses, "recharge": recharge}
 
-    from dnd_app.data.classes import ARTIFICER_INFUSION_CHARGES
+    from dnd_app.data.phb2014.classes import ARTIFICER_INFUSION_CHARGES
     infusion_charge_keys = set()
     for inf in char.get("active_infusions", []):
         name = inf.get("infusion", "")
@@ -536,13 +526,13 @@ def apply_all_magic_item_effects(char: dict) -> None:
 def _apply_infusion_bonuses(char: dict) -> None:
     """Apply the numerical bonus from standalone-target Artificer
     infusions (Enhanced Arcane Focus -> spell attack, Enhanced Defense/
-    Repulsion Shield -> AC). Confirmed via direct testing these were
-    never applied anywhere at all — the magic item catalog entries for
-    them are flavor text only with no effects list, and unlike weapon
-    infusions they don't get a "+N" name suffix to parse. Weapon-
-    targeting infusions (Enhanced Weapon, Radiant Weapon, Repeating
-    Shot, Returning Weapon) are handled separately at the point each
-    weapon row is built, since their bonus is per-weapon, not global."""
+    Repulsion Shield -> AC). Needed since the magic item catalog entries
+    for them are flavor text only with no effects list, and unlike
+    weapon infusions they don't get a "+N" name suffix to parse.
+    Weapon-targeting infusions (Enhanced Weapon, Radiant Weapon,
+    Repeating Shot, Returning Weapon) are handled separately at the
+    point each weapon row is built, since their bonus is per-weapon,
+    not global."""
     from .calculator import get_infusion_bonus, class_levels
     art_lvl = class_levels(char).get("Artificer", 0)
     for inf in char.get("active_infusions", []):
@@ -571,8 +561,6 @@ def concentration_save(char: dict, damage: int) -> tuple[bool, int]:
     dc = max(10, damage // 2)
     con_save = get_saving_throw_bonus(char, "CON")
     # War Caster: advantage on CON saves made to maintain concentration.
-    # Previously this always rolled a single flat d20 with no advantage
-    # mechanism at all, so the feat's actual core benefit never applied.
     if "War Caster" in char.get("feats", []):
         roll = max(random.randint(1, 20), random.randint(1, 20))
     else:

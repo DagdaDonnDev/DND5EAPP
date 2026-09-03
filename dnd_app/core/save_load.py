@@ -140,7 +140,8 @@ def export_character_text(char: dict) -> str:
     from .calculator import (
         get_ac, get_initiative, get_prof_bonus, get_spell_save_dc,
         get_passive_perception, all_skill_bonuses, all_saving_throw_bonuses,
-        get_extra_attacks, get_sneak_attack,
+        get_extra_attacks, get_sneak_attack, get_character_senses,
+        get_weapon_attack_bonus,
     )
 
     lines = []
@@ -199,13 +200,106 @@ def export_character_text(char: dict) -> str:
         marker = {0: "", 1: "(½)", 2: "(P)", 3: "(E)"}.get(level, "")
         adv = " (Adv)" if skill in char.get("skill_advantages", []) else ""
         disadv = " (Disadv)" if skill in char.get("skill_disadvantages", []) else ""
-        add(f"  {skill}", f"{sign}{bonus} {marker}{adv}{disadv}")
+        parts = [p for p in (f"{sign}{bonus}", marker, adv.strip(), disadv.strip()) if p]
+        add(f"  {skill}", " ".join(parts))
     add("")
 
     if char.get("feats"):
         add("── FEATS ──")
         for feat in char["feats"]:
             add(f"  {feat}")
+        add("")
+
+    if char.get("fighting_styles"):
+        add("── FIGHTING STYLE(S) ──")
+        for fs in char["fighting_styles"]:
+            add(f"  {fs}")
+        add("")
+
+    # ── Proficiencies & Languages ────────────────────────────────────────────
+    langs = char.get("languages", [])
+    armor_p = char.get("armor_proficiencies", [])
+    weapon_p = char.get("weapon_proficiencies", [])
+    tool_p = char.get("tool_proficiencies", [])
+    if langs or armor_p or weapon_p or tool_p:
+        add("── PROFICIENCIES & LANGUAGES ──")
+        if langs:
+            add("  Languages", ", ".join(sorted(set(langs))))
+        if armor_p:
+            add("  Armor", ", ".join(armor_p))
+        if weapon_p:
+            add("  Weapons", ", ".join(weapon_p))
+        if tool_p:
+            add("  Tools", ", ".join(tool_p))
+        add("")
+
+    # ── Senses ────────────────────────────────────────────────────────────────
+    senses = get_character_senses(char)
+    active_senses = {k: v for k, v in senses.items() if v}
+    if active_senses:
+        add("── SENSES ──")
+        for name, ft in active_senses.items():
+            add(f"  {name.capitalize()}", f"{ft} ft")
+        add("")
+
+    # ── Conditions ────────────────────────────────────────────────────────────
+    conditions = char.get("conditions", [])
+    exhaustion = char.get("exhaustion", 0)
+    if conditions or exhaustion:
+        add("── ACTIVE CONDITIONS ──")
+        for c in conditions:
+            add(f"  {c}")
+        if exhaustion:
+            add(f"  Exhaustion", f"level {exhaustion}")
+        add("")
+
+    # ── Weapons ───────────────────────────────────────────────────────────────
+    equipped = char.get("equipped_weapons", [])
+    if equipped:
+        from dnd_app.data.phbCommon.items import WEAPON_DICT
+        from .magic_items import parse_magic_suffix
+        add("── WEAPONS ──")
+        for wname in equipped:
+            base_name, magic_bonus = parse_magic_suffix(wname)
+            wdata = WEAPON_DICT.get(base_name, {})
+            props = " ".join(wdata.get("properties", []) or [])
+            ranged = "ranged" in wdata.get("category", "").lower()
+            finesse = "finesse" in props.lower()
+            to_hit = get_weapon_attack_bonus(char, base_name, finesse_dex=finesse, ranged=ranged) + magic_bonus
+            sign = "+" if to_hit >= 0 else ""
+            dmg = wdata.get("damage", "?")
+            dmg_type = wdata.get("dmg_type", "")
+            magic_dmg = f"+{magic_bonus}" if magic_bonus else ""
+            add(f"  {wname}", f"{sign}{to_hit} to hit, {dmg}{magic_dmg} {dmg_type}".strip())
+        add("  (Simplified: doesn't include situational bonuses from active "
+            "toggles/effects — see the app's Combat tab for the exact live total.)")
+        add("")
+
+    # ── Resources ─────────────────────────────────────────────────────────────
+    # Skip anything whose current_max is a non-positive number — a
+    # by_level-driven resource with no threshold met yet at the
+    # character's current level (e.g. Indomitable before 9th) computes
+    # to 0, and a "0/0 (not actually available)" row is just clutter on
+    # what's meant to be a clean reference sheet. Non-numeric max values
+    # ("Unlimited", e.g. 20th-level Wild Shape) are always kept.
+    resources = char.get("resources", [])
+    visible_resources = [r for r in resources
+                          if not isinstance(r.get("current_max"), (int, float)) or r.get("current_max", 0) > 0]
+    if visible_resources:
+        add("── RESOURCES ──")
+        for r in visible_resources:
+            cur = r.get("current", 0)
+            mx = r.get("current_max", 0)
+            reset = r.get("reset", "")
+            add(f"  {r.get('name','?')}", f"{cur}/{mx} (resets: {reset})" if mx not in (None, "") else "")
+        add("")
+
+    # ── Hit Dice ──────────────────────────────────────────────────────────────
+    hit_dice = char.get("hit_dice", {})
+    if hit_dice:
+        add("── HIT DICE ──")
+        for die, d in hit_dice.items():
+            add(f"  {die}", f"{d.get('remaining',0)}/{d.get('total',0)}")
         add("")
 
     slots = char.get("spell_slots_max", [0] * 9)
@@ -215,7 +309,63 @@ def export_character_text(char: dict) -> str:
         for i, (mx, us) in enumerate(zip(slots, used)):
             if mx > 0:
                 add(f"  Level {i+1}", f"{mx-us}/{mx}")
+        pact_max = char.get("pact_slots_max", 0)
+        if pact_max:
+            add(f"  Pact (Lv {char.get('pact_slot_level', 0)})",
+                f"{pact_max - char.get('pact_slots_used', 0)}/{pact_max}")
         add("")
+
+    # ── Spells known / prepared ───────────────────────────────────────────────
+    known = char.get("spells_known", []) + char.get("cantrips", [])
+    if known:
+        from dnd_app.data.phbCommon.spells import get_spell
+        prepared = set(char.get("spells_prepared", []))
+        by_level = {}
+        for sp in known:
+            data = get_spell(sp)
+            lvl = data.get("level", 0) if data else -1
+            by_level.setdefault(lvl, []).append(sp)
+        add("── SPELLS ──")
+        for lvl in sorted(by_level):
+            label = "Cantrips" if lvl == 0 else (f"Level {lvl}" if lvl > 0 else "Unknown level")
+            names = sorted(by_level[lvl])
+            tagged = [f"{n} (prepared)" if n in prepared and lvl > 0 else n for n in names]
+            add(f"  {label}", ", ".join(tagged))
+        add("")
+
+    # ── Magic Items ───────────────────────────────────────────────────────────
+    magic_items = char.get("magic_items", [])
+    if magic_items:
+        add("── MAGIC ITEMS ──")
+        for item in magic_items:
+            name = item.get("name", "Unknown")
+            tags = []
+            if item.get("attunement"): tags.append("attuned")
+            if item.get("equipped"): tags.append("equipped")
+            tag_str = f" ({', '.join(tags)})" if tags else ""
+            add(f"  {name}{tag_str}")
+        add("")
+
+    # ── Actions / Bonus Actions / Reactions / Passives ───────────────────────
+    try:
+        from dnd_app.ui.action_abilities import build_action_abilities
+        buckets = build_action_abilities(char)
+        for bucket in ("Action", "Bonus Action", "Reaction", "Passive"):
+            entries = buckets.get(bucket, [])
+            if not entries:
+                continue
+            add(f"── {bucket.upper()}S ──" if not bucket.endswith("s") else f"── {bucket.upper()} ──")
+            for entry in entries:
+                ename = entry[0] if len(entry) > 0 else "?"
+                edesc = entry[1] if len(entry) > 1 else ""
+                add(f"  {ename}", edesc)
+            add("")
+    except Exception:
+        # Best-effort — a malformed/edge-case character shouldn't block the
+        # rest of the export just because the abilities-list computation
+        # (which covers a huge, class-specific surface area) hit something
+        # unexpected on this particular build.
+        pass
 
     conc = char.get("concentration", {}).get("spell")
     if conc:

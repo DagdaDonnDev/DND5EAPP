@@ -50,7 +50,7 @@ def _breath_weapon_desc(char: dict) -> str:
     anc = char.get("draconic_ancestry", "")
     dmg_type, shape, save_desc = "", "", ""
     try:
-        from dnd_app.data.races import DRACONIC_ANCESTRY
+        from dnd_app.data.phb2014.races import DRACONIC_ANCESTRY
         data = DRACONIC_ANCESTRY.get(anc)
         if data:
             dmg_type, shape, save_desc = data
@@ -152,7 +152,7 @@ def _feature_matches_char_subclass(cls_name: str, feat_fragment: str, char_subcl
     there, so it's allowed through unfiltered rather than being hidden
     by a false negative.
     """
-    from dnd_app.data.class_features import CLASS_FEATURE_INDEX
+    from dnd_app.data.phbCommon.class_features import CLASS_FEATURE_INDEX
     def _norm(s):
         return s.replace("'", "").replace("’", "")
     feat_norm = _norm(feat_fragment)
@@ -180,7 +180,7 @@ def _get_artificer_infusion_base_names():
     every real Artificer infusion. Used to gate Combat-page infusion
     reminders on the character actually knowing that specific infusion,
     not just being an Artificer of a high enough level."""
-    from dnd_app.data.classes import ARTIFICER_INFUSIONS
+    from dnd_app.data.phb2014.classes import ARTIFICER_INFUSIONS
     return {inf.split(" \u2013 ")[0].strip() for inf in ARTIFICER_INFUSIONS}
 
 
@@ -188,11 +188,10 @@ _ARTIFICER_INFUSION_BASE_NAMES = _get_artificer_infusion_base_names()
 
 
 def _optional_feature_enabled(char, feature_name):
-    """Confirmed all optional features in OPTIONAL_CLASS_FEATURES had
-    zero real mechanical wiring — only correctly-gated descriptive
-    text. Checks both real enable mechanisms this app uses (a per-
-    feature toggle, or the broader optional_rules toggle), matching
-    the same dual-check already used for display in sheet.py."""
+    """Checks both real enable mechanisms this app uses for an optional
+    feature (a per-feature toggle, or the broader optional_rules
+    toggle), matching the same dual-check already used for display in
+    sheet.py."""
     enabled = char.get("_choices", {}).get("optional_features", {})
     if enabled.get(feature_name, False):
         return True
@@ -1854,7 +1853,7 @@ def build_action_abilities(char):
     # item is responsible. This block doesn't duplicate the
     # grant_action/grant_spell entries above; it only describes the
     # effect types nothing else already narrates.
-    from dnd_app.data.magic_items import get_item_effect as _get_item_effect
+    from dnd_app.data.phbCommon.magic_items import get_item_effect as _get_item_effect
 
     def _describe_passive_effect(sub, char, item_name):
         t = sub.get('type')
@@ -2102,7 +2101,7 @@ def build_action_abilities(char):
     # characters with actual known/prepared spells, not unconditionally
     # for every character — this correctly covers multiclass and
     # partial-caster edge cases without needing a hardcoded class list.
-    from dnd_app.data.spells import get_spell as _gs_action
+    from dnd_app.data.phbCommon.spells import get_spell as _gs_action
     _known_spell_names = set(char.get("spells_known", [])) | set(char.get("spells_prepared", []))
     _has_any_spell = bool(_known_spell_names)
     _has_concentration_spell = any(
@@ -2242,7 +2241,7 @@ def build_action_abilities(char):
     # ── Musical instrument / gaming set special uses (name-matched against
     # owned equipment individually, since these are specific instruments/
     # games rather than one fixed tool name) ─────────────────────────────────
-    from dnd_app.data.items import INSTRUMENT_TOOLS, GAMING_SETS
+    from dnd_app.data.phbCommon.items import INSTRUMENT_TOOLS, GAMING_SETS
     for inst in INSTRUMENT_TOOLS:
         if inst in char.get("tool_proficiencies", []) and inst in owned_item_names:
             buckets['Passive'].append((f"Compose a Tune ({inst})",
@@ -2523,7 +2522,7 @@ def build_action_abilities(char):
     }
     if race_name:
         try:
-            from dnd_app.data.races import get_race
+            from dnd_app.data.phb2014.races import get_race
             rdata = get_race(race_name) or {}
             traits_blob = " || ".join(rdata.get("traits", []))
             # subrace strings can also carry actions (Eladrin Fey Step etc.)
@@ -2566,7 +2565,7 @@ def build_action_abilities(char):
     # castable cards. Leveled 1-action spells appear only when pinned (★) so a
     # 15-spell wizard list doesn't flood the Action tab.
     try:
-        from dnd_app.data.spells import ALL_SPELLS
+        from dnd_app.data.phbCommon.spells import ALL_SPELLS
         spell_cat = {s['name']: s for s in ALL_SPELLS}
         known  = list(char.get('spells_known', []))
         prepared = set(char.get('spells_prepared', []))
@@ -2851,7 +2850,7 @@ def build_action_abilities(char):
         "Murgaxor's Elixir of Life": ("Action", "Murgaxor's Elixir of Life"),
         "Vial of Stardust": ("Action", "Vial of Stardust"),
     }
-    from dnd_app.data.items import ADVENTURING_GEAR as _AG
+    from dnd_app.data.phbCommon.items import ADVENTURING_GEAR as _AG
     _gear_notes = {row[0]: (row[3] if len(row) > 3 else "") for row in _AG}
     owned_names = {eq.get("name", "") for eq in char.get("equipment", [])}
     for item_name, (bucket_name, gear_key) in CONSUMABLE_ITEM_ACTIONS.items():

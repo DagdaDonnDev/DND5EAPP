@@ -23,7 +23,7 @@ from .multiclass import (
     compute_hit_points, get_extra_attacks, get_saving_throw_profs,
     build_character_summary,
 )
-from ..data.items import ARMOR_DICT
+from ..data.phbCommon.items import ARMOR_DICT
 
 
 SKILL_ABILITY = {
@@ -52,7 +52,7 @@ def get_onhit_damage_bonuses(char: dict) -> list[dict]:
     # Divine Strike (Cleric, 8th level, +1d8 -> +2d8 at 14th)
     cleric_lvl = cl.get("Cleric", 0)
     if cleric_lvl >= 8:
-        from dnd_app.data.class_features import DIVINE_STRIKE_TYPE
+        from dnd_app.data.phbCommon.class_features import DIVINE_STRIKE_TYPE
         domain = subs.get("Cleric", "")
         dtype = None
         for dname, t in DIVINE_STRIKE_TYPE.items():
@@ -143,13 +143,11 @@ def get_onhit_damage_bonuses(char: dict) -> list[dict]:
 
 def get_infusion_min_level(infusion_full_text: str) -> int:
     """Parse the "(min level N)" tag from an infusion's full list entry
-    (e.g. "Arcane Propulsion Armor – ... (min level 14)"). Confirmed a
-    real, significant bug: the infusion chooser previously had zero
-    level filtering at all — a 1st-level Artificer could select any
-    infusion in the list, including ones with an explicit 14th-level
-    prerequisite in the real rules. Returns 1 if no tag is present
-    (infusions with no level prerequisite, learnable from 2nd level
-    when Infuse Item is first gained)."""
+    (e.g. "Arcane Propulsion Armor – ... (min level 14)"), so the
+    infusion chooser can filter out infusions above the character's
+    level. Returns 1 if no tag is present (infusions with no level
+    prerequisite, learnable from 2nd level when Infuse Item is first
+    gained)."""
     import re
     m = re.search(r"\(min level (\d+)\)", infusion_full_text)
     return int(m.group(1)) if m else 1
@@ -157,12 +155,11 @@ def get_infusion_min_level(infusion_full_text: str) -> int:
 
 def get_infusion_bonus(infusion_name: str, artificer_lvl: int) -> int:
     """Numerical +N bonus granted by a given Artificer infusion at the
-    character's current level. Confirmed via direct testing this bonus
-    was previously never actually applied anywhere — infusing a weapon
-    with "Enhanced Weapon" only set a cosmetic magic:True flag, with no
-    effect on attack/damage rolls at all. Three infusions scale +1->+2
-    at 10th level; four others grant a flat +1 always; everything else
-    returns 0 (no numerical combat bonus)."""
+    character's current level, applied to attack/damage rolls (an
+    infused weapon's magic:True flag is cosmetic on its own and carries
+    no numerical bonus). Three infusions scale +1->+2 at 10th level;
+    four others grant a flat +1 always; everything else returns 0 (no
+    numerical combat bonus)."""
     scaling = {"Enhanced Weapon", "Enhanced Defense", "Enhanced Arcane Focus"}
     flat_plus_one = {"Radiant Weapon (+1)", "Repeating Shot",
                       "Returning Weapon (+1)", "Repulsion Shield (+1)"}
@@ -175,17 +172,16 @@ def get_infusion_bonus(infusion_name: str, artificer_lvl: int) -> int:
 
 def get_max_active_infusions(char: dict) -> int:
     """Max number of infusions that can be active (actually applied to an
-    item) at once — confirmed via research to be exactly half the number
-    of infusions known, not the same as knowing them. A character can
-    know far more infusions than they can have active simultaneously."""
+    item) at once — exactly half the number of infusions known, not the
+    same as knowing them. A character can know far more infusions than
+    they can have active simultaneously."""
     known = len(char.get("artificer_infusions", []))
     return known // 2
 
 
 def can_ritual_cast(char: dict, spell: dict) -> bool:
     """Whether the character can cast this spell as a ritual (no slot
-    expended, +10 min casting time) per the real 5e rules. Confirmed this
-    concept didn't exist anywhere in the app before.
+    expended, +10 min casting time) per the real 5e rules.
 
     Bard, Cleric, Druid, Wizard, and Artificer can ritual-cast any ritual
     spell they know/have prepared. Other classes need either the Ritual
@@ -227,8 +223,15 @@ INITIATIVE_ADVANTAGE_SOURCES = [
 
 def get_initiative_advantage_status(char: dict) -> dict:
     """Same shape as get_save_advantage_status, for initiative rolls
-    specifically. Small and single-purpose for now — Feral Instinct is
-    the only known source at this point."""
+    specifically, plus disadvantage — initiative is a Dexterity CHECK
+    (PHB p.189), so it's affected by the same active-condition sources
+    that impose disadvantage on ability checks generally (Exhaustion
+    1+, Frightened, Poisoned — same sources as get_skill_advantage_status's
+    condition handling), not the save-specific ones. Per RAW, advantage
+    and disadvantage from different sources cancel out rather than one
+    silently winning.
+    Returns {'has_advantage', 'conditional', 'sources', 'has_disadvantage',
+    'disadvantage_sources', 'net': 'advantage'|'disadvantage'|'normal'}."""
     sources = []
     for entry in INITIATIVE_ADVANTAGE_SOURCES:
         if "class_key" in entry:
@@ -240,10 +243,25 @@ def get_initiative_advantage_status(char: dict) -> dict:
     # initiative_advantage effect type in core/magic_items.py.
     for item_name in char.get("initiative_advantage_magic", []):
         sources.append({"source": item_name, "note": "Advantage on initiative rolls."})
+
+    dis_sources = []
+    if char.get("exhaustion", 0) >= 1:
+        dis_sources.append("Exhaustion (level 1+)")
+    active_conds = set(char.get("conditions", []))
+    for cond in ("Frightened", "Poisoned"):
+        if cond in active_conds:
+            dis_sources.append(cond)
+
+    has_adv = len(sources) > 0
+    has_dis = len(dis_sources) > 0
+    net = "normal" if (has_adv and has_dis) else ("advantage" if has_adv else ("disadvantage" if has_dis else "normal"))
     return {
-        "has_advantage": len(sources) > 0,
+        "has_advantage": has_adv,
         "conditional": any(s.get("conditional") for s in sources),
         "sources": sources,
+        "has_disadvantage": has_dis,
+        "disadvantage_sources": dis_sources,
+        "net": net,
     }
 
 
@@ -288,6 +306,16 @@ def get_skill_bonus(char: dict, skill: str) -> int:
             ability = fs_ability
     mod = ability_mod(char, ability)
     prof_level = char.get("skills", {}).get(skill, 0)
+    # Githyanki (MPMM) Astral Knowledge / Astral Elf Astral Trance: a
+    # temporary skill proficiency re-chosen every long rest, not a
+    # permanent grant. Checked dynamically here (same technique as
+    # Forest Sage's ability substitution above) rather than mutating
+    # char["skills"], since that dict is otherwise a permanent,
+    # monotonically-increasing store with no way to "expire" an entry
+    # when the character re-picks a different skill on a later rest.
+    astral_skill = char.get("_choices", {}).get("astral_knowledge_skill")
+    if astral_skill and skill == astral_skill[0]:
+        prof_level = max(prof_level, 2)
     pb = get_prof_bonus(char)
     cl = class_levels(char)
 
@@ -537,13 +565,13 @@ def get_ac(char: dict) -> int:
     # transformed (it doesn't fit, and RAW gear either merges into the
     # new form or falls away), so no armor-based bonus applies on top of
     # it either. Using the beast's own AC number avoids relying on the
-    # ability-score override to coincidentally reproduce the right value
-    # through Unarmored Defense's formula, which only worked by chance
-    # for Barbarian/Monk and was wrong for every other class (missing the
-    # beast's own natural armor bonus).
+    # ability-score override to reproduce the right value through
+    # Unarmored Defense's formula, which only happens to match for
+    # Barbarian/Monk and omits the beast's own natural armor bonus for
+    # every other class.
     active_beast = char.get("_wildshape_active")
     if active_beast:
-        from dnd_app.data.statblocks import WILDSHAPE_BEASTS
+        from dnd_app.data.phbCommon.statblocks import WILDSHAPE_BEASTS
         beast = WILDSHAPE_BEASTS.get(active_beast)
         if beast:
             return beast["ac"]
@@ -619,13 +647,12 @@ def _get_ac_base(char: dict) -> int:
         if has_mage_armor:
             candidates.append(13 + dex_mod + shield_bonus + magic_ac)
         # Draconic Resilience (Sorcerer, Draconic Bloodline, 1st level):
-        # AC 13 + DEX while unarmored, always-on. Previously missing.
+        # AC 13 + DEX while unarmored, always-on.
         sorc_lvl_ac = cl.get("Sorcerer", 0)
         if sorc_lvl_ac > 0 and "draconic" in subclasses(char).get("Sorcerer", "").lower():
             candidates.append(13 + dex_mod + shield_bonus + magic_ac)
         # Racial Natural Armor / built-in AC formulas, always-on while
-        # unarmored. Previously descriptive-only in races.py — the trait
-        # text promised these but the AC calculation never applied them.
+        # unarmored.
         species_ac = (char.get("species") or char.get("race", "")).strip().lower()
         if species_ac == "lizardfolk":
             candidates.append(13 + dex_mod + shield_bonus + magic_ac)
@@ -767,13 +794,11 @@ def get_condition_save_status(char: dict, ability: str) -> dict:
 
 def get_condition_attack_status(char: dict) -> dict:
     """Whether the character's own attack rolls currently have
-    advantage/disadvantage from active conditions and exhaustion.
-    Confirmed conditions were previously purely visual/informational —
-    checking "Blinded" or "Poisoned" had zero effect on any actual
-    roll anywhere in the app. Real 5e rule: if a roll would have both
-    advantage and disadvantage from different sources, they cancel and
-    neither applies — handled explicitly here rather than just
-    returning whichever was checked first.
+    advantage/disadvantage from active conditions and exhaustion. Real
+    5e rule: if a roll would have both advantage and disadvantage from
+    different sources, they cancel and neither applies — handled
+    explicitly here rather than just returning whichever was checked
+    first.
     Returns {'advantage': bool, 'disadvantage': bool, 'sources': [str]}."""
     active = set(char.get("conditions", []))
     adv_sources = []
@@ -962,7 +987,7 @@ def get_spell_attack_bonus(char: dict, ability: str = None) -> int:
 
 def _detect_spell_ability(char: dict) -> str:
     """Find the primary spellcasting ability from first spellcasting class."""
-    from ..data.classes import CLASS_DICT
+    from ..data.phb2014.classes import CLASS_DICT
     for c in char.get("classes", []):
         cls_name = c["class"]
         sub = c.get("subclass", "").lower()
@@ -1134,7 +1159,7 @@ def get_innate_resistance_grants(char: dict) -> list[dict]:
     Does NOT include magic items (magic_items.py handles those
     separately) or Hybrid Transformation (handled inline in update_all
     since it has its own bespoke multi-damage-type shape already)."""
-    from dnd_app.data.resistance_sources import (
+    from dnd_app.data.phbCommon.resistance_sources import (
         RACIAL_RESISTANCES, SUBRACE_RESISTANCES, FEAT_RESISTANCES,
         DM_REWARD_RESISTANCES, SPELL_EFFECT_RESISTANCES,
         SUBCLASS_PASSIVE_RESISTANCES, SUBCLASS_TOGGLE_RESISTANCES)
@@ -1272,7 +1297,7 @@ def get_innate_movement_grants(char: dict) -> dict:
     which get_effective_speed() already reads. Magic items are handled
     separately in magic_items.py and are folded in by the caller."""
     from .character import class_levels, subclasses
-    from dnd_app.data.movement_sources import (RACIAL_MOVEMENT, SUBRACE_MOVEMENT,
+    from dnd_app.data.phbCommon.movement_sources import (RACIAL_MOVEMENT, SUBRACE_MOVEMENT,
         SUBCLASS_PASSIVE_MOVEMENT, SUBCLASS_TOGGLE_MOVEMENT)
 
     best = {"swim": 0, "climb": 0, "fly": 0}
@@ -1286,7 +1311,7 @@ def get_innate_movement_grants(char: dict) -> dict:
     # or it silently resolves against a lower, stale value.
     barb_lvl = class_levels(char).get("Barbarian", 0)
     if barb_lvl >= 5:
-        from dnd_app.data.items import ARMOR_DICT
+        from dnd_app.data.phbCommon.items import ARMOR_DICT
         from .magic_items import parse_magic_suffix
         armor_name = char.get("armor_worn", "No Armor")
         base_armor_name, _ = parse_magic_suffix(armor_name)
@@ -1426,21 +1451,50 @@ def get_innate_movement_grants(char: dict) -> dict:
     return best
 
 
+def companion_max_simultaneous(key: str, char: dict) -> int:
+    """How many simultaneous active instances of this companion the
+    character can have. 1 for every companion except Dancing Item once
+    Creative Crescendo applies (Bard, College of Creation, 14th level):
+    "you can have a number of animated objects from Animating
+    Performance equal to your Charisma modifier active at once ...
+    rather than just one." A negative/zero CHA modifier still gets at
+    least the base 1 Animating Performance always allows."""
+    if key == "dancing_item":
+        from .character import class_levels, subclasses
+        cl = class_levels(char)
+        subs = subclasses(char)
+        if cl.get("Bard", 0) >= 14 and "creation" in subs.get("Bard", "").lower():
+            return max(1, ability_mod(char, "CHA"))
+    return 1
+
+
+def count_active_companion_instances(key: str, active_summons: list) -> int:
+    """Count how many active_summoned_companions entries belong to this
+    template key — either the bare key itself (single-instance
+    companions) or an instance-suffixed "key#N" form (multi-instance
+    companions like Dancing Item once Creative Crescendo applies)."""
+    return sum(1 for a in active_summons if a == key or a.startswith(key + "#"))
+
+
 def get_summonable_but_inactive_companions(char: dict) -> list[str]:
     """Companions the character is class/subclass/level-eligible for,
-    tagged requires_summon_action, but hasn't actually summoned yet —
-    used by the UI to show a "Summon" prompt instead of the full stat
-    block card."""
+    tagged requires_summon_action, that still have room for another
+    active instance — used by the UI to show a "Summon" prompt
+    alongside (or instead of) the full stat block card. For ordinary
+    single-instance companions this is "hasn't summoned it yet"; for a
+    multi-instance-capable one (Dancing Item + Creative Crescendo)
+    it's "hasn't hit the simultaneous-instance cap yet", so the prompt
+    can still appear even with one already active."""
     from .character import class_levels, subclasses
-    from dnd_app.data.statblocks import COMPANION_STATBLOCKS
+    from dnd_app.data.phbCommon.statblocks import COMPANION_STATBLOCKS
     cl = class_levels(char)
     subs = subclasses(char)
-    active_summons = set(char.get("active_summoned_companions", []))
+    active_summons = char.get("active_summoned_companions", [])
     result = []
     for key, tmpl in COMPANION_STATBLOCKS.items():
         if not tmpl.get("requires_summon_action"):
             continue
-        if key in active_summons:
+        if count_active_companion_instances(key, active_summons) >= companion_max_simultaneous(key, char):
             continue
         cls_lvl = cl.get(tmpl["class_key"], 0)
         if cls_lvl < tmpl["min_level"]:
@@ -1464,7 +1518,11 @@ def get_available_companions(char: dict) -> list[str]:
     feature is unlocked:
     - Companions tagged requires_summon_action (Drake Companion,
       Dancing Item, Wildfire Spirit) are only included once actually
-      summoned — tracked in char["active_summoned_companions"].
+      summoned — tracked in char["active_summoned_companions"]. A
+      multi-instance-capable companion (Dancing Item, once Creative
+      Crescendo applies) contributes one list entry per currently
+      active instance, using an instance-suffixed "key#N" id, so the
+      UI builds one stat block card per instance instead of one total.
     - Companions tagged requires_active_infusion (Homunculus Servant)
       are only included while an active_infusions entry for that exact
       infusion exists — matching how it's really created (infusing a
@@ -1478,10 +1536,10 @@ def get_available_companions(char: dict) -> list[str]:
       rule that recreation happens "at the end of a long rest," not
       instantly the moment the old one is destroyed."""
     from .character import class_levels, subclasses
-    from dnd_app.data.statblocks import COMPANION_STATBLOCKS, ELDRITCH_CANNON
+    from dnd_app.data.phbCommon.statblocks import COMPANION_STATBLOCKS, ELDRITCH_CANNON
     cl = class_levels(char)
     subs = subclasses(char)
-    active_summons = set(char.get("active_summoned_companions", []))
+    active_summons = char.get("active_summoned_companions", [])
     pending_replacement = set(char.get("companion_pending_replacement", []))
     active_infusion_names = {inf.get("infusion", "") for inf in char.get("active_infusions", [])}
     available = []
@@ -1492,7 +1550,16 @@ def get_available_companions(char: dict) -> list[str]:
         sub = subs.get(tmpl["class_key"], "").lower()
         if tmpl["subclass_match"] not in sub:
             continue
-        if tmpl.get("requires_summon_action") and key not in active_summons:
+        if tmpl.get("requires_summon_action"):
+            instances = [a for a in active_summons if a == key or a.startswith(key + "#")]
+            if not instances:
+                continue
+            req_infusion = tmpl.get("requires_active_infusion")
+            if req_infusion and req_infusion not in active_infusion_names:
+                continue
+            if key in pending_replacement:
+                continue
+            available.extend(instances)
             continue
         req_infusion = tmpl.get("requires_active_infusion")
         if req_infusion and req_infusion not in active_infusion_names:
@@ -1507,11 +1574,18 @@ def resolve_companion_statblock(key: str, char: dict) -> dict:
     """Compute the actual current numbers for one companion stat block,
     given this character's level/proficiency bonus/spellcasting stats.
     Returns a dict with the same shape as the template but with every
-    {formula} string already filled in with real numbers."""
-    from dnd_app.data.statblocks import COMPANION_STATBLOCKS, ELDRITCH_CANNON
+    {formula} string already filled in with real numbers.
+
+    key may be an instance-suffixed "template_key#N" id (multi-instance
+    companions like Dancing Item under Creative Crescendo) — the
+    template is looked up by its base key, and the returned
+    display_name gets a "#<n+1>" suffix so multiple active instances
+    are distinguishable in the UI."""
+    from dnd_app.data.phbCommon.statblocks import COMPANION_STATBLOCKS, ELDRITCH_CANNON
     from .character import class_levels
 
-    tmpl = COMPANION_STATBLOCKS.get(key) or (ELDRITCH_CANNON if key == "eldritch_cannon" else None)
+    base_key, sep, instance_n = key.partition("#")
+    tmpl = COMPANION_STATBLOCKS.get(base_key) or (ELDRITCH_CANNON if base_key == "eldritch_cannon" else None)
     if not tmpl:
         return {}
     cls_name = tmpl["class_key"]
@@ -1546,6 +1620,8 @@ def resolve_companion_statblock(key: str, char: dict) -> dict:
 
     out = dict(tmpl)
     out["level"] = level
+    if sep and instance_n.isdigit():
+        out["display_name"] = f"{tmpl.get('display_name', base_key)} #{int(instance_n) + 1}"
     out["ac"] = _eval_bonus(tmpl.get("ac_formula", "")).lstrip("+") if tmpl.get("ac_formula") else ""
     if tmpl.get("hp_formula"):
         # Evaluate the arithmetic (formulas use only +, ×, and the
@@ -1642,7 +1718,7 @@ def get_available_wildshape_beasts(char: dict) -> list[str]:
     filtered by get_wild_shape_info()'s max_cr and restriction (no
     flying/swimming speed below certain levels). Returns [] if not a
     Druid or Wild Shape isn't available yet."""
-    from dnd_app.data.statblocks import WILDSHAPE_BEASTS
+    from dnd_app.data.phbCommon.statblocks import WILDSHAPE_BEASTS
     from .character import class_levels, subclasses
     info = get_wild_shape_info(char)
     if not info:
@@ -1751,7 +1827,7 @@ def get_total_weight(char: dict) -> float:
         total += 6  # standard shield weight
     for w in char.get("weapons", []):
         # look up weapon weight
-        from ..data.items import WEAPON_DICT
+        from ..data.phbCommon.items import WEAPON_DICT
         wd = WEAPON_DICT.get(w["name"])
         if wd:
             total += wd.get("weight", 0)
@@ -1838,7 +1914,7 @@ def get_effective_speed(char: dict) -> dict:
     Returns {'walk':int, 'fly':int, 'swim':int, 'climb':int}.
     """
     from .effects import effect_speed
-    from dnd_app.data.items import ARMOR_DICT
+    from dnd_app.data.phbCommon.items import ARMOR_DICT
     from .magic_items import parse_magic_suffix
     base = char.get("speed", 30) + char.get("monk_speed_bonus", 0) + char.get("magic_speed_bonus", 0)
 
@@ -2007,7 +2083,7 @@ def get_character_senses(char: dict) -> dict:
 
     active_beast = char.get("_wildshape_active")
     if active_beast:
-        from dnd_app.data.statblocks import WILDSHAPE_BEASTS
+        from dnd_app.data.phbCommon.statblocks import WILDSHAPE_BEASTS
         beast = WILDSHAPE_BEASTS.get(active_beast, {})
         beast_senses_text = beast.get("senses", "")
         for sense_name in senses:
@@ -2016,7 +2092,7 @@ def get_character_senses(char: dict) -> dict:
                 senses[sense_name] = int(m.group(1))
         return senses
 
-    from dnd_app.data.races import get_race
+    from dnd_app.data.phb2014.races import get_race
     species = char.get("species") or char.get("race", "")
     subrace = char.get("subrace", "") or ""
     race = get_race(species)
@@ -2104,7 +2180,7 @@ def compute_max_hp(char: dict) -> int:
     classes = char.get("classes", [])
     if not classes:
         return 0
-    from dnd_app.data.classes import CLASS_DICT
+    from dnd_app.data.phb2014.classes import CLASS_DICT
     con = ability_mod(char, "CON", ignore_wildshape=True)
     total = total_level(char)
     tough_bonus = 2 * total if "Tough" in char.get("feats", []) else 0
@@ -2127,13 +2203,64 @@ def compute_max_hp(char: dict) -> int:
             hp += (avg + con) * lvl
 
     # Draconic Resilience (Sorcerer, Draconic Bloodline, 1st level):
-    # +1 HP per Sorcerer level. Previously missing entirely.
+    # +1 HP per Sorcerer level.
     from dnd_app.core.character import subclasses as _subclasses_hp, class_levels as _class_levels_hp
     sorc_lvl = _class_levels_hp(char).get("Sorcerer", 0)
     if sorc_lvl > 0 and "draconic" in _subclasses_hp(char).get("Sorcerer", "").lower():
         hp += sorc_lvl
 
     return hp + tough_bonus
+
+
+def preview_level_gain(char: dict, cls_name: str, is_new: bool) -> dict:
+    """Pure preview of what gaining a level in `cls_name` would grant —
+    HP and spell-slot deltas — without mutating `char`. Used by the
+    Level Up / Multiclass dialog's "What You'll Get" panel so a player
+    can see the numbers before committing, rather than only the class's
+    static per-level feature list.
+
+    `is_new` marks a brand-new multiclass entry (added at level 1)
+    rather than an existing class going up one level. Only computes HP
+    and spell slots — feature text is already handled separately by the
+    dialog from CLASS_DICT's per-level feature list.
+
+    Returns {"hp_gain", "hp_before", "hp_after", "slot_deltas",
+    "pact_before", "pact_after"}. slot_deltas is a list of
+    (spell_level, delta) for every spell level whose max slots change;
+    pact_before/after are the Warlock pact slot dicts (count/level) or
+    None, since those live outside the standard spell_slots array."""
+    import copy
+    from dnd_app.data.phb2014.classes import CLASS_DICT
+
+    hp_before = compute_max_hp(char)
+    cur_cl, cur_subs = class_levels(char), subclasses(char)
+    cur_slot_info = compute_all_spell_slots(cur_cl, cur_subs)
+
+    hyp = copy.deepcopy(char)
+    if is_new:
+        hd = CLASS_DICT.get(cls_name, {}).get("hit_die", 8)
+        hyp.setdefault("classes", []).append(
+            {"class": cls_name, "level": 1, "subclass": "", "hit_die": hd})
+    else:
+        for entry in hyp.get("classes", []):
+            if entry.get("class") == cls_name:
+                entry["level"] = min(20, entry.get("level", 1) + 1)
+                break
+
+    hp_after = compute_max_hp(hyp)
+    new_cl, new_subs = class_levels(hyp), subclasses(hyp)
+    new_slot_info = compute_all_spell_slots(new_cl, new_subs)
+
+    cur_slots, new_slots = cur_slot_info["spell_slots"], new_slot_info["spell_slots"]
+    slot_deltas = [(lvl + 1, new_slots[lvl] - cur_slots[lvl])
+                   for lvl in range(9) if new_slots[lvl] != cur_slots[lvl]]
+
+    return {
+        "hp_gain": hp_after - hp_before, "hp_before": hp_before, "hp_after": hp_after,
+        "slot_deltas": slot_deltas,
+        "pact_before": cur_slot_info.get("warlock_slots"),
+        "pact_after": new_slot_info.get("warlock_slots"),
+    }
 
 
 def update_all(char: dict) -> dict:
@@ -2143,7 +2270,19 @@ def update_all(char: dict) -> dict:
     """
     cl = class_levels(char)
     subs = subclasses(char)
-    ability_scores = char["abilities"]
+    # Effective ability scores (base + ability_bonuses from ASI/racial
+    # ASI + magic_ability_bonuses from items + ability_overrides), not
+    # just the raw base char["abilities"] — this feeds aggregate_
+    # resources()'s ability-modifier formulas (Bardic Inspiration's
+    # CHA_mod, Hexblade's Curse, War Priest, Momentary Stasis, and
+    # every other ability-mod-driven resource in classes.py/
+    # classes_2024.py/_add_subclass_resources()), so a raw-base-only
+    # dict here meant an ASI, racial ASI, or item bonus to that ability
+    # never actually raised the resource's max uses. ignore_wildshape
+    # matches max-HP's own convention: a resource's max shouldn't
+    # fluctuate just because the character is currently Wild Shaped.
+    ability_scores = {ab: ability_score(char, ab, ignore_wildshape=True)
+                       for ab in ("STR", "DEX", "CON", "INT", "WIS", "CHA")}
     total = total_level(char)
 
     if total == 0:
@@ -2181,7 +2320,7 @@ def update_all(char: dict) -> dict:
     # layered on top of whatever magic items already contributed to
     # skill_disadvantages via the same list/source-tracking mechanism.
     if char.get("exhaustion", 0) >= 1:
-        from dnd_app.data.classes import SKILLS as _ALL_SKILLS
+        from dnd_app.data.phb2014.classes import SKILLS as _ALL_SKILLS
         dis = char.setdefault("skill_disadvantages", [])
         src = char.setdefault("_skill_disadvantage_sources", {})
         for sk in _ALL_SKILLS:
@@ -2199,7 +2338,7 @@ def update_all(char: dict) -> dict:
     _active_conds_for_checks = set(char.get("conditions", []))
     for _cond_name in ("Frightened", "Poisoned"):
         if _cond_name in _active_conds_for_checks:
-            from dnd_app.data.classes import SKILLS as _ALL_SKILLS
+            from dnd_app.data.phb2014.classes import SKILLS as _ALL_SKILLS
             dis = char.setdefault("skill_disadvantages", [])
             src = char.setdefault("_skill_disadvantage_sources", {})
             for sk in _ALL_SKILLS:
@@ -2301,7 +2440,7 @@ def update_all(char: dict) -> dict:
     # "walking" as a value means "equal to your walking speed", matching
     # how most of these items are actually worded.
     from .magic_items import _active_item_names as _active_magic_item_names
-    from dnd_app.data.magic_items import get_item_effect as _get_item_effect
+    from dnd_app.data.phbCommon.magic_items import get_item_effect as _get_item_effect
     walk_speed = char.get("speed", 30) + char.get("magic_speed_bonus", 0)
     for _fx_name in _active_magic_item_names(char):
         _fx_info = _get_item_effect(_fx_name)
@@ -2376,7 +2515,8 @@ def update_all(char: dict) -> dict:
     # Merge computed resources with existing ones (preserve current values)
     existing_resources = {r["key"]: r for r in char.get("resources", [])}
     new_resources = aggregate_resources(cl, ability_scores, subs, char.get("_choices", {}),
-                                         char.get("optional_rules", {}))
+                                         char.get("optional_rules", {}),
+                                         char.get("edition", "2014"))
 
     # Racial resources — not tied to any class, so added here where the
     # full char dict (race/subrace) is available rather than inside

@@ -83,7 +83,7 @@ MIMIC is a desktop application for Dungeons & Dragons 5th Edition that brings to
 - **DM-granted feats browser** for feats gained outside normal progression
 
 ### Interface & Customization
-- **12 themes** — Obsidian, Dragon's Hoard, Shadowfell, Arcane Scroll (light mode), Feywild, Blood Moon, Frostspire, Cinderveil, Tavern Hearth, Mossgrove, Gearworks, Hallowed Stone
+- **26 themes** (16 dark, 10 light) — Obsidian, Dragon's Hoard, Shadowfell, Feywild, Blood Moon, Frostspire, Cinderveil, Tavern Hearth, Mossgrove, Gearworks, Hallowed Stone, Underdark, Astral Sea, Nine Hells, Kraken's Depth, Storm Giant's Eye, Arcane Scroll, Moonlit Vellum, Sunlit Meadow, Elven Grove, Coastal Tide, Rose Chantry, Desert Oasis, Frostlight, Harvest Gold, Sky Citadel
 - **Resizable window** with draggable splitters between panels
 - **Right-click any feature, race trait, or subrace trait** for a full detail popup
 - **Search everywhere** — find spells, feats, items, and equipment instantly
@@ -118,15 +118,15 @@ A splash screen appears immediately and animates while the app loads in the back
 
 ### Windows
 ```bat
-build_exe.bat
+installer\build_exe.bat
 ```
 
 ### macOS / Linux
 ```bash
-./build_exe.sh
+./installer/build_exe.sh
 ```
 
-**Output:** `dist/MIMIC.exe` (Windows) or `dist/MIMIC` (macOS/Linux). See [`BUILD_EXE.md`](BUILD_EXE.md) for the full guide.
+**Output:** `dist/MIMIC.exe` (Windows) or `dist/MIMIC` (macOS/Linux). See [`installer/BUILD_EXE.md`](installer/BUILD_EXE.md) for the full guide.
 
 ---
 
@@ -140,7 +140,7 @@ pip install PySide6
 ### Executable starts but immediately closes
 1. Run from a terminal or command prompt to see error output.
 2. Delete the `build/` and `dist/` folders and rebuild.
-3. Check that `dnd_app/assets/` and `dnd_app/icon.ico` exist before building.
+3. Check that `dnd_app/ui/splash/` and `dnd_app/ui/icon.ico` exist before building.
 
 ### Splash screen looks frozen or doesn't animate
 Make sure you're on current source — the heavy startup import runs on a background thread specifically so the splash animation keeps playing while it loads.
@@ -151,15 +151,34 @@ Make sure you're on current source — the heavy startup import runs on a backgr
 
 ```
 dnd_app/
-  data/              # All game data (races, classes, spells, feats, items, etc.)
-  core/              # Character model, calculator, builder, save/load
-  ui/                # PySide6 widgets (main window, wizard, sheet, theme, etc.)
-  assets/            # Splash screen image/GIF
-  icon.ico           # App icon
+  data/                    # Static game-rules data
+    phb2014/               #   Races + classes, 2014 PHB edition
+    phb2024/                #   Species + classes, 2024 PHB edition
+    phbCommon/              #   Everything edition-shared: feats, items,
+                             #   magic items, spells, backgrounds, etc.
+    5E_CharacterSheet_Fillable.pdf   # Official fillable PDF template
+    KNOWN_IMPLEMENTATION_GAPS.md     # Running changelog/known-gaps doc
+  core/                    # Character model, calculator, builder, save/load
+                            #   (non-UI application logic)
+  ui/                       # PySide6 widgets
+    style/                  #   Theme/QSS engine + cosmetic text helpers
+    pages/                  #   Top-level app screens
+      main_window.py         #     Start menu / main window
+      wizard.py               #     Character creation wizard
+      sheet/                   #     Character sheet, split by tab/concern
+    dialogs/                 #   Popup dialogs + the level-up choices panel
+    splash/                  #   Startup splash screen + its image/GIF assets
+    shared.py                #   Cross-file widget/style factories
+    action_abilities.py      #   Action economy classification logic
+    widgets.py                #   FlowLayout/FlowContainer
+    icon.ico                  #   App icon
 run_dnd_creator.py     # Entry point
-requirements.txt
-DnD5eCharacterCreator.spec   # PyInstaller build spec
-build_exe.bat / build_exe.sh # One-command build scripts
+installer/               # Build tooling
+  build_exe.bat / build_exe.sh #   One-command build scripts
+  BUILD_EXE.md            #   Full build guide
+packaging/                # Build-target manifests
+  DnD5eCharacterCreator.spec #  PyInstaller build spec
+  requirements.txt
 ```
 
 ---

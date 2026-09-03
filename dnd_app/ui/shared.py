@@ -6,12 +6,45 @@ Date: 2026-08-20
 from PySide6.QtWidgets import *
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor
-from .theme import *
+from dnd_app.ui.style.theme import *
 ABILITIES = ["STR","DEX","CON","INT","WIS","CHA"]
 AB_FULL = {"STR":"Strength","DEX":"Dexterity","CON":"Constitution",
            "INT":"Intelligence","WIS":"Wisdom","CHA":"Charisma"}
 
 def sign(n): return f"+{n}" if n >= 0 else str(n)
+
+
+def diagnostic_log_dir() -> str:
+    """Where to write crash/diagnostic log files (mimic_crash_log.txt,
+    mimic_toast_log.txt) -- the folder the running executable actually
+    lives in, not sys._MEIPASS (PyInstaller onefile's temp extraction
+    dir, wiped after the process exits, so a log written there would
+    vanish before anyone could read it) and not the user's home folder
+    (harder to find than just looking next to MIMIC.exe). Falls back to
+    the current working directory when running from source, unfrozen."""
+    import sys, os
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(sys.executable)
+    return os.getcwd()
+
+
+def write_diagnostic_log(filename: str, text: str, mode: str = "w") -> str | None:
+    """Write (or append) a diagnostic log file, trying diagnostic_log_dir()
+    first and falling back to the user's home folder if that write fails
+    (e.g. the exe's own folder isn't writable -- Program Files, a
+    read-only network share). Returns the path actually written, or None
+    if both attempts failed, so a caller can tell the user exactly where
+    to look rather than assuming the primary location worked."""
+    import os
+    for candidate_dir in (diagnostic_log_dir(), os.path.expanduser("~")):
+        path = os.path.join(candidate_dir, filename)
+        try:
+            with open(path, mode, encoding="utf-8") as f:
+                f.write(text)
+            return path
+        except Exception:
+            continue
+    return None
 
 def h(text, color=None, size=FS_BODY, bold=False, align=Qt.AlignLeft, wrap=True):
     """Quick label factory."""
@@ -24,6 +57,13 @@ def h(text, color=None, size=FS_BODY, bold=False, align=Qt.AlignLeft, wrap=True)
     if wrap: w.setWordWrap(True)
     return w
 
+# Every UI file used to define its own near-identical copy of this exact
+# label factory under the name "_lbl" (sheet.py, wizard.py, main_window.py,
+# levelup_panel.py, feature_dialog.py all had one). h() is the original of
+# the bunch; this alias lets every file just `from .shared import _lbl` and
+# delete its local copy, with zero call-site changes anywhere.
+_lbl = h
+
 def section_header(text, color=None):
     lbl = h(text.upper(), color or GOLD, FS_SMALL, bold=True)
     lbl.setStyleSheet(lbl.styleSheet() + f"letter-spacing:2px;padding-bottom:2px;")
@@ -34,11 +74,138 @@ def hline():
     f.setStyleSheet(f"color:{BORDER};background:{BORDER};max-height:1px;border:none;")
     return f
 
-def card(parent=None, color=BORDER):
-    """Styled card frame."""
-    f = QFrame(parent)
-    f.setStyleSheet(f"QFrame{{background:{SURF};border:1px solid {color};border-radius:10px;}}")
+def card(accent=BORDER):
+    """Styled card frame — a bordered QFrame with the standard SURF
+    background. Was already defined here with a different (parent, color)
+    signature, but never actually called anywhere; sheet.py had grown its
+    own separate, differently-named `_card(accent=BORDER)` used 61 times
+    instead. This adopts THAT signature (the one actually in use) as the
+    canonical one, so sheet.py's existing `_card(...)` call sites need no
+    changes — just `_card = card` after importing this."""
+    f = QFrame()
+    f.setStyleSheet(f"QFrame{{background:{SURF};border:1px solid {accent};border-radius:10px;}}")
     return f
+
+# Same reasoning as _lbl above: sheet.py's own `_card` and this module's
+# `card` were the same shape, just never unified. Alias, not a rename, so
+# every existing `_card(...)` call site across the app keeps working.
+_card = card
+
+
+def _btn(label, color=None, *, variant="cta", height=28, width=None,
+         radius=6, padding=None, bold=True, font_size=None, tooltip="",
+         enabled=True, bg_alpha=None, border_alpha=None, text_color=None,
+         hover_text=None, hover_bg_alpha=None, min_height0=False,
+         border_width=None):
+    """Shared QPushButton factory covering the ~4 button "shapes" used
+    at call sites app-wide, each a variation on one of these with only
+    the accent color (and occasionally the alpha/text-color specifics
+    below) actually differing. NOT a replacement for pill_btn() above
+    (a distinct, already-shared solid/no-border/rounded-pill shape used
+    for the most prominent CTAs like "Create New Character").
+
+    variant="cta"     (default) — tinted background, thick 2px border
+                       in the same color, hover FILLS to solid color.
+                       The "Confirm"/"Level Up"/rest-button look.
+                       `color` required.
+    variant="chip"     — lighter tint, thin 1px border, hover tints
+                       further (never fills solid). Small in-a-row
+                       action buttons (Identity/Class-Manager buttons,
+                       toolbar icons with a color). `color` required.
+    variant="neutral"  — SURF2 background, BORDER2 border, TEXT2 text,
+                       SURF3/TEXT on hover. Cancel/Back/Skip buttons.
+                       `color` is ignored.
+    variant="ghost"    — transparent background, thin BORDER border,
+                       tints toward `color` on hover. Small icon
+                       buttons (🎲 roll buttons). `color` required
+                       (used only for the hover tint).
+    variant="danger"   — same shape as "cta", defaults `color` to
+                       CRIMSON when not given (destructive actions).
+
+    Every hand-rolled call site this replaces used the same handful of
+    shapes above, but not always the exact same alpha/text-color pick
+    (e.g. some "cta" buttons use a brighter "2"-suffixed text color
+    like CRIM2/TEAL2 instead of the base color, some hover to white
+    text instead of the page background). Rather than one rigid look,
+    the shape is fixed per variant and these are the parts that vary:
+    bg_alpha/border_alpha/hover_bg_alpha (ints, e.g. 0x33) and
+    text_color/hover_text (full color strings) override the variant's
+    defaults when the original call site used something else.
+    """
+    if variant == "danger" and color is None:
+        color = CRIMSON
+    if variant != "neutral" and color is None:
+        raise ValueError(f"_btn(variant={variant!r}) requires a color")
+
+    btn = QPushButton(label)
+    if height: btn.setFixedHeight(height)
+    if width: btn.setFixedWidth(width)
+    if tooltip: btn.setToolTip(tooltip)
+    if not enabled: btn.setEnabled(False)
+
+    weight = "font-weight:700;" if bold else ""
+    fs = f"font-size:{font_size}px;" if font_size else ""
+    mh = "min-height:0px;" if min_height0 else ""
+
+    if variant in ("cta", "danger"):
+        pad = padding or "4px 20px"
+        bw = border_width if border_width is not None else 2
+        bg_a = bg_alpha if bg_alpha is not None else 0x33
+        border = qa(color, border_alpha) if border_alpha is not None else color
+        txt = text_color or color
+        hov_txt = hover_text if hover_text is not None else BG
+        btn.setStyleSheet(
+            f"QPushButton{{background:{qa(color,bg_a)};border:{bw}px solid {border};"
+            f"border-radius:{radius}px;color:{txt};{weight}{fs}{mh}padding:{pad};}}"
+            f"QPushButton:hover{{background:{color};color:{hov_txt};}}")
+    elif variant == "chip":
+        pad = padding or "2px 10px"
+        bw = border_width if border_width is not None else 1
+        bg_a = bg_alpha if bg_alpha is not None else 0x22
+        bor_a = border_alpha if border_alpha is not None else 0x66
+        hov_a = hover_bg_alpha if hover_bg_alpha is not None else 0x55
+        txt = text_color or color
+        btn.setStyleSheet(
+            f"QPushButton{{background:{qa(color,bg_a)};border:{bw}px solid {qa(color,bor_a)};"
+            f"border-radius:{radius}px;color:{txt};{weight}{fs}{mh}padding:{pad};}}"
+            f"QPushButton:hover{{background:{qa(color,hov_a)};border-color:{color};}}")
+    elif variant == "neutral":
+        pad = padding or "5px 10px"
+        btn.setStyleSheet(
+            f"QPushButton{{background:{SURF2};border:1px solid {BORDER2};"
+            f"border-radius:{radius}px;color:{TEXT2};{weight}{fs}{mh}padding:{pad};}}"
+            f"QPushButton:hover{{background:{SURF3};color:{TEXT};}}")
+    elif variant == "ghost":
+        pad = padding or "0px"
+        bor_a = border_alpha  # None -> plain BORDER, matching the original ghost shape
+        border = qa(BORDER, bor_a) if bor_a is not None else BORDER
+        hov_a = hover_bg_alpha if hover_bg_alpha is not None else 0x33
+        btn.setStyleSheet(
+            f"QPushButton{{background:transparent;border:1px solid {border};"
+            f"border-radius:{radius}px;{fs or f'font-size:{FS_SMALL}px;'}padding:{pad};min-height:0px;}}"
+            f"QPushButton:hover{{background:{qa(color,hov_a)};border-color:{color};}}")
+    else:
+        raise ValueError(f"_btn: unknown variant {variant!r}")
+    return btn
+
+
+def _pill(label, value, color, width=96):
+    """Small bordered stat block: big value + title below. Generalizes
+    what CharacterSheet._make_stat_pill()/_make_xp_pill() were building
+    ad hoc — those become thin wrappers around this. Returns the QFrame
+    with a `._val` QLabel attribute for later `.setText()` updates,
+    matching the contract every existing stat-pill call site already
+    depends on (AC/HP/Initiative/Prof Bonus/Speed/XP)."""
+    f = QFrame()
+    f.setStyleSheet(f"QFrame{{background:{SURF};border:2px solid {qa(color,0x55)};border-radius:10px;}}")
+    f.setFixedHeight(52); f.setMinimumWidth(width)
+    lay = QVBoxLayout(f); lay.setContentsMargins(10,4,10,4); lay.setSpacing(0)
+    val = h(str(value), color, FS_TITLE, bold=True, align=Qt.AlignCenter, wrap=False)
+    ttl = h(label, TEXT3, FS_TINY, align=Qt.AlignCenter, wrap=False)
+    lay.addWidget(val); lay.addWidget(ttl)
+    f._val = val
+    return f
+
 
 def pill_btn(text, bg=INDIGO, fg="white", hover=None):
     """Styled button."""
@@ -73,15 +240,26 @@ class BigStatBox(QFrame):
         lay = QVBoxLayout(self); lay.setContentsMargins(10,10,10,8); lay.setSpacing(2)
         self._val_lbl = QLabel(str(value))
         self._val_lbl.setAlignment(Qt.AlignCenter)
-        f = QFont(); f.setBold(True); f.setPointSize(20)
+        # Most values here are short (a number, "+2", "30 ft"), but Senses
+        # can be a real sentence ("Darkvision 60 ft, Blindsight 10 ft") --
+        # at the fixed 20pt size that just got clipped by the box's fixed
+        # width instead of wrapping. Word-wrap plus a smaller font for
+        # longer text keeps every value fully visible instead of cut off.
+        f = QFont(); f.setBold(True)
+        f.setPointSize(20 if len(str(value)) <= 8 else 12)
         self._val_lbl.setFont(f)
+        self._val_lbl.setWordWrap(True)
         self._val_lbl.setStyleSheet(f"color:{self._color};background:transparent;")
         self._ttl_lbl = QLabel(label)
         self._ttl_lbl.setAlignment(Qt.AlignCenter)
         self._ttl_lbl.setStyleSheet(f"color:{TEXT2};font-size:{FS_SMALL}px;font-weight:700;background:transparent;letter-spacing:1px;")
         lay.addWidget(self._val_lbl); lay.addWidget(self._ttl_lbl)
 
-    def set_val(self, v): self._val_lbl.setText(str(v))
+    def set_val(self, v):
+        v = str(v)
+        self._val_lbl.setText(v)
+        f = self._val_lbl.font(); f.setPointSize(20 if len(v) <= 8 else 12)
+        self._val_lbl.setFont(f)
     def set_color(self, c):
         self._color = c
         self._val_lbl.setStyleSheet(f"color:{c};background:transparent;")
@@ -89,6 +267,7 @@ class BigStatBox(QFrame):
 class AbilityBlock(QFrame):
     """One ability score block: name / score / modifier."""
     changed = Signal(str, int)   # (ability, new_score)
+    roll_requested = Signal(str)  # (ability) -- raw ability check, d20 + mod
 
     def __init__(self, ab, score=10, editable=True, parent=None):
         super().__init__(parent)
@@ -134,6 +313,23 @@ class AbilityBlock(QFrame):
         self._mod_lbl = h(sign(mod), TEAL2 if mod >= 0 else CRIM2, FS_TITLE, bold=True, align=Qt.AlignCenter)
         lay.addWidget(self._mod_lbl)
 
+        # 🎲 roll button — raw ability check (d20 + mod, no proficiency).
+        # Only on the sheet's read-only blocks (editable=False): the
+        # wizard's blocks (editable=True) are mid-creation, still being
+        # assigned, so there's nothing real yet to roll. Same button
+        # style/role as the Skills/Saves rows' roll buttons.
+        self._roll_btn = None
+        if not editable:
+            self._roll_btn = QPushButton("🎲")
+            self._roll_btn.setFixedHeight(22)
+            self._roll_btn.setToolTip(f"Roll {ab} check ({sign(mod)})")
+            self._roll_btn.setStyleSheet(
+                f"QPushButton{{background:transparent;border:1px solid {BORDER};"
+                f"border-radius:5px;font-size:{FS_SMALL}px;padding:0px;min-height:0px;}}"
+                f"QPushButton:hover{{background:{qa(TEAL,0x33)};border-color:{TEAL};}}")
+            self._roll_btn.clicked.connect(lambda checked=False: self.roll_requested.emit(self.ab))
+            lay.addWidget(self._roll_btn)
+
     def set_score(self, v):
         if self._editable:
             self._score_spin.blockSignals(True)
@@ -146,6 +342,8 @@ class AbilityBlock(QFrame):
         self._mod_lbl.setStyleSheet(
             f"color:{TEAL2 if mod >= 0 else CRIM2};font-size:{FS_TITLE}px;font-weight:700;background:transparent;"
         )
+        if self._roll_btn:
+            self._roll_btn.setToolTip(f"Roll {self.ab} check ({sign(mod)})")
 
     def value(self):
         return self._score_spin.value() if self._editable else int(self._score_lbl.text())
@@ -187,13 +385,16 @@ class SpellRow(QFrame):
     toggle_quick     = Signal(str, bool)   # (spell_name, pinned)
     prepared_toggled = Signal(object, bool)  # (row, checked)
 
-    LEVEL_COLORS = [SURF3,TEAL,IND2,PURPLE,AMBER,GOLD,CRIMSON,"#8b0000","#6b0000","#4b0000"]
-
     def __init__(self, spell, prepared=False, parent=None, locked=False, display_name=None):
         super().__init__(parent)
         self.spell = spell
         lvl = spell["level"]
-        lc  = self.LEVEL_COLORS[min(lvl, 9)]
+        # Built fresh on every row, not a class attribute: a class-level
+        # list literal is evaluated exactly once, at class-definition time
+        # (this module's first import), so it would freeze to whatever
+        # theme was active at app startup and never track a later switch.
+        level_colors = [SURF3,TEAL,IND2,PURPLE,AMBER,GOLD,CRIMSON,"#8b0000","#6b0000","#4b0000"]
+        lc = level_colors[min(lvl, 9)]
         self.setStyleSheet(
             f"QFrame{{background:{SURF};border:1px solid {BORDER};border-radius:7px;}}"
             f"QFrame:hover{{background:{SURF2};border-color:{BORDER2};}}"

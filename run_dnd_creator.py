@@ -23,7 +23,7 @@ def _show_import_error(exc, missing_name=""):
             "    pip install PySide6\n\n"
             "If you built an EXE with PyInstaller, rebuild with:\n"
             "    --collect-all PySide6\n\n"
-            "See BUILD_EXE.md for the full recommended build command."
+            "See installer/BUILD_EXE.md for the full recommended build command."
         )
     else:
         title = "Import error"
@@ -98,7 +98,7 @@ if __name__ == "__main__":
     _import_result = {}
     def _do_heavy_import():
         try:
-            from dnd_app.ui.main_window import main as main_func
+            from dnd_app.ui.pages.main_window import main as main_func
             _import_result["main"] = main_func
         except BaseException as exc:  # capture on the thread, re-raise on main
             _import_result["error"] = exc

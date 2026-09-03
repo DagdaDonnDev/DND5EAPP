@@ -67,6 +67,7 @@ def new_character() -> dict:
         "edition": "2014",          # "2014" or "2024"
         "alignment": "True Neutral",
         "experience": 0,
+        "leveling_mode": "milestone",  # "milestone" (DM decides) or "xp" (tracked XP)
         "inspiration": False,
 
         # ── Classes (multiclass support) ──────────────────────────────────────
@@ -200,6 +201,63 @@ def total_level(char: dict) -> int:
     return sum(c.get("level", 0) for c in char.get("classes", []))
 
 
+# PHB standard XP-by-level table (identical in the 2014 and 2024 rules).
+# Index i = cumulative XP required to REACH character level i+1.
+XP_THRESHOLDS = [
+    0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000,
+    85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000,
+]
+
+
+def xp_for_level(level: int) -> int:
+    """Cumulative XP required to reach `level` (1-20). Clamps out-of-range
+    levels to the nearest end — there's no level 0 or level 21 threshold."""
+    level = max(1, min(level, 20))
+    return XP_THRESHOLDS[level - 1]
+
+
+def xp_implied_level(xp: int) -> int:
+    """Highest level (1-20) whose XP threshold this much XP has met."""
+    level = 1
+    for i, threshold in enumerate(XP_THRESHOLDS):
+        if xp >= threshold:
+            level = i + 1
+    return level
+
+
+def xp_progress(char: dict) -> dict:
+    """XP progress toward the character's NEXT class level, keyed to
+    total_level (the level they'd actually gain) rather than whatever
+    level their raw XP total alone would imply — a character sitting on
+    a huge XP surplus is only ever "ready" for the levels right above
+    where they actually are, never further.
+
+    A big enough surplus (e.g. a large one-time award, or importing an
+    XP total from another tracker) can span more than one level at once
+    — that carries over just like it does at the table, so `levels_due`
+    counts how many levels are actually owed, not just whether one is.
+
+    Returns {"xp", "floor", "next", "pct", "eligible", "level", "levels_due"}:
+    floor/next are the XP thresholds bracketing the current level, pct is
+    0-100 progress through that band, eligible is True once accumulated
+    XP has crossed the threshold for the next level (already at max level
+    is never eligible), and levels_due is the number of levels currently
+    owed (0 when not eligible)."""
+    level = total_level(char)
+    xp = char.get("experience", 0)
+    if level <= 0 or level >= 20:
+        floor = xp_for_level(max(level, 1))
+        return {"xp": xp, "floor": floor, "next": floor, "pct": 100,
+                "eligible": False, "level": level, "levels_due": 0}
+    floor = xp_for_level(level)
+    nxt = xp_for_level(level + 1)
+    span = nxt - floor
+    pct = 100 if span <= 0 else max(0, min(100, round((xp - floor) * 100 / span)))
+    levels_due = max(0, min(xp_implied_level(xp), 20) - level)
+    return {"xp": xp, "floor": floor, "next": nxt, "pct": pct,
+            "eligible": levels_due > 0, "level": level, "levels_due": levels_due}
+
+
 def class_levels(char: dict) -> dict:
     """Return {class_name: level} dict."""
     return {c["class"]: c["level"] for c in char.get("classes", []) if c.get("level", 0) > 0}
@@ -224,7 +282,7 @@ def ability_score(char: dict, ability: str, ignore_wildshape: bool = False) -> i
     # wild shaped, you use the beast's separate HP pool instead.
     active_beast = char.get("_wildshape_active")
     if active_beast and not ignore_wildshape and ability in ("STR", "DEX", "CON"):
-        from dnd_app.data.statblocks import WILDSHAPE_BEASTS
+        from dnd_app.data.phbCommon.statblocks import WILDSHAPE_BEASTS
         beast = WILDSHAPE_BEASTS.get(active_beast)
         if beast and ability in beast.get("abilities", {}):
             return beast["abilities"][ability]
@@ -256,7 +314,7 @@ def get_class_entry(char: dict, class_name: str) -> Optional[dict]:
 def _lookup_hit_die(class_name: str, fallback: int = 8) -> int:
     """Authoritative hit die from class data — callers can't get it wrong."""
     try:
-        from dnd_app.data.classes import CLASS_DICT
+        from dnd_app.data.phb2014.classes import CLASS_DICT
         return CLASS_DICT.get(class_name, {}).get("hit_die", fallback)
     except Exception:
         return fallback
@@ -400,11 +458,10 @@ def short_rest(char: dict) -> None:
     """Reset SR resources (SR resets do NOT reset LR resources)."""
     char["pact_slots_used"] = 0
     # Wild Shape (key "wild_shape") recovers here too via the generic
-    # "SR"/"SR/LR" resource-reset loop below -- it used to be tracked by
-    # a separate ad hoc counter with its own explicit reset in both this
-    # function and long_rest(), now retired in favor of the shared
+    # "SR"/"SR/LR" resource-reset loop below, through its shared
     # char["resources"] entry (see the reset="SR/LR" note on its
-    # definition in classes.py/classes_2024.py).
+    # definition in classes.py/classes_2024.py) rather than a separate
+    # ad hoc counter.
     for res in char.get("resources", []):
         if res.get("reset") in ("SR", "SR/LR"):
             res["current"] = res.get("current_max") or res.get("max", 0)
