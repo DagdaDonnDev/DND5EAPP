@@ -978,7 +978,7 @@ ALL_CLASSES = [
         spell_slots=FULL_CASTER_SLOTS, subclass_level=1,
         features={
             1: ["Spellcasting (CHA)","Sorcerous Origin (Subclass)"],
-            2: ["Font of Magic (Sorcery Points = Sorcerer level; convert SP↔slots)"],
+            2: ["Font of Magic (Sorcery Points = Sorcerer level; convert between SP and spell slots)"],
             3: ["Metamagic (choose 2 options)","Sorcerous Origin Feature"],
             4: ["ASI / Feat"],
             5: [],

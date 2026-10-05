@@ -1,4 +1,5 @@
-"""D&D 5e condition definitions with full mechanical text.
+"""D&D 5e condition definitions with full mechanical text. "icon" names a
+line icon from dnd_app/ui_desktop/icon_data.py (ICON_PATHS).
 
 Author: Ethan O'Brien
 Date: 2026-08-20
@@ -6,7 +7,7 @@ Date: 2026-08-20
 
 CONDITIONS = {
     "Blinded": {
-        "icon": "👁",
+        "icon": "cond_blinded",
         "color": "#888",
         "effects": [
             "A blinded creature can't see and automatically fails any ability check that requires sight.",
@@ -16,7 +17,7 @@ CONDITIONS = {
         "source": "PHB p.290",
     },
     "Charmed": {
-        "icon": "💕",
+        "icon": "cond_charmed",
         "color": "#d4a0d4",
         "effects": [
             "A charmed creature can't attack the charmer or target the charmer with harmful abilities or magical effects.",
@@ -25,7 +26,7 @@ CONDITIONS = {
         "source": "PHB p.290",
     },
     "Deafened": {
-        "icon": "🔇",
+        "icon": "cond_deafened",
         "color": "#888",
         "effects": [
             "A deafened creature can't hear and automatically fails any ability check that requires hearing.",
@@ -33,7 +34,7 @@ CONDITIONS = {
         "source": "PHB p.290",
     },
     "Frightened": {
-        "icon": "😱",
+        "icon": "cond_frightened",
         "color": "#e67e22",
         "effects": [
             "A frightened creature has disadvantage on ability checks and attack rolls while the source of its fear is within line of sight.",
@@ -42,7 +43,7 @@ CONDITIONS = {
         "source": "PHB p.290",
     },
     "Gagged": {
-        "icon": "🤐",
+        "icon": "cond_gagged",
         "color": "#8a6d3b",
         "effects": [
             "A gagged creature can't speak and automatically fails any check or effect that requires speaking.",
@@ -52,7 +53,7 @@ CONDITIONS = {
                    "\"Component Restrictions\" optional rule.",
     },
     "Grappled": {
-        "icon": "🤼",
+        "icon": "cond_grappled",
         "color": "#c9921a",
         "effects": [
             "A grappled creature's speed becomes 0, and it can't benefit from any bonus to its speed.",
@@ -62,7 +63,7 @@ CONDITIONS = {
         "source": "PHB p.290",
     },
     "Incapacitated": {
-        "icon": "💫",
+        "icon": "cond_incapacitated",
         "color": "#c0392b",
         "effects": [
             "An incapacitated creature can't take actions or reactions.",
@@ -70,7 +71,7 @@ CONDITIONS = {
         "source": "PHB p.290",
     },
     "Invisible": {
-        "icon": "👻",
+        "icon": "cond_invisible",
         "color": "#7b9aff",
         "effects": [
             "An invisible creature is impossible to see without the aid of magic or a special sense.",
@@ -81,7 +82,7 @@ CONDITIONS = {
         "source": "PHB p.291",
     },
     "Paralyzed": {
-        "icon": "⚡",
+        "icon": "cond_paralyzed",
         "color": "#e74c3c",
         "effects": [
             "A paralyzed creature is incapacitated and can't move or speak.",
@@ -92,7 +93,7 @@ CONDITIONS = {
         "source": "PHB p.291",
     },
     "Petrified": {
-        "icon": "🪨",
+        "icon": "cond_petrified",
         "color": "#888",
         "effects": [
             "A petrified creature is transformed into a solid inanimate substance (usually stone).",
@@ -106,7 +107,7 @@ CONDITIONS = {
         "source": "PHB p.291",
     },
     "Poisoned": {
-        "icon": "☠",
+        "icon": "cond_poisoned",
         "color": "#27ae60",
         "effects": [
             "A poisoned creature has disadvantage on attack rolls and ability checks.",
@@ -114,7 +115,7 @@ CONDITIONS = {
         "source": "PHB p.292",
     },
     "Prone": {
-        "icon": "🏚",
+        "icon": "cond_prone",
         "color": "#c9921a",
         "effects": [
             "A prone creature's only movement option is to crawl, unless it stands up (costs half movement speed).",
@@ -124,7 +125,7 @@ CONDITIONS = {
         "source": "PHB p.292",
     },
     "Restrained": {
-        "icon": "⛓",
+        "icon": "cond_restrained",
         "color": "#e67e22",
         "effects": [
             "A restrained creature's speed becomes 0, and it can't benefit from any bonus to its speed.",
@@ -135,7 +136,7 @@ CONDITIONS = {
         "source": "PHB p.292",
     },
     "Stunned": {
-        "icon": "💥",
+        "icon": "cond_stunned",
         "color": "#e74c3c",
         "effects": [
             "A stunned creature is incapacitated, can't move, and can speak only falteringly.",
@@ -144,8 +145,17 @@ CONDITIONS = {
         ],
         "source": "PHB p.292",
     },
+    "Surprised": {
+        "icon": "cond_surprised",
+        "color": "#f1c40f",
+        "effects": [
+            "A surprised creature can't move or take an action on its first turn of the combat.",
+            "It can't take a reaction until that turn ends. Remove this once your first turn is over.",
+        ],
+        "source": "PHB p.189 (Surprise) -- tracked here as a condition.",
+    },
     "Unconscious": {
-        "icon": "💤",
+        "icon": "cond_unconscious",
         "color": "#888",
         "effects": [
             "An unconscious creature is incapacitated, can't move or speak, and is unaware of its surroundings.",
@@ -157,7 +167,7 @@ CONDITIONS = {
         "source": "PHB p.292",
     },
     "Exhaustion": {
-        "icon": "😓",
+        "icon": "cond_exhaustion",
         "color": "#d68910",
         "levels": [
             "Level 1: Disadvantage on ability checks.",

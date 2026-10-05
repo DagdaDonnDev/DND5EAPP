@@ -1,0 +1,4 @@
+NDK: 
+SDK: 
+-rwxrwxrwx 1 eobrien eobrien 83924266 Aug 18 08:17 packaging/android/wheels/pyside6-6.11.2-6.11.2-cp311-cp311-android_aarch64.whl
+-rwxrwxrwx 1 eobrien eobrien   273559 Aug 18 08:17 packaging/android/wheels/shiboken6-6.11.2-6.11.2-cp311-cp311-android_aarch64.whl

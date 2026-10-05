@@ -1,0 +1,4 @@
+# Shell scripts run inside WSL: CRLF breaks bash ($'\r': command not found).
+*.sh text eol=lf
+# Batch files run in cmd.exe, which mis-parses labels/blocks in LF-only files.
+*.bat text eol=crlf

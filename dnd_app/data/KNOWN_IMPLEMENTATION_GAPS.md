@@ -10176,3 +10176,123 @@ picked edge case, both new Ranger conclaves, both new Druid circles),
 a full SPELL_NAMES resolution sweep across BONUS_SPELLS/
 RACIAL_BONUS_SPELLS/MARK_EXPANDED_SPELLS together (0 failures), and the
 full scratchpad regression suite.
+
+## Traits & Notes tab silently discarding everything typed; Campaign Notes split into pages
+
+User report: Personality Traits/Ideals/Bonds/Flaws, Backstory, and
+Campaign Notes were being wiped out after saving the sheet, or after a
+refresh/rebuild. Root cause: those QTextEdit widgets were write-only
+display -- populated FROM char on load, but nothing ever read their
+text back INTO char. _save() serialized char as-is (never updated), and
+any full refresh/rebuild (the manual 🔄 Refresh button, a level-up
+dialog, reopening a saved character) reconstructs the sheet and
+re-populates the widgets from that same stale char data, which looked
+exactly like the player's typing being erased. Fixed by wiring each
+field's textChanged signal to write straight into char and mark the
+sheet dirty, the same pattern _name_edit already used, with
+blockSignals() during the widget's own from-char reload so that doesn't
+re-trigger the sync handler.
+
+Also split Campaign Notes from one box into a QTabWidget of independent
+pages (char["notes_pages"], a list of {"title","text"} dicts) -- a
+long-running campaign's session logs, quest threads, loot lists, and
+NPC notes quickly outgrow one scroll of text. New characters seed 4
+starter pages (Session Log, Quest Log, NPCs & Allies, Loot & Treasure);
+"+ Page" adds another via a name prompt, double-clicking a tab renames
+it, and a tab's ✕ removes it (at least one page always stays). Old
+saves with the flat "notes" string get it migrated into a single
+"General" page the first time the sheet opens; export_character_text()
+(the plain-text export) now lists every page under its own title,
+falling back to the legacy flat field only for a character that's never
+actually been opened since migrating.
+
+Separately, every free-text QTextEdit a player types into (the 4 trait
+fields, Backstory, every Notes page, and the Wizard's starting-notes
+field) now has setAcceptRichText(False) -- without it, pasting from a
+browser/Word/Discord/etc. carried over that source's own fonts/colors
+and fought with the app's own theme styling.
+
+Verified with a full scratchpad regression/test suite run plus two new
+dedicated tests: typing into every field and confirming it survives a
+full rebuild/refresh and an actual save-to-disk/load-from-disk round
+trip; and the Notes-pages lifecycle specifically (default seeding,
+add/rename/remove a page, refusing to drop the last page, legacy-notes
+migration, and the plain-text export).
+
+## Campaign Notes tabs: layout follow-up after actually seeing it
+
+User feedback on the first pass above: every tab (including the 4
+defaults) had a close button, which read as "why can I delete these"
+more than a deliberate feature, and the tab bar's spacing looked wrong.
+Root cause of the spacing: the notes tab widget was inheriting the
+sheet's global QTabBar::tab rule, sized for the full-width top-level
+tabs (Abilities/Combat/etc.) at 12px/22px padding -- way too chunky for
+a small tab strip squeezed into one column. Replaced per-tab close
+buttons with a single explicit "Remove Page" button (acts on whichever
+page is currently open) and gave the notes tab widget its own compact,
+locally-scoped stylesheet instead of inheriting the global one.
+
+Also reworked the layout per explicit direction: Backstory moved into
+the tab strip itself as an always-present first tab (protected --
+"Remove Page"/double-click-rename both no-op on it, since it's a
+first-class character field, not one of the flexible pages), the
+default flexible pages trimmed to Session Log/Quest Log/Loot &
+Treasure, and a new Appearance box added to the left column underneath
+Flaws (wired to the char["appearance_notes"] field, which already
+existed in the schema for the official PDF sheet's back page but never
+had any sheet UI of its own). Added a hard cap (_MAX_NOTES_PAGES = 8)
+on the flexible pages so "+ Page" can't grow the tab bar without bound.
+
+Verified by rewriting the Notes-pages lifecycle test against the new
+shape (Backstory always at index 0 and un-removable/un-renamable, the
+3 new default titles, the page cap, Appearance's own persistence) plus
+a full scratchpad regression/test suite run.
+
+## v3 scaffold: split desktop/Android folder structure
+
+User's plan for v3 is Android support -- decided against trying to
+deploy the existing QtWidgets UI to Android (PySide6's Android
+packaging is built around Qt Quick/QML, not QtWidgets, and the current
+screens are desktop-shaped anyway: side-by-side multi-column tabs,
+hover-only tooltips, dense stat bars, none of which translate to
+touch/phone screens). v3 is a new touch-first Qt Quick UI, not a port,
+reusing dnd_app/core and dnd_app/data (the character model, calculator,
+builder, save/load, and all game-rules data) exactly as they are --
+neither has any Qt dependency today.
+
+This pass just does the folder split so the two UIs have somewhere to
+live without fighting over the same paths, ahead of any real Android
+code existing:
+- `dnd_app/ui/` -> `dnd_app/ui_desktop/` (git mv, so history follows).
+  Every absolute `dnd_app.ui.*` import across the whole codebase (~27
+  files) updated to `dnd_app.ui_desktop.*` -- relative imports inside
+  the folder itself (`.style.theme`, `..shared`, etc.) needed no
+  changes since they never reference the package name, only relative
+  depth.
+- `dnd_app/ui_android/` -- empty scaffold (README + __init__.py only,
+  no fake/placeholder QML), for the future Qt Quick rewrite.
+- `packaging/` and `installer/` each split into `windows/` (the
+  existing PyInstaller spec, requirements.txt, build_exe.bat/.sh,
+  BUILD_EXE.md, all still fully working) and `android/` (README
+  placeholders only -- pyside6-android-deploy needs an actual
+  ui_android screen to point at before there's a real build script to
+  write).
+
+The PyInstaller spec moving one folder deeper (`packaging/` ->
+`packaging/windows/`) meant its `_ROOT = os.path.dirname(SPECPATH)`
+computation was now one level short of the real repo root -- the exact
+same class of bug as the earlier build-path fix this session, caught
+the same way: actually simulating PyInstaller's chdir-to-SPECPATH
+behavior (SPECPATH is the spec's own directory, not its file path)
+rather than reasoning about it, which confirmed `_ROOT` needed a second
+`os.path.dirname()` call. Same fix needed in both installer scripts'
+own `cd`-to-repo-root logic (`build_exe.sh`'s `dirname .. ` and
+`build_exe.bat`'s `%~dp0..`, both now needing a second `..` since they
+also moved one level deeper into `installer/windows/`).
+
+Verified with `py_compile` across the whole repo, an actual exec-based
+simulation of the relocated spec's path resolution (confirmed `_ROOT`
+resolves to the real repo root and the relocated icon.ico/splash.gif
+are found), and the full scratchpad regression/test suite (all
+`dnd_app.ui.*` references in the scratchpad test files themselves also
+needed the same import fix to keep running).

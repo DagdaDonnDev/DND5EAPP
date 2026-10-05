@@ -949,6 +949,29 @@ BONUS_SPELLS = {
         7: ["Aura of Life", "Fire Shield"],
         9: ["Flame Strike", "Mass Cure Wounds"],
     },
+    # Star Map: you know Guidance and always have Guiding Bolt prepared
+    # (neither counts against your cantrips/prepared spells).
+    ("Druid", "Circle of Stars"): {
+        2: ["Guidance", "Guiding Bolt"],
+    },
+
+    # ── Sorcerer Origins ─────────────────────────────────────────────────
+    # Psionic Spells / Clockwork Magic: learned at these sorcerer levels,
+    # and they don't count against sorcerer spells known.
+    ("Sorcerer", "Aberrant Mind"): {
+        1: ["Arms of Hadar", "Dissonant Whispers", "Mind Sliver"],
+        3: ["Calm Emotions", "Detect Thoughts"],
+        5: ["Hunger of Hadar", "Sending"],
+        7: ["Evard's Black Tentacles", "Summon Aberration"],
+        9: ["Telepathic Bond", "Telekinesis"],
+    },
+    ("Sorcerer", "Clockwork Soul"): {
+        1: ["Alarm", "Protection from Evil and Good"],
+        3: ["Aid", "Lesser Restoration"],
+        5: ["Dispel Magic", "Protection from Energy"],
+        7: ["Freedom of Movement", "Summon Construct"],
+        9: ["Greater Restoration", "Wall of Force"],
+    },
 
     # ── Paladin Oaths ────────────────────────────────────────────────────
     ("Paladin", "Oath of Devotion"): {
@@ -1312,7 +1335,7 @@ def get_bonus_spells(char: dict) -> list[str]:
             3: ["Lesser Restoration", "Blindness/Deafness", "Alter Self"],
             5: ["Dispel Magic", "Vampiric Touch", "Phantom Steed"],
             7: ["Death Ward", "Confusion", "Hallucinatory Terrain"],
-            9: ["Rary's Telepathic Bond", "Hold Monster", "Mislead"],
+            9: ["Telepathic Bond", "Hold Monster", "Mislead"],   # the SRD name, as in ALL_SPELLS
         }
         for tier, tier_spells in LUNAR_SPELLS.items():
             if sorc_lvl >= tier:

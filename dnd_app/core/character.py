@@ -64,6 +64,10 @@ def new_character() -> dict:
         # ── Identity ──────────────────────────────────────────────────────────
         "name": "",
         "player_name": "",
+        # Which campaign/folder this save is organized under in the Load
+        # Character list ("" = Uncategorized) -- purely organizational,
+        # never read by any game-logic calculation.
+        "folder": "",
         "edition": "2014",          # "2014" or "2024"
         "alignment": "True Neutral",
         "experience": 0,
@@ -174,7 +178,8 @@ def new_character() -> dict:
         "appearance_notes": "",
 
         # ── Notes ─────────────────────────────────────────────────────────────
-        "notes": "",
+        "notes": "",                # legacy flat field -- migrated into notes_pages on first sheet open
+        "notes_pages": [],          # list of {"title": str, "text": str} -- the Traits & Notes tab's Campaign Notes pages
         "allies_and_organizations": "",
         "additional_features": "",
         "treasure": "",

@@ -406,6 +406,81 @@ OTHER_TOOLS = [
     "Poisoner's kit", "Thieves' tools",
 ]
 
+
+# Mundane items you *use* (kits, instruments, lights, thrown flasks) get
+# their own icon in the inventory on both apps, rather than the plain
+# "package" every other piece of gear shows. Icon keys are names in
+# ui_desktop/icon_data.py.
+_INSTRUMENTS = {i.lower() for i in INSTRUMENT_TOOLS}
+_GAMING = {g.lower() for g in GAMING_SETS}
+_KITS = {t.lower() for t in ARTISAN_TOOLS + OTHER_TOOLS}
+_FIRE = {"tinderbox", "torch", "candle", "matchless pipe"}
+_THROWN = ("acid (vial)", "holy water", "oil (flask)", "poison", "alchemist's doom", "vial of stardust",
+           "antitoxin")
+
+
+def gear_icon(name: str) -> str:
+    """Icon key for a usable mundane item, or "" for ordinary gear."""
+    n = name.lower().strip()
+    if n in _INSTRUMENTS or "instrument" in n:
+        return "instrument"
+    if n.startswith("healer's kit"):
+        return "medkit"
+    if n in _GAMING:
+        return "dice"
+    if "alchemist's fire" in n or n in _FIRE or n.startswith("torch"):
+        return "flame"
+    if "lantern" in n or n == "lamp":
+        return "lantern"
+    if n in _KITS or (n.endswith(" kit") and n != "mess kit") or n.endswith("tools") or n.endswith("supplies") \
+            or n.endswith("utensils"):
+        return "toolkit"
+    if any(t in n for t in _THROWN):
+        return "vial"
+    return ""
+
+
+def is_scroll_name(name: str) -> bool:
+    """A scroll you can read -- not the "Case, Map or Scroll" that holds one."""
+    n = name.lower()
+    return "scroll" in n and not n.startswith("case")
+
+
+def is_thrown_consumable(name: str) -> bool:
+    """Flasks used up when thrown or applied -- grouped with Consumables."""
+    return gear_icon(name) == "vial" or "alchemist's fire" in name.lower()
+
+
+def weapon_category_pool(category_text: str) -> list:
+    """Resolve a starting-equipment placeholder like 'Any simple weapon'
+    or 'Any martial melee weapon' to the real, concrete weapon list it
+    refers to. Non-weapon "Any X" categories (e.g. "Any other musical
+    instrument") must be checked first, since neither "simple" nor
+    "martial" appears in that text and a weapon-pool fallback would
+    otherwise wrongly claim it."""
+    t = category_text.lower()
+    if "instrument" in t:
+        return list(INSTRUMENT_TOOLS)
+    if "artisan" in t:
+        return list(ARTISAN_TOOLS)
+    if "gaming set" in t:
+        return list(GAMING_SETS)
+    is_martial = "martial" in t
+    is_melee = "melee" in t
+    is_ranged = "ranged" in t
+    pools = []
+    if is_melee:
+        pools.append(MARTIAL_MELEE if is_martial else SIMPLE_MELEE)
+    elif is_ranged:
+        pools.append(MARTIAL_RANGED if is_martial else SIMPLE_RANGED)
+    else:
+        pools.append(MARTIAL_MELEE if is_martial else SIMPLE_MELEE)
+        pools.append(MARTIAL_RANGED if is_martial else SIMPLE_RANGED)
+    names = []
+    for p in pools:
+        names.extend(w[0] for w in p)
+    return names
+
 VEHICLE_PROFS = ["Vehicles (land)", "Vehicles (water)", "Vehicles (air)"]
 
 ALL_TOOLS = (ARTISAN_TOOLS + GAMING_SETS + INSTRUMENT_TOOLS +

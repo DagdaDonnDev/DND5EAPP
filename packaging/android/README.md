@@ -1,0 +1,203 @@
+# packaging/android
+
+Holds the Android build configuration for MIMIC, the way
+`packaging/windows/DnD5eCharacterCreator.spec` holds it for the Windows
+EXE. `dnd_app/ui_android/` has several real, working screens (Race,
+Abilities, Class, Equipment, Character Sheet, Save/Load, Settings —
+see `dnd_app/ui_android/README.md`), so this is no longer a "nothing to
+build yet" placeholder.
+
+**Just want to build the APK?** Start at
+`BUILD_APK.md` instead — it's the plain-language,
+numbered walkthrough (install a couple of programs, run one script,
+copy the file to your phone). Everything below this point is reference
+material for that guide's setup step (adjusting `buildozer.spec`) and
+for troubleshooting — not something you need to read start to finish
+before your first build.
+
+This folder also holds `setup_buildozer_spec.bat`: one-time,
+Windows/WSL setup that locates your Android SDK/NDK/wheels/jars and
+writes their paths into `dnd_app/ui_android/buildozer.spec`. The
+actual build script (`clean_build_android.bat`/`.sh`, run every time
+you want a new build) lives in `installer/android/`, matching how
+`installer/windows/` holds the Windows EXE's build script.
+
+**Nothing in this folder has been build-tested in this sandbox** —
+there's no Android SDK/NDK/WSL here to run against. It reflects a
+build that has been made to work on a real Windows+WSL machine for
+this project, but if a step doesn't match what you see on yours,
+that's the kind of thing to fix as you go rather than a sign you did
+something wrong.
+
+## The tool
+
+The build runs through **buildozer** (`python3.11 -m buildozer android
+debug`, from inside WSL), a wrapper around
+[python-for-android](https://github.com/kivy/python-for-android) —
+there's no PyInstaller-for-Android equivalent; Windows and Android use
+genuinely different packaging tools, not just different config files
+for the same one.
+
+PySide6 also ships a tool called `pyside6-android-deploy` that wraps
+the same underlying buildozer/p4a machinery, generating a
+`buildozer.spec` for you from a `pysidedeploy.spec` config. **This
+project doesn't use it**: on Windows paths under `/mnt/c/` it has a
+race condition — it writes `buildozer.spec`, then immediately fails to
+find the file it just wrote, and silently falls back to a stock
+Kivy/SDL2 template instead of the Qt bootstrap this app needs. The
+`pysidedeploy.spec` file in this folder is a leftover from that
+abandoned attempt and isn't read by the current build; ignore it.
+`dnd_app/ui_android/buildozer.spec` (hand-written, committed to the
+repo) is the one real config file, invoked directly.
+
+```bash
+python3.11 -m pip install --user buildozer cython
+python3.11 -m buildozer android debug
+```
+
+## Prerequisites (all external to this repo)
+
+| Requirement | Notes |
+|---|---|
+| WSL | buildozer/p4a's toolchain assumes a Linux environment; the build runs inside WSL even though the repo lives under `/mnt/c/` |
+| Python 3.11 (inside WSL) | python-for-android is pinned to `v2024.01.21` (see `buildozer.spec`'s `p4a.branch`), which targets Python 3.11.5 — its `master` branch targets 3.14, where several of its own patches fail to apply |
+| JDK | 17 is the current Qt-recommended version |
+| Android SDK | cmdline-tools, platform-tools, and a build-tools version matching your target SDK; easiest obtained via Android Studio's SDK Manager |
+| Android NDK | p4a `v2024.01.21` recommends 25b; a newer one (e.g. r28c) has worked too, with a warning — using a much older/newer NDK than expected is the most common cause of a broken build |
+| PySide6/Shiboken6 Android wheels | Android-target (`android_aarch64`) builds, not the desktop `pip install PySide6` — download from [download.qt.io](https://download.qt.io/official_releases/QtForPython/) and place in `packaging/android/wheels/` |
+
+`setup_buildozer_spec.bat` automates finding/downloading all of the
+above and writing the resulting paths into `buildozer.spec` — run it
+once, then re-run it any time one of those paths changes (a fresh SDK
+install, a wheel version bump, etc.).
+
+## The config file: `buildozer.spec`
+
+`dnd_app/ui_android/buildozer.spec` is the real, canonical, hand-written
+config the build reads — the Android equivalent of
+`packaging/windows/DnD5eCharacterCreator.spec` on the Windows side.
+Fields worth knowing about if you ever need to adjust it by hand
+(`setup_buildozer_spec.bat` only touches the path-related ones —
+`source.dir`, `android.sdk_path`, `android.ndk_path`,
+`p4a.local_recipes`, `android.add_jars`, `p4a.hook`):
+
+- **`p4a.branch = v2024.01.21`** — load-bearing, see "Why this specific
+  p4a version" in `BUILD_APK.md`. Never remove this line.
+- **`p4a.bootstrap = qt`** — this is the Qt bootstrap, not the default
+  SDL2 one Kivy apps use. Missing this is exactly what made the
+  abandoned `pyside6-android-deploy` path produce APKs that crashed on
+  launch.
+- **`p4a.hook`** — points at `deployment/recipes/p4a_hook.py`. Hand-written,
+  not generated by `setup_buildozer_spec.bat` or anything else. `deployment/`
+  is otherwise gitignored (it's mostly a multi-GB build cache), but this
+  one file is a tracked exception in `.gitignore` since it's load-bearing.
+  See "Why `p4a.hook` exists" in `BUILD_APK.md`: it bundles
+  `libc++_shared.so` (without it, the app crashes instantly on launch),
+  patches a Qt 6.11 API removal in the generated `PythonActivity.java`
+  (without it, the Java compile fails), and forces `Qt6Core` to load
+  before any other Qt library so its `JNI_OnLoad` caches the JVM first
+  (without it, `QJniEnvironment::getJniEnv()` can segfault on a null
+  `JavaVM*` — see the same section, this fix is still being verified).
+- **`android.add_jars`** — the Qt Android platform plugin's jars
+  (`Qt6Android.jar`, `Qt6AndroidBindings.jar`, `Qt6AndroidQuick.jar`).
+  Missing or wrong: the Java compile fails with "package ... does not
+  exist" for the first two, or (for `Qt6AndroidQuick.jar`) a
+  runtime-only failure -- `libQt6Quick_arm64-v8a.so`'s own `JNI_OnLoad`
+  registers native methods against `org.qtproject.qt.android.QtQuickView`,
+  which lives in that jar; without it, `JNI_OnLoad` returns `JNI_ERR`
+  and QtLoader aborts its whole load sequence, well after the compile
+  step already succeeded. Listed twice: Gradle's classpath resolution
+  breaks.
+- **`android.apptheme`** — must NOT be quoted
+  (`android.apptheme = @android:style/Theme.NoTitleBar`). Wrapping the
+  value in quotes produces `android:theme=""@android:style/...""` in
+  the generated manifest — invalid XML, fails Gradle at
+  `processDebugMainManifest`.
+- **`source.include_exts` / `source.include_patterns` /
+  `source.exclude_dirs` / `source.exclude_patterns`** — what actually
+  gets bundled from the repo. `source.include_patterns` explicitly
+  lists `dnd_app/**,main.py` (in addition to the extension-based glob)
+  because `p4a.extra_args`'s `--private=/tmp/mimic-app-staging` (below)
+  needs a real, complete copy of the app's Python source there —
+  `dnd_app/core/`, `dnd_app/data/`, `dnd_app/ui_android/`, and
+  `dnd_app/ui_desktop/` (yes, desktop-only code too — several
+  `ui_android` bridges import pure-logic pieces of it directly instead
+  of duplicating it, e.g. `character_sheet.py` reusing `ui_desktop`'s
+  theme/flavor-text/level-up-choice-table code) all need to be
+  reachable through these settings, the same requirement the Windows
+  spec handles via PyInstaller's `datas=[...]`.
+- **`android.qt_libs` / `p4a.extra_args`** — which Qt modules get
+  bundled (`Quick,Core,Qml,Gui,QuickControls2,OpenGL,Network`), plus
+  three flags inside `p4a.extra_args`: `--load-local-libs=
+  plugins_platforms_qtforandroid` (loads the Qt Android platform
+  plugin), `--private=/tmp/mimic-app-staging` (the staging directory
+  p4a copies the app's actual Python source from — see above), and
+  `--icon=` (must match `android.icon`, below). All need to agree with
+  each other.
+- **`android.icon`** — an absolute path to `packaging/android/icon.png`.
+  `setup_buildozer_spec.bat` resolves this (and the matching `--icon=`
+  inside `p4a.extra_args`) to the current machine's path automatically.
+- **`p4a.local_recipes`** — points at `deployment/recipes/` (gitignored,
+  local to your machine), which vendors the PySide6/Shiboken6 recipes
+  that unpack the wheels from prerequisite #6 above rather than
+  compiling them from source.
+- **Package name (`package.domain` + `package.name`)** — pick a real
+  reverse-DNS package id before ever doing a release build; changing
+  it later means Android treats it as a different app entirely (no
+  seamless update path for existing installs).
+- **Architecture (`android.archs`)** — `arm64-v8a` alone covers the
+  large majority of real devices. Add `armeabi-v7a` only if you need
+  to support very old hardware, and `x86_64` only for emulator testing
+  — each additional ABI roughly multiplies the bundled Qt/Python
+  payload size.
+- **`android.api` / `android.minapi`** — target whatever's current for
+  Play Store submission at build time; that requirement moves roughly
+  yearly.
+
+## Permissions this app currently needs
+
+Android's save/load (`dnd_app/ui_android/bridge/save_load_wizard.py`)
+writes to `QStandardPaths.DocumentsLocation` — an app-private directory
+Qt resolves automatically, needing **no runtime storage permission**
+(modern Android's scoped storage model doesn't require one for an app
+writing to its own sandboxed Documents-equivalent folder). This is
+already wired up and working; `android.permissions` in `buildozer.spec`
+only lists `INTERNET`/`ACCESS_NETWORK_STATE` (unused today, harmless to
+keep) and `WRITE_EXTERNAL_STORAGE` (legacy, has no effect on the
+API levels this app targets).
+
+Sharing a character outside the app works through the system pickers,
+with no storage permission needed: **Import…** reads a character file
+from anywhere (Downloads, Drive, …), and **Export a copy → Character
+file** writes one wherever the player chooses (Android's "save as"
+dialog; Qt writes the returned `content://` URI directly).
+
+## Icon
+
+`icon.png` is the launcher icon for pre-Android-8 launchers: the amber
+d20 on the app's dark background, full-bleed so nothing is padded white.
+Android 8+ uses an **adaptive icon** instead, made of two 432 px layers
+in this folder: `icon_background.png` (the dark backdrop) and
+`icon_foreground.png` (the die, kept inside the 66 dp safe zone so every
+launcher mask shows all of it). `deployment/recipes/p4a_hook.py` copies
+both into the build and writes `res/mipmap-anydpi-v26/icon.xml`
+(p4a's own `--icon-fg/--icon-bg` would target that folder too, but the
+Qt bootstrap doesn't have it). Without the adaptive icon, Android
+shrinks `icon.png` and pads it with white.
+
+## Building
+
+See `BUILD_APK.md` for the full walkthrough. In short, once
+`buildozer.spec`'s paths are set (`setup_buildozer_spec.bat`) and the
+prerequisites above are installed:
+
+```bash
+cd dnd_app/ui_android
+python3.11 -m buildozer android debug
+```
+
+produces an (unsigned, for a debug build) `.apk` in that same folder.
+`installer/android/clean_build_android.bat`/`.sh` wraps the release
+version of this command (plus cleaning and staging) and copies the
+result into `dist/` — see
+`BUILD_APK.md`'s "Every time you want a new build" for how they relate.

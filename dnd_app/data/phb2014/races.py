@@ -761,6 +761,38 @@ def get_race(name: str) -> dict:
 
 RACE_DICT = {r["name"]: r for r in ALL_RACES}
 
+def flex_asi_desc(flex: int, style: str) -> str:
+    """Describe a race's flexible ASI grant by its real mechanic -- the
+    legacy "each" style (Half-Elf: choose N abilities, each flat +1) vs.
+    the 2024/MPMM "distribute" style (a +2/+1 split or three +1s)."""
+    if style == "each" or flex == 1:
+        noun = "ability" if flex == 1 else "abilities"
+        return f"+1 to {flex} {noun} of your choice"
+    return "+2 to one ability and +1 to a different ability, OR +1 to three different abilities (your choice)"
+
+
+def combined_racial_asi(char: dict) -> dict:
+    """Return the character's effective fixed racial ASI dict from its
+    race+subrace. Subrace strings encode the TOTAL bonus (not an addend),
+    so when a subrace is chosen its parsed values replace the base race
+    ASI entirely rather than adding to it."""
+    import re as _re
+    race_name = char.get("race", "")
+    rdata = RACE_DICT.get(race_name, {})
+    base = dict(rdata.get("asi", {}))
+    subrace = char.get("subrace", "")
+    if subrace:
+        for sub_str in rdata.get("subraces", []):
+            if sub_str.split("(")[0].strip() == subrace:
+                inner = sub_str[sub_str.find("(")+1:sub_str.rfind(")")]
+                sub_asi = {}
+                for ab, n in _re.findall(r"[+]([A-Z]{3})\s+(\d+)", inner):
+                    sub_asi[ab] = int(n)
+                if sub_asi:
+                    return sub_asi   # subrace encodes the total — replace, not add
+                break
+    return base
+
 # ── Dragonborn Draconic Ancestry choices ────────────────────────────────────
 # Merged in from the former draconic_ancestry.py — small (40-line), single-
 # purpose file that only ever described one race's sub-choice, moved here

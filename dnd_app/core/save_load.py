@@ -88,14 +88,20 @@ def save_character(char: dict, filepath: str = None) -> str:
     char["version"] = CURRENT_VERSION
     if filepath is None:
         filepath = character_filename(char)
-    # Strip runtime state (_grants, etc.) and convert sets before serialising
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(character_json(char))
+    return filepath
+
+
+def character_json(char: dict) -> str:
+    """The character as save files store it: runtime state (_grants etc.)
+    stripped and sets converted. Shared by save_character() and Android's
+    Export, which writes the same format somewhere the user picks."""
     to_save = _make_serialisable(char)
     # But _choices is user data — keep it even though it starts with _
     if "_choices" in char:
         to_save["_choices"] = _make_serialisable(char["_choices"])
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(to_save, f, indent=2, ensure_ascii=False)
-    return filepath
+    return json.dumps(to_save, indent=2, ensure_ascii=False)
 
 
 def load_character(filepath: str) -> dict:
@@ -104,12 +110,18 @@ def load_character(filepath: str) -> dict:
     return migrate_character(data)
 
 
-def list_saved_characters() -> list[dict]:
-    ensure_save_dir()
+def list_saved_characters(directory: str = None) -> list[dict]:
+    """List saved characters in `directory` (default: the desktop app's
+    SAVE_DIR). ui_android passes its own platform Documents-equivalent
+    directory here instead, so both UIs share this one implementation
+    without desktop's fixed SAVE_DIR leaking into Android's file layout."""
+    if directory is None:
+        directory = SAVE_DIR
+    os.makedirs(directory, exist_ok=True)
     results = []
-    for fname in os.listdir(SAVE_DIR):
+    for fname in os.listdir(directory):
         if fname.endswith(".json"):
-            fpath = os.path.join(SAVE_DIR, fname)
+            fpath = os.path.join(directory, fname)
             try:
                 with open(fpath, "r", encoding="utf-8") as f:
                     data = json.load(f)
@@ -118,6 +130,7 @@ def list_saved_characters() -> list[dict]:
                     "classes": data.get("classes", []),
                     "filepath": fpath,
                     "modified": data.get("modified", ""),
+                    "folder": data.get("folder", "") or "",
                 })
             except Exception:
                 import logging
@@ -126,12 +139,61 @@ def list_saved_characters() -> list[dict]:
     return sorted(results, key=lambda x: x.get("modified", ""), reverse=True)
 
 
+def list_character_folders(directory: str = None) -> list[str]:
+    """Sorted list of distinct non-empty folder/campaign names in use
+    among saved characters in `directory` -- for populating a "move to
+    folder" picker's list of existing folders. Characters with no
+    folder ("" -- shown as "Uncategorized" in the UI) aren't included
+    here since it's not something you "move to" via typing a name."""
+    folders = {e["folder"] for e in list_saved_characters(directory) if e.get("folder")}
+    return sorted(folders)
+
+
+def set_character_folder(filepath: str, folder: str) -> None:
+    """Move a saved character into a different campaign/folder grouping
+    by patching just the `folder` field directly on disk, without going
+    through save_character() -- a purely organizational edit shouldn't
+    bump `modified` or re-run full validation/migration."""
+    with open(filepath, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    data["folder"] = (folder or "").strip()
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+
 def delete_character(filepath: str) -> bool:
     try:
         os.remove(filepath)
         return True
     except FileNotFoundError:
         return False
+
+
+def rename_character_folder(directory: str, old_name: str, new_name: str) -> int:
+    """Renames a campaign/folder by re-tagging every character currently
+    in `old_name` to `new_name` -- there's no separate "folder" entity
+    on disk, just a field on each character, so a rename is a bulk
+    set_character_folder() over whoever's in it. Returns how many
+    characters were moved."""
+    new_name = (new_name or "").strip()
+    count = 0
+    for entry in list_saved_characters(directory):
+        if entry.get("folder", "") == old_name:
+            set_character_folder(entry["filepath"], new_name)
+            count += 1
+    return count
+
+
+def delete_character_folder(directory: str, folder_name: str) -> int:
+    """Permanently deletes every character currently filed under
+    `folder_name` -- a real, irreversible bulk delete (not just
+    un-filing them to Uncategorized). Returns how many were deleted."""
+    count = 0
+    for entry in list_saved_characters(directory):
+        if entry.get("folder", "") == folder_name:
+            if delete_character(entry["filepath"]):
+                count += 1
+    return count
 
 
 def export_character_text(char: dict) -> str:
@@ -348,7 +410,7 @@ def export_character_text(char: dict) -> str:
 
     # ── Actions / Bonus Actions / Reactions / Passives ───────────────────────
     try:
-        from dnd_app.ui.action_abilities import build_action_abilities
+        from dnd_app.ui_desktop.action_abilities import build_action_abilities
         buckets = build_action_abilities(char)
         for bucket in ("Action", "Bonus Action", "Reaction", "Passive"):
             entries = buckets.get(bucket, [])
@@ -373,7 +435,16 @@ def export_character_text(char: dict) -> str:
         add(f"  {conc}")
         add("")
 
-    if char.get("notes"):
+    notes_pages = [p for p in char.get("notes_pages", []) if p.get("text", "").strip()]
+    if notes_pages:
+        add("── NOTES ──")
+        for page in notes_pages:
+            add(f"[{page.get('title', 'Notes')}]")
+            add(page.get("text", ""))
+            add("")
+    elif char.get("notes"):
+        # Pre-tabs characters that haven't opened the sheet (and so never
+        # ran the notes_pages migration) still have their notes here.
         add("── NOTES ──")
         add(char["notes"])
 

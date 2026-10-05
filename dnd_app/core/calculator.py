@@ -738,7 +738,7 @@ def get_speed_breakdown(char: dict) -> list[tuple[str, str]]:
         parts.append(("Exhaustion (2+)", "\u00d70.5 (rounded down)"))
     active_conditions = set(char.get("conditions", []))
     lock_sources = active_conditions & {
-        "Grappled", "Restrained", "Paralyzed", "Petrified", "Stunned", "Unconscious",
+        "Grappled", "Restrained", "Paralyzed", "Petrified", "Stunned", "Surprised", "Unconscious",
     }
     for cond in lock_sources:
         parts.append((cond, "speed = 0"))
@@ -2037,13 +2037,13 @@ def get_effective_speed(char: dict) -> dict:
     elif exh >= 2:
         walk = walk // 2
     # Grappled/Restrained ("speed becomes 0") and Paralyzed/Petrified/
-    # Stunned/Unconscious ("can't move") each zero every movement speed a
+    # Stunned/Surprised/Unconscious ("can't move") each zero every movement speed a
     # creature has, not just walking. Incapacitated alone does not stop
     # movement, and Prone only restricts movement to crawling, so neither
     # is included here.
     active_conditions = set(char.get("conditions", []))
     speed_locked = bool(active_conditions & {
-        "Grappled", "Restrained", "Paralyzed", "Petrified", "Stunned", "Unconscious",
+        "Grappled", "Restrained", "Paralyzed", "Petrified", "Stunned", "Surprised", "Unconscious",
     })
     if speed_locked:
         walk = 0

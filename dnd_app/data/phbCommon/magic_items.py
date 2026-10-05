@@ -2951,7 +2951,9 @@ MAGIC_ITEM_EFFECTS: dict[str, dict] = {
     'Wreath of the Prism (Dormant)': {'type': 'senses', 'sense': 'darkvision', 'value': 60},
     'Wreath of the Prism (Exalted)': {'type': 'grant_action', 'action': 'Wreath of the Prism (Exalted)', 'action_type': 'Passive', 'description': "Once the Wreath of the Prism reaches an exalted state, it gains the following benefits:\n\n• You can affect creatures of challenge rating 15 or lower with the wreath.\n• The save DC of the wreath's spell increases to 17.\n\nVestige of Divergence: This item is a Vestige of Divergence, see Vestiges of Divergence for more information."},
     "Wyllow's Staff of Flowers": {'type': 'charges', 'max': 10, 'recharge': 'dawn'},
-    'Wyrmreaver Gauntlets': {'type': 'set_ability', 'ability': 'STR', 'value': 23},
+    # resistance to one type, re-chosen after each long rest (the +1d6 force on
+    # unarmed strikes is on-hit damage, which isn't modelled yet)
+    'Wyrmreaver Gauntlets': {'type': 'resistance_choice', 'pool': ['Acid', 'Cold', 'Fire', 'Lightning', 'Poison']},
     'Wyrmskull Throne': {'type': 'charges', 'max': 9, 'recharge': 'dawn'},
     'Zephyr Armor': {'type': 'ac_bonus', 'value': 1},
 
