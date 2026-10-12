@@ -25,6 +25,12 @@ _ROOT = os.path.dirname(os.path.dirname(SPECPATH))
 # script cd's there first). Make it explicit instead.
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
+# pypdf (the PDF sheet's import and export) comes from the copy in
+# dnd_app/_vendor -- the same one the Android app ships -- so the build
+# never depends on it being pip-installed, and both apps use one version.
+_VENDOR = os.path.join(_ROOT, 'dnd_app', '_vendor')
+if _VENDOR not in sys.path:
+    sys.path.insert(0, _VENDOR)
 
 pyside6_datas, pyside6_binaries, pyside6_hiddenimports = collect_all('PySide6')
 
@@ -245,7 +251,7 @@ _SPLASH_PNG = os.path.join(_ROOT, 'dnd_app', 'ui_desktop', 'splash', 'splash.png
 
 a = Analysis(
     [os.path.join(_ROOT, 'run_dnd_creator.py')],
-    pathex=[_ROOT],
+    pathex=[_ROOT, _VENDOR],
     binaries=pyside6_binaries + extra_binaries,
     datas=[
         (os.path.join(_ROOT, 'dnd_app', 'data'), 'dnd_app/data'),
@@ -261,7 +267,8 @@ a = Analysis(
     ],
     hiddenimports=[
         *pyside6_hiddenimports,
-        *collect_submodules('dnd_app'),
+        # (dnd_app/_vendor is bundled as the top-level pypdf below, not twice)
+        *collect_submodules('dnd_app', filter=lambda n: not n.startswith('dnd_app._vendor')),
         'PySide6.QtCore',
         'PySide6.QtGui',
         'PySide6.QtWidgets',
@@ -274,7 +281,8 @@ a = Analysis(
         # buried in a function body), so it needs to be declared
         # explicitly or "Export Character" -> "Official character sheet
         # (PDF)" fails with ModuleNotFoundError in the built exe even
-        # though `pip install -r requirements.txt` has it installed.
+        # though `pip install -r requirements.txt` has it installed. It's
+        # found in dnd_app/_vendor (see _VENDOR above).
         *collect_submodules('pypdf'),
     ],
     hookspath=[],

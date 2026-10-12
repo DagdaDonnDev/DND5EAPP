@@ -602,48 +602,12 @@ class CharacterSheetBridge(QObject):
 
     @Slot(str, bool)
     def toggleWeaponEquipped(self, name: str, equip: bool):
-        equipped = self.char.setdefault("equipped_weapons", [])
-        if not equip:
-            if name in equipped:
-                equipped.remove(name)
-            self.ctrl.refresh()
-            self.statsChanged.emit()
-            return
-
-        base_name, _ = parse_magic_suffix(name)
-        wdata = WEAPON_DICT.get(base_name, {})
-        props = wdata.get("properties", [])
-        is_two_handed = "Two-handed" in props
-        is_light = "Light" in props
-        has_dual_wielder = "Dual Wielder" in self.char.get("feats", [])
-
-        conflicts = []
-        shield_on = bool(self.char.get("shield", False))
-        current_wpns = list(equipped)
-
-        if is_two_handed:
-            conflicts = current_wpns[:]
-            if shield_on:
-                self.char["shield"] = False  # can't hold 2H + shield (PHB p.147)
-        elif shield_on:
-            if len([w for w in current_wpns if w != name]) >= 1:
-                conflicts = current_wpns[:]
+        # the hands rules are shared with the desktop (core/weapons.py)
+        from dnd_app.core.weapons import equip_weapon, unequip_weapon
+        if equip:
+            equip_weapon(self.char, name)
         else:
-            max_wep = 2 if (is_light or has_dual_wielder) else 1
-            for cw in current_wpns:
-                cw_base, _ = parse_magic_suffix(cw)
-                cw_props = WEAPON_DICT.get(cw_base, {}).get("properties", [])
-                if "Two-handed" in cw_props:
-                    conflicts.append(cw)
-            if not conflicts and len([w for w in current_wpns if w != name]) >= max_wep:
-                while len([w for w in equipped if w != name]) >= max_wep:
-                    equipped.remove(equipped[0])
-
-        for c in conflicts:
-            if c in equipped:
-                equipped.remove(c)
-        if name not in equipped:
-            equipped.append(name)
+            unequip_weapon(self.char, name)
         self.ctrl.refresh()
         self.statsChanged.emit()
 
@@ -851,6 +815,10 @@ class CharacterSheetBridge(QObject):
                 category, icon, equip_kind = "Weapons", "combat", "weapon"
                 detail = f"{wdata.get('damage', '')} {wdata.get('dmg_type', '')}".strip()
                 equipped = name in equipped_weapons
+                # a stack with one in hand says so ("1 of 3 equipped")
+                from dnd_app.core.weapons import equipped_note
+                note = equipped_note(self.char, name, e.get("qty", 1))
+                detail = f"{detail} · {note}" if note else detail
             elif adata and adata.get("type") == "shield":
                 category, icon, equip_kind = "Armor", "shield", "shield"
                 detail = f"+{adata.get('ac', 2)} AC"
@@ -897,11 +865,10 @@ class CharacterSheetBridge(QObject):
         items = self.equipment
         out = []
         for group, icon in self._INVENTORY_GROUPS:
-            # equipped first; magic potions/scrolls by rarity (Common ->
-            # Artifact) then name, after the mundane ones
+            # by name (equipping doesn't move a row); magic potions/scrolls
+            # by rarity (Common -> Artifact) then name, after the mundane ones
             members = sorted((i for i in items if i["category"] == group),
-                             key=lambda i: (not i["equipped"],
-                                            _mi_sort_key(i["rarity"], i["name"]) if i["rarity"] else (-1, i["name"].casefold())))
+                             key=lambda i: _mi_sort_key(i["rarity"], i["name"]) if i["rarity"] else (-1, i["name"].casefold()))
             if members:
                 out.append({"group": group, "icon": icon, "items": members})
         return out

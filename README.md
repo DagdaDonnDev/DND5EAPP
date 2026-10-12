@@ -157,7 +157,7 @@ your computer, or on your phone with the same character file.
 
 - **An equipment browser** with search and category filters
 - **Coins** — platinum, gold, electrum, silver and copper, the same on both apps
-- **Inventory grouped by kind** — weapons, armor, magic items, consumables, tools and gear — with equipped items first
+- **Inventory grouped by kind** — weapons, armor, magic items, consumables, tools and gear — in name order, so equipping something never moves it; a stack with one in hand says "1 of 3 equipped"
 - **Row buttons say what they do** — a magnifying glass for details, a trash can to remove; quantities use − value + boxes on both apps (hold to go in 5s; 0 removes the item)
 - **Items you use get their own icon** — tool kits, musical instruments, tinderboxes and torches, lanterns, thrown flasks, healer's kits
 - **Real tooltips on every item**, in the reference browser and in your own inventory

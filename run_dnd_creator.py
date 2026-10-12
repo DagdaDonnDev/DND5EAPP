@@ -12,6 +12,11 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 sys.path.insert(0, BASE_DIR)
+# pypdf (the PDF sheet) ships inside the app, in dnd_app/_vendor -- the
+# same copy the Android app uses -- so it works without pip-installing it.
+_VENDOR = os.path.join(BASE_DIR, "dnd_app", "_vendor")
+if os.path.isdir(_VENDOR) and _VENDOR not in sys.path:
+    sys.path.insert(1, _VENDOR)
 
 # ── Import guard — show a GUI dialog instead of crashing with no stdin ────────
 def _show_import_error(exc, missing_name=""):

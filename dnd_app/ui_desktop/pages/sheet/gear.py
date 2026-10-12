@@ -1100,7 +1100,7 @@ class GearMixin:
         from dnd_app.data.items import WEAPON_DICT, ARMOR_DICT
         # Grouped like the Android inventory: Weapons / Armor / Magic Items
         # / Consumables / Tools & Gear, each under a header row with a
-        # count, equipped items first within each group.
+        # count, by name within each group (equipping doesn't move a row).
         _GROUPS = (("Weapons", "combat"), ("Armor", "shield"), ("Magic Items", "magic"),
                    ("Consumables", "potion"), ("Tools & Gear", "package"))
         _equipped_w = set(self.char.get("equipped_weapons", []))
@@ -1129,7 +1129,7 @@ class GearMixin:
                 r = e.get("rarity", "")
                 rank = self._RARITY_ORDER.index(r) if r in self._RARITY_ORDER else len(self._RARITY_ORDER)
                 return (g, 1, rank, e.get("name", "").lower())
-            return (g, 0, not _is_equipped(e), e.get("name", "").lower())
+            return (g, 0, e.get("name", "").lower())
 
         items.sort(key=_sort_key)
         _counts = {}
@@ -1172,7 +1172,9 @@ class GearMixin:
             total_cost = cost * eq.get("qty",1)
             cost_str = f"{total_cost:g} gp" if total_cost else ("—" if not is_magic else "")
 
-            item = QTreeWidgetItem([name, "", "", wt_str, cost_str, ""])
+            from dnd_app.core.weapons import equipped_note
+            _note = equipped_note(self.char, name, eq.get("qty", 1)) if is_weapon else ""
+            item = QTreeWidgetItem([f"{name}   ({_note})" if _note else name, "", "", wt_str, cost_str, ""])
             item.setIcon(0, _icons.icon(icon))
             is_shield = name in ARMOR_DICT and ARMOR_DICT[name].get("type") == "shield"
             item.setForeground(0, QColor(accent))
@@ -1566,62 +1568,12 @@ class GearMixin:
         self._mark_dirty()
 
     def _toggle_weapon_equipped(self, name: str, equip: bool):
-        from dnd_app.data.items import WEAPON_DICT
-        from dnd_app.core.magic_items import parse_magic_suffix
-        equipped = self.char.setdefault("equipped_weapons", [])
-        if not equip:
-            if name in equipped: equipped.remove(name)
-            self._refresh_combat_weapons(); self._mark_dirty(); return
-        # Already equipped? Still enforce shield/conflict rules
-        already_equipped = name in equipped
-
-        # Check for conflicts (use the base name for property lookups —
-        # a magic weapon like "Longsword +1" shares the base weapon's properties)
-        _base_name, _ = parse_magic_suffix(name)
-        w = WEAPON_DICT.get(_base_name)
-        props = w.get('properties', []) if isinstance(w, dict) else [str(p) for p in (w[6] if w and len(w)>6 else [])]
-        is_two_handed  = "Two-handed" in props
-        is_light       = "Light" in props
-        has_dual_wielder = "Dual Wielder" in self.char.get("feats",[])
-
-        # Resolve conflicts
-        conflicts = []
-        shield_on  = bool(self.char.get("shield", False))
-        current_wpns = list(equipped)  # copy
-
-        if is_two_handed:
-            # Two-handed clears everything else + shield
-            conflicts = current_wpns[:]
-            if shield_on:
-                self.char["shield"] = False  # Can't hold 2H + shield (PHB p.147)
-        elif shield_on:
-            # Sword + shield: can hold one one-handed weapon. Remove any existing if already one there
-            if len([w2 for w2 in current_wpns if w2 != name]) >= 1:
-                # Already holding a weapon with shield — replace it
-                conflicts = current_wpns[:]
+        # the hands rules are shared with Android (core/weapons.py)
+        from dnd_app.core.weapons import equip_weapon, unequip_weapon
+        if equip:
+            equip_weapon(self.char, name)
         else:
-            # No shield: can hold 2 light weapons, or 1 non-light, or 2 with Dual Wielder
-            if is_light or has_dual_wielder:
-                max_wep = 2
-            else:
-                max_wep = 1
-            # Also check if current weapons are two-handed
-            for cw in current_wpns:
-                cw_base, _ = parse_magic_suffix(cw)
-                cw_data = WEAPON_DICT.get(cw_base)
-                cw_props = cw_data.get("properties",[]) if isinstance(cw_data,dict) else []
-                if "Two-handed" in cw_props:
-                    conflicts.append(cw)  # can't add anything to a two-handed grip
-            if not conflicts and len([w2 for w2 in current_wpns if w2!=name]) >= max_wep:
-                # Too many — unequip oldest
-                while len([w2 for w2 in equipped if w2!=name]) >= max_wep:
-                    equipped.remove(equipped[0])
-
-        for c in conflicts:
-            if c in equipped: equipped.remove(c)
-
-        if name not in equipped:
-            equipped.append(name)
+            unequip_weapon(self.char, name)
         self._refresh_combat_weapons()
         update_all(self.char); self.ctrl.refresh()
         if hasattr(self,"_update_weight"): self._update_weight()
