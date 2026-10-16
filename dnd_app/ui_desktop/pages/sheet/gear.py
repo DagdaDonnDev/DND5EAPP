@@ -1172,8 +1172,9 @@ class GearMixin:
             total_cost = cost * eq.get("qty",1)
             cost_str = f"{total_cost:g} gp" if total_cost else ("—" if not is_magic else "")
 
-            from dnd_app.core.weapons import equipped_note
-            _note = equipped_note(self.char, name, eq.get("qty", 1)) if is_weapon else ""
+            # beside the name: "1 of 3 equipped", "dedicated weapon"
+            from dnd_app.core.weapons import inventory_notes
+            _note = ", ".join(inventory_notes(self.char, name, eq.get("qty", 1))) if is_weapon else ""
             item = QTreeWidgetItem([f"{name}   ({_note})" if _note else name, "", "", wt_str, cost_str, ""])
             item.setIcon(0, _icons.icon(icon))
             is_shield = name in ARMOR_DICT and ARMOR_DICT[name].get("type") == "shield"
@@ -1322,6 +1323,16 @@ class GearMixin:
                         full_act = infuse_menu.addAction(
                             f"(At max active infusions: {active_count}/{max_active})")
                         full_act.setEnabled(False)
+            # Dedicated Weapon (Monk, Tasha's): pick the weapon that counts
+            # as a monk weapon until the next rest
+            if _is_weapon:
+                from dnd_app.core.weapons import can_dedicate, dedicated_weapon, weapon_base
+                if dedicated_weapon(self.char) and weapon_base(_name) == dedicated_weapon(self.char):
+                    dw_act = menu.addAction(_icons.icon("dagger"), "Stop using as your Dedicated Weapon")
+                    dw_act.triggered.connect(lambda checked=False: self._set_dedicated_weapon(""))
+                elif can_dedicate(self.char, _name):
+                    dw_act = menu.addAction(_icons.icon("dagger"), f"Make {_name[:30]} your Dedicated Weapon")
+                    dw_act.triggered.connect(lambda checked=False, n=_name: self._set_dedicated_weapon(n))
             if _eq.get("type") == "Potion" or "potion" in _name.lower():
                 drink_act = menu.addAction(_icons.icon("potion"), f"Drink {_name[:36]}")
                 drink_act.triggered.connect(lambda checked=False, n=_name: self._use_potion(n))
@@ -1577,6 +1588,17 @@ class GearMixin:
         self._refresh_combat_weapons()
         update_all(self.char); self.ctrl.refresh()
         if hasattr(self,"_update_weight"): self._update_weight()
+        self._mark_dirty()
+
+    def _set_dedicated_weapon(self, name: str):
+        """Dedicated Weapon: `name` counts as a monk weapon from now on
+        ("" clears it). The Combat tab picks up Martial Arts for it."""
+        if name:
+            self.char["dedicated_weapon"] = name
+        else:
+            self.char.pop("dedicated_weapon", None)
+        self._refresh_combat_weapons()
+        self._refresh_gear_equipment()
         self._mark_dirty()
 
     def _toggle_armor_worn(self, name: str, wear: bool):

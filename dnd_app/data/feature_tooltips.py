@@ -21,7 +21,7 @@ FEATURE_DESCS = {
     'Adrenaline Rush': 'You can take the Dash action as a bonus action. Uses = proficiency bonus per long rest.',
     'Advanced Transformation': 'Use Hybrid Transformation twice per short/long rest. Hybrid form also gains Lycan Regeneration: at the start of each turn, regain 1 + CON modifier HP if between 1 and half your HP max.',
     'Aether Walk': 'At the start of your turn (if not incapacitated), step into the veil between planes: move through creatures/objects as difficult terrain, and see/affect creatures on the Ethereal Plane. Lasts a number of rounds = Hemocraft modifier (min 1); take 1d10 force damage if you end your turn inside an object. Once per short/long rest (twice per rest at 15th level).',
-    'Agile Parry': "When you attack with a Kensei weapon and don't use a Kensei weapon two-handed, add your Martial Arts die to your AC until your next turn.",
+    'Agile Parry': "If you make an unarmed strike as part of the Attack action on your turn while holding a melee kensei weapon, you gain +2 AC until the start of your next turn, while the weapon is in your hand and you aren't incapacitated.",
     'Agonizing Blast': 'Add CHA modifier to Eldritch Blast damage (eldritch invocation).',
     'Alchemical Savant': 'Add INT mod to rolls for Healing or acid/fire/necrotic/poison spells cast through your alchemist supplies.',
     'Alchemist Spells': "Bonus spells added to your Artificer spell list: healing word, ray of sickness, flaming sphere, Melf's acid arrow, gaseous form, mass healing word, blight, death ward, cloudkill, raise dead.",
@@ -292,6 +292,8 @@ FEATURE_DESCS = {
     'Elemental Gift': "Prerequisite: 6th level. Resistance to your genie kind's damage type. As a bonus action, gain a flying speed of 30 ft for 10 minutes (can hover). Uses = proficiency bonus per long rest.",
     'Elemental Wild Shape': 'Spend 2 Wild Shape uses to turn into an air/earth/fire/water elemental.',
     'Elf Weapon Training': 'You have proficiency with the longsword, shortsword, shortbow, and longbow.',
+    'Drow Weapon Training': 'You have proficiency with rapiers, shortswords, and hand crossbows.',
+    'Sea Elf Training': 'You have proficiency with the spear, trident, light crossbow, and net.',
     'Elusive': "No attack roll has advantage against you while you aren't incapacitated.",
     'Embodiment of the Law': 'Casting an enchantment spell with a 1st-level+ slot that normally takes an action can instead be cast as a bonus action. Uses = WIS modifier (minimum once) per long rest.',
     'Embolden': 'As a bonus action, choose up to 3 creatures within 30 feet: they can add your WIS modifier to their next attack roll, ability check, or saving throw before your next turn ends. Uses = WIS modifier per long rest.',
@@ -475,7 +477,7 @@ FEATURE_DESCS = {
     'Jack of All Trades': "Add half your proficiency bonus (rounded down) to any ability check that doesn't already include your proficiency bonus.",
     'Keen Senses': 'You have proficiency in the Perception skill.',
     'Keeper of Souls': "Prerequisite: 17th level. When an enemy you can see dies within 30 feet, you or one ally within 30 feet regains HP equal to the enemy's number of Hit Dice. Requires you not be incapacitated; once per turn.",
-    "Kensei's Shot": 'Prerequisite: 6th level. Ranged Kensei weapon attacks deal extra damage equal to your Martial Arts die.',
+    "Kensei's Shot": "Bonus action: until the end of the turn, any target you hit with a ranged attack using a kensei weapon takes an extra 1d4 damage of the weapon's type.",
     'Ki': 'Pool of ki points = Monk level. Use to fuel Flurry of Blows (2 bonus unarmed strikes), Patient Defense (bonus Dodge), Step of the Wind (bonus Dash/Disengage). Recharges on short/long rest.',
     'Ki-Empowered Strikes': 'Unarmed strikes count as magical for overcoming resistance and immunity.',
     'Know Your Enemy': 'After 1 minute observing a creature, learn if it is superior, inferior, or equal to you in STR, DEX, CON, AC, HP, or class levels.',
@@ -1425,8 +1427,8 @@ FEATURE_DESCS.update({'Darkvision 60 ft': "You can see in dim light within 60 fe
     "Drunkard's Luck": "Prerequisite: 11th level. Spend 2 Ki points to gain advantage on an ability check, attack roll, or saving throw you're about to make.",
     'Intoxicated Frenzy': 'Prerequisite: 17th level. When you use Flurry of Blows, you can make up to 3 additional attacks (instead of 2) if you target 3 different creatures.',
     'Path of the Kensei': "Choose 2 kensei weapons (1 more at 6th/11th/17th): any simple/martial weapon lacking heavy/special properties, or a longbow; they count as monk weapons for you. Agile Parry: if you make an unarmed strike as part of the Attack action while holding a melee kensei weapon, gain +2 AC until the start of your next turn. Kensei's Shot: bonus action to add 1d4 damage to your ranged kensei weapon attacks until the end of the turn. Way of the Brush: proficiency with calligrapher's or painter's supplies.",
-    'Agile Parry': "When you attack with a Kensei weapon and don't use a Kensei weapon two-handed, add your Martial Arts die to your AC until your next turn.",
-    "Kensei's Shot": 'Prerequisite: 6th level. Ranged Kensei weapon attacks deal extra damage equal to your Martial Arts die.',
+    'Agile Parry': "If you make an unarmed strike as part of the Attack action on your turn while holding a melee kensei weapon, you gain +2 AC until the start of your next turn, while the weapon is in your hand and you aren't incapacitated.",
+    "Kensei's Shot": "Bonus action: until the end of the turn, any target you hit with a ranged attack using a kensei weapon takes an extra 1d4 damage of the weapon's type.",
     'Sharpen the Blade': 'Prerequisite: 11th level. Spend up to 3 Ki points as a bonus action to give a Kensei weapon a +1 (or more, per point spent) bonus to attack and damage rolls for 1 minute.',
     'Unerring Accuracy': 'Prerequisite: 17th level. Once per turn, if a Kensei weapon attack misses, you can reroll it. Uses = 1/turn.',
     'Implements of Mercy': 'Gain proficiency in Insight and Medicine, and Disguise Kit and Herbalism Kit.',
@@ -1731,7 +1733,7 @@ FEATURE_DESCS.update({
     'Charm Animals and Plants': "Channel Divinity: each beast or plant creature within 30 feet must succeed on a WIS save or be charmed by you for 1 minute.",
     # The following 7 are unofficial, third-party content (Plane Shift:
     # Amonkhet) reconstructed from secondary sources, not verified
-    # against the original text — see docs/KNOWN_IMPLEMENTATION_GAPS.md.
+    # against the original text.
     "Oketra's Blessing": "Channel Divinity: when a creature within 30 feet makes an attack roll, you can use your reaction to grant it a +10 bonus, chosen after seeing the roll but before the outcome is known.",
     "Solidarity's Action": "When you take the Help action to aid an ally's attack, you can make one weapon attack as a bonus action. Uses = WIS modifier (min 1) per long rest.",
     'Supreme Healing': "Prerequisite: 17th level. When you would normally roll one or more dice to restore hit points with a spell, use the highest number possible for each die instead of rolling.",

@@ -81,6 +81,37 @@ Page {
         amountDialog.open()
     }
 
+    // A weapon a monk could use with Dedicated Weapon: press and hold ->
+    //   How many / Make dedicated weapon (or Stop using as dedicated weapon)
+    // Anything else goes straight to how many you have.
+    function openInventoryHold(item) {
+        if (!item.canDedicate && !item.dedicated) {
+            openAmountDialog(item)
+            return
+        }
+        heldItem = item
+        weaponOptionsDialog.heading = item.name
+        weaponOptionsDialog.options = [
+            {key: "amount", text: "How many", icon: "package"},
+            item.dedicated
+                ? {key: "undedicate", text: "Stop using as dedicated weapon", icon: "dagger"}
+                : {key: "dedicate", text: "Make dedicated weapon", icon: "dagger"}
+        ]
+        weaponOptionsDialog.open()
+    }
+
+    MOptionsDialog {
+        id: weaponOptionsDialog
+        objectName: "weaponOptionsDialog"
+        onPicked: (key) => {
+            var it = root.heldItem
+            if (!it) return
+            if (key === "amount") root.openAmountDialog(it)
+            else if (key === "dedicate") sheetBridge.setDedicatedWeapon(it.name)
+            else if (key === "undedicate") sheetBridge.setDedicatedWeapon("")
+        }
+    }
+
     // Magic items: press and hold -> a menu bordered in the item's rarity
     //   Attune / End attunement -- only if it needs attunement
     //   Study                   -- a manual or tome not yet studied
@@ -426,12 +457,13 @@ Page {
                                 border.width: modelData.rarity ? 2 : 1
 
                                 // press and hold: change how many you have
+                                // (or, for a monk, pick the Dedicated Weapon)
                                 MouseArea {
                                     id: invHold
                                     objectName: "invHold_" + modelData.name
                                     anchors.fill: parent
                                     pressAndHoldInterval: 450
-                                    onPressAndHold: root.openAmountDialog(modelData)
+                                    onPressAndHold: root.openInventoryHold(modelData)
                                 }
 
                                 RowLayout {

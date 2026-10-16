@@ -90,6 +90,8 @@ your computer, or on your phone with the same character file.
 - **Skills follow your character** — expertise and skill picks from a level you no longer have (or a removed class) go with it, while your own edits on the Skills tab stay until you reset them
 - **Changes leave nothing behind** — level down, remove a class, or change race, subrace, background or a feat, and what came with it goes too: invocations, maneuvers, infusions, fighting styles, Magical Secrets, a race's cantrip, and any pick those opened up (Pact of the Tome's cantrips). Level back up and you're asked again
 - **Checks add what they should** — a plain ability check gets Jack of All Trades, and a Fey Wanderer's Otherworldly Glamour gives a skill of your choice plus its Wisdom bonus on every Charisma check
+- **Racial weapon and armour training counts** — Dwarven Combat Training, Elf Weapon Training (High and Wood elves; Drow and Sea Elves have their own), a Mountain Dwarf's armour, Martial Prodigy, Firearms Mastery and more add proficiency to attacks, and a Hobgoblin picks their two martial weapons
+- **DM-granted proficiencies** — add any weapon, armour, tool or language your DM gives you, from the list or typed in; it counts like any other proficiency, for attack rolls, Dedicated Weapon and feat prerequisites
 
 </details>
 
@@ -136,6 +138,7 @@ your computer, or on your phone with the same character file.
 - **Elemental Disciplines, Arcane Shot and Rune Knight Runes** as real, usable entries
 - **Eldritch Adept, Metamagic Adept and Martial Adept** grant a real choice of invocation, metamagic or maneuver
 - **Eldritch Versatility** — swap a cantrip, your Pact Boon or a Mystic Arcanum spell at the right levels
+- **Monk weapons follow Martial Arts** — DEX and the Martial Arts die when they're better, with no armour or shield. Kensei weapons and Tasha's Dedicated Weapon can be any simple or martial weapon without heavy or special — guns included; a Kensei is proficient with theirs, which count as magical from 6th level, and the Dedicated Weapon is picked from the inventory
 
 </details>
 
@@ -300,7 +303,7 @@ dnd_app/
     themes.py, icon_data.py, flavor_text.py   shared by both apps' looks
   ui_desktop/        The desktop app (Qt Widgets): pages/, dialogs/, style/
   ui_android/        The Android app (Qt Quick/QML): bridge/, qml/
-docs/                The implementation-gaps log and the reference lists
+docs/                The source lists the game data was checked against
 packaging/
   windows/           build_exe.bat / .sh and MIMIC.spec
   android/           the clean build, its one-time setup, p4a_hook.py, icons

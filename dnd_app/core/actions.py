@@ -2169,8 +2169,8 @@ def build_action_abilities(char):
 
     # ── Tool special uses ────────────────────────────────────────────────────
     # Only shown when the character has BOTH the tool proficiency AND the
-    # matching physical tool item in their equipment — per user instruction,
-    # since the source text doesn't otherwise specify a further condition.
+    # matching physical tool item in their equipment -- you need the tool to
+    # use it, and the source text doesn't specify any further condition.
     TOOL_SPECIAL_USES = {
         "Alchemist's supplies": [("Alchemical Crafting", "As part of a long rest, make one dose of "
             "acid, alchemist's fire, antitoxin, oil, perfume, or soap (spend gp on raw materials).")],

@@ -290,6 +290,15 @@ def rebuild(char: dict) -> None:
                 grants["skill_profs"].append(skill)
                 grants["skill_prof_set"].add(skill)
 
+        # Weapon and armour training (Dwarven Combat Training, Elf Weapon
+        # Training, Martial Prodigy...), by race and subrace
+        from dnd_app.data.races import race_training
+        race_weapons, race_armor = race_training(race_name, char.get("subrace", ""))
+        grants["weapon_profs"].extend(race_weapons)
+        grants["armor_profs"].extend(race_armor)
+        # Hobgoblin's Martial Training: the two martial weapons picked
+        grants["weapon_profs"].extend(char.get("_choices", {}).get("hobgoblin_martial_weapons", []))
+
     # ── Background grants ─────────────────────────────────────────────────────
     if bg_name:
         # (The background's starting gold is added once, by the creation
@@ -391,6 +400,12 @@ def rebuild(char: dict) -> None:
         chosen_weapons = char.get("_choices", {}).get("feat_weapon_master_weapons", [])
         for wname in chosen_weapons:
             grants["weapon_profs"].append(wname)
+
+    # Way of the Kensei: proficiency with the kensei weapons picked (XGE)
+    # -- read fresh from _choices every rebuild, same as Weapon Master.
+    if any(c.get("class") == "Monk" and "kensei" in (c.get("subclass") or "").lower()
+           and c.get("level", 0) >= 3 for c in char.get("classes", [])):
+        grants["weapon_profs"].extend(char.get("_choices", {}).get("kensei_weapons", []))
 
     # Githyanki (MPMM)'s Astral Knowledge / Astral Elf's Astral Trance:
     # "proficiency ... with one weapon or tool of your choice ... until
@@ -528,6 +543,9 @@ def rebuild(char: dict) -> None:
     # not a player choice like most other language grants in this app.
     if "Littlest Yeti" in char.get("dm_rewards", []) and "Yeti" not in char["languages"]:
         char["languages"].append("Yeti")
+    # Proficiencies the DM granted outside the rules (core/dm_proficiencies.py)
+    from .dm_proficiencies import apply_to as _apply_dm_proficiencies
+    _apply_dm_proficiencies(char)
 
     # ── Class feature mechanics ────────────────────────────────────────────────
     _apply_class_feature_mechanics(char, classes, edition)

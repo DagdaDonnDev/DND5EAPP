@@ -183,8 +183,22 @@ class SkillsMixin:
         tcl.addWidget(self._tool_prof_frame)
         self._refresh_tool_prof_chips()
         rl2.addWidget(tool_card)
+        # anything the DM grants outside the rules (core/dm_proficiencies.py)
+        dm_btn = _btn("DM-granted proficiencies…", GOLD, variant="neutral", height=32,
+                      tooltip="Add or remove weapons, armour, tools and languages your DM gave you")
+        dm_btn.setObjectName("dmProficienciesBtn")
+        dm_btn.clicked.connect(self._open_dm_proficiencies)
+        rl2.addWidget(dm_btn)
         rl2.addStretch(); root.addWidget(right, 2)
         return tab
+
+    def _open_dm_proficiencies(self):
+        from dnd_app.ui_desktop.dialogs.dm_proficiencies import DmProficienciesDialog
+        def changed():
+            # rebuild adds them to the lists; every tab redraws
+            self.ctrl.refresh()
+            self._mark_dirty()
+        DmProficienciesDialog(self.char, changed, self).exec()
 
     # Armor/shield are now equipped exclusively from the Gear tab
     # (see _toggle_armor_worn / _toggle_shield); Combat tab just displays them.

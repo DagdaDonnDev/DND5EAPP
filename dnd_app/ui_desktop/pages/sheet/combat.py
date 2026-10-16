@@ -1640,6 +1640,18 @@ class CombatMixin:
             stat = "INT"
         else:
             stat = "DEX" if (is_finesse and ability_mod(self.char,"DEX")>ability_mod(self.char,"STR")) or is_ranged else "STR"
+        # Martial Arts: a monk weapon uses DEX if it's higher, and the
+        # Martial Arts die if it beats the weapon's own; a kensei weapon
+        # counts as magical from 6th level (core/weapons.py)
+        from dnd_app.core.weapons import martial_arts
+        _ma = martial_arts(self.char, wpn_name)
+        if _ma:
+            if stat == "STR" and ability_mod(self.char, "DEX") > ability_mod(self.char, "STR"):
+                stat = "DEX"
+            if _ma["die"]:
+                dmg = _ma["die"]
+            if _ma["magical"]:
+                dmg_type = f"{dmg_type} (magical)"
         mod = ability_mod(self.char, stat)
 
         # Check if this weapon is a named magic item with an effect-based bonus

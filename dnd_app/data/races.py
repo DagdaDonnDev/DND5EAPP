@@ -52,15 +52,14 @@ ALL_RACES = [
     race("Elf",
          traits=["Darkvision 60 ft", 'Keen Senses – you have proficiency in the Perception skill',
                  "Fey Ancestry – you have advantage on saving throws against being charmed, and magic can't put you to sleep",
-                 "Trance – elves don't need to sleep. Instead, they meditate deeply for 4 hours per day (Elven Trance). After finishing a trance you gain the same benefit that a human gets from 8 hours of sleep. You are aware of your surroundings during the trance",
-                 'Elf Weapon Training – you have proficiency with the longsword, shortsword, shortbow, and longbow'],
+                 "Trance – elves don't need to sleep. Instead, they meditate deeply for 4 hours per day (Elven Trance). After finishing a trance you gain the same benefit that a human gets from 8 hours of sleep. You are aware of your surroundings during the trance"],
          languages=["Common", "Elvish"],
-         subraces=["High (+DEX 2, +INT 1; learn one extra language of your choice; learn one cantrip from the wizard spell list, using INT as your spellcasting ability)",
-                   "Wood (+DEX 2, +WIS 1; base walking speed increases to 35 feet; Mask of the Wild: you can attempt to hide even when only lightly obscured by foliage, heavy rain, falling snow, mist, or other natural phenomena)",
-                   "Drow (+DEX 2, +CHA 1; Darkvision 120 ft; Sunlight Sensitivity: disadvantage on attack rolls and Perception checks that rely on sight while you or the target is in direct sunlight; Drow Magic: cast Dancing Lights at will, Faerie Fire once per long rest at 3rd level, and Darkness once per long rest at 5th level, using CHA as your spellcasting ability)",
+         subraces=["High (+DEX 2, +INT 1; Elf Weapon Training: proficiency with the longsword, shortsword, shortbow, and longbow; learn one extra language of your choice; learn one cantrip from the wizard spell list, using INT as your spellcasting ability)",
+                   "Wood (+DEX 2, +WIS 1; Elf Weapon Training: proficiency with the longsword, shortsword, shortbow, and longbow; base walking speed increases to 35 feet; Mask of the Wild: you can attempt to hide even when only lightly obscured by foliage, heavy rain, falling snow, mist, or other natural phenomena)",
+                   "Drow (+DEX 2, +CHA 1; Darkvision 120 ft; Sunlight Sensitivity: disadvantage on attack rolls and Perception checks that rely on sight while you or the target is in direct sunlight; Drow Magic: cast Dancing Lights at will, Faerie Fire once per long rest at 3rd level, and Darkness once per long rest at 5th level, using CHA as your spellcasting ability; Drow Weapon Training: proficiency with rapiers, shortswords, and hand crossbows)",
                    "Eladrin (+DEX 2, +CHA 1; Fey Step: teleport up to 30 feet to an unoccupied space you can see, as a bonus action, once per short or long rest, with an additional effect based on the season you've chosen — Autumn charms one creature within 5 feet of your destination, Winter frightens one creature within 5 feet, Spring lets a willing creature within 5 feet teleport with you, Summer deals 2d6 fire damage to each creature within 5 feet of your origin point; you can change your chosen season after a long rest)",
                    "Eladrin - DMG'14 (+DEX 2, +INT 1; Fey Step: cast Misty Step using this trait once per short or long rest)",
-                   "Sea (+DEX 2, +CON 1; swimming speed of 30 feet; Amphibious: you can breathe air and water; Friend of the Sea: you can communicate simple ideas with beasts that have a swimming speed)",
+                   "Sea (+DEX 2, +CON 1; Sea Elf Training: proficiency with the spear, trident, light crossbow, and net; swimming speed of 30 feet; Amphibious: you can breathe air and water; Friend of the Sea: you can communicate simple ideas with beasts that have a swimming speed)",
                    "Shadar-kai (+DEX 2, +CON 1; resistance to necrotic damage; Blessing of the Raven Queen: as a bonus action, teleport up to 30 feet to an unoccupied space you can see and gain resistance to all damage until the start of your next turn, usable a number of times equal to your proficiency bonus, regained after a long rest)",
                    "Pallid (– +DEX 2, +WIS 1; Incisive Sense: advantage on Insight checks to determine if a creature is lying; Moonweaver Magic: cast Silent Image once per long rest, using WIS as your spellcasting ability)",
              "Mark of Shadow (+DEX 2, +CHA 1; cast Dancing Lights, Disguise Self, and Darkness each once per long rest without a spell slot, using CHA as your spellcasting ability; gain proficiency in the Stealth skill)"]),
@@ -760,6 +759,36 @@ def get_race(name: str) -> dict:
     return None
 
 RACE_DICT = {r["name"]: r for r in ALL_RACES}
+
+
+# ── Weapon and armour training ────────────────────────────────────────────
+# What a race (or one subrace, keyed (race, subrace)) makes you proficient
+# with; core/builder.py adds these on every rebuild. A Hobgoblin's two
+# martial weapons are a choice (core/choices.py).
+_ELF_WEAPONS = ["Longsword", "Shortsword", "Shortbow", "Longbow"]
+RACE_WEAPON_PROFS = {
+    "Dwarf": ["Battleaxe", "Handaxe", "Light Hammer", "Warhammer"],   # Dwarven Combat Training
+    ("Elf", "High"): _ELF_WEAPONS,                                    # Elf Weapon Training
+    ("Elf", "Wood"): _ELF_WEAPONS,
+    ("Elf", "Drow"): ["Rapier", "Shortsword", "Hand Crossbow"],       # Drow Weapon Training
+    ("Elf", "Sea"): ["Spear", "Trident", "Light Crossbow", "Net"],    # Sea Elf Training
+    ("Half-Elf", "Wood Descent"): _ELF_WEAPONS,
+    "Githyanki": ["Shortsword", "Longsword", "Greatsword"],            # Martial Prodigy
+    "Giff": ["Firearms"],                                             # Firearms Mastery
+    "Khenra": ["Khopesh", "Spear", "Javelin"],                        # Khenra Weapon Training
+}
+RACE_ARMOR_PROFS = {
+    ("Dwarf", "Mountain"): ["Light armor", "Medium armor"],           # Dwarven Armor Training
+    "Githyanki": ["Light armor", "Medium armor"],                     # Martial Prodigy
+    "Hobgoblin": ["Light armor"],                                     # Martial Training
+}
+
+
+def race_training(race_name: str, subrace: str = "") -> tuple:
+    """(weapons, armour) a race and subrace are proficient with."""
+    weapons = RACE_WEAPON_PROFS.get(race_name, []) + RACE_WEAPON_PROFS.get((race_name, subrace), [])
+    armor = RACE_ARMOR_PROFS.get(race_name, []) + RACE_ARMOR_PROFS.get((race_name, subrace), [])
+    return list(weapons), list(armor)
 
 def flex_asi_desc(flex: int, style: str) -> str:
     """Describe a race's flexible ASI grant by its real mechanic -- the

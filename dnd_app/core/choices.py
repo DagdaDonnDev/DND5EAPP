@@ -112,16 +112,14 @@ def feat_prereq_met(char: dict, feat: dict) -> tuple[bool, str]:
             return True, ""
         return False, prereq
 
-    # Armor/weapon proficiency
-    if "Prof. medium armor" in prereq:
-        return ("Medium" in char.get("armor_proficiencies", []), prereq)
-    if "Prof. heavy armor" in prereq:
-        return ("Heavy" in char.get("armor_proficiencies", []), prereq)
-    if "Prof. light armor" in prereq:
-        return ("Light" in char.get("armor_proficiencies", []), prereq)
+    # Armor/weapon proficiency -- the lists hold grant strings like
+    # "Light, Medium, Shields" or "Simple weapons, martial weapons"
+    from dnd_app.core.calculator import has_armor_proficiency
+    for kind in ("medium", "heavy", "light"):
+        if f"Prof. {kind} armor" in prereq:
+            return (has_armor_proficiency(char, kind), prereq)
     if "Prof. martial weapon" in prereq:
-        return (bool(char.get("weapon_proficiencies")) and
-                any("Martial" in w for w in char.get("weapon_proficiencies", [])), prereq)
+        return (any("martial" in w.lower() for w in char.get("weapon_proficiencies", [])), prereq)
 
     # Spellcasting / Pact Magic
     if prereq in ("Spellcasting", "Spellcasting or Pact Magic"):
@@ -925,13 +923,9 @@ def _get_subclass_choices(char):
 
         # ── Monk Way of the Kensei: Kensei weapons (Lv3, 2 initially) ───────────
         if cname == "Monk" and "kensei" in sub and clvl >= 3:
-            KENSEI_WEAPON_OPTIONS = [
-                "Club", "Dagger", "Greatclub", "Handaxe", "Javelin", "Light Hammer",
-                "Mace", "Quarterstaff", "Sickle", "Spear", "Light Crossbow", "Dart",
-                "Shortbow", "Sling", "Battleaxe", "Longsword", "Morningstar", "Rapier",
-                "Scimitar", "Shortsword", "Trident", "War Pick", "Warhammer", "Whip",
-                "Longbow",
-            ]
+            # any simple or martial weapon without heavy or special, or a longbow
+            from dnd_app.core.weapons import kensei_weapon_options
+            KENSEI_WEAPON_OPTIONS = kensei_weapon_options()
             weapons_known = {3:2, 6:3, 11:4, 17:5}
             total = max(v for lvl2,v in weapons_known.items() if clvl >= lvl2)
             already = made.get("kensei_weapons", [])
@@ -939,7 +933,7 @@ def _get_subclass_choices(char):
                 choices.append({"id": "kensei_weapons", "source": "subclass",
                     "source_name": "Way of the Kensei", "type": "metamagic",
                     "count": total, "pool": KENSEI_WEAPON_OPTIONS,
-                    "label": f"Choose {total} Kensei weapon(s)",
+                    "label": f"Choose {total} Kensei weapons (at 3rd level, one melee and one ranged)",
                     "already_chosen": already})
 
         # ── Sorcerer Divine Soul: Affinity (Lv1) ────────────────────────────────
@@ -1502,6 +1496,21 @@ def _get_race_choices(char):
                 "type": "tool_prof", "count": 1, "pool": None,
                 "label": "Specialized Design (Warforged): choose 1 tool proficiency",
                 "already_chosen": already_tl,
+            })
+
+    # Hobgoblin's Martial Training (VGM): two martial weapons of your
+    # choice (its light armour comes with the race -- data/races.py)
+    if race == "Hobgoblin":
+        already = made.get("hobgoblin_martial_weapons", [])
+        if len(already) < 2:
+            from dnd_app.data.items import WEAPON_DICT
+            choices.append({
+                "id": "hobgoblin_martial_weapons", "source": "race", "source_name": race,
+                "type": "weapon_or_tool_prof", "count": 2,
+                "pool": sorted(n for n, w in WEAPON_DICT.items()
+                               if str(w.get("category", "")).startswith("Martial")),
+                "label": "Martial Training (Hobgoblin): choose 2 martial weapons",
+                "already_chosen": already,
             })
 
     # Githyanki's Decadent Mastery: one skill OR tool of choice — a

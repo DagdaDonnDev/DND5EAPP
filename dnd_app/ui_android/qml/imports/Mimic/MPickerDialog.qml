@@ -26,6 +26,12 @@ Popup {
 
     property string dialogTitle: "Choose"
     property var options: []
+    // allowCustom: also offer whatever's typed when it isn't in the list
+    // (a homebrew weapon, tool or language) as the first row
+    property bool allowCustom: false
+    readonly property string _typed: search.text.trim()
+    readonly property bool _offerTyped: allowCustom && _typed.length > 0
+        && !options.some(function(o) { return o.toLowerCase() === root._typed.toLowerCase() })
     signal picked(string value)
 
     onOpened: search.text = ""
@@ -69,14 +75,14 @@ Popup {
                 anchors.fill: parent
                 anchors.margins: 4
                 clip: true
-                model: root.options.filter(function(o) {
+                model: (root._offerTyped ? [root._typed] : []).concat(root.options.filter(function(o) {
                     return search.text.length === 0 || o.toLowerCase().indexOf(search.text.toLowerCase()) >= 0
-                })
+                }))
                 delegate: ItemDelegate {
                     width: ListView.view.width
                     height: 44
                     contentItem: Label {
-                        text: modelData
+                        text: root._offerTyped && index === 0 ? "Add \u201C" + modelData + "\u201D" : modelData
                         color: Theme.text
                         font.pixelSize: Theme.fsBody
                         verticalAlignment: Text.AlignVCenter

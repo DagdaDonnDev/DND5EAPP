@@ -475,8 +475,7 @@ SAVE_ADVANTAGE_SOURCES = [
      "note": "Advantage on Constitution saves specifically to maintain concentration "
              "on a spell — not other CON saves."},
 
-    # Racial save-advantage traits (text-only until now — see the
-    # "systematic racial gaps" review entry in docs/KNOWN_IMPLEMENTATION_GAPS.md).
+    # Racial save-advantage traits (these used to be text only).
     # Where a trait's real text ties advantage to a condition/damage type
     # rather than a specific ability (e.g. "advantage against poison"),
     # this follows the same convention already used above for Among the
@@ -2074,12 +2073,28 @@ def has_weapon_proficiency(char: dict, weapon_name: str, category: str) -> bool:
     wname = (weapon_name or "").lower().strip()
     if not wname:
         return False
+    # "Firearms" (the Gunner feat) covers every gun
+    if "firearm" in blob:
+        from ..data.items import FIREARMS
+        if any(wname == f[0].lower() for f in FIREARMS):
+            return True
     if wname in blob:
         return True
     plural = wname + "s" if not wname.endswith("s") else wname
     if plural in blob:
         return True
     return False
+
+
+def has_armor_proficiency(char: dict, kind: str) -> bool:
+    """Proficiency with "light", "medium" or "heavy" armour, or "shield",
+    from the aggregated char["armor_proficiencies"] strings ("Light,
+    Medium, Shields", "All armor, Shields", "Heavy armor"...)."""
+    blob = ", ".join(char.get("armor_proficiencies", [])).lower()
+    kind = (kind or "").lower()
+    if kind != "shield" and "all armor" in blob:
+        return True
+    return bool(kind) and kind in blob
 
 
 def get_effective_speed(char: dict) -> dict:
@@ -3188,18 +3203,19 @@ def update_all(char: dict) -> dict:
             "source_class": "", "subclass": "",
         })
 
-    # Dedicated Weapon (Monk, TCE optional): this app has no deeper
-    # weapon-eligibility system to hook a mechanical outcome into (same
-    # situation as Ki-Empowered Strikes), so this just tracks the choice
-    # visibly rather than fabricate a mechanical connection.
+    # Dedicated Weapon (Monk, TCE optional): the weapon itself is picked
+    # from the inventory (right-click on desktop, press and hold on
+    # Android) and stored in char["dedicated_weapon"]; core/weapons.py
+    # then treats it as a monk weapon. This entry is the reminder.
     monk_lvl_dw = class_levels(char).get("Monk", 0)
     if monk_lvl_dw >= 2 and _tce_opt_on("Dedicated Weapon"):
         new_resources.append({
             "name": "Dedicated Weapon", "key": "dedicated_weapon",
             "reset": "SR", "current_max": 1, "track": "uses",
-            "note": "When you finish a short or long rest, choose one weapon — it counts as "
-                    "a monk weapon for you until your next rest, even if it wouldn't "
-                    "otherwise qualify.",
+            "note": "When you finish a short or long rest, you can choose one simple or "
+                    "martial weapon you're proficient with that lacks the heavy and special "
+                    "properties — it counts as a monk weapon until you choose again. Pick it "
+                    "from the weapon's menu in your inventory (right-click, or press and hold).",
             "source_class": "", "subclass": "",
         })
 

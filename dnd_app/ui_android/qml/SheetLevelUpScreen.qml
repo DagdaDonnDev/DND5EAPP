@@ -373,7 +373,8 @@ Page {
                         spacing: 8
 
                         Label {
-                            text: modelData.label + " (choose " + modelData.count + ")"
+                            // "(choose 2)" only when the label doesn't already say how many
+                            text: modelData.label + (/\bchoose\b/i.test(modelData.label) ? "" : " (choose " + modelData.count + ")")
                             color: Theme.teal2
                             font.pixelSize: Theme.fsBody
                             font.bold: true

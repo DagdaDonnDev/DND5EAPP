@@ -545,7 +545,7 @@ CLASS_FEATURE_INDEX: dict[str, dict] = {
         # reconstructed from secondary/fan sources, not verified against
         # the original text. Divine Strike at 8th is solid (matches the
         # pre-existing, correct DIVINE_STRIKE_TYPE mapping); other levels
-        # are best-effort. See docs/KNOWN_IMPLEMENTATION_GAPS.md.
+        # are best-effort.
         "Ambition Domain": {
             1: ["Warding Flare"],
             2: ["Invoke Duplicity"],
@@ -1475,8 +1475,9 @@ OPTIONAL_CLASS_FEATURES: dict[str, dict[int, list[dict]]] = {
                 "replaces": None,
                 "source": "TCoE",
                 "desc": (
-                    "When you finish a short or long rest, choose one weapon. Until your next rest "
-                    "that weapon counts as a monk weapon for you even if it normally wouldn't qualify."
+                    "When you finish a short or long rest, you can choose one weapon: a simple or "
+                    "martial weapon you're proficient with that lacks the heavy and special "
+                    "properties. It counts as a monk weapon for you until you use this feature again."
                 ),
             },
         ],

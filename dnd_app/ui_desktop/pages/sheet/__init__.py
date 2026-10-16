@@ -1,8 +1,7 @@
 """Character Sheet package.
 
 CharacterSheet is composed from per-domain mixins (one file per tab/
-concern) rather than living as one 12,000-line class -- see
-docs/KNOWN_IMPLEMENTATION_GAPS.md for the reorg this came from. Every mixin
+concern) rather than living as one 12,000-line class. Every mixin
 shares one real `self`/QWidget instance, so a method in one file can
 freely call `self._build_statblock_card(...)` etc. even though that
 method is defined in a different mixin's file; Python resolves it via

@@ -226,6 +226,10 @@ _RESOURCE_TOGGLE_MAP = {
 }
 
 
+from dnd_app.core.weapons import (can_dedicate as _can_dedicate, weapon_base as _weapon_base,
+                                   dedicated_weapon as _dedicated_weapon)
+
+
 class CharacterSheetBridge(QObject):
     statsChanged = Signal()
     restToastRequested = Signal(str)
@@ -674,6 +678,18 @@ class CharacterSheetBridge(QObject):
                 stat = "DEX"
             else:
                 stat = "STR"
+            # Martial Arts: a monk weapon uses DEX if it's higher, and the
+            # Martial Arts die if it beats the weapon's own; a kensei weapon
+            # counts as magical from 6th level (core/weapons.py)
+            from dnd_app.core.weapons import martial_arts
+            ma = martial_arts(char, wpn_name)
+            if ma:
+                if stat == "STR" and ability_mod(char, "DEX") > ability_mod(char, "STR"):
+                    stat = "DEX"
+                if ma["die"]:
+                    damage = ma["die"]
+                if ma["magical"]:
+                    dmg_type = f"{dmg_type} (magical)"
             mod = ability_mod(char, stat)
 
             named_bonus = named_bonuses.get(wpn_name, 0) or named_bonuses.get(base_name, 0)
@@ -815,10 +831,10 @@ class CharacterSheetBridge(QObject):
                 category, icon, equip_kind = "Weapons", "combat", "weapon"
                 detail = f"{wdata.get('damage', '')} {wdata.get('dmg_type', '')}".strip()
                 equipped = name in equipped_weapons
-                # a stack with one in hand says so ("1 of 3 equipped")
-                from dnd_app.core.weapons import equipped_note
-                note = equipped_note(self.char, name, e.get("qty", 1))
-                detail = f"{detail} · {note}" if note else detail
+                # "1 of 3 equipped", "dedicated weapon"
+                from dnd_app.core.weapons import inventory_notes
+                notes = inventory_notes(self.char, name, e.get("qty", 1))
+                detail = " · ".join([detail] + notes) if notes else detail
             elif adata and adata.get("type") == "shield":
                 category, icon, equip_kind = "Armor", "shield", "shield"
                 detail = f"+{adata.get('ac', 2)} AC"
@@ -850,12 +866,26 @@ class CharacterSheetBridge(QObject):
                 "cost": cost,
                 "equipKind": equip_kind,
                 "equipped": equipped,
+                # Dedicated Weapon (Monk, Tasha's optional feature)
+                "canDedicate": bool(wdata) and _can_dedicate(self.char, name),
+                "dedicated": bool(wdata) and _weapon_base(name) == _dedicated_weapon(self.char) != "",
                 # magic consumables (potions, scrolls) carry a rarity --
                 # their row is bordered in its colour, like magic item cards
                 "rarity": (e.get("rarity", "") or (_catalog_entry(name) or {}).get("rarity", ""))
                           if e.get("magic") or parse_spell_scroll(name) else "",
             })
         return out
+
+    @Slot(str)
+    def setDedicatedWeapon(self, name: str):
+        """Dedicated Weapon: this weapon counts as a monk weapon until you
+        pick another ("" = none)."""
+        if name:
+            self.char["dedicated_weapon"] = name
+        else:
+            self.char.pop("dedicated_weapon", None)
+        self.ctrl.refresh()
+        self.statsChanged.emit()
 
     _INVENTORY_GROUPS = (("Weapons", "combat"), ("Armor", "shield"),
                          ("Consumables", "potion"), ("Tools & Gear", "package"))
@@ -2141,6 +2171,36 @@ class CharacterSheetBridge(QObject):
     @Property(list, notify=statsChanged)
     def weaponProficiencies(self):
         return list(self.char.get("weapon_proficiencies", []))
+
+    # ── DM-granted proficiencies (core/dm_proficiencies.py) ─────────
+    # [{kind, heading, granted: [names]}] for the editor on the
+    # Proficiencies screen; rebuild adds them to the lists above.
+    @Property(list, notify=statsChanged)
+    def dmProficiencies(self):
+        from dnd_app.core import dm_proficiencies as dm
+        return [{"kind": kind, "heading": heading, "granted": dm.granted(self.char, kind)}
+                for kind, heading, _ in dm.KINDS]
+
+    @Slot(str, result=list)
+    def dmProficiencySuggestions(self, kind: str):
+        from dnd_app.core import dm_proficiencies as dm
+        return dm.suggestions(kind)
+
+    @Slot(str, str, result=bool)
+    def addDmProficiency(self, kind: str, name: str):
+        from dnd_app.core import dm_proficiencies as dm
+        added = dm.add(self.char, kind, name)
+        if added:
+            self.ctrl.refresh()
+            self.statsChanged.emit()
+        return added
+
+    @Slot(str, str)
+    def removeDmProficiency(self, kind: str, name: str):
+        from dnd_app.core import dm_proficiencies as dm
+        dm.remove(self.char, kind, name)
+        self.ctrl.refresh()
+        self.statsChanged.emit()
 
     # ── Spells ───────────────────────────────────────────────────────
     @Property(list, notify=statsChanged)
