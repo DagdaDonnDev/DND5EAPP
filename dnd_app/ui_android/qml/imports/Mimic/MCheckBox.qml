@@ -10,6 +10,9 @@ import QtQuick.Controls
 // explicit geometry here removes that dependency entirely.
 CheckBox {
     id: control
+    // the label's look (an attack option reads at body size)
+    property color textColor: Theme.text2
+    property int textSize: Theme.fsSmall
 
     indicator: Rectangle {
         x: control.leftPadding
@@ -33,8 +36,8 @@ CheckBox {
 
     contentItem: Label {
         text: control.text
-        color: Theme.text2
-        font.pixelSize: Theme.fsSmall
+        color: control.textColor
+        font.pixelSize: control.textSize
         leftPadding: control.indicator.width + 8
         verticalAlignment: Text.AlignVCenter
         // Wraps once the control's width is externally constrained

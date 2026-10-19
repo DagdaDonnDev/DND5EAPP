@@ -1144,20 +1144,25 @@ class CombatMixin:
         self._apply_turn_state()
 
     def _toggle_sneak(self):
-        self._sneak_used = not getattr(self, "_sneak_used", False)
+        # the once-a-turn tracker the attack dialog uses too (core/attacks.py)
+        turn = self.char.setdefault("_turn_uses", [])
+        if "Sneak Attack" in turn:
+            turn.remove("Sneak Attack")
+        else:
+            turn.append("Sneak Attack")
         self._apply_turn_state()
 
     def _new_turn(self):
         for k in self._turn_counts: self._turn_counts[k] = 0
-        self._sneak_used = False
         self._action_spell_is_cantrip = None
         self._bonus_action_spell_is_cantrip = None
         self.char["_action_surge_used_this_turn"] = False
-        # Reckless Attack lasts only the turn it was activated on
-        fx = self.char.get("active_effects", [])
-        if "Reckless Attack" in fx:
-            fx.remove("Reckless Attack")
-            self._refresh_combat_weapons()
+        # what lasted until now ends: Reckless Attack, Dodge, Agile Parry,
+        # Kensei's Shot... and once-per-turn uses come back (core/action_use.py)
+        from dnd_app.core.action_use import new_turn
+        if new_turn(self.char):
+            self._mark_dirty()
+            QTimer.singleShot(0, self.ctrl.refresh)
         # Surprise lasts until the end of your first turn -- a new turn
         # means it's over.
         if "Surprised" in self.char.get("conditions", []):
@@ -1237,7 +1242,7 @@ class CombatMixin:
                     break
         if rogue_lvl > 0 and not self.char.get("_wildshape_active") and has_qualifying_weapon:
             dice = (rogue_lvl + 1) // 2
-            used = getattr(self, "_sneak_used", False)
+            used = "Sneak Attack" in self.char.get("_turn_uses", [])
             self._sneak_chip.setVisible(True)
             self._sneak_chip.setText(f"Sneak {dice}d6  {'○ used' if used else '● ready'}")
             col = TEXT3 if used else PURP2
@@ -1293,6 +1298,7 @@ class CombatMixin:
         fx = self.char.get("active_effects", [])
         if name in fx:
             fx.remove(name)
+            (self.char.get("effect_details") or {}).pop(name, None)
             # Berserker's Frenzy: if Rage ends while frenzied, gain 1
             # level of exhaustion and Frenzy itself ends (it can't outlast
             # the rage it was part of).
@@ -1313,6 +1319,7 @@ class CombatMixin:
     def _refresh_effects_list(self):
         if not hasattr(self, "_fx_lay"): return
         from dnd_app.core.effects import EFFECT_TABLE
+        from dnd_app.core.riders import effect_note
         while self._fx_lay.count() > 1:
             it = self._fx_lay.takeAt(0)
             w = it.widget()
@@ -1335,7 +1342,9 @@ class CombatMixin:
             head = name + ("  ©" if info.get("conc") else "")
             tcol = QVBoxLayout(); tcol.setSpacing(1)
             tcol.addWidget(_lbl(head, GOLD, FS_BODY, bold=True, wrap=False))
-            note = info.get("note", "Custom effect — tracked, no automatic numbers.")
+            # a smite's dice at the level it was cast, or what's left of it on
+            # the target once it has landed (core/riders.py)
+            note = effect_note(self.char, name) or info.get("note", "Custom effect — tracked, no automatic numbers.")
             tcol.addWidget(_lbl(note, TEXT2, FS_TINY, wrap=True))
             rm = QPushButton("✕ End"); rm.setMinimumHeight(28); rm.setMinimumWidth(58)
             rm.setAccessibleName(f"End the {name} effect")
@@ -1543,235 +1552,98 @@ class CombatMixin:
             self._add_weapon_row(wpn_name)
             self._mark_dirty()
 
-    def _add_onhit_damage_badges(self, rl):
-        """Append a separate badge for each passive on-hit damage bonus
-        (Divine Strike, Genie's Wrath, Dreadful Strikes) to a weapon row's
-        layout. Deliberately separate from the base weapon damage label —
-        these are often a different damage type, which matters for
-        resistance/immunity, so combining them into one number would hide
-        that. Shared by every weapon-row-building method in this class."""
-        for bonus in get_onhit_damage_bonuses(self.char):
-            badge = _lbl(f"+{bonus['die']} {bonus['damage_type']}", TEAL2, FS_SMALL, wrap=False)
-            badge.setToolTip(f"{bonus['name']} (once per turn on a hit)")
-            rl.addWidget(badge)
+    def _attack_row_layout(self, row_f):
+        """An attack row's layout: one line (name, to-hit, damage, the Hit
+        button...) and room under it for the extra damage its hits carry
+        (_add_damage_riders). Returns the line."""
+        outer = QVBoxLayout(row_f); outer.setContentsMargins(10, 8, 10, 8); outer.setSpacing(4)
+        line = QHBoxLayout(); line.setSpacing(10)
+        outer.addLayout(line)
+        row_f._line, row_f._outer = line, outer
+        return line
+
+    def _add_damage_riders(self, row_f, weapon, riders=None):
+        """Under an attack row, the extra damage its hits carry -- spells,
+        class features, race traits, magic items (core/riders.py) -- each
+        with its damage type, as plain wrapped text (what to add is the
+        player's roll). Hover for what each one is."""
+        from dnd_app.core.riders import weapon_riders, rider_text, rider_tip
+        riders = weapon_riders(self.char, weapon) if riders is None else riders
+        text = rider_text(riders)
+        if not text:
+            return
+        lbl = _lbl(text, TEXT2, FS_SMALL, wrap=True)
+        lbl.setObjectName("weaponRiders")
+        lbl.setToolTip(rider_tip(riders))
+        row_f._outer.addWidget(lbl)
 
     def _add_weapon_row(self, wpn_name, is_offhand=False):
-        from dnd_app.core.magic_items import parse_magic_suffix, parse_material_prefix
-        base_wpn_name, magic_bonus = parse_magic_suffix(wpn_name)
-        # "Silvered X"/"Adamantine X" aren't recognized by the weapon
-        # lookup on their own (only the "+1"/"+2"/"+3" suffix is), so the
-        # material prefix is stripped here (after the magic suffix, so
-        # "Silvered Longsword +1" parses correctly) to find the real base weapon.
-        base_wpn_name, weapon_material = parse_material_prefix(base_wpn_name)
-        # Check for an active infusion targeting this weapon (Enhanced
-        # Weapon, Radiant Weapon, Repeating Shot, Returning Weapon) and
-        # apply its real "+N" attack/damage bonus, using the higher of
-        # the two if both are present.
-        from dnd_app.core.calculator import get_infusion_bonus, class_levels
-        art_lvl_wr = class_levels(self.char).get("Artificer", 0)
-        for inf in self.char.get("active_infusions", []):
-            if inf.get("target_item") == wpn_name:
-                inf_bonus = get_infusion_bonus(inf.get("infusion", ""), art_lvl_wr)
-                magic_bonus = max(magic_bonus, inf_bonus)
-        wpn = next((w for w in ALL_WEAPONS if w[0]==base_wpn_name), None)
-        is_named_magic_fallback = wpn is None
-        if not wpn:
-            # Named magic weapon (e.g. "Sun Blade", "Armblade") — render a generic
-            # magic-blade profile instead of silently dropping it. These items'
-            # own flavor text typically grants proficiency regardless of class
-            # (e.g. Armblade: "counts as a simple weapon you are proficient
-            # with"), so we treat named-fallback weapons as always-proficient.
-            nb = self.char.get("_named_weapon_bonuses", {}).get(wpn_name, 0)
-            wpn = (wpn_name, "Melee (magic)", "1d8", "radiant" if "sun" in wpn_name.lower() else "slashing",
-                   0, 0, ["Finesse"] if nb else [])
-        name,cat,dmg,dmg_type,_,_,props = wpn
-        props = list(props or [])
-        # Thrown Arms Master: simple/martial melee weapons without the
-        # Thrown property gain it; weapons that already have it get an
-        # extended range instead.
-        if "Thrown Arms Master" in self.char.get("feats", []) and "Melee" in cat:
-            has_thrown_already = any("Thrown" in str(p) for p in props)
-            is_two_handed_tam = "Two-Handed" in props
-            if not has_thrown_already:
-                props.append(f"Thrown ({'15/30' if is_two_handed_tam else '20/60'} ft, Thrown Arms Master)")
-            else:
-                for i, p in enumerate(props):
-                    if "Thrown" in str(p):
-                        import re as _re_tam
-                        m = _re_tam.search(r'\((\d+)/(\d+)', str(p))
-                        if m:
-                            near, far = int(m.group(1)), int(m.group(2))
-                            props[i] = _re_tam.sub(r'\(\d+/\d+', f'({near+20}/{far+40}', str(p))
-        from dnd_app.core.calculator import has_weapon_proficiency
-        pb_full = get_prof_bonus(self.char)
-        proficient = is_named_magic_fallback or has_weapon_proficiency(self.char, base_wpn_name, cat)
-        pb = pb_full if proficient else 0
-        is_finesse = "Finesse" in (props or [])
-        # Revenant Blade: grants Finesse to the Double-Bladed Scimitar specifically (it doesn't have Finesse by default).
-        if base_wpn_name == "Double-Bladed Scimitar" and "Revenant Blade" in self.char.get("feats", []):
-            is_finesse = True
-        is_ranged  = "Ranged" in cat
-        is_thrown  = any("Thrown" in str(p) for p in (props or []))
-        is_two_handed_hw = "Two-Handed" in (props or [])
-        # Hex Warrior (Warlock, The Hexblade, 1st level): use CHA instead
-        # of STR/DEX for a non-two-handed weapon's attack/damage rolls.
-        warlock_lvl_hw = class_levels(self.char).get("Warlock", 0)
-        is_hexblade = "hexblade" in subclasses(self.char).get("Warlock", "").lower()
-        # Battle Ready (Artificer, Battle Smith, 3rd level): use INT
-        # instead of STR/DEX for attack/damage rolls with a magic
-        # weapon. Checks every path this app tracks magic weapons
-        # through: a "+N" suffix, a named-fallback item (not in the
-        # mundane weapon list at all), presence in magic_items, or an
-        # infusion-marked equipment entry.
-        art_lvl_br = class_levels(self.char).get("Artificer", 0)
-        is_battlesmith = "battle smith" in subclasses(self.char).get("Artificer", "").lower()
-        is_magic_weapon = bool(magic_bonus) or is_named_magic_fallback
-        if not is_magic_weapon:
-            mi_names = {(i.get("name") if isinstance(i, dict) else i) for i in self.char.get("magic_items", [])}
-            if wpn_name in mi_names or base_wpn_name in mi_names:
-                is_magic_weapon = True
-            for eq in self.char.get("equipment", []):
-                if eq.get("name") in (wpn_name, base_wpn_name) and eq.get("magic"):
-                    is_magic_weapon = True
-                    break
-        if warlock_lvl_hw >= 1 and is_hexblade and not is_two_handed_hw:
-            stat = "CHA"
-        elif art_lvl_br >= 3 and is_battlesmith and is_magic_weapon:
-            stat = "INT"
-        else:
-            stat = "DEX" if (is_finesse and ability_mod(self.char,"DEX")>ability_mod(self.char,"STR")) or is_ranged else "STR"
-        # Martial Arts: a monk weapon uses DEX if it's higher, and the
-        # Martial Arts die if it beats the weapon's own; a kensei weapon
-        # counts as magical from 6th level (core/weapons.py)
-        from dnd_app.core.weapons import martial_arts
-        _ma = martial_arts(self.char, wpn_name)
-        if _ma:
-            if stat == "STR" and ability_mod(self.char, "DEX") > ability_mod(self.char, "STR"):
-                stat = "DEX"
-            if _ma["die"]:
-                dmg = _ma["die"]
-            if _ma["magical"]:
-                dmg_type = f"{dmg_type} (magical)"
-        mod = ability_mod(self.char, stat)
-
-        # Check if this weapon is a named magic item with an effect-based bonus
-        # (e.g. "Sun Blade" gives +2 independent of the "+N" suffix system)
-        named_bonuses = self.char.get("_named_weapon_bonuses", {})
-        named_bonus = named_bonuses.get(wpn_name, 0) or named_bonuses.get(base_wpn_name, 0)
-        total_bonus = magic_bonus + named_bonus
-
-        # Archery fighting style: +2 to ranged weapon attack rolls.
-        fighting_styles = self.char.get("fighting_styles", [])
-        has_archery = is_ranged and any("archery" in fs.lower() for fs in fighting_styles)
-        atk_style_bonus = 2 if has_archery else 0
-
-        # Sacred Weapon (Paladin, Oath of Devotion): Channel Divinity —
-        # while active, add CHA mod to attack rolls with the touched
-        # weapon.
-        sacred_weapon_bonus = 0
-        if "Sacred Weapon" in self.char.get("active_effects", []):
-            sacred_weapon_bonus = ability_mod(self.char, "CHA")
-
-        # Great Weapon Master / Sharpshooter: -5 to attack, +10 to
-        # damage, toggleable per weapon (the real rule is decided per
-        # attack, not a character-wide stance). GWM requires a heavy
-        # melee weapon; Sharpshooter requires a ranged weapon; both
-        # require proficiency.
-        is_heavy = "Heavy" in (props or [])
-        char_feats = self.char.get("feats", [])
-        can_power_attack = proficient and (
-            ("Great Weapon Master" in char_feats and not is_ranged and is_heavy) or
-            ("Sharpshooter" in char_feats and is_ranged))
-        power_attack_active = can_power_attack and wpn_name in self.char.get("power_attack_weapons", [])
-        power_attack_atk = -5 if power_attack_active else 0
-        power_attack_dmg = 10 if power_attack_active else 0
-
-        atk = sign(pb + mod + total_bonus + atk_style_bonus + sacred_weapon_bonus + power_attack_atk)
-        prof_note = "" if proficient else "  (not proficient — no prof. bonus)"
-        # Display the weapon under its full enchanted name (e.g. "Longsword +1")
+        """One weapon in hand. Its numbers come from core/attacks.py
+        weapon_attack -- the same as Android's Combat screen -- and this
+        lays them out: name, to-hit, damage and type, what's on now under
+        it (and the off-hand attack, holding two), then Hit."""
+        from dnd_app.core.attacks import weapon_attack
+        from dnd_app.core.riders import rider_text
+        from dnd_app.core.ammo import ammo_label, ammo_count, set_ammo
+        from dnd_app.core.calculator import get_condition_attack_status
+        w = weapon_attack(self.char, wpn_name)
         name = wpn_name
-
-        # ── Ammo this weapon fires (core/ammo.py, counted from the inventory) ─
-        from dnd_app.core.ammo import ammo_kind, ammo_label, ammo_count, spend_ammo, set_ammo
-        ammo_key = ammo_kind(base_wpn_name, is_ranged, is_thrown)
+        atk = sign(w["atk"])
 
         row_f = QFrame()
         row_f.setStyleSheet(f"QFrame{{background:{SURF2};border:1px solid {BORDER};border-radius:8px;}}")
-        rl = QHBoxLayout(row_f); rl.setContentsMargins(10,8,10,8); rl.setSpacing(10)
+        rl = self._attack_row_layout(row_f)
         rl.addWidget(_lbl(name, TEXT, FS_BODY, bold=True, wrap=False))
-        from dnd_app.core.calculator import get_condition_attack_status
         cond_status = get_condition_attack_status(self.char)
         atk_text = f"{atk} to hit"
         if cond_status["advantage"]:
             atk_text += "  (ADV)"
         elif cond_status["disadvantage"]:
             atk_text += "  (DISADV)"
-        atk_lbl = _lbl(atk_text, TEAL2 if proficient else AMBER, FS_BODY, wrap=False)
-        if not proficient:
+        atk_lbl = _lbl(atk_text, TEAL2 if w["proficient"] else AMBER, FS_BODY, wrap=False)
+        if not w["proficient"]:
             atk_lbl.setToolTip(
-                f"Not proficient with {name} — proficiency bonus (+{pb_full}) "
+                f"Not proficient with {name} — proficiency bonus (+{w['pb']}) "
                 f"is not added to this attack roll.")
         elif cond_status["sources"]:
-            reason = cond_status["note"] or f"Source: {', '.join(cond_status['sources'])}"
-            atk_lbl.setToolTip(reason)
+            atk_lbl.setToolTip(cond_status["note"] or f"Source: {', '.join(cond_status['sources'])}")
         else:
             atk_lbl.setToolTip("Right-click for a breakdown")
-        atk_lbl.contextMenuEvent = (lambda e, _stat=stat, _prof=proficient, _bonus=total_bonus, _atk=atk:
+        atk_lbl.contextMenuEvent = (lambda e, _w=w, _atk=atk:
             self._show_breakdown_popup(f"{name} — Attack Bonus",
-                get_weapon_attack_breakdown(self.char, _stat, _prof, _bonus), _atk, e.globalPos()))
+                get_weapon_attack_breakdown(self.char, _w["stat"], _w["proficient"], _w["magic_bonus"]),
+                _atk, e.globalPos()))
         rl.addWidget(atk_lbl)
-        if "Reckless Attack" in self.char.get("active_effects", []) and not is_ranged and stat == "STR":
+        if w["reckless"]:
             reckless_badge = _lbl("Reckless (adv)", GOLD2, FS_TINY, bold=True, wrap=False)
             reckless_badge.setToolTip("Reckless Attack is active: advantage on this attack, "
                                        "but attack rolls against you also have advantage until your next turn.")
             rl.addWidget(reckless_badge)
-        # Dueling fighting style: +2 damage when wielding a one-handed
-        # melee weapon (not Two-Handed) and no other weapon equipped.
-        is_two_handed = "Two-Handed" in (props or [])
-        only_weapon = len(self.char.get("equipped_weapons", [])) == 1
-        has_dueling = (not is_ranged and not is_two_handed and only_weapon and
-                       any("dueling" in fs.lower() for fs in fighting_styles))
-        dueling_bonus = 2 if has_dueling else 0
-
-        # Rage: melee weapon attacks using Strength get a damage bonus
-        # while raging, from get_rage_damage().
-        rage_active = "Rage" in self.char.get("active_effects", [])
-        rage_bonus = 0
-        if rage_active and not is_ranged and stat == "STR":
-            from dnd_app.core.calculator import get_rage_damage
-            rage_str = get_rage_damage(self.char)
-            if rage_str != "—":
-                rage_bonus = int(rage_str.replace("+", ""))
-
-        # Off-hand (second+ equipped weapon) damage: a positive ability
-        # modifier is only added if Two-Weapon Fighting is selected — the
-        # real rule is that you DON'T add it for the bonus-action off-hand
-        # attack unless you have this style, though a negative modifier
-        # still applies regardless (it's a penalty, not a bonus you can
-        # opt out of).
-        has_twf = any("two-weapon fighting" in fs.lower() for fs in fighting_styles)
-        offhand_mod = mod if (not is_offhand or mod < 0 or has_twf) else 0
-        dmg_total_mod = offhand_mod + total_bonus + dueling_bonus + rage_bonus + power_attack_dmg
-        dmg_display = f"{dmg}+{dmg_total_mod}" if dmg_total_mod >= 0 else f"{dmg}{dmg_total_mod}"
-        rl.addWidget(_lbl(f"{dmg_display} {dmg_type}", GOLD2, FS_BODY, wrap=False))
-        self._add_onhit_damage_badges(rl)
-        # Weapon-type-specific item bonuses (e.g. Bracers of Archery's +2
-        # damage on bow attacks), shown only on weapon rows matching the
-        # item's restriction rather than as a general character-wide badge.
-        for wb in self.char.get("_weapon_damage_bonuses", []):
-            wtype = wb.get("weapon_type", "").lower()
-            if wtype and wtype in name.lower():
-                wb_badge = _lbl(f"+{wb['value']} ({wb['source']})", TEAL2, FS_SMALL, wrap=False)
-                wb_badge.setToolTip(f"{wb['source']}: +{wb['value']} damage with {wtype} weapons")
-                rl.addWidget(wb_badge)
-        if total_bonus:
-            tip_src = wpn_name if named_bonus else f"+{total_bonus} enchantment"
-            magic_badge = _lbl(f"✦ +{total_bonus}", AMBE2, FS_TINY, bold=True, wrap=False)
-            magic_badge.setToolTip(f"Magical weapon: +{total_bonus} to attack and damage rolls\nSource: {tip_src}")
+        dmg_lbl = _lbl(f"{w['damage']} {w['damage_type']}", GOLD2, FS_BODY, wrap=False)
+        if w["flat_sources"]:
+            dmg_lbl.setToolTip("Includes " + ", ".join(w["flat_sources"]))
+        rl.addWidget(dmg_lbl)
+        # what Green-Flame Blade and Booming Blade swing (spells.py)
+        if not hasattr(self, "_weapon_row_stats"):
+            self._weapon_row_stats = {}
+        self._weapon_row_stats[wpn_name] = {"name": wpn_name, "atk": atk, "type": w["damage_type"],
+                                            "damage": w["damage"], "melee": w["melee"],
+                                            "riders": rider_text(w["riders"])}
+        self._add_damage_riders(row_f, wpn_name, w["riders"])
+        if w["offhand"]:
+            off = _lbl(f"Off-hand attack (a bonus action): {w['offhand']} {w['damage_type']}",
+                       TEXT2, FS_SMALL, wrap=True)
+            off.setToolTip("Holding two weapons, the bonus action attack with a light one adds "
+                           "no ability modifier to its damage, unless you have Two-Weapon Fighting.")
+            row_f._outer.addWidget(off)
+        if w["magic_bonus"]:
+            tip_src = wpn_name if w["named_bonus"] else f"+{w['magic_bonus']} enchantment"
+            magic_badge = _lbl(f"✦ +{w['magic_bonus']}", AMBE2, FS_TINY, bold=True, wrap=False)
+            magic_badge.setToolTip(f"Magical weapon: +{w['magic_bonus']} to attack and damage rolls\nSource: {tip_src}")
             rl.addWidget(magic_badge)
-        if weapon_material:
-            material_badge = _lbl(f"{weapon_material}", TEAL2, FS_TINY, bold=True, wrap=False)
-            if weapon_material == "Silvered":
+        if w["material"]:
+            material_badge = _lbl(f"{w['material']}", TEAL2, FS_TINY, bold=True, wrap=False)
+            if w["material"] == "Silvered":
                 material_badge.setToolTip(
                     "Silvered weapon: this weapon's damage counts as silvered for the purpose "
                     "of overcoming a creature's resistance or immunity to nonmagical attacks "
@@ -1781,12 +1653,12 @@ class CombatMixin:
                     "Adamantine weapon: whenever this weapon hits an object, the hit is a "
                     "critical hit.")
             rl.addWidget(material_badge)
-        if can_power_attack:
+        if w["can_power_attack"]:
             pa_cb = QCheckBox("Power Attack (-5/+10)")
-            pa_cb.setChecked(power_attack_active)
-            pa_cb.setStyleSheet(f"QCheckBox{{color:{CRIM2 if power_attack_active else TEXT3};font-size:{FS_TINY}px;font-weight:700;}}")
+            pa_cb.setChecked(w["power_attack"])
+            pa_cb.setStyleSheet(f"QCheckBox{{color:{CRIM2 if w['power_attack'] else TEXT3};font-size:{FS_TINY}px;font-weight:700;}}")
             pa_cb.setToolTip(
-                f"{'Great Weapon Master' if not is_ranged else 'Sharpshooter'}: "
+                f"{'Great Weapon Master' if not w['ranged'] else 'Sharpshooter'}: "
                 "trade -5 to hit for +10 damage on this weapon's attacks.")
             def _on_power_attack_toggle(state, _wname=wpn_name):
                 pa_list = self.char.setdefault("power_attack_weapons", [])
@@ -1798,10 +1670,10 @@ class CombatMixin:
                 self._refresh_combat()
             pa_cb.stateChanged.connect(_on_power_attack_toggle)
             rl.addWidget(pa_cb)
-        prop_str = ", ".join(str(p) for p in (props[:2] if props else []))
         # properties (Versatile, Heavy, range...) on hover rather than inline:
         # the row stays one line with its Hit button in view
-        if prop_str: row_f.setToolTip(f"Properties: {', '.join(str(p) for p in props)}")
+        if w["props"]:
+            row_f.setToolTip(f"Properties: {', '.join(str(p) for p in w['props'])}")
         rl.addStretch()
 
         # ── Ammo counter (ranged non-thrown weapons) ──────────────────────────
@@ -1809,6 +1681,7 @@ class CombatMixin:
         # click to change how many you have -- the Gear tab follows, and an
         # edit there (or another weapon's shot) updates every counter
         # (_refresh_ammo_counters).
+        ammo_key = w["ammo"]
         if ammo_key:
             ammo_lbl = QPushButton(f"{ammo_label(ammo_key)}: {ammo_count(self.char, ammo_key)}")
             _icons.set_button_icon(ammo_lbl, "ammo", 13)
@@ -1831,31 +1704,12 @@ class CombatMixin:
             self._ammo_counters.append((ammo_key, ammo_lbl))
             rl.addWidget(ammo_lbl)
 
-        # ── Attack roll button ────────────────────────────────────────────────
-        def _roll_hit(checked=False, _atk=atk, _name=name, _ak=ammo_key):
-            # A shot takes one piece of ammunition from the inventory
-            if _ak:
-                label = ammo_label(_ak)
-                if not spend_ammo(self.char, _ak):
-                    QMessageBox.warning(
-                        None, "No Ammo",
-                        f"Out of {label.lower()}!\nClick the {label} counter to add more.")
-                    return
-                self._refresh_gear_equipment()
-                self._mark_dirty()
-            d20, _adv_note = self._attack_d20()
-            bonus = int(_atk.replace("+","").replace("\u2212","-")) if _atk else 0
-            total = d20 + bonus
-            crit = (" \u2014 CRIT!" if d20==20
-                    else (" \u2014 Miss" if d20==1 else ""))
-            QMessageBox.information(
-                None, "Roll To Hit",
-                f"{_name}\n\n{_adv_note}d20={d20}  {_atk}\nTotal: {total}{crit}")
-
+        # ── Attack roll button: the roll, then what you can add ──────────────
         hit_btn = _icons.with_icon(_btn("Hit", TEAL, variant="danger", height=26, width=66,
                         radius=5, border_width=1, text_color=TEAL2, hover_text="white",
                         font_size=FS_TINY, padding="0px"), "dice", 12)
-        hit_btn.clicked.connect(_roll_hit)
+        hit_btn.setObjectName(f"hit_{wpn_name}")
+        hit_btn.clicked.connect(lambda checked=False, _w=w: self._attack(_w))
         rl.addWidget(hit_btn)
 
         # Attach the completed row to the combat tab (this line was lost in a
@@ -1863,65 +1717,44 @@ class CombatMixin:
         self._place_weapon_row(row_f)
         self._weapon_row_widgets.append(row_f)
 
-    def _add_martial_arts_row(self):
-        """Monks always have an unarmed-strike attack available via Martial
-        Arts, scaling in damage die by level and usable with STR or DEX
-        (whichever is better) — but it never showed up as an actual attack,
-        only as a passive 'die size' stat. Render it exactly like a real
-        weapon row so it can be rolled the same way equipped weapons are."""
-        from dnd_app.core.calculator import get_martial_arts_die, get_prof_bonus
-        die = get_martial_arts_die(self.char)
-        if die == "—":
+    def _attack(self, row):
+        """Hit on any attack row: a shot uses one piece of its ammunition,
+        then the roll, what to roll if it hits and what you can add, with
+        each one's cost (core/attacks.py) -- only what you can pay for right
+        now. "It hit" pays for the ticked ones (a slot, ki, a die, once a
+        turn...) and sets off what the hit carries (a smite); "Missed" only
+        takes the bonus action ones. The toast says what to roll."""
+        from dnd_app.core.attacks import roll_attack, attack_report, take_attack_options
+        from dnd_app.core.ammo import ammo_label, spend_ammo
+        from dnd_app.ui_desktop.dialogs.attack import AttackDialog
+        if row.get("ammo"):
+            label = ammo_label(row["ammo"])
+            if not spend_ammo(self.char, row["ammo"]):
+                QMessageBox.warning(None, "No Ammo",
+                                    f"Out of {label.lower()}!\nClick the {label} counter to add more.")
+                return
+            self._refresh_gear_equipment()
+            self._mark_dirty()
+        roll = roll_attack(self.char, row)
+        free = [b for b in ("Action", "Bonus Action", "Reaction")
+                if self._turn_counts.get(b, 0) < self._turn_limit(b)]
+        report = attack_report(self.char, row, roll, free)
+        dlg = AttackDialog(report, self)
+        if dlg.exec() != QDialog.Accepted:
             return
-        pb = get_prof_bonus(self.char)   # monks are always proficient unarmed
-        str_mod = ability_mod(self.char, "STR")
-        dex_mod = ability_mod(self.char, "DEX")
-        stat = "DEX" if dex_mod > str_mod else "STR"
-        mod = max(str_mod, dex_mod)
-        atk = sign(pb + mod)
-
-        row_f = QFrame()
-        row_f.setStyleSheet(
-            f"QFrame{{background:{qa(TEAL,0x14)};border:1px solid {qa(TEAL,0x55)};border-radius:8px;}}")
-        rl = QHBoxLayout(row_f); rl.setContentsMargins(10,8,10,8); rl.setSpacing(10)
-        rl.addWidget(_lbl("Unarmed Strike", TEXT, FS_BODY, bold=True, wrap=False))
-        ma_badge = _lbl("Martial Arts", TEAL2, FS_TINY, bold=True, wrap=False)
-        ma_badge.setToolTip(f"Monk unarmed strikes use {stat} and scale with level "
-                            f"— always proficient, never needs to be equipped.")
-        rl.addWidget(ma_badge)
-        ma_atk_lbl = _lbl(f"{atk} to hit", TEAL2, FS_BODY, wrap=False)
-        ma_atk_lbl.setToolTip("Right-click for a breakdown")
-        ma_atk_lbl.contextMenuEvent = (lambda e, _stat=stat, _atk=atk:
-            self._show_breakdown_popup("Unarmed Strike — Attack Bonus",
-                get_weapon_attack_breakdown(self.char, _stat, True, 0), _atk, e.globalPos()))
-        rl.addWidget(ma_atk_lbl)
-        dmg_display = f"{die}+{mod}" if mod >= 0 else f"{die}{mod}"
-        rl.addWidget(_lbl(f"{dmg_display} bludgeoning", GOLD2, FS_BODY, wrap=False))
-        self._add_onhit_damage_badges(rl)
-        # which ability it uses is on hover, not a label -- keeps the row
-        # narrow enough that its Hit button stays in view
-        row_f.setToolTip(f"Attack and damage use {stat}")
-        rl.addStretch()
-
-        def _roll_hit(checked=False, _atk=atk):
-            import random
-            d20, _adv_note = self._attack_d20()
-            bonus = int(_atk.replace("+","").replace("\u2212","-")) if _atk else 0
-            total = d20 + bonus
-            crit = (" \u2014 CRIT!" if d20==20
-                    else (" \u2014 Miss" if d20==1 else ""))
-            QMessageBox.information(
-                None, "Roll To Hit",
-                f"Unarmed Strike\n\n{_adv_note}d20={d20}  {_atk}\nTotal: {total}{crit}")
-
-        hit_btn = _icons.with_icon(_btn("Hit", TEAL, variant="danger", height=26, width=66,
-                        radius=5, border_width=1, text_color=TEAL2, hover_text="white",
-                        font_size=FS_TINY, padding="0px"), "dice", 12)
-        hit_btn.clicked.connect(_roll_hit)
-        rl.addWidget(hit_btn)
-
-        self._place_weapon_row(row_f)
-        self._weapon_row_widgets.append(row_f)
+        picked, hit = dlg.ticked(), bool(dlg.hit)
+        res = self._ask_through(row["name"], lambda a: take_attack_options(
+            self.char, row, picked, a, hit=hit, roll=report["roll"]))
+        if not res:
+            return
+        for slot in res.get("slots", []):
+            self._mark_turn_used(slot)
+        self._apply_turn_state()          # the Sneak Attack chip follows
+        if res.get("toast"):
+            self._toast(res["toast"])
+        if res.get("refresh"):
+            self._mark_dirty()
+            QTimer.singleShot(0, self.ctrl.refresh)
 
     def _refresh_hit_dice(self):
         """Rebuild hit dice spinboxes. Called only from _do_refresh_combat."""
@@ -1957,560 +1790,60 @@ class CombatMixin:
                     self._on_hd_changed(k, v, tot))
             self._hd_layout.addLayout(col)
 
-    def _add_hybrid_transformation_row(self):
-        """Order of the Lycan's Hybrid Transformation grants a real unarmed
-        attack (Predatory Strikes) that scales with level — shown as a real
-        weapon row, same treatment as Monk's Martial Arts, only while the
-        transformation is actually toggled active."""
-        from dnd_app.core.calculator import get_prof_bonus, class_levels
-        bh_lvl = class_levels(self.char).get("Blood Hunter", 0)
-        if bh_lvl == 0:
-            return
-        die = "1d8" if bh_lvl >= 11 else "1d6"
-        pb = get_prof_bonus(self.char)
-        str_mod = ability_mod(self.char, "STR")
-        dex_mod = ability_mod(self.char, "DEX")
-        stat = "DEX" if dex_mod > str_mod else "STR"
-        mod = max(str_mod, dex_mod)
-        # Stalker's Prowess (7th): Improved Predatory Strikes, +1/+2/+3 to
-        # attack rolls at 7th/11th/18th.
-        atk_bonus = 3 if bh_lvl >= 18 else 2 if bh_lvl >= 11 else 1 if bh_lvl >= 7 else 0
-        atk = sign(pb + mod + atk_bonus)
-        # Feral Might: +1/+2/+3 melee damage at 3rd/11th/18th.
-        dmg_bonus = 3 if bh_lvl >= 18 else 2 if bh_lvl >= 11 else 1
-        dmg_mod = mod + dmg_bonus
-
+    def _add_attack_row(self, a):
+        """One attack that isn't a weapon in your hand (core/attacks.py: a
+        Monk's unarmed strike, a bite, armor spikes, a beast's claws): its
+        name and what it is, to-hit, damage and type, the extra damage its
+        hits carry under it, and Hit. The row's tint says what kind it is;
+        the words stay plain."""
+        tone = {"monk": TEAL, "rage": CRIM2, "natural": TEAL2,
+                "armor": PURPLE, "beast": PURPLE}.get(a["tone"], TEAL2)
         row_f = QFrame()
         row_f.setStyleSheet(
-            f"QFrame{{background:{qa(CRIM2,0x14)};border:1px solid {qa(CRIM2,0x55)};border-radius:8px;}}")
-        rl = QHBoxLayout(row_f); rl.setContentsMargins(10,8,10,8); rl.setSpacing(10)
-        rl.addWidget(_lbl("Unarmed Strike", TEXT, FS_BODY, bold=True, wrap=False))
-        badge = _lbl("Hybrid Form", CRIM2, FS_TINY, bold=True, wrap=False)
-        badge.setToolTip(f"Predatory Strikes: uses {stat}, always proficient. "
-                         f"An active Crimson Rite can apply to this attack. "
-                         f"You can also make one extra unarmed strike as a "
-                         f"bonus action when you take the Attack action.")
-        rl.addWidget(badge)
-        atk_lbl = _lbl(f"{atk} to hit", CRIM2, FS_BODY, wrap=False)
-        atk_lbl.setToolTip("Right-click for a breakdown")
-        atk_lbl.contextMenuEvent = (lambda e, _stat=stat, _atk=atk:
-            self._show_breakdown_popup("Unarmed Strike (Hybrid Form) — Attack Bonus",
-                get_weapon_attack_breakdown(self.char, _stat, True, atk_bonus), _atk, e.globalPos()))
-        rl.addWidget(atk_lbl)
-        dmg_display = f"{die}+{dmg_mod}" if dmg_mod >= 0 else f"{die}{dmg_mod}"
-        rl.addWidget(_lbl(f"{dmg_display} bludgeoning or slashing", GOLD2, FS_BODY, wrap=False))
-        self._add_onhit_damage_badges(rl)
-        # which ability it uses is on hover, not a label -- keeps the row
-        # narrow enough that its Hit button stays in view
-        row_f.setToolTip(f"Attack and damage use {stat}")
+            f"QFrame{{background:{qa(tone,0x14)};border:1px solid {qa(tone,0x55)};border-radius:8px;}}")
+        rl = self._attack_row_layout(row_f)
+        rl.addWidget(_lbl(a["name"], TEXT, FS_BODY, bold=True, wrap=False))
+        if a["badge"]:
+            badge = _lbl(a["badge"], TEXT2, FS_TINY, bold=True, wrap=False)
+            badge.setToolTip(a["note"])
+            rl.addWidget(badge)
+        atk = sign(a["atk"]) if a["atk"] is not None else ""
+        if atk:
+            atk_lbl = _lbl(f"{atk} to hit", TEAL2, FS_BODY, wrap=False)
+            if a["stat"]:
+                atk_lbl.setToolTip("Right-click for a breakdown")
+                atk_lbl.contextMenuEvent = (lambda e, _a=a, _atk=atk:
+                    self._show_breakdown_popup(f"{_a['name']} — Attack Bonus",
+                        get_weapon_attack_breakdown(self.char, _a["stat"], True, _a["atk_extra"]),
+                        _atk, e.globalPos()))
+            rl.addWidget(atk_lbl)
+        if a["damage"]:
+            rl.addWidget(_lbl(f"{a['damage']} {a['damage_type']}", GOLD2, FS_BODY, wrap=False))
+        self._add_damage_riders(row_f, None, a["riders"])
+        # what it is and which ability it uses are on hover -- keeps the
+        # row narrow enough that its Hit button stays in view
+        row_f.setToolTip(a["note"] + (f"\nAttack and damage use {a['stat']}" if a["stat"] else ""))
         rl.addStretch()
-
-        def _roll_hit(checked=False, _atk=atk):
-            import random
-            d20, _adv_note = self._attack_d20()
-            bonus = int(_atk.replace("+","").replace("\u2212","-")) if _atk else 0
-            total = d20 + bonus
-            crit = (" \u2014 CRIT!" if d20==20
-                    else (" \u2014 Miss" if d20==1 else ""))
-            QMessageBox.information(
-                None, "Roll To Hit",
-                f"Unarmed Strike (Hybrid Form)\n\n{_adv_note}d20={d20}  {_atk}\nTotal: {total}{crit}")
-
-        hit_btn = _icons.with_icon(_btn("Hit", CRIM2, variant="danger", height=26, width=66,
-                        radius=5, border_width=1, hover_text="white",
-                        font_size=FS_TINY, padding="0px"), "dice", 12)
-        hit_btn.clicked.connect(_roll_hit)
-        rl.addWidget(hit_btn)
-
+        if atk:
+            hit_btn = _icons.with_icon(_btn("Hit", tone, variant="danger", height=26, width=66,
+                            radius=5, border_width=1, hover_text="white",
+                            font_size=FS_TINY, padding="0px"), "dice", 12)
+            hit_btn.setObjectName(f"hit_{a['name']}")
+            hit_btn.clicked.connect(lambda checked=False, _a=a: self._attack(_a))
+            rl.addWidget(hit_btn)
         self._place_weapon_row(row_f)
         self._weapon_row_widgets.append(row_f)
-
-    def _add_racial_natural_weapon_row(self):
-        """Racial natural weapon traits (Aarakocra Talons, Tabaxi Claws,
-        Lizardfolk Bite, Naga Bite+Constrict, etc.) as real weapon rows —
-        computed attack bonus, rollable damage, same treatment as Martial
-        Arts / Hybrid Transformation. Always shown when applicable; these
-        aren't rage- or toggle-gated, they're just part of the character.
-        Some races have more than one distinct natural attack, so this
-        renders one row per entry rather than assuming exactly one."""
-        from dnd_app.data.items import RACIAL_NATURAL_WEAPONS
-        species = self.char.get("species") or self.char.get("race", "")
-        weapons = list(RACIAL_NATURAL_WEAPONS.get(species, []))
-        if species == "Simic Hybrid" and "Grappling Appendages" in self.char.get("_choices", {}).get("simic_enhancement_5th", []):
-            weapons.append({"name": "Grappling Appendages", "die": "1d6", "damage_type": "bludgeoning", "stat": "STR",
-                             "note": "Immediately after hitting, try to grapple as a bonus action. Can't wield weapons/cast with these appendages."})
-        # Dragon Hide (XGE): retractable claws, usable as natural weapons.
-        if "Dragon Hide" in self.char.get("feats", []):
-            weapons.append({"name": "Dragon Hide Claws", "die": "1d4", "damage_type": "slashing", "stat": "STR",
-                             "note": "Retractable claws (no action to extend/retract); replaces an unarmed strike's bludgeoning damage with slashing."})
-        # Touch of Death (DM reward, Dark Gift): a level-scaling necrotic bonus on an unarmed strike.
-        if "Touch of Death" in self.char.get("dm_rewards", []):
-            from dnd_app.core.calculator import total_level as _tl_td
-            _td_lvl = _tl_td(self.char)
-            _td_dice = "4d10" if _td_lvl >= 17 else "3d10" if _td_lvl >= 11 else "2d10" if _td_lvl >= 5 else "1d10"
-            weapons.append({"name": "Death Touch", "die": _td_dice, "damage_type": "necrotic (flat, not STR-modified)", "stat": "STR", "no_mod": True,
-                             "note": f"Action: unarmed strike — on a hit, also deals {_td_dice} necrotic (in "
-                                     f"addition to the normal unarmed strike damage). Ignores resistance to "
-                                     f"necrotic damage."})
-        for info in weapons:
-            self._add_one_natural_weapon_row(info)
-
-    def _unarmed_strike_blocked(self) -> bool:
-        """Shared guard: Wild Shape and Hybrid Transformation (Blood
-        Hunter, Order of the Lycan) both replace your entire body, so no
-        ordinary Unarmed Strike variant applies while either is active."""
-        if self.char.get("_wildshape_active"):
-            return True
-        if "Hybrid Transformation" in self.char.get("active_effects", []):
-            return True
-        return False
-
-    def _is_dual_wielding(self) -> bool:
-        """True if 2+ distinct weapons are currently equipped (both hands
-        occupied by separate weapons) — per design, Unarmed Strike isn't
-        offered while dual-wielding, since neither hand is free to throw
-        a punch."""
-        equipped = set(self.char.get("equipped_weapons", []))
-        return len(equipped) >= 2
-
-    def _add_unarmed_fighting_row(self):
-        """Unarmed Fighting style: your unarmed strike becomes a real
-        attack option dealing 1d6+STR (1d8+STR with both hands
-        completely free — no weapon and no shield). Replaces the base
-        Unarmed Strike rather than adding to it."""
-        if self._unarmed_strike_blocked() or self._is_dual_wielding():
-            return
-        if not any("unarmed fighting" in fs.lower() for fs in self.char.get("fighting_styles", [])):
-            return
-        both_hands_free = (len(self.char.get("equipped_weapons", [])) == 0
-                            and not self.char.get("shield", False))
-        die = "1d8" if both_hands_free else "1d6"
-        self._add_one_natural_weapon_row({
-            "name": "Unarmed Strike", "die": die, "damage_type": "bludgeoning", "stat": "STR",
-            "note": "Unarmed Fighting fighting style. 1d8 requires both hands completely free "
-                    "(no weapon, no shield)."
-        })
-
-    def _add_tavern_brawler_row(self):
-        """Tavern Brawler: your unarmed strike deals 1d4 instead of the
-        normal flat damage. Replaces the base Unarmed Strike, same as
-        Unarmed Fighting — if a character somehow has both, Unarmed
-        Fighting wins, since its die is never worse (1d6/1d8 vs 1d4)."""
-        if self._unarmed_strike_blocked() or self._is_dual_wielding():
-            return
-        if "Tavern Brawler" not in self.char.get("feats", []):
-            return
-        if any("unarmed fighting" in fs.lower() for fs in self.char.get("fighting_styles", [])):
-            return  # Unarmed Fighting already covers this, and is strictly better
-        from dnd_app.core.calculator import get_martial_arts_die
-        if get_martial_arts_die(self.char) != "\u2014":
-            return  # Monk Martial Arts already covers this
-        self._add_one_natural_weapon_row({
-            "name": "Unarmed Strike", "die": "1d4", "damage_type": "bludgeoning", "stat": "STR",
-            "note": "Tavern Brawler feat. Hitting with this (or an improvised weapon) lets you "
-                    "bonus-action attempt to grapple the target."
-        })
-
-    def _add_generic_unarmed_strike_row(self):
-        """Every character always has a basic Unarmed Strike available —
-        per the 2024 rules: attack bonus STR mod + proficiency bonus, 1 +
-        STR mod bludgeoning damage on a hit. Only a fallback shown when
-        nothing else (Monk Martial Arts, Unarmed Fighting, Tavern
-        Brawler) already covers it, and is blocked under the same
-        conditions as those (Wild Shape/Hybrid Transformation,
-        dual-wielding two weapons)."""
-        if self._unarmed_strike_blocked() or self._is_dual_wielding():
-            return
-        from dnd_app.core.calculator import get_martial_arts_die
-        if get_martial_arts_die(self.char) != "\u2014":
-            return
-        if any("unarmed fighting" in fs.lower() for fs in self.char.get("fighting_styles", [])):
-            return
-        if "Tavern Brawler" in self.char.get("feats", []):
-            return
-        self._add_one_natural_weapon_row({
-            "name": "Unarmed Strike", "die": "1", "damage_type": "bludgeoning", "stat": "STR",
-            "note": "Basic Unarmed Strike (2024 rules): a punch, kick, headbutt, or similar blow. "
-                    "Instead of damage, you can Grapple or Shove with it instead — see the Actions tab."
-        })
 
     def _place_weapon_row(self, row_f):
         """Add a finished attack row to the Weapons list, with everything in
         it (name, to-hit, damage, the Hit button...) centred on one line --
         otherwise the taller buttons sit lower than the text beside them."""
-        lay = row_f.layout()
+        lay = getattr(row_f, "_line", None) or row_f.layout()
         for i in range(lay.count() if lay else 0):
             w = lay.itemAt(i).widget()
             if w is not None:
                 lay.setAlignment(w, Qt.AlignVCenter)
         self._weapon_rows.addWidget(row_f)
-
-    def _add_one_natural_weapon_row(self, info):
-        pb = get_prof_bonus(self.char)
-        stat = info["stat"]
-        mod = ability_mod(self.char, stat)
-        atk = sign(pb + mod)
-
-        row_f = QFrame()
-        row_f.setStyleSheet(
-            f"QFrame{{background:{qa(TEAL2,0x14)};border:1px solid {qa(TEAL2,0x55)};border-radius:8px;}}")
-        rl = QHBoxLayout(row_f); rl.setContentsMargins(10,8,10,8); rl.setSpacing(10)
-        rl.addWidget(_lbl(info["name"], TEXT, FS_BODY, bold=True, wrap=False))
-        badge = _lbl("Natural", TEAL2, FS_TINY, bold=True, wrap=False)   # "Natural weapon" on hover
-        badge.setToolTip("Natural weapon" + (f" -- {info['note']}" if info.get("note") else ""))
-        rl.addWidget(badge)
-        atk_lbl = _lbl(f"{atk} to hit", TEAL2, FS_BODY, wrap=False)
-        atk_lbl.setToolTip("Right-click for a breakdown")
-        atk_lbl.contextMenuEvent = (lambda e, _stat=stat, _atk=atk:
-            self._show_breakdown_popup(f"{info['name']} — Attack Bonus",
-                get_weapon_attack_breakdown(self.char, _stat, True, 0), _atk, e.globalPos()))
-        rl.addWidget(atk_lbl)
-        if info.get("no_mod"):
-            dmg_display = info['die']
-        else:
-            dmg_display = f"{info['die']}+{mod}" if mod >= 0 else f"{info['die']}{mod}"
-        rl.addWidget(_lbl(f"{dmg_display} {info['damage_type']}", GOLD2, FS_BODY, wrap=False))
-        self._add_onhit_damage_badges(rl)
-        # which ability it uses is on hover, not a label -- keeps the row
-        # narrow enough that its Hit button stays in view
-        row_f.setToolTip(f"Attack and damage use {stat}")
-        rl.addStretch()
-
-        def _roll_hit(checked=False, _atk=atk, _name=info["name"]):
-            import random
-            d20, _adv_note = self._attack_d20()
-            bonus = int(_atk.replace("+","").replace("\u2212","-")) if _atk else 0
-            total = d20 + bonus
-            crit = (" \u2014 CRIT!" if d20==20
-                    else (" \u2014 Miss" if d20==1 else ""))
-            QMessageBox.information(
-                None, "Roll To Hit",
-                f"{_name}\n\n{_adv_note}d20={d20}  {_atk}\nTotal: {total}{crit}")
-
-        hit_btn = _icons.with_icon(_btn("Hit", TEAL2, variant="danger", height=26, width=66,
-                        radius=5, border_width=1, hover_text="white",
-                        font_size=FS_TINY, padding="0px"), "dice", 12)
-        hit_btn.clicked.connect(_roll_hit)
-        rl.addWidget(hit_btn)
-
-        self._place_weapon_row(row_f)
-        self._weapon_row_widgets.append(row_f)
-
-    def _add_beast_form_row(self):
-        """Path of the Beast's Form of the Beast grants a real natural
-        weapon (Bite/Claws/Tail) while raging, with a computed attack bonus
-        and damage. Only shown while the character is actually raging AND
-        actually has Path of the Beast — checking only the Rage toggle and
-        the stored choice isn't enough, since choice data can persist
-        after a subclass swap and shouldn't grant the weapon on its own."""
-        if "Rage" not in self.char.get("active_effects", []):
-            return
-        from dnd_app.core.character import subclasses
-        barb_sub = subclasses(self.char).get("Barbarian", "")
-        if "beast" not in barb_sub.lower():
-            return
-        pick = self.char.get("_choices", {}).get("beast_form_3", [])
-        if not pick:
-            return
-        pick_text = pick[0]
-        animal = pick_text.split("\u2013")[0].split("-")[0].strip()
-        FORMS = {
-            "Bite": {"die": "1d8", "damage_type": "piercing",
-                     "note": "Once/turn when you hit a target below half HP, heal PB."},
-            "Claws": {"die": "1d6", "damage_type": "slashing",
-                      "note": "Once/turn, make one extra claw attack as part of the same Attack action."},
-            "Tail": {"die": "1d8", "damage_type": "piercing",
-                     "note": "Reach 10 ft. Reaction: roll a d8 and add it to your AC against one attack."},
-        }
-        info = FORMS.get(animal)
-        if not info:
-            return
-        pb = get_prof_bonus(self.char)
-        mod = ability_mod(self.char, "STR")
-        atk = sign(pb + mod)
-
-        row_f = QFrame()
-        row_f.setStyleSheet(
-            f"QFrame{{background:{qa(CRIM2,0x14)};border:1px solid {qa(CRIM2,0x55)};border-radius:8px;}}")
-        rl = QHBoxLayout(row_f); rl.setContentsMargins(10,8,10,8); rl.setSpacing(10)
-        rl.addWidget(_lbl(animal, TEXT, FS_BODY, bold=True, wrap=False))
-        badge = _lbl("Form of the Beast", CRIM2, FS_TINY, bold=True, wrap=False)
-        badge.setToolTip(info["note"])
-        rl.addWidget(badge)
-        atk_lbl = _lbl(f"{atk} to hit", CRIM2, FS_BODY, wrap=False)
-        atk_lbl.setToolTip("Right-click for a breakdown")
-        atk_lbl.contextMenuEvent = (lambda e, _atk=atk:
-            self._show_breakdown_popup(f"{animal} (Form of the Beast) — Attack Bonus",
-                get_weapon_attack_breakdown(self.char, "STR", True, 0), _atk, e.globalPos()))
-        rl.addWidget(atk_lbl)
-        dmg_display = f"{info['die']}+{mod}" if mod >= 0 else f"{info['die']}{mod}"
-        rl.addWidget(_lbl(f"{dmg_display} {info['damage_type']}", GOLD2, FS_BODY, wrap=False))
-        self._add_onhit_damage_badges(rl)
-        rl.addWidget(_lbl("(STR)", TEXT3, FS_SMALL, wrap=False))
-        rl.addStretch()
-
-        def _roll_hit(checked=False, _atk=atk, _name=animal):
-            import random
-            d20, _adv_note = self._attack_d20()
-            bonus = int(_atk.replace("+","").replace("\u2212","-")) if _atk else 0
-            total = d20 + bonus
-            crit = (" \u2014 CRIT!" if d20==20
-                    else (" \u2014 Miss" if d20==1 else ""))
-            QMessageBox.information(
-                None, "Roll To Hit",
-                f"{_name} (Form of the Beast)\n\n{_adv_note}d20={d20}  {_atk}\nTotal: {total}{crit}")
-
-        hit_btn = _icons.with_icon(_btn("Hit", CRIM2, variant="danger", height=26, width=66,
-                        radius=5, border_width=1, hover_text="white",
-                        font_size=FS_TINY, padding="0px"), "dice", 12)
-        hit_btn.clicked.connect(_roll_hit)
-        rl.addWidget(hit_btn)
-
-        self._place_weapon_row(row_f)
-        self._weapon_row_widgets.append(row_f)
-
-    def _add_battlerager_spikes_row(self):
-        """Path of the Battlerager's armor spikes — a bonus-action attack
-        while raging. Requires wearing spiked barbarian armor specifically,
-        which doesn't exist as a tracked item in this app's magic item
-        database, so this can't verify actual possession — shown whenever
-        raging + this subclass, with the requirement noted in the tooltip
-        rather than silently assumed."""
-        if "Rage" not in self.char.get("active_effects", []):
-            return
-        from dnd_app.core.character import subclasses
-        barb_sub = subclasses(self.char).get("Barbarian", "")
-        if "battlerager" not in barb_sub.lower():
-            return
-        pb = get_prof_bonus(self.char)
-        mod = ability_mod(self.char, "STR")
-        atk = sign(pb + mod)
-
-        row_f = QFrame()
-        row_f.setStyleSheet(
-            f"QFrame{{background:{qa(CRIM2,0x14)};border:1px solid {qa(CRIM2,0x55)};border-radius:8px;}}")
-        rl = QHBoxLayout(row_f); rl.setContentsMargins(10,8,10,8); rl.setSpacing(10)
-        rl.addWidget(_lbl("Armor Spikes", TEXT, FS_BODY, bold=True, wrap=False))
-        badge = _lbl("Battlerager Armor (Bonus Action)", CRIM2, FS_TINY, bold=True, wrap=False)
-        badge.setToolTip("Requires wearing spiked barbarian armor while raging. "
-                          "Also: when you grapple a creature with the Attack action "
-                          "and succeed, the spikes deal it 3 piercing damage.")
-        rl.addWidget(badge)
-        atk_lbl = _lbl(f"{atk} to hit", CRIM2, FS_BODY, wrap=False)
-        atk_lbl.setToolTip("Right-click for a breakdown")
-        atk_lbl.contextMenuEvent = (lambda e, _atk=atk:
-            self._show_breakdown_popup("Armor Spikes (Battlerager Armor) — Attack Bonus",
-                get_weapon_attack_breakdown(self.char, "STR", True, 0), _atk, e.globalPos()))
-        rl.addWidget(atk_lbl)
-        dmg_display = f"1d4+{mod}" if mod >= 0 else f"1d4{mod}"
-        rl.addWidget(_lbl(f"{dmg_display} piercing", GOLD2, FS_BODY, wrap=False))
-        self._add_onhit_damage_badges(rl)
-        rl.addWidget(_lbl("(STR)", TEXT3, FS_SMALL, wrap=False))
-        rl.addStretch()
-
-        def _roll_hit(checked=False, _atk=atk):
-            import random
-            d20, _adv_note = self._attack_d20()
-            bonus = int(_atk.replace("+","").replace("\u2212","-")) if _atk else 0
-            total = d20 + bonus
-            crit = (" \u2014 CRIT!" if d20==20
-                    else (" \u2014 Miss" if d20==1 else ""))
-            QMessageBox.information(
-                None, "Roll To Hit",
-                f"Armor Spikes (Battlerager Armor)\n\n{_adv_note}d20={d20}  {_atk}\nTotal: {total}{crit}")
-
-        hit_btn = _icons.with_icon(_btn("Hit", CRIM2, variant="danger", height=26, width=66,
-                        radius=5, border_width=1, hover_text="white",
-                        font_size=FS_TINY, padding="0px"), "dice", 12)
-        hit_btn.clicked.connect(_roll_hit)
-        rl.addWidget(hit_btn)
-
-        self._place_weapon_row(row_f)
-        self._weapon_row_widgets.append(row_f)
-
-    def _add_armorer_model_row(self):
-        """Artificer Armorer's Arcane Armor grants a built-in weapon
-        depending on which model was chosen at 3rd level — Guardian's
-        Thunder Gauntlets (1d8 thunder unarmed strike) or Infiltrator's
-        Lightning Launcher (ranged 1d6 lightning). Always available once
-        chosen, unlike Rage-gated natural weapons elsewhere."""
-        from dnd_app.core.character import subclasses
-        art_sub = subclasses(self.char).get("Artificer", "")
-        if "armorer" not in art_sub.lower():
-            return
-        pick = self.char.get("_choices", {}).get("armorer_model_3", [])
-        if not pick:
-            return
-        pick_text = pick[0].lower()
-        is_guardian = "guardian" in pick_text
-        is_infiltrator = "infiltrator" in pick_text
-        if not (is_guardian or is_infiltrator):
-            return
-
-        pb = get_prof_bonus(self.char)
-        # Both models use INT as the spellcasting-focus-driven attack
-        # stat for these weapons per their real text (artificer's casting
-        # ability), not STR/DEX.
-        mod = ability_mod(self.char, "INT")
-        atk = sign(pb + mod)
-        name = "Thunder Gauntlets" if is_guardian else "Lightning Launcher"
-        die = "1d8" if is_guardian else "1d6"
-        dmg_type = "thunder" if is_guardian else "lightning"
-        note = ("Target has disadvantage on attacks against creatures other than you until your next turn."
-                if is_guardian else
-                "Ranged 90/300 ft. Once per turn on a hit, deal an extra 1d6 lightning.")
-
-        row_f = QFrame()
-        row_f.setStyleSheet(
-            f"QFrame{{background:{qa(PURPLE,0x14)};border:1px solid {qa(PURPLE,0x55)};border-radius:8px;}}")
-        rl = QHBoxLayout(row_f); rl.setContentsMargins(10,8,10,8); rl.setSpacing(10)
-        rl.addWidget(_lbl(name, TEXT, FS_BODY, bold=True, wrap=False))
-        badge = _lbl("Armor Model", PURP2, FS_TINY, bold=True, wrap=False)
-        badge.setToolTip(note)
-        rl.addWidget(badge)
-        atk_lbl = _lbl(f"{atk} to hit", PURP2, FS_BODY, wrap=False)
-        atk_lbl.setToolTip("Right-click for a breakdown")
-        atk_lbl.contextMenuEvent = (lambda e, _atk=atk:
-            self._show_breakdown_popup(f"{name} (Armor Model) — Attack Bonus",
-                get_weapon_attack_breakdown(self.char, "INT", True, 0), _atk, e.globalPos()))
-        rl.addWidget(atk_lbl)
-        dmg_display = f"{die}+{mod}" if mod >= 0 else f"{die}{mod}"
-        rl.addWidget(_lbl(f"{dmg_display} {dmg_type}", GOLD2, FS_BODY, wrap=False))
-        self._add_onhit_damage_badges(rl)
-        rl.addWidget(_lbl("(INT)", TEXT3, FS_SMALL, wrap=False))
-        rl.addStretch()
-
-        def _roll_hit(checked=False, _atk=atk, _name=name):
-            import random
-            d20, _adv_note = self._attack_d20()
-            bonus = int(_atk.replace("+","").replace("\u2212","-")) if _atk else 0
-            total = d20 + bonus
-            crit = (" \u2014 CRIT!" if d20==20
-                    else (" \u2014 Miss" if d20==1 else ""))
-            QMessageBox.information(
-                None, "Roll To Hit",
-                f"{_name} (Armor Model)\n\n{_adv_note}d20={d20}  {_atk}\nTotal: {total}{crit}")
-
-        hit_btn = _icons.with_icon(_btn("Hit", PURPLE, variant="danger", height=26, width=66,
-                        radius=5, border_width=1, text_color=PURP2, hover_text="white",
-                        font_size=FS_TINY, padding="0px"), "dice", 12)
-        hit_btn.clicked.connect(_roll_hit)
-        rl.addWidget(hit_btn)
-
-        self._place_weapon_row(row_f)
-        self._weapon_row_widgets.append(row_f)
-
-    def _add_longtooth_shifter_row(self):
-        """Longtooth Shifter's fangs — a real natural weapon only while
-        Shifting (a bonus action, temporary transformation), matching the
-        real trait text exactly."""
-        if "Shifting" not in self.char.get("active_effects", []):
-            return
-        species = self.char.get("species") or self.char.get("race", "")
-        subrace = self.char.get("subrace", "") or ""
-        # The fangs themselves are mechanically identical between both
-        # versions (same 1d6 STR piercing), matched explicitly rather
-        # than via a blanket normalization, since other Shifter
-        # mechanics (Shifting's own temp-HP formula) do genuinely
-        # differ between versions and must never be conflated the same way.
-        if species.strip().lower() not in ("shifter", "shifter (mpmm)") or "longtooth" not in subrace.lower():
-            return
-        pb = get_prof_bonus(self.char)
-        mod = ability_mod(self.char, "STR")
-        atk = sign(pb + mod)
-
-        row_f = QFrame()
-        row_f.setStyleSheet(
-            f"QFrame{{background:{qa(CRIM2,0x14)};border:1px solid {qa(CRIM2,0x55)};border-radius:8px;}}")
-        rl = QHBoxLayout(row_f); rl.setContentsMargins(10,8,10,8); rl.setSpacing(10)
-        rl.addWidget(_lbl("Fangs", TEXT, FS_BODY, bold=True, wrap=False))
-        badge = _lbl("Longtooth Shifter", CRIM2, FS_TINY, bold=True, wrap=False)
-        badge.setToolTip("Bonus action attack while Shifting.")
-        rl.addWidget(badge)
-        atk_lbl = _lbl(f"{atk} to hit", CRIM2, FS_BODY, wrap=False)
-        atk_lbl.setToolTip("Right-click for a breakdown")
-        atk_lbl.contextMenuEvent = (lambda e, _atk=atk:
-            self._show_breakdown_popup("Fangs (Longtooth Shifter) — Attack Bonus",
-                get_weapon_attack_breakdown(self.char, "STR", True, 0), _atk, e.globalPos()))
-        rl.addWidget(atk_lbl)
-        dmg_display = f"1d6+{mod}" if mod >= 0 else f"1d6{mod}"
-        rl.addWidget(_lbl(f"{dmg_display} piercing", GOLD2, FS_BODY, wrap=False))
-        self._add_onhit_damage_badges(rl)
-        rl.addWidget(_lbl("(STR)", TEXT3, FS_SMALL, wrap=False))
-        rl.addStretch()
-
-        def _roll_hit(checked=False, _atk=atk):
-            import random
-            d20, _adv_note = self._attack_d20()
-            bonus = int(_atk.replace("+","").replace("\u2212","-")) if _atk else 0
-            total = d20 + bonus
-            crit = (" \u2014 CRIT!" if d20==20
-                    else (" \u2014 Miss" if d20==1 else ""))
-            QMessageBox.information(
-                None, "Roll To Hit",
-                f"Fangs (Longtooth Shifter)\n\n{_adv_note}d20={d20}  {_atk}\nTotal: {total}{crit}")
-
-        hit_btn = _icons.with_icon(_btn("Hit", CRIM2, variant="danger", height=26, width=66,
-                        radius=5, border_width=1, hover_text="white",
-                        font_size=FS_TINY, padding="0px"), "dice", 12)
-        hit_btn.clicked.connect(_roll_hit)
-        rl.addWidget(hit_btn)
-
-        self._place_weapon_row(row_f)
-        self._weapon_row_widgets.append(row_f)
-
-    def _add_vampire_bite_row(self):
-        """Vampire's Bloodthirst — always available, not conditional on
-        any toggle (unlike Longtooth Shifter's fangs)."""
-        species = self.char.get("species") or self.char.get("race", "")
-        if species.strip().lower() != "vampire":
-            return
-        pb = get_prof_bonus(self.char)
-        mod = ability_mod(self.char, "STR")
-        atk = sign(pb + mod)
-
-        row_f = QFrame()
-        row_f.setStyleSheet(
-            f"QFrame{{background:{qa(CRIM2,0x14)};border:1px solid {qa(CRIM2,0x55)};border-radius:8px;}}")
-        rl = QHBoxLayout(row_f); rl.setContentsMargins(10,8,10,8); rl.setSpacing(10)
-        rl.addWidget(_lbl("Bloodthirst", TEXT, FS_BODY, bold=True, wrap=False))
-        badge = _lbl("Vampire", CRIM2, FS_TINY, bold=True, wrap=False)
-        badge.setToolTip("Only against a willing, grappled, incapacitated, or restrained creature. "
-                          "Reduces the target's HP max by the necrotic damage dealt (until it long "
-                          "rests) and you regain that much HP.")
-        rl.addWidget(badge)
-        atk_lbl = _lbl(f"{atk} to hit", CRIM2, FS_BODY, wrap=False)
-        atk_lbl.setToolTip("Right-click for a breakdown")
-        atk_lbl.contextMenuEvent = (lambda e, _atk=atk:
-            self._show_breakdown_popup("Bloodthirst (Vampire) — Attack Bonus",
-                get_weapon_attack_breakdown(self.char, "STR", True, 0), _atk, e.globalPos()))
-        rl.addWidget(atk_lbl)
-        rl.addWidget(_lbl("1 piercing", GOLD2, FS_BODY, wrap=False))
-        necro_badge = _lbl("+1d6 necrotic", TEAL2, FS_SMALL, wrap=False)
-        necro_badge.setToolTip("Bloodthirst (restricted target; drains HP max, heals you)")
-        rl.addWidget(necro_badge)
-        rl.addWidget(_lbl("(STR)", TEXT3, FS_SMALL, wrap=False))
-        rl.addStretch()
-
-        def _roll_hit(checked=False, _atk=atk):
-            import random
-            d20, _adv_note = self._attack_d20()
-            bonus = int(_atk.replace("+","").replace("\u2212","-")) if _atk else 0
-            total = d20 + bonus
-            crit = (" \u2014 CRIT!" if d20==20
-                    else (" \u2014 Miss" if d20==1 else ""))
-            QMessageBox.information(
-                None, "Roll To Hit",
-                f"Bloodthirst (Vampire)\n\n{_adv_note}d20={d20}  {_atk}\nTotal: {total}{crit}")
-
-        hit_btn = _icons.with_icon(_btn("Hit", CRIM2, variant="danger", height=26, width=66,
-                        radius=5, border_width=1, hover_text="white",
-                        font_size=FS_TINY, padding="0px"), "dice", 12)
-        hit_btn.clicked.connect(_roll_hit)
-        rl.addWidget(hit_btn)
-
-        self._place_weapon_row(row_f)
-        self._weapon_row_widgets.append(row_f)
 
     def _refresh_combat_weapons(self):
         """Rebuild the weapon rows in the combat tab from char[equipped_weapons]."""
@@ -2522,21 +1855,13 @@ class CombatMixin:
                 item.widget().deleteLater()
         self._weapon_row_widgets.clear()
         self._ammo_counters.clear()
-        from dnd_app.core.calculator import class_levels
-        if class_levels(self.char).get("Monk", 0) > 0:
-            self._add_martial_arts_row()
-        if "Hybrid Transformation" in self.char.get("active_effects", []):
-            self._add_hybrid_transformation_row()
-        self._add_racial_natural_weapon_row()
-        self._add_unarmed_fighting_row()
-        self._add_tavern_brawler_row()
-        self._add_generic_unarmed_strike_row()
-        self._add_beast_form_row()
-        self._add_battlerager_spikes_row()
-        self._add_armorer_model_row()
-        self._add_longtooth_shifter_row()
-        self._add_vampire_bite_row()
-        self._add_wildshape_beast_attack_rows()
+        self._weapon_row_stats = {}
+        # attacks that aren't a weapon in hand -- Martial Arts, natural
+        # weapons, the unarmed strike, Wild Shape... (core/attacks.py, the
+        # same rows Android's Combat screen shows)
+        from dnd_app.core.attacks import other_attacks
+        for a in other_attacks(self.char):
+            self._add_attack_row(a)
         for idx, wpn in enumerate(self.char.get("equipped_weapons",[])):
             self._add_weapon_row(wpn, is_offhand=(idx > 0))
 
@@ -2549,79 +1874,6 @@ class CombatMixin:
                 btn.setText(f"{ammo_label(kind)}: {ammo_count(self.char, kind)}")
             except RuntimeError:   # its row was rebuilt meanwhile
                 pass
-
-    def _add_wildshape_beast_attack_rows(self):
-        """While Wild Shaped, the beast's own actions (Bite, Claws, etc.)
-        become real, rollable weapon rows instead of just reference text —
-        matching the real rule that your available actions are the
-        beast's while transformed. Uses the beast's own pre-computed
-        attack bonus and damage from its stat block text rather than
-        recomputing from ability scores, since 'Multiattack' and
-        condition-on-hit riders (like the wolf's prone-on-hit) don't
-        reduce to a single die+modifier the way a simple weapon does."""
-        active = self.char.get("_wildshape_active")
-        if not active:
-            return
-        from dnd_app.data.statblocks import WILDSHAPE_BEASTS
-        beast = WILDSHAPE_BEASTS.get(active)
-        if not beast:
-            return
-        import re
-        for name, desc in beast.get("actions", []):
-            if name.lower() == "multiattack":
-                continue  # descriptive only ("makes two attacks..."), not itself a rollable attack
-            m = re.search(r"([+\u2212-]\d+) to hit", desc)
-            atk = m.group(1).replace("\u2212", "-") if m else None
-            dmg_m = re.search(r"Hit: ([\dd+\u2212-]+) (\w+) damage", desc)
-            # Traits like Pounce/Trampling Charge/Dive Attack are bonus-
-            # action follow-ups keyed to a specific attack (e.g. Pounce
-            # triggers off a claw hit) but live as separate trait entries
-            # in the stat block, not part of the action's own text — so
-            # without this they'd only be visible by opening the full
-            # reference card in the Companions tab.
-            linked_trait = next((tname for tname, tdesc in beast.get("traits", [])
-                                  if name.lower() in tdesc.lower()
-                                  and any(k in tname.lower() for k in
-                                          ("pounce", "charge", "dive", "trampl"))), None)
-
-            row_f = QFrame()
-            row_f.setStyleSheet(
-                f"QFrame{{background:{qa(PURPLE,0x14)};border:1px solid {qa(PURPLE,0x55)};border-radius:8px;}}")
-            rl = QHBoxLayout(row_f); rl.setContentsMargins(10,8,10,8); rl.setSpacing(10)
-            rl.addWidget(_lbl(name, TEXT, FS_BODY, bold=True, wrap=False))
-            badge = _lbl(active, PURP2, FS_TINY, bold=True, wrap=False)
-            badge.setToolTip(desc)
-            rl.addWidget(badge)
-            if linked_trait:
-                trait_desc = next(td for tn, td in beast["traits"] if tn == linked_trait)
-                trait_badge = _lbl(f"{linked_trait}", GOLD2, FS_TINY, bold=True, wrap=False)
-                trait_badge.setToolTip(trait_desc)
-                rl.addWidget(trait_badge)
-            if atk:
-                rl.addWidget(_lbl(f"{atk} to hit", PURP2, FS_BODY, wrap=False))
-            if dmg_m:
-                rl.addWidget(_lbl(f"{dmg_m.group(1)} {dmg_m.group(2)}", GOLD2, FS_BODY, wrap=False))
-            rl.addStretch()
-
-            if atk:
-                def _roll_hit(checked=False, _atk=atk, _name=name):
-                    import random
-                    d20, _adv_note = self._attack_d20()
-                    bonus = int(_atk)
-                    total = d20 + bonus
-                    crit = (" \u2014 CRIT!" if d20==20
-                            else (" \u2014 Miss" if d20==1 else ""))
-                    QMessageBox.information(
-                        None, "Roll To Hit",
-                        f"{_name}\n\n{_adv_note}d20={d20}  {'+' if bonus>=0 else ''}{bonus}\nTotal: {total}{crit}")
-                hit_btn = _icons.with_icon(_btn("Hit", PURPLE, variant="danger", height=26, width=66,
-                                radius=5, border_width=1, text_color=PURP2, hover_text="white",
-                                font_size=FS_TINY, padding="0px"), "dice", 12)
-                hit_btn.clicked.connect(_roll_hit)
-                rl.addWidget(hit_btn)
-
-            self._place_weapon_row(row_f)
-            self._weapon_row_widgets.append(row_f)
 
         # ══ TAB: CHOICES (level-up panel) ═════════════════════════════════════════
     def _refresh_combat(self):

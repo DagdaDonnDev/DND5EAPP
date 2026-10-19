@@ -409,6 +409,92 @@ ApplicationWindow {
         contentSource: Qt.resolvedUrl("CreditsScreen.qml")
     }
 
+    // ── Effects still on from last time ─────────────────────────────
+    // A saved character opened again with effects a short rest would
+    // end (Rage, Bladesong, a potion's hour...): have they ended? The
+    // ticked ones end (core/action_use.py leftover_effects). Every way
+    // of opening a save ends in characterLoaded, and the question comes
+    // once per open.
+    function askLeftoverEffects() {
+        if (!sheetBridge)
+            return
+        var left = sheetBridge.takeLeftoverEffects()
+        if (left.length > 0) {
+            leftoverDialog.effects = left
+            leftoverDialog.open()
+        }
+    }
+    Connections {
+        target: saveLoadBridge
+        function onCharacterLoaded() { Qt.callLater(window.askLeftoverEffects) }
+    }
+    Dialog {
+        id: leftoverDialog
+        objectName: "leftoverDialog"
+        property var effects: []
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(parent ? parent.width - 32 : 360, 360)
+        padding: 16
+        background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        contentItem: ColumnLayout {
+            spacing: 10
+            Label {
+                text: "Effects still on"
+                color: Theme.gold2
+                font.pixelSize: Theme.fsHead
+                font.bold: true
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            Label {
+                text: "These were on when this character was last saved. Have they ended? Untick any that are still going."
+                color: Theme.text
+                font.pixelSize: Theme.fsBody
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            Repeater {
+                id: leftoverRepeater
+                model: leftoverDialog.effects
+                delegate: MCheckBox {
+                    objectName: "leftover_" + modelData
+                    text: modelData
+                    checked: true
+                    Layout.fillWidth: true
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                MButton {
+                    Layout.fillWidth: true
+                    primary: false
+                    text: "Keep all"
+                    onClicked: leftoverDialog.close()
+                }
+                MButton {
+                    id: leftoverEndButton
+                    objectName: "leftoverEnd"
+                    Layout.fillWidth: true
+                    text: "End ticked"
+                    onClicked: {
+                        var names = []
+                        for (var i = 0; i < leftoverRepeater.count; i++) {
+                            var box = leftoverRepeater.itemAt(i)
+                            if (box && box.checked)
+                                names.push(box.text)
+                        }
+                        sheetBridge.endEffects(names)
+                        leftoverDialog.close()
+                    }
+                }
+            }
+        }
+    }
+
     // The one-time note the first time either immersive effect shows
     MFullPageDialog {
         id: immersivePrompt
@@ -629,7 +715,338 @@ ApplicationWindow {
     function showToast(message) {
         appToastLabel.text = message
         appToast.visible = true
+        // long enough to read: longer messages stay up longer
+        appToastTimer.interval = Math.min(9000, Math.max(3200, 55 * message.length))
         appToastTimer.restart()
+    }
+
+    // A shared rule needs an answer first -- how many ki, which slot, who a
+    // spell is on, which weapon -- from whichever screen it came: the pick
+    // goes back to the bridge, which carries on (Cancel leaves it undone)
+    MOptionsDialog {
+        id: actionQuestionDialog
+        objectName: "actionQuestionDialog"
+        onPicked: (key) => window.sheetBridge.answerActionQuestion(key)
+    }
+    // After an attack roll (core/attacks.py attack_report, the same as
+    // desktop's dialog), top to bottom:
+    //   the roll: a card with the total, big; a bar down its left side says
+    //   what it was (gold a critical, red a natural 1)
+    //   ON A HIT: the damage and what's on now, each with its type and where
+    //   it's from; a next-hit effect it used up can be marked here
+    //   YOU CAN ADD / ALSO THIS TURN: choices with their costs, only what you
+    //   can pay for now -- tap a row to pick it (its border turns gold). One
+    //   pick per group (a Divine Smite slot); undead or fiend needs a smite.
+    // Add pays for the picks through the bridge, which asks if there's more to choose.
+    Dialog {
+        id: attackDialog
+        objectName: "attackDialog"
+        property string heading: ""
+        property var report: ({})
+        property var options: []
+        property var ticked: ({})
+        readonly property var roll: report.roll || ({})
+        function optionByKey(k) {
+            for (var i = 0; i < options.length; i++) if (options[i].key === k) return options[i]
+            return null
+        }
+        function groupPicked(g) {
+            for (var k in ticked) {
+                var o = optionByKey(k)
+                if (ticked[k] && o && o.group === g) return true
+            }
+            return false
+        }
+        function isLive(o) { return !o.needs || groupPicked(o.needs) }
+        function isOn(o) { return ticked[o.key] === true && isLive(o) }
+        function toggle(o) {
+            var t = Object.assign({}, ticked)
+            var now = !t[o.key]
+            if (now && o.group)
+                for (var i = 0; i < options.length; i++)
+                    if (options[i].group === o.group) t[options[i].key] = false
+            t[o.key] = now
+            ticked = t
+        }
+        function pickedKeys() {
+            var out = []
+            for (var i = 0; i < options.length; i++)
+                if (isOn(options[i])) out.push(options[i].key)
+            return out
+        }
+        function section(name) { return options.filter(function(o) { return o.section === name }) }
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(parent ? parent.width - 24 : 360, 400)
+        height: Math.min(attackCol.implicitHeight + 32, (parent ? parent.height : 800) - 72)
+        padding: 16
+        background: Rectangle { color: Theme.bg; radius: 12; border.color: Theme.border }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        contentItem: Flickable {
+            clip: true
+            contentHeight: attackCol.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            ColumnLayout {
+                id: attackCol
+                width: parent.width
+                spacing: 10
+                Label {
+                    text: attackDialog.heading
+                    color: Theme.gold2
+                    font.pixelSize: Theme.fsHead
+                    font.bold: true
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+                // the plain text, for anything reading the dialog
+                Label { objectName: "attackMessage"; visible: false; text: attackDialog.report.message || "" }
+
+                // the roll: the total, how it was made, what it hits
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: rollRow.implicitHeight + 22
+                    radius: 8
+                    color: Theme.surf
+                    border.color: Theme.border
+                    Rectangle {
+                        width: 4; radius: 2
+                        anchors { left: parent.left; top: parent.top; bottom: parent.bottom; margins: 1 }
+                        color: attackDialog.roll.crit ? Theme.gold : (attackDialog.roll.nat1 ? Theme.crimson2 : Theme.teal2)
+                    }
+                    RowLayout {
+                        id: rollRow
+                        anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter
+                                  leftMargin: 16; rightMargin: 12 }
+                        spacing: 14
+                        ColumnLayout {
+                            spacing: 0
+                            Label {
+                                objectName: "attackTotal"
+                                text: attackDialog.roll.total !== undefined ? String(attackDialog.roll.total) : ""
+                                color: Theme.text
+                                font.pixelSize: Theme.fsTitle + 8
+                                font.bold: true
+                                Layout.alignment: Qt.AlignHCenter
+                            }
+                            Label { text: "to hit"; color: Theme.text2; font.pixelSize: Theme.fsSmall
+                                    Layout.alignment: Qt.AlignHCenter }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 3
+                            Label {
+                                text: attackDialog.roll.line || ""
+                                color: Theme.text
+                                font.pixelSize: Theme.fsBody
+                                font.bold: true
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                            Label {
+                                visible: (attackDialog.roll.note || "") !== ""
+                                text: attackDialog.roll.note || ""
+                                color: Theme.text2
+                                font.pixelSize: Theme.fsSmall
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                            Label {
+                                objectName: "attackVerdict"
+                                text: attackDialog.roll.verdict || ""
+                                color: Theme.text
+                                font.pixelSize: Theme.fsBody
+                                font.bold: attackDialog.roll.crit === true || attackDialog.roll.nat1 === true
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                        }
+                    }
+                }
+
+                // what to roll if it hits: the dice and type on the left,
+                // where it's from on the right, what else it does under it
+                Label {
+                    visible: (attackDialog.report.hit || []).length > 0
+                    text: attackDialog.report.hit_title || ""
+                    color: Theme.text2
+                    font.pixelSize: Theme.fsSmall
+                    font.bold: true
+                    font.letterSpacing: 1
+                }
+                Rectangle {
+                    visible: (attackDialog.report.hit || []).length > 0
+                    Layout.fillWidth: true
+                    implicitHeight: hitCol.implicitHeight + 20
+                    radius: 8
+                    color: Theme.surf
+                    border.color: Theme.border
+                    ColumnLayout {
+                        id: hitCol
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
+                        spacing: 8
+                        Repeater {
+                            model: attackDialog.report.hit || []
+                            delegate: ColumnLayout {
+                                objectName: "attackHitLine_" + modelData.source
+                                Layout.fillWidth: true
+                                spacing: 2
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 10
+                                    Label {
+                                        text: modelData.dice === "" ? modelData.source
+                                              : (index === 0 ? "" : (modelData.dice.charAt(0) === "-" ? "− " : "+ "))
+                                                + modelData.dice.replace(/^-/, "") + " " + modelData.type
+                                        color: Theme.text
+                                        font.pixelSize: Theme.fsBody
+                                        font.bold: true
+                                        wrapMode: Text.WordWrap
+                                        Layout.fillWidth: true
+                                    }
+                                    Label {
+                                        visible: modelData.dice !== ""
+                                        text: modelData.source
+                                        color: Theme.text2
+                                        font.pixelSize: Theme.fsSmall
+                                        horizontalAlignment: Text.AlignRight
+                                        wrapMode: Text.WordWrap
+                                        Layout.maximumWidth: hitCol.width * 0.45
+                                    }
+                                }
+                                Label {
+                                    visible: (modelData.note || "") !== ""
+                                    text: modelData.note || ""
+                                    color: Theme.text2
+                                    font.pixelSize: Theme.fsSmall
+                                    wrapMode: Text.WordWrap
+                                    Layout.fillWidth: true
+                                }
+                            }
+                        }
+                        Label {
+                            visible: (attackDialog.report.attacks || "") !== ""
+                            text: attackDialog.report.attacks || ""
+                            color: Theme.text2
+                            font.pixelSize: Theme.fsSmall
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+                    }
+                }
+
+                // ADD TO THIS HIT, then WITH YOUR BONUS ACTION
+                Repeater {
+                    model: attackDialog.report.sections || []
+                    delegate: ColumnLayout {
+                        property var rows: attackDialog.section(modelData.name)
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Label {
+                            text: modelData.title
+                            color: Theme.text2
+                            font.pixelSize: Theme.fsSmall
+                            font.bold: true
+                            font.letterSpacing: 1
+                        }
+                        Repeater {
+                            model: rows
+                            delegate: ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 6
+                                // the name over a block of choices (Divine Smite)
+                                ColumnLayout {
+                                    visible: (modelData.head || "") !== ""
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: 4
+                                    spacing: 1
+                                    Label {
+                                        text: modelData.head || ""
+                                        color: Theme.text
+                                        font.pixelSize: Theme.fsBody
+                                        font.bold: true
+                                        Layout.fillWidth: true
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    Label {
+                                        visible: (modelData.head_note || "") !== ""
+                                        text: modelData.head_note || ""
+                                        color: Theme.text2
+                                        font.pixelSize: Theme.fsSmall
+                                        Layout.fillWidth: true
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
+                                MAttackOption {
+                                    Layout.fillWidth: true
+                                    opt: modelData
+                                    picked: attackDialog.isOn(modelData)
+                                    live: attackDialog.isLive(modelData)
+                                    onClicked: attackDialog.toggle(modelData)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Missed (Cancel on a critical hit, which can't miss) and It hit
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    spacing: 8
+                    MButton {
+                        objectName: "attackMissed"
+                        text: attackDialog.report.miss_button || "Missed"
+                        primary: false
+                        Layout.fillWidth: true
+                        onClicked: {
+                            var keys = attackDialog.pickedKeys()
+                            attackDialog.close()
+                            if (!attackDialog.roll.crit) window.sheetBridge.takeAttackOptions(keys, false)
+                        }
+                    }
+                    MButton {
+                        objectName: "attackHit"
+                        visible: (attackDialog.report.hit_button || "") !== ""
+                        text: attackDialog.report.hit_button || ""
+                        Layout.fillWidth: true
+                        onClicked: {
+                            var keys = attackDialog.pickedKeys()
+                            attackDialog.close()
+                            window.sheetBridge.takeAttackOptions(keys, true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // A longer message to read (Green-Flame Blade's damage)
+    MOptionsDialog {
+        id: sheetMessageDialog
+        objectName: "sheetMessageDialog"
+        cancelText: "OK"
+    }
+    Connections {
+        target: window.sheetBridge
+        function onActionQuestion(title, question, options) {
+            actionQuestionDialog.heading = title
+            actionQuestionDialog.message = question
+            actionQuestionDialog.options = options.map(function(o) { return {key: o, text: o} })
+            actionQuestionDialog.open()
+        }
+        function onAttackReport(title, report) {
+            attackDialog.heading = title
+            attackDialog.ticked = ({})
+            attackDialog.report = report
+            attackDialog.options = report.options || []
+            attackDialog.open()
+        }
+        function onSheetMessage(title, text) {
+            sheetMessageDialog.heading = title
+            sheetMessageDialog.message = text
+            sheetMessageDialog.options = []
+            sheetMessageDialog.open()
+        }
     }
     Connections {
         target: window.sheetBridge
@@ -667,14 +1084,15 @@ ApplicationWindow {
         height: appToastLabel.implicitHeight + 20
         radius: 10
         color: Theme.surf2
-        border.color: Qt.rgba(Theme.amber.r, Theme.amber.g, Theme.amber.b, 0.53)
+        // plain text, the gold on the border (as desktop's toast)
+        border.color: Theme.gold
         z: 10000
         Label {
             id: appToastLabel
             anchors.centerIn: parent
             width: parent.width - 24
             horizontalAlignment: Text.AlignHCenter
-            color: Theme.gold
+            color: Theme.text
             font.pixelSize: Theme.fsBody
             font.bold: true
             wrapMode: Text.WordWrap

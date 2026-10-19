@@ -483,6 +483,15 @@ Page {
                                     elide: Text.ElideRight
                                     Layout.fillWidth: true
                                 }
+                                // what it is, for an attack that isn't a held
+                                // weapon (Martial Arts, Natural, Hybrid Form...)
+                                Label {
+                                    visible: modelData.badge !== ""
+                                    text: modelData.badge
+                                    color: Theme.text2
+                                    font.pixelSize: Theme.fsSmall
+                                    font.bold: true
+                                }
                                 // advantage / disadvantage die (green A / red D)
                                 MIcon {
                                     visible: modelData.advantage !== modelData.disadvantage
@@ -515,13 +524,43 @@ Page {
                                     }
                                     Label {
                                         text: modelData.damageType
-                                              + (modelData.onHitBonusText !== "" ? "  ·  " + modelData.onHitBonusText : "")
                                         color: Theme.text3
                                         font.pixelSize: Theme.fsSmall
                                         wrapMode: Text.WordWrap
                                         width: parent.width
                                     }
                                 }
+                            }
+
+                            // the extra damage its hits carry -- spells, features,
+                            // items -- each with its damage type (core/riders.py);
+                            // plain text, the player rolls it
+                            Label {
+                                objectName: "weaponRiders_" + modelData.name
+                                visible: modelData.onHitBonusText !== ""
+                                text: modelData.onHitBonusText
+                                color: Theme.text2
+                                font.pixelSize: Theme.fsSmall
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                            // holding two weapons: the off-hand bonus action attack's damage
+                            Label {
+                                visible: modelData.offhandText !== ""
+                                text: modelData.offhandText
+                                color: Theme.text2
+                                font.pixelSize: Theme.fsSmall
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                            // what an attack that isn't a held weapon is (desktop shows it on hover)
+                            Label {
+                                visible: modelData.note !== ""
+                                text: modelData.note
+                                color: Theme.text3
+                                font.pixelSize: Theme.fsSmall
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
                             }
 
                             Flow {
@@ -578,6 +617,7 @@ Page {
                                 }
                                 MButton {
                                     objectName: "attackButton_" + modelData.name
+                                    visible: modelData.attackBonusText !== ""
                                     Layout.fillWidth: true
                                     iconName: "dice"
                                     iconSize: 16

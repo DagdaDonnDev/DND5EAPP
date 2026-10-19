@@ -575,14 +575,32 @@ def concentration_save(char: dict, damage: int) -> tuple[bool, int]:
 
 def start_concentration(char: dict, spell_name: str, *, round_num: int = 0) -> None:
     char.setdefault("concentration", {"spell": None, "since_round": 0})
+    # concentrating on a new spell ends the old one, and its effect with it
+    old = char["concentration"].get("spell")
+    if old and old != spell_name:
+        _end_concentration_effects(char, old)
     char["concentration"]["spell"] = spell_name
     char["concentration"]["since_round"] = round_num
 
 
 def drop_concentration(char: dict) -> None:
     conc = char.setdefault("concentration", {"spell": None, "since_round": 0})
+    if conc.get("spell"):
+        _end_concentration_effects(char, conc["spell"])
     conc["spell"] = None
     conc["since_round"] = 0
+
+
+def _end_concentration_effects(char: dict, spell_name: str) -> None:
+    """The spell's concentration effects come off Active Effects (Divine
+    Favor's extra radiant leaves the weapon rows when it ends)."""
+    from dnd_app.core.effects import EFFECT_TABLE
+    from dnd_app.core.spell_effects import effect_names
+    ending = {n for n in effect_names(spell_name) if EFFECT_TABLE.get(n, {}).get("conc")}
+    if ending:
+        char["active_effects"] = [n for n in char.get("active_effects", []) if n not in ending]
+        for n in ending:
+            (char.get("effect_details") or {}).pop(n, None)
 
 
 # ── Owned magic items: one entry per copy ──────────────────────────────
@@ -791,3 +809,51 @@ def study_owned_manual(char: dict, uid: str) -> tuple[str, int] | None:
     entry["studied"] = True
     entry["equipped"] = False
     return ability, abilities[ability]
+
+
+# ── Item charges and once-a-day uses ──────────────────────────────────────
+# char["item_charges"]: {item: {"current", "max", "recharge"}} (sync_item_charges)
+# char["item_uses"]:    {action card: {"current", "max", "recharge"}} -- an
+#                       item's once-a-day action that has no charges
+_REGAIN_RE = _re.compile(r"regains?\s+(all|\d+d\d+(?:\s*[+-]\s*\d+)?|\d+)\s+(?:of its\s+)?"
+                         r"(?:expended\s+)?charges?", _re.I)
+
+
+def _roll(expr: str, rng) -> int:
+    m = _re.fullmatch(r"(\d+)d(\d+)(?:\s*([+-])\s*(\d+))?", expr.strip())
+    if not m:
+        return int(expr) if expr.strip().isdigit() else 0
+    total = sum(rng.randint(1, int(m.group(2))) for _ in range(int(m.group(1))))
+    if m.group(3):
+        total += int(m.group(4)) * (1 if m.group(3) == "+" else -1)
+    return max(0, total)
+
+
+def charges_at_dawn(char: dict, rng=None) -> list:
+    """A long rest's dawn: each item gets its charges back the way its own
+    rules say ("regains 1d6 + 1 expended charges daily at dawn" -- rolled,
+    and the roll is in what this returns; "regains all", or nothing said,
+    fills it), and once-a-day item uses come back. Returns what came back,
+    one plain line per item, for the rest's toast."""
+    import random
+    rng = rng or random
+    out = []
+    for name, data in char.get("item_charges", {}).items():
+        mx, cur = data.get("max", 0), data.get("current", 0)
+        if data.get("recharge", "dawn") not in ("dawn", "dusk") or cur >= mx:
+            continue
+        catalog = get_magic_item(name) or {}
+        m = _REGAIN_RE.search(catalog.get("desc", "") or "")
+        if not m or m.group(1).lower() == "all":
+            data["current"] = mx
+            out.append(f"{name}: back to {mx}/{mx} charge{'s' if mx != 1 else ''}")
+            continue
+        got = _roll(m.group(1), rng)
+        data["current"] = min(mx, cur + got)
+        out.append(f"{name}: rolled {got} on {m.group(1).replace(' ', '')}, "
+                   f"{data['current']}/{mx} charges")
+    for name, data in char.get("item_uses", {}).items():
+        if data.get("current", 0) < data.get("max", 1):
+            data["current"] = data.get("max", 1)
+            out.append(f"{name}: ready again")
+    return out

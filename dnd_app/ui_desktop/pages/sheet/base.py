@@ -136,6 +136,8 @@ class BaseSheetMixin:
         self.ctrl.refresh()
         self._load()
         self.ctrl.mark_ui_ready()
+        # opened from a save with Rage, Bladesong... still on: have they ended?
+        QTimer.singleShot(350, self._ask_leftover_effects)
         # ── Accessibility: keyboard-focus rings + unambiguous disabled state ──
         self.setStyleSheet(self.styleSheet() + f"""
             QPushButton:focus, QComboBox:focus, QLineEdit:focus,
@@ -225,6 +227,20 @@ class BaseSheetMixin:
             self._blocking_refresh = False
             self._on_char_updated(self.char)
             self._toast("Refreshed")
+
+    def _ask_leftover_effects(self):
+        """A character just opened from a save, with effects a short rest
+        would end still on (core/action_use.py leftover_effects): ask
+        whether they've ended, and end the ticked ones."""
+        from dnd_app.core.action_use import take_leftover_effects, end_effects
+        names = take_leftover_effects(self.char)
+        if not names:
+            return
+        from dnd_app.ui_desktop.dialogs.leftover_effects import LeftoverEffectsDialog
+        dlg = LeftoverEffectsDialog(names, self)
+        if dlg.exec() == QDialog.Accepted and end_effects(self.char, dlg.ticked()):
+            self._mark_dirty()
+            self.ctrl.refresh()
 
     def _on_char_updated(self, _char: dict) -> None:
         if self._blocking_refresh:
@@ -476,15 +492,19 @@ class BaseSheetMixin:
         if was_concentrating:
             drop_concentration(char)
             expired.append(f"concentration on {was_concentrating}")
+        # dawn comes: magic items get their charges back (core/magic_items.py)
+        from dnd_app.core.magic_items import charges_at_dawn
+        dawn = charges_at_dawn(char)
         rebuild(char); update_all(char)
         self.ctrl.refresh()
         self._mark_dirty()
         self._apply_rest_options(selected_options)
         from dnd_app.data.flavor_text import random_long_rest_dream
+        items = ("\nAt dawn: " + "; ".join(dawn)) if dawn else ""
         if expired:
-            self._toast(f"Faded: {', '.join(expired)}")
+            self._toast(f"Faded: {', '.join(expired)}{items}")
         else:
-            self._toast(f"Long rest complete — HP, slots & resources restored\n"
+            self._toast(f"Long rest complete — HP, slots & resources restored{items}\n"
                         f"{random_long_rest_dream()}")
 
     def _clear_active_toggles(self) -> list[str]:
@@ -757,6 +777,7 @@ class BaseSheetMixin:
                 from dnd_app.core.calculator import update_all
                 rebuild(self.char); update_all(self.char)
                 self.ctrl.refresh()
+                QTimer.singleShot(350, self._ask_leftover_effects)
 
     def _export_dialog(self):
         """Export the character for a DM to review or as a personal
@@ -1618,7 +1639,7 @@ class BaseSheetMixin:
         self._mark_dirty()
         self._auto_save()
 
-    def _toast(self, text: str, duration_ms: int = 3200):
+    def _toast(self, text: str, duration_ms: int = None):
         """Show a transient notification banner at the top of the sheet.
         Pass duration_ms=0 for a persistent toast that stays up until the
         caller explicitly hides self._toast_lbl (used for the death
@@ -1635,10 +1656,13 @@ class BaseSheetMixin:
             self._toast_timer = QTimer(self)
             self._toast_timer.setSingleShot(True)
             self._toast_timer.timeout.connect(self._toast_lbl.hide)
-        self._toast_lbl.setText(f"  {text}  ")
+        self._toast_lbl.setText(text)
         self._toast_lbl.setStyleSheet(
-            f"QLabel{{background:{SURF2};color:{GOLD};border:1px solid {qa(AMBER,0x88)};"
+            f"QLabel{{background:{SURF2};color:{TEXT};border:1px solid {GOLD};"
             f"border-radius:10px;padding:10px 18px;font-size:{FS_BODY}px;font-weight:700;}}")
+        # long ones wrap inside the window instead of running off its edges
+        self._toast_lbl.setWordWrap(True)
+        self._toast_lbl.setMaximumWidth(max(260, min(self.width() - 48, 760)))
         self._toast_lbl.adjustSize()
         x = (self.width() - self._toast_lbl.width()) // 2
         y = 28
@@ -1646,6 +1670,9 @@ class BaseSheetMixin:
         self._toast_lbl.raise_()
         self._toast_lbl.show()
         self._toast_timer.stop()
+        if duration_ms is None:
+            # long enough to read: longer messages stay up longer
+            duration_ms = min(9000, max(3200, 55 * len(text)))
         if duration_ms > 0:
             self._toast_timer.start(duration_ms)
 

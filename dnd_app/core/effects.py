@@ -19,6 +19,147 @@ Date: 2026-08-20
 """
 
 EFFECT_TABLE: dict[str, dict] = {
+    # ── From actions (core/action_use.py); New Turn ends the turn-long ones ──
+    "Dodge": {
+        "duration_category": "short",
+        "save_adv": ["DEX"],
+        "note": "Attacks against you have disadvantage (if you can see the attacker) and "
+                "you have advantage on DEX saves until your next turn.",
+    },
+    "Agile Parry": {
+        "duration_category": "short",
+        "ac": 2,
+        "note": "+2 AC until the start of your next turn.",
+    },
+    "Kensei's Shot": {
+        "duration_category": "short",
+        "note": "+1d4 damage on ranged attacks with your kensei weapons this turn.",
+    },
+    "Sharpen the Blade": {
+        "duration_category": "short",
+        "note": "A bonus to attack and damage rolls with one kensei weapon for 1 minute.",
+    },
+    "Fighting Spirit": {
+        "duration_category": "short",
+        "note": "Advantage on weapon attack rolls until the end of this turn.",
+    },
+    # ── Extra damage on your weapon hits (the weapon rows list it with its
+    # type: core/riders.py). "caster": the effect is on you even when the
+    # spell targets someone else (a smite, Hex, Hunter's Mark), so casting
+    # it never asks who it's on. Which weapon, which damage type and the
+    # slot level are kept in char["effect_details"] (core/spell_effects.py).
+    "Divine Favor": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "+1d4 radiant damage on your weapon hits for 1 minute.",
+    },
+    "Crusader's Mantle": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "You and allies within 30 ft deal +1d4 radiant damage with weapon hits for 1 minute.",
+    },
+    "Holy Weapon": {
+        "conc": True, "duration_category": "short",
+        "note": "+2d8 radiant damage on hits with the weapon you touched, for 1 hour. "
+                "A bonus action ends it in a burst of light (4d8 radiant, CON save or blinded).",
+    },
+    "Spirit Shroud": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "+1d8 radiant, necrotic or cold damage on your hits within 10 ft, and those "
+                "creatures can't regain hit points, for 1 minute.",
+    },
+    "Elemental Weapon": {
+        "conc": True, "duration_category": "short",
+        "note": "The weapon you touched is magical: +1 to attack rolls and +1d4 damage of "
+                "the type you chose, for 1 hour.",
+    },
+    "Magic Weapon": {
+        "conc": True, "duration_category": "short",
+        "note": "The weapon you touched is magical: +1 to attack and damage rolls for 1 hour.",
+    },
+    "Flame Arrows": {
+        "conc": True, "duration_category": "short",
+        "note": "Ammunition from the quiver deals +1d6 fire damage on a hit (12 pieces, 1 hour).",
+    },
+    "Searing Smite": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next melee weapon hit deals +1d6 fire damage and sets the target alight.",
+    },
+    "Thunderous Smite": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next melee weapon hit deals +2d6 thunder damage: STR save or pushed 10 ft and prone.",
+    },
+    "Wrathful Smite": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next melee weapon hit deals +1d6 psychic damage: WIS save or frightened of you.",
+    },
+    "Branding Smite": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next weapon hit deals +2d6 radiant damage, and the target can't turn invisible.",
+    },
+    "Blinding Smite": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next melee weapon hit deals +3d8 radiant damage: CON save or blinded.",
+    },
+    "Staggering Smite": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next melee weapon hit deals +4d6 psychic damage: WIS save or staggered.",
+    },
+    "Banishing Smite": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next weapon hit deals +5d10 force damage; at 50 hit points or fewer it's banished.",
+    },
+    "Lightning Arrow": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next ranged weapon attack deals 4d8 lightning instead of its damage, "
+                "and 2d8 lightning to each creature within 10 ft of the target.",
+    },
+    "Hail of Thorns": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next ranged weapon hit also deals 1d10 piercing to the target and "
+                "everything within 5 ft of it (DEX save halves).",
+    },
+    "Shillelagh": {
+        "duration_category": "short",
+        "note": "Your club or quarterstaff uses your spellcasting ability and a d8 for "
+                "damage, and is magical, for 1 minute.",
+    },
+    "Symbiotic Entity": {
+        "duration_category": "short",
+        "note": "Your melee weapon hits deal +1d6 necrotic damage and your Halo of Spores "
+                "dice double, for 10 minutes or until the temporary hit points are gone.",
+    },
+    "Slayer's Prey": {
+        "duration_category": "short",
+        "note": "Once a turn, +1d6 damage on a weapon hit against your quarry.",
+    },
+    "Favored Foe": {
+        "conc": True, "duration_category": "short",
+        "note": "Once a turn, extra damage on a weapon hit against the marked creature, for 1 minute.",
+    },
+    "Planar Warrior": {
+        "duration_category": "short",
+        "note": "Your next hit on the creature deals extra force damage, and all of the hit's damage is force.",
+    },
+    "Elemental Cleaver": {
+        "duration_category": "short",
+        "note": "Your weapon deals extra damage of the element you chose while you rage.",
+    },
+    "Crimson Rite": {
+        "duration_category": "short",
+        "note": "Your rite's element on every hit with the weapon until your next rest.",
+    },
+    "Chromatic Infusion": {
+        "duration_category": "short",
+        "note": "+1d4 damage of the type you chose on hits with the weapon, for 1 minute.",
+    },
+    "Shadow Blade": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "A blade of shadow in your hand: 2d8 psychic, finesse, light, thrown 20/60; "
+                "advantage in dim light or darkness. 1 minute.",
+    },
+    "Flame Tongue": {
+        "duration_category": "short",
+        "note": "Ablaze, with +2d6 fire damage on a hit and bright light for 40 ft.",
+    },
     "Haste": {
         "ac": 2, "speed_mult": 2, "extra_action": True, "conc": True,
         "note": "+2 AC, double speed, adv. DEX saves, +1 action "
@@ -138,7 +279,7 @@ EFFECT_TABLE: dict[str, dict] = {
                 "Cunning (adv. INT checks), or Owl's Wisdom (adv. WIS checks). 1 hour.",
     },
     "Zephyr Strike": {
-        "conc": False,
+        "conc": True, "caster": True, "duration_category": "short",
         "note": "Your movement doesn't provoke opportunity attacks. Once before the spell "
                 "ends: advantage on one weapon attack (+1d8 force on a hit), and your walking "
                 "speed +30 ft. until the end of that turn either way. 1 minute.",
@@ -205,7 +346,7 @@ EFFECT_TABLE: dict[str, dict] = {
                 "poison affecting you is suspended until the spell ends. 1 hour.",
     },
     "Absorb Elements": {
-        "conc": False,
+        "conc": False, "caster": True, "duration_category": "short",
         "note": "Resistance to the triggering damage type (acid/cold/fire/lightning/thunder) "
                 "until the start of your next turn. First melee hit before then adds +1d6 of "
                 "that type (+1d6 per slot level above 1st) and ends the spell.",
@@ -248,7 +389,7 @@ EFFECT_TABLE: dict[str, dict] = {
                 "advantage on attack rolls against any creature within 5 ft. of you.",
     },
     "Ensnaring Strike": {
-        "conc": True,
+        "conc": True, "caster": True, "duration_category": "short",
         "note": "Your next weapon hit before this ends: target makes a STR save (advantage if "
                 "Large+) or is restrained by vines until the spell ends, taking 1d6 piercing at "
                 "the start of each of its turns. 1 minute.",
@@ -414,12 +555,12 @@ EFFECT_TABLE: dict[str, dict] = {
                 "to your AC — doesn't stack with Unarmored Defense.",
     },
     "Hex": {
-        "conc": True,
+        "conc": True, "caster": True, "duration_category": "short",
         "note": "Cursed target takes +1d6 necrotic from your attacks; "
                 "disadvantage on chosen ability checks.",
     },
     "Hunter's Mark": {
-        "conc": True,
+        "conc": True, "caster": True, "duration_category": "short",
         "note": "Marked target takes +1d6 from your weapon attacks.",
     },
     # Resistance-granting class-feature toggles. These have no AC/speed
@@ -858,42 +999,21 @@ def has_extra_action(char: dict) -> bool:
                    for n in char.get("active_effects", [])))
 
 
-# Features that clearly require holding a holy symbol/spellcasting focus
-# and/or speaking — the same standard the real Wild Shape rule applies to
-# spellcasting itself ("you retain the benefit of any features... if the
-# new form is physically capable of doing so"). This is deliberately a
-# short, conservative list of clear-cut cases rather than an attempt to
-# categorize every class feature in the game; anything not in this list
-# is allowed by default, matching the rule's own default-allow framing.
+# Wild Shape (PHB): "You retain the benefit of any features from your
+# class, race, or other source and can use them if the new form is
+# physically capable of doing so" -- but "you can't cast spells", and
+# anything needing hands is "limited to the capabilities of your beast
+# form" (an ape has hands, a wolf doesn't). So in beast form:
+#   WILDSHAPE_NO_CAST  spellcasting, and features that are spellcasting:
+#                      refused
+#   WILDSHAPE_ASK      needs hands, a held weapon or an unarmed strike:
+#                      the app asks, since the DM decides whether this
+#                      beast can do it
 # Matched as a substring against the feature's display name, lowercased.
-WILDSHAPE_BLOCKED_FEATURES = {
-    # Requires touching a creature/object with your hands. Not explicitly
-    # addressed in the later, more detailed reference, so kept blocked on
-    # the original reasoning (a beast's mouth/paws aren't hands) rather
-    # than assumed to work without confirmation either way.
-    "lay on hands",
-    # Monk features requiring an unarmed strike specifically — natural
-    # weapons are weapons, but they aren't unarmed strikes, so these
-    # don't apply even though other Monk features (Unarmored Defense,
-    # Slow Fall, Stillness of Mind, Evasion, etc.) work fine.
-    "martial arts", "flurry of blows", "stunning strike",
-    "ki-empowered strikes", "hands of harm", "open hand technique",
-    "quivering palm", "touch of the long death", "drunken technique",
-    "intoxicated frenzy", "radiant sun bolt", "searing arc strike",
-    "searing sunburst", "sun shield",
-    # Require actual arms to manifest
-    "arms of the astral self", "visage of the astral self",
-    "body of the astral self", "awakened astral self",
-    # Require casting a spell or cantrip (or are themselves spellcasting).
-    # NOTE: "disciple of life", "sacred weapon", "pact magic", and
-    # "moon fire" were deliberately removed from this list — the app's
-    # real subclass feature strings bundle these with a component that
-    # explicitly works ("Sacred Weapon + Turn the Unholy",
-    # "Lunar Embodiment + Moon Fire", "Otherworldly Patron + Pact Magic +
-    # Rite Focus", "Bonus Proficiency (Heavy Armor) + Disciple of Life"),
-    # and substring-blocking the whole bundle would incorrectly block the
-    # working half too. The spellcasting half of each is already covered
-    # by the separate _cast_spell gate regardless.
+# ("disciple of life", "sacred weapon", "pact magic" and "moon fire" are
+# left out on purpose: the app's feature names bundle them with a part
+# that works in beast form, and casting is checked on its own anyway.)
+WILDSHAPE_NO_CAST = {
     "war magic", "eldritch strike", "spell thief", "magical ambush",
     "versatile trickster", "share spells", "misty wanderer",
     "fey reinforcements", "mystic frenzy", "revealed arcana",
@@ -913,17 +1033,31 @@ WILDSHAPE_BLOCKED_FEATURES = {
     "grasping tentacles", "magical secrets", "additional magical secrets",
     "battle magic", "mantle of majesty", "mystic chronicle",
     "awakened spirit", "light bearer", "ritual caster",
-    # Requires manifesting a weapon out of psychic energy
+}
+WILDSHAPE_ASK = {
+    # touching with your hands
+    "lay on hands",
+    # an unarmed strike (natural weapons are weapons, not unarmed strikes)
+    "martial arts", "flurry of blows", "stunning strike",
+    "ki-empowered strikes", "hands of harm", "open hand technique",
+    "quivering palm", "touch of the long death", "drunken technique",
+    "intoxicated frenzy", "radiant sun bolt", "searing arc strike",
+    "searing sunburst", "sun shield",
+    # astral arms and the rest of the astral self
+    "arms of the astral self", "visage of the astral self",
+    "body of the astral self", "awakened astral self",
+    # a blade made of psychic energy, held in the hand
     "soul blades", "psychic blades",
-    # Require a finesse or ranged weapon specifically (Sneak Attack) —
-    # these all key off having Sneak Attack damage to add to/trigger from,
-    # which natural weapons can never provide.
+    # Sneak Attack: a finesse or ranged weapon
     "insightful fighting", "eye for weakness", "sudden strike",
     "wails from the grave", "death's friend",
-    # Require a bow specifically
+    # a bow
     "arcane shot", "magic arrow", "curving shot", "ever-ready shot",
-    "kensei's shot",
+    # kensei weapons: a ranged one for the shot, a melee one to parry
+    "kensei's shot", "agile parry", "sharpen the blade", "deft strike",
 }
+# both, for anything that only needs to know "affected in Wild Shape"
+WILDSHAPE_BLOCKED_FEATURES = WILDSHAPE_NO_CAST | WILDSHAPE_ASK
 
 # Combat-duration on/off active_effects toggles (Rage, Reckless Attack,
 # Bladesong, etc.) that share a resource pool -- using the resource

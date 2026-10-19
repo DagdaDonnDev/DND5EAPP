@@ -10,9 +10,13 @@ Dialog {
     id: root
 
     property string heading: ""
+    // an optional line under the heading (a question to answer)
+    property string message: ""
     property var options: []
     // border colour -- a magic item's rarity colour, for instance
     property color accent: Theme.border
+    // the last button's text ("OK" for a message with no options)
+    property string cancelText: "Cancel"
 
     signal picked(string key)
 
@@ -35,6 +39,14 @@ Dialog {
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
         }
+        Label {
+            visible: root.message.length > 0
+            text: root.message
+            color: Theme.text
+            font.pixelSize: Theme.fsBody
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+        }
         Repeater {
             model: root.options
             delegate: MButton {
@@ -53,9 +65,10 @@ Dialog {
             }
         }
         MButton {
+            objectName: "optionsCancel"
             Layout.fillWidth: true
             primary: false
-            text: "Cancel"
+            text: root.cancelText
             onClicked: root.close()
         }
     }

@@ -211,11 +211,11 @@ Page {
                                     }
                                 }
 
-                                // Cast for spells, Use for everything else (not
-                                // for passive features -- there's nothing to do)
+                                // Cast for spells, Use for everything else (an
+                                // "Other" card only when using it does something)
                                 MButton {
                                     objectName: "useButton_" + modelData.name
-                                    visible: modelData.bucketKey !== "Passive"
+                                    visible: modelData.usable
                                     Layout.alignment: Qt.AlignVCenter
                                     implicitWidth: 72
                                     implicitHeight: 36

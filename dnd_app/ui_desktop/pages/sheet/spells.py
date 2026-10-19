@@ -1317,8 +1317,15 @@ class SpellsMixin:
             # action-economy resource as any other spell (most have a
             # 1-action cast time), so this can't return early before
             # that's consumed.
+            from dnd_app.core.spell_effects import WEAPON_CANTRIPS
+            if spell["name"] in WEAPON_CANTRIPS:
+                if not self._weapon_cantrip(spell):
+                    return
+                self._mark_spell_cast_time(spell)
+                return
             self._mark_spell_cast_time(spell)
-            self._toast(f"Cast {spell['name']} (cantrip — at will)")
+            fx_msg = self._apply_spell_active_effect(spell)      # Shillelagh
+            self._toast(f"Cast {spell['name']} (cantrip — at will)" + (f"\n{fx_msg}" if fx_msg else ""))
             return
         # A free daily cast (a racial spell, Fey Touched, Firbolg Magic...)
         # is used before any slot -- see core/spellcasting.py.
@@ -1329,12 +1336,13 @@ class SpellsMixin:
                 start_concentration(self.char, spell["name"])
                 self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
                 self._refresh_concentration()
-            self._apply_spell_active_effect(spell)
+            fx_msg = self._apply_spell_active_effect(spell, lvl)
             self._mark_spell_cast_time(spell)
             self._mark_dirty()
             if hasattr(self, "_refresh_combat"):
                 self._refresh_combat()   # the resource counter it came from
-            self._toast(free_cast_message(spell["name"], free).replace(" -- ", " — "))
+            self._toast(free_cast_message(spell["name"], free).replace(" -- ", " — ")
+                        + (f"\n{fx_msg}" if fx_msg else ""))
             return
         for l in range(lvl, 10):
             bar = self._slot_bars.get(l)
@@ -1346,9 +1354,9 @@ class SpellsMixin:
                     start_concentration(self.char, spell["name"])
                     self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
                     self._refresh_concentration()
-                self._apply_spell_active_effect(spell)
+                fx_msg = self._apply_spell_active_effect(spell, l)
                 self._mark_spell_cast_time(spell)
-                self._toast(f"Cast {spell['name']} — slot expended")
+                self._toast(f"Cast {spell['name']} — slot expended" + (f"\n{fx_msg}" if fx_msg else ""))
                 return
         if self._pact_bar._max > 0 and self._pact_bar.get_used() < self._pact_bar._max:
             self._pact_bar.set_used(self._pact_bar.get_used() + 1)
@@ -1358,12 +1366,13 @@ class SpellsMixin:
                 start_concentration(self.char, spell["name"])
                 self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
                 self._refresh_concentration()
-            self._apply_spell_active_effect(spell)
+            fx_msg = self._apply_spell_active_effect(spell, self.char.get("pact_slot_level", 0) or lvl)
             self._mark_spell_cast_time(spell)
             # A little flavor for Warlocks specifically -- Pact Magic is
             # power borrowed from your patron, unlike an ordinary prepared
             # or known spell slot, so spending one gets its own tiny nod.
-            self._toast(f"Cast {spell['name']} — pact slot expended\nYour patron approves.")
+            self._toast(f"Cast {spell['name']} — pact slot expended\n"
+                        + (fx_msg if fx_msg else "Your patron approves."))
             self._mark_dirty()
             return
         self._toast(f"Can't cast {spell['name']} — no level-{lvl}+ spell slots available")
@@ -1397,6 +1406,8 @@ class SpellsMixin:
         times that don't fit the per-turn economy at all."""
         ct = (spell.get("cast_time") or "1 action").strip().lower()
         is_cantrip = spell.get("level", 1) == 0
+        from dnd_app.core.action_use import note_spell_cast
+        note_spell_cast(self.char, spell.get("name", ""))   # no second spell from the attack dialog
         if ct == "1 action":
             self._mark_turn_used("Action")
             self._action_spell_is_cantrip = is_cantrip
@@ -1431,38 +1442,41 @@ class SpellsMixin:
             return "Race"
         return "Common"
 
-    def _apply_spell_active_effect(self, spell):
-        """Connects casting a spell to the active_effects system (Haste,
-        Bless, Shield of Faith, dozens more with real mechanical hooks)
-        so the player doesn't have to separately, manually re-add the
-        same effect through a dropdown after casting it. Self-only
-        spells auto-apply with no ambiguity. Spells with a real range
-        prompt for self-vs-another, since these buff spells can target
-        either, and only adding it to the caster's own sheet is correct
-        when they're the actual target."""
-        from dnd_app.core.effects import EFFECT_TABLE
-        name = spell["name"]
-        if name not in EFFECT_TABLE:
-            return
-        rng = (spell.get("range") or "").strip().lower()
-        is_self_only = rng == "self" or rng.startswith("self (") or rng.startswith("self(")
-        if is_self_only:
-            target_self = True
-        else:
-            reply = QMessageBox.question(
-                self, name, f"Cast {name} on yourself, or on another creature?\n\n"
-                f"(Choose \"No\" if targeting someone else — it won't be added to your own "
-                f"Active Effects.)",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
-            target_self = (reply == QMessageBox.Yes)
-        if target_self:
-            fx = self.char.setdefault("active_effects", [])
-            if name not in fx:
-                fx.append(name)
-                self.ctrl.refresh()
-                self._refresh_effects_list()
-                self._apply_turn_state()
-                self._toast(f"{name} added to Active Effects")
+    def _apply_spell_active_effect(self, spell, level=0):
+        """Casting puts the spell's effect on your Active Effects (Haste,
+        Bless, Divine Favor, a smite...). The shared rules (core/
+        spell_effects.py) ask what only the player knows -- who it's on,
+        which weapon, which damage type -- and what it adds to your hits
+        then shows on the weapon rows.
+        Returns what it did, for the cast's toast ("" if nothing)."""
+        from dnd_app.core.spell_effects import cast_effect
+        res = self._ask_through(spell["name"], lambda a: cast_effect(self.char, spell["name"], level, a))
+        if not res:
+            return ""
+        if res.get("refresh"):
+            self.ctrl.refresh()
+            self._refresh_effects_list()
+            self._apply_turn_state()
+        return res.get("toast", "")
+
+    def _weapon_cantrip(self, spell) -> bool:
+        """Green-Flame Blade and Booming Blade: which melee weapon you swing
+        (from the weapon rows), then what to roll -- the weapon's damage
+        plus the spell's, each with its type (core/spell_effects.py).
+        False when it can't be cast (no melee weapon, or cancelled)."""
+        from dnd_app.core.spell_effects import weapon_cantrip
+        if hasattr(self, "_refresh_combat_weapons"):
+            self._refresh_combat_weapons()          # the rows as they are now
+        rows = list(getattr(self, "_weapon_row_stats", {}).values())
+        res = self._ask_through(spell["name"], lambda a: weapon_cantrip(self.char, spell["name"], rows, a))
+        if res is None:
+            return False
+        if not res.get("ok"):
+            if res.get("toast"):
+                self._toast(res["toast"])
+            return False
+        QMessageBox.information(self, spell["name"], res["message"])
+        return True
 
     def _drop_concentration(self):
         drop_concentration(self.char)

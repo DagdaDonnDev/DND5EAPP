@@ -199,3 +199,38 @@ def martial_arts(char: dict, name: str):
             "die": die if _average(die) > _average(w.get("damage", "")) else None,
             "magical": kensei and _monk_level(char) >= 6,
             "kensei": kensei}
+
+
+def shillelagh(char: dict, name: str) -> dict:
+    """Shillelagh on a club or quarterstaff: {"die", "stat"} -- its damage
+    die becomes a d8 (2024: d8, d10 at 5th level, d12 at 11th, 2d6 at
+    17th) and attack and damage use your spellcasting ability. Empty when
+    it's off or this isn't a club or quarterstaff."""
+    if "Shillelagh" not in char.get("active_effects", []):
+        return {}
+    base, _ = _weapon(name)
+    if base not in ("Club", "Quarterstaff"):
+        return {}
+    from dnd_app.core.calculator import _detect_spell_ability, total_level
+    die = "1d8"
+    if char.get("edition") == "2024":
+        lv = total_level(char)
+        die = "2d6" if lv >= 17 else "1d12" if lv >= 11 else "1d10" if lv >= 5 else "1d8"
+    return {"die": die, "stat": _detect_spell_ability(char) or "WIS"}
+
+
+def kensei_bonuses(char: dict, name: str, magic_bonus: int = 0) -> dict:
+    """A Kensei's effects on an attack with `name` (a kensei weapon):
+    {"bonus": n} from Sharpen the Blade on this weapon (char
+    ["sharpen_the_blade"] = {"bonus", "weapon"}; not on a magic weapon
+    that already has a bonus). Empty for anything else. (Kensei's Shot's
+    extra 1d4 is listed with the other riders: core/riders.py.)"""
+    base, w = _weapon(name)
+    if not w or base not in kensei_weapons(char):
+        return {}
+    fx = char.get("active_effects", [])
+    out = {}
+    sharp = char.get("sharpen_the_blade") or {}
+    if "Sharpen the Blade" in fx and magic_bonus <= 0 and sharp.get("weapon") == base:
+        out["bonus"] = int(sharp.get("bonus", 0) or 0)
+    return out

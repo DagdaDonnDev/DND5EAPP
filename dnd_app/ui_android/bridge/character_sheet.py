@@ -47,6 +47,7 @@ from dnd_app.core.magic_items import (
     parse_material_prefix, ABILITY_SCORE_MANUALS,
 )
 from dnd_app.core.effects import EFFECT_TABLE, INSTANT_POTION_EFFECTS
+from dnd_app.core.riders import base_weapon_options as _base_weapon_options, weapon_base_of as _weapon_base_of
 from dnd_app.core.spellcasting import spell_component_block_reason
 from dnd_app.core.ammo import ammo_kind, ammo_label, ammo_count, spend_ammo, set_ammo
 from dnd_app.core.dying import (
@@ -237,12 +238,14 @@ class CharacterSheetBridge(QObject):
     # Level up/down and confirmed choices: App.qml saves the character
     # quietly on this (SaveLoadBridge.autoSave()).
     autosaveRequested = Signal()
-    # Emitted after casting a spell with a real active_effects hook
-    # (Bless/Haste/etc.) whose range isn't self-only -- QML should ask
-    # "cast on yourself, or on another creature?" and call
-    # applySpellActiveEffect(name) only if the answer is "yourself".
-    # Self-only effect spells are applied directly, no prompt needed.
-    spellEffectPromptRequested = Signal(str)
+    # a shared rule needs an answer first -- Use on an action, casting a
+    # spell (who is it on? which weapon?): (title, question, options);
+    # App.qml asks and calls answerActionQuestion
+    actionQuestion = Signal(str, str, list)
+    # a longer message to read in a dialog (Green-Flame Blade's damage): title, text
+    sheetMessage = Signal(str, str)
+    # after an attack roll: (title, the report from core/attacks.py attack_report)
+    attackReport = Signal(str, "QVariantMap")
     # a blank spell scroll was used -- QML asks which spell is on it
     # (scroll's equipment name, spell level), then calls bindScrollSpell()
     scrollSpellNeeded = Signal(str, int)
@@ -617,177 +620,104 @@ class CharacterSheetBridge(QObject):
 
     @Property(list, notify=statsChanged)
     def weapons(self):
-        # Ports desktop's combat.py _add_weapon_row computation (not its
-        # QFrame-building) -- enchanted names ("Longsword +1") now
-        # resolve via parse_magic_suffix instead of failing the
-        # WEAPON_DICT lookup outright; Hex Warrior (CHA) and Battle
-        # Ready (INT) stat overrides, magic/infusion/named-item attack
-        # bonuses, Archery/Dueling fighting styles, Sacred Weapon, Rage
-        # damage, GWM/Sharpshooter Power Attack (toggle via
-        # toggleWeaponPowerAttack), weapon-type item damage bonuses, and
-        # on-hit damage badges (Divine Strike etc.) are all included.
-        # Ammunition comes from core/ammo.py, counted from the inventory
-        # like desktop's counter. Deliberately NOT ported: Thrown Arms
-        # Master's property-text rewrite, and the Revenant Blade/Double-
-        # Bladed Scimitar finesse override -- narrow, non-numeric edge
-        # cases that can follow later if needed.
+        """Every attack row on the Combat screen. The numbers come from
+        core/attacks.py -- the same as desktop's Combat tab: attacks that
+        aren't a weapon in hand (Martial Arts, natural weapons, the unarmed
+        strike, Wild Shape...) first, then each weapon in hand
+        (weapon_attack). What's on now is listed under the damage
+        (onHitBonusText); what you can add is offered after the roll."""
+        from dnd_app.core.attacks import other_attacks, weapon_attack
+        from dnd_app.core.riders import rider_text
         char = self.char
-        out = []
-        pb_full = get_prof_bonus(char)
-        fighting_styles = char.get("fighting_styles", [])
-        char_feats = char.get("feats", [])
-        active_effects = char.get("active_effects", [])
-        warlock_lvl = class_levels(char).get("Warlock", 0)
-        is_hexblade = "hexblade" in subclasses(char).get("Warlock", "").lower()
-        art_lvl = class_levels(char).get("Artificer", 0)
-        is_battlesmith = "battle smith" in subclasses(char).get("Artificer", "").lower()
-        power_attack_weapons = char.get("power_attack_weapons", [])
-        named_bonuses = char.get("_named_weapon_bonuses", {})
         cond_status = get_condition_attack_status(char)
-        only_weapon = len(char.get("equipped_weapons", [])) == 1
+        self._attack_rows = {}
+        out = []
 
-        for wpn_name in char.get("equipped_weapons", []):
-            base_name, magic_bonus = parse_magic_suffix(wpn_name)
-            base_name, weapon_material = parse_material_prefix(base_name)
-            for inf in char.get("active_infusions", []):
-                if inf.get("target_item") == wpn_name:
-                    magic_bonus = max(magic_bonus, get_infusion_bonus(inf.get("infusion", ""), art_lvl))
-            wdata = WEAPON_DICT.get(base_name)
-            if wdata is None:
-                # Named magic weapon not in the mundane list at all (e.g.
-                # "Sun Blade") -- render a generic profile instead of a
-                # blank row; these items' own flavor text typically
-                # grants proficiency regardless of class.
-                category = "Melee (magic)"
-                damage, dmg_type, props = "1d8", ("radiant" if "sun" in wpn_name.lower() else "slashing"), []
-                proficient = True
-            else:
-                category, damage, dmg_type = wdata.get("category", ""), wdata.get("damage", "—"), wdata.get("dmg_type", "")
-                props = wdata.get("properties", []) or []
-                proficient = has_weapon_proficiency(char, base_name, category)
-            is_finesse = any("finesse" in str(p).lower() for p in props)
-            is_ranged = "ranged" in category.lower()
-            is_two_handed = any("two-handed" in str(p).lower() for p in props)
-            is_heavy = any("heavy" in str(p).lower() for p in props)
-
-            if warlock_lvl >= 1 and is_hexblade and not is_two_handed:
-                stat = "CHA"
-            elif art_lvl >= 3 and is_battlesmith and (magic_bonus or wdata is None):
-                stat = "INT"
-            elif is_ranged or (is_finesse and ability_mod(char, "DEX") > ability_mod(char, "STR")):
-                stat = "DEX"
-            else:
-                stat = "STR"
-            # Martial Arts: a monk weapon uses DEX if it's higher, and the
-            # Martial Arts die if it beats the weapon's own; a kensei weapon
-            # counts as magical from 6th level (core/weapons.py)
-            from dnd_app.core.weapons import martial_arts
-            ma = martial_arts(char, wpn_name)
-            if ma:
-                if stat == "STR" and ability_mod(char, "DEX") > ability_mod(char, "STR"):
-                    stat = "DEX"
-                if ma["die"]:
-                    damage = ma["die"]
-                if ma["magical"]:
-                    dmg_type = f"{dmg_type} (magical)"
-            mod = ability_mod(char, stat)
-
-            named_bonus = named_bonuses.get(wpn_name, 0) or named_bonuses.get(base_name, 0)
-            total_bonus = magic_bonus + named_bonus
-
-            has_archery = is_ranged and any("archery" in fs.lower() for fs in fighting_styles)
-            atk_style_bonus = 2 if has_archery else 0
-            sacred_weapon_bonus = ability_mod(char, "CHA") if "Sacred Weapon" in active_effects else 0
-
-            can_power_attack = proficient and (
-                ("Great Weapon Master" in char_feats and not is_ranged and is_heavy) or
-                ("Sharpshooter" in char_feats and is_ranged))
-            power_attack_active = can_power_attack and wpn_name in power_attack_weapons
-            power_attack_atk = -5 if power_attack_active else 0
-            power_attack_dmg = 10 if power_attack_active else 0
-
-            attack_bonus = (pb_full if proficient else 0) + mod + total_bonus \
-                + atk_style_bonus + sacred_weapon_bonus + power_attack_atk
-
-            has_dueling = (not is_ranged and not is_two_handed and only_weapon
-                           and any("dueling" in fs.lower() for fs in fighting_styles))
-            dueling_bonus = 2 if has_dueling else 0
-            rage_bonus = 0
-            if "Rage" in active_effects and not is_ranged and stat == "STR":
-                rage_str = get_rage_damage(char)
-                if rage_str != "—":
-                    rage_bonus = int(rage_str.replace("+", ""))
-            weapon_type_bonus = 0
-            weapon_type_source = ""
-            for wb in char.get("_weapon_damage_bonuses", []):
-                wtype = wb.get("weapon_type", "").lower()
-                if wtype and wtype in wpn_name.lower():
-                    weapon_type_bonus += wb.get("value", 0)
-                    weapon_type_source = wb.get("source", "")
-
-            dmg_total_mod = mod + total_bonus + dueling_bonus + rage_bonus \
-                + power_attack_dmg + weapon_type_bonus
-            damage_display = f"{damage}{_mod_text(dmg_total_mod)}" if damage not in ("—", "") else damage
-
-            on_hit = get_onhit_damage_bonuses(char)
-            on_hit_text = ", ".join(f"+{b['die']} {b['damage_type']}" for b in on_hit) if on_hit else ""
-            # the ammunition it fires, and how much the inventory holds
-            ammo = ammo_kind(base_name, is_ranged, any("thrown" in str(p).lower() for p in props))
-
-            out.append({
-                "name": wpn_name,
-                "category": category,
-                "damageType": dmg_type,
-                "attackBonusText": _mod_text(attack_bonus),
-                "damageDisplay": damage_display,
-                "magicBonus": total_bonus,
-                "material": weapon_material or "",
-                "proficient": proficient,
+        def card(row, category, extra):
+            self._attack_rows[row["name"]] = row
+            d = {
+                "name": row["name"], "badge": row.get("badge", ""), "note": row.get("note", ""),
+                "category": category, "damageType": row["damage_type"],
+                "attackBonusText": _mod_text(row["atk"]) if row["atk"] is not None else "",
+                "damageDisplay": row["damage"], "magicBonus": 0, "material": "", "proficient": True,
                 "advantage": bool(cond_status.get("advantage")),
                 "disadvantage": bool(cond_status.get("disadvantage")),
-                "canPowerAttack": can_power_attack,
-                "powerAttackActive": power_attack_active,
-                "onHitBonusText": on_hit_text,
-                "ammoKind": ammo,
-                "ammoLabel": ammo_label(ammo) if ammo else "",
-                "ammoCount": ammo_count(char, ammo) if ammo else 0,
-                # for rollWeaponAttack()
-                "attackBonus": attack_bonus,
+                "canPowerAttack": False, "powerAttackActive": False,
+                "onHitBonusText": rider_text(row["riders"]), "offhandText": "",
+                "ammoKind": "", "ammoLabel": "", "ammoCount": 0,
+                "attackBonus": row["atk"] if row["atk"] is not None else 0,
+            }
+            d.update(extra)
+            out.append(d)
+
+        for a in other_attacks(char):
+            card(a, "Unarmed" if a["kind"] == "unarmed" else "Natural weapon", {})
+        for wpn_name in char.get("equipped_weapons", []):
+            w = weapon_attack(char, wpn_name)
+            card(w, w["category"], {
+                "magicBonus": w["magic_bonus"], "material": w["material"] or "",
+                "proficient": w["proficient"],
+                "canPowerAttack": w["can_power_attack"], "powerAttackActive": w["power_attack"],
+                "offhandText": (f"Off-hand attack (a bonus action): {w['offhand']} {w['damage_type']}"
+                                if w["offhand"] else ""),
+                "ammoKind": w["ammo"], "ammoLabel": ammo_label(w["ammo"]) if w["ammo"] else "",
+                "ammoCount": ammo_count(char, w["ammo"]) if w["ammo"] else 0,
             })
         return out
 
     # ── Weapon roll (Combat screen's Roll to Hit button) ─────────────
-    # Same maths as ui_desktop's per-weapon "Hit" button (d20 + attack
-    # bonus, nat 20 = crit, nat 1 = miss), plus advantage/disadvantage
-    # from conditions rolling two d20s. Damage doubles the weapon's dice
-    # on a crit and adds on-hit dice (Divine Strike, etc.).
-    def _weapon(self, name):
-        return next((w for w in self.weapons if w["name"] == name), None)
-
+    # The roll, then what you can add with each one's cost -- only what you
+    # can pay for now -- in App.qml's attack dialog (attackReport); the
+    # ticked ones come back through takeAttackOptions (core/attacks.py,
+    # the same as desktop's Hit button)
     @Slot(str)
     def rollWeaponAttack(self, name: str):
-        w = self._weapon(name)
-        if w is None:
+        from dnd_app.core.attacks import roll_attack, attack_report
+        _ = self.weapons                       # the rows as they are now
+        row = getattr(self, "_attack_rows", {}).get(name)
+        if row is None or row.get("atk") is None:
             return
         # A shot takes one piece of ammunition from the inventory
-        left = ""
-        if w["ammoKind"]:
-            label = w["ammoLabel"].lower()
-            if not spend_ammo(self.char, w["ammoKind"]):
-                self.toastRequested.emit(f"Out of {label} -- tap the {w['ammoLabel']} counter to add more")
+        if row.get("ammo"):
+            label = ammo_label(row["ammo"])
+            if not spend_ammo(self.char, row["ammo"]):
+                self.toastRequested.emit(f"Out of {label.lower()} -- tap the {label} counter to add more")
                 return
-            left = f" ({ammo_count(self.char, w['ammoKind'])} {label} left)"
             self.statsChanged.emit()
-        rolls = [random.randint(1, 20)]
-        mode = ""
-        if w["advantage"] != w["disadvantage"]:
-            rolls.append(random.randint(1, 20))
-            mode = " (adv)" if w["advantage"] else " (disadv)"
-        d20 = max(rolls) if w["advantage"] else (min(rolls) if w["disadvantage"] else rolls[0])
-        total = d20 + w["attackBonus"]
-        shown = "/".join(str(r) for r in rolls)
-        tail = " -- CRIT!" if d20 == 20 else (" -- Miss" if d20 == 1 else "")
-        self.toastRequested.emit(f"{name} attack{mode}: [{shown}] {_mod_text(w['attackBonus'])} = {total}{tail}{left}")
+        roll = roll_attack(self.char, row)
+        free = [b for b in ("Action", "Bonus Action", "Reaction")
+                if self._turn_counts.get(b, 0) < self._turn_limit(b)]
+        report = attack_report(self.char, row, roll, free)
+        if row.get("ammo"):
+            left = f"{ammo_count(self.char, row['ammo'])} {ammo_label(row['ammo']).lower()} left"
+            report["message"] += f"\n{left}"
+            report["roll"]["note"] = "; ".join(x for x in (report["roll"].get("note"), left) if x)
+        self._last_attack_row = row
+        self._last_attack_roll = report["roll"]
+        self.attackReport.emit(report["title"], report)
+
+    @Slot(list, bool)
+    def takeAttackOptions(self, keys, hit):
+        """The attack dialog's "It hit" (hit) or "Missed": what's ticked is
+        paid for (a slot, ki, a die, once a turn...), asking first when
+        there's a choice, and a hit sets off what it carries (a smite)."""
+        from dnd_app.core.attacks import take_attack_options
+        row = getattr(self, "_last_attack_row", None)
+        picked = [str(k) for k in keys]
+        if row is None:
+            return
+        roll = getattr(self, "_last_attack_roll", None)
+
+        def done(res):
+            for slot in res.get("slots", []):
+                self._mark_turn_used(slot)
+            if res.get("toast"):
+                self.toastRequested.emit(res["toast"])
+            if res.get("refresh"):
+                self.ctrl.refresh()
+            self.statsChanged.emit()
+        self._ask_through(row["name"], lambda a: take_attack_options(self.char, row, picked, a,
+                                                                    hit=bool(hit), roll=roll), done)
 
     @Slot(str, int)
     def setAmmoCount(self, kind: str, n: int):
@@ -1010,11 +940,13 @@ class CharacterSheetBridge(QObject):
         if res["status"] == "cast" and spell:
             if spell.get("concentration"):
                 start_concentration(self.char, spell_name)
-            self._maybe_apply_spell_active_effect(spell)
             self._mark_spell_cast_time(spell)
+            self._maybe_apply_spell_active_effect(spell, spell.get("level", 0), res["message"])
         elif res["status"] == "failed" and spell:
             self._mark_spell_cast_time(spell)
-        self.toastRequested.emit(res["message"])
+            self.toastRequested.emit(res["message"])
+        else:
+            self.toastRequested.emit(res["message"])
         self.ctrl.refresh()
         self.statsChanged.emit()
 
@@ -1260,6 +1192,9 @@ class CharacterSheetBridge(QObject):
                 "qty": entry.get("qty", 1),
                 "resistanceChoicePool": resistance_pool,
                 "resistanceChoiceCurrent": current_dmg[0] if current_dmg else "",
+                # an "any sword" item (Flame Tongue...): which weapon it is
+                "baseOptions": _base_weapon_options(name),
+                "base": _weapon_base_of(self.char, name) if _base_weapon_options(name) else "",
             })
         out.sort(key=lambda i: _mi_sort_key(i["rarity"], i["name"]))
         return out
@@ -1440,6 +1375,16 @@ class CharacterSheetBridge(QObject):
             add_owned_magic_item(self.char, name)
             self.ctrl.refresh()
         self.statsChanged.emit()
+
+    @Slot(str, str)
+    def setWeaponBase(self, item_name: str, base: str):
+        """Which weapon an "any sword" item is (core/riders.py) -- its
+        dice, properties and proficiency on the Combat screen follow."""
+        from dnd_app.core.riders import set_weapon_base
+        if set_weapon_base(self.char, item_name, base):
+            self.ctrl.refresh()
+            self.toastRequested.emit(f"{item_name} is a {base.lower()}")
+            self.statsChanged.emit()
 
     @Slot(str, bool)
     def setMagicItemAttuned(self, uid: str, on: bool):
@@ -1684,12 +1629,8 @@ class CharacterSheetBridge(QObject):
     # char["resources"] (ki points, rage uses, second wind, etc.) is
     # fully computed generically by calculator.py's update_all() (via
     # aggregate_resources() in multiclass.py) -- nothing class-specific
-    # needs to run here beyond the usual refresh(). Spending here is
-    # the generic decrement every resource supports; the handful of
-    # desktop abilities with an extra mechanical effect on use (Second
-    # Wind's heal roll, Rage/Reckless Attack's active_effects toggle,
-    # Action Surge's turn-economy flag) aren't reproduced yet -- this
-    # is resource *tracking*, not those abilities' full mechanics.
+    # needs to run here beyond the usual refresh(). What Use does is the
+    # shared rules in core/action_use.py (useAbility below).
     _ACTION_BUCKET_LABELS = {
         "Action": "Action",
         "Bonus Action": "Bonus Action",
@@ -1737,10 +1678,14 @@ class CharacterSheetBridge(QObject):
         # desktop marks pinned spells with a "★ " text prefix; here the
         # card shows the star icon from the "pinned" flag instead
         name = entry[0][2:] if spell is not None and entry[0].startswith("★ ") else entry[0]
+        # an "Other" card gets Use too when using it does something
+        # (Agile Parry, Deft Strike...: core/action_use.py)
+        from dnd_app.core.action_use import rule_for
         item = {"name": name,
                 "desc": entry[1] if len(entry) > 1 else "",
                 "source": entry[2] if len(entry) > 2 else "",
                 "bucketKey": bucket_key,
+                "usable": bucket_key != "Passive" or rule_for(name) is not None,
                 "isSpell": spell is not None}
         if spell is not None:
             item.update({
@@ -1778,10 +1723,27 @@ class CharacterSheetBridge(QObject):
                 "toggleEffect": toggle_effect or "",
                 "toggleActive": bool(toggle_effect) and toggle_effect in self.char.get("active_effects", []),
             })
+        # magic item charges (desktop lists them under Resources & Charges too)
+        for name, data in self.char.get("item_charges", {}).items():
+            if data.get("max", 0) <= 0:
+                continue
+            out.append({
+                "key": f"item:{name}", "name": name,
+                "current": data.get("current", 0), "currentMax": data.get("max", 0),
+                "unlimited": False, "sourceClass": "Magic item",
+                "reset": {"dawn": "Dawn", "dusk": "Dusk"}.get(data.get("recharge", "dawn"), "Never"),
+                "toggleEffect": "", "toggleActive": False,
+            })
         return out
 
     @Slot(str)
     def spendResource(self, key: str):
+        if key.startswith("item:"):          # a magic item's charge
+            data = self.char.get("item_charges", {}).get(key[5:])
+            if data:
+                data["current"] = max(0, data.get("current", 0) - 1)
+            self.statsChanged.emit()
+            return
         # Second Wind and Action Surge have a real mechanical effect
         # beyond "decrement a counter" -- matches ui_desktop's
         # action_tabs.py special-casing of these two exactly (every
@@ -1836,6 +1798,12 @@ class CharacterSheetBridge(QObject):
 
     @Slot(str)
     def restoreResource(self, key: str):
+        if key.startswith("item:"):          # a magic item's charges
+            data = self.char.get("item_charges", {}).get(key[5:])
+            if data:
+                data["current"] = data.get("max", 0)
+            self.statsChanged.emit()
+            return
         for res in self.char.get("resources", []):
             if res.get("key") == key:
                 if isinstance(res.get("current_max"), int):
@@ -2707,115 +2675,73 @@ class CharacterSheetBridge(QObject):
         self.statsChanged.emit()
 
     # ── Use button (Actions screen) ──────────────────────────────────
-    # Port of ui_desktop's action_tabs.py _use_ability(): special cases
-    # for features that need more than a resource tick, then "spend a
-    # matching tracked resource (and switch on its effect, for toggles
-    # like Rage)", else just consume the turn slot. Divine Smite spends
-    # the lowest available slot (desktop asks which; there's no dialog
-    # here).
+    # The shared rules decide what Use does (core/action_use.py: what it
+    # costs, what it does), the same as desktop. A question they raise
+    # (how many ki, which slot, a Wild Shape check...) goes to QML as
+    # actionQuestion; the answer comes back through answerActionQuestion
+    # and the action is tried again with it.
     @Slot(str, str, str)
     def useAbility(self, bucket: str, display: str, desc: str):
-        char = self.char
         if bucket in self._turn_counts and self._turn_blocked(bucket):
             return
-        key = display.split("(")[0].strip().lower()
-        if char.get("_wildshape_active") and any(b in key for b in WILDSHAPE_BLOCKED_FEATURES):
-            self.toastRequested.emit(f"Can't use {display} while Wild Shaped -- your beast form can't "
-                                     f"perform what it requires (a held item, speech, an unarmed strike, or casting)")
-            return
-        if key == "wild shape":
-            self.toastRequested.emit("Use the Wild Shape card on the Combat screen to pick a beast and transform")
-            return
-        fx = char.setdefault("active_effects", [])
+        from dnd_app.core.action_use import use_action
+        self._ask_through(display, lambda a: use_action(self.char, bucket, display, desc, a),
+                          self._after_use)
 
-        def toggle_effect(name, on_text, cost_channel_divinity=False, requires=None):
-            if name in fx:
-                fx.remove(name)
-                self.toastRequested.emit(f"{name}: OFF")
-            else:
-                if requires and requires not in fx:
-                    self.toastRequested.emit(f"{name} requires an active {requires} first")
-                    return
-                if cost_channel_divinity:
-                    cd = next((r for r in char.get("resources", [])
-                               if "channel divinity" in str(r.get("name", "")).lower()), None)
-                    if cd and cd.get("current", 0) <= 0:
-                        self.toastRequested.emit(f"{name}: no Channel Divinity uses left (recharges on short/long rest)")
-                        return
-                    if cd:
-                        cd["current"] = cd.get("current", 0) - 1
-                fx.append(name)
-                self.toastRequested.emit(f"{name}: ON -- {on_text}")
+    # The shared rules can ask the player something first (core/action_use.py,
+    # core/spell_effects.py): the question goes to App.qml through
+    # actionQuestion, the answer comes back through answerActionQuestion, and
+    # the rule runs again with it -- until it's done, then `done` gets the result.
+    def _ask_through(self, title, call, done):
+        self._pending_use = {"title": title, "call": call, "done": done, "answers": {}}
+        self._run_pending_use()
+
+    def _after_use(self, res):
+        if res.get("toast"):
+            self.toastRequested.emit(res["toast"])
+        if not res.get("ok"):
+            return
+        if res.get("slot"):
+            self._mark_turn_used(res["slot"])
+        if res.get("refresh"):
+            self.ctrl.refresh()
+        self.statsChanged.emit()
+
+    # A character just opened from a save with effects a short rest would
+    # end still on (Rage, Bladesong, a potion...): App.qml asks whether
+    # they've ended (core/action_use.py leftover_effects)
+    @Slot(result=list)
+    def takeLeftoverEffects(self):
+        from dnd_app.core.action_use import take_leftover_effects
+        return take_leftover_effects(self.char)
+
+    @Slot(list)
+    def endEffects(self, names):
+        from dnd_app.core.action_use import end_effects
+        if end_effects(self.char, [str(n) for n in names]):
             self.ctrl.refresh()
             self.statsChanged.emit()
 
-        if key == "reckless attack":
-            return toggle_effect("Reckless Attack", "advantage on your melee attacks, but attacks against you also have advantage")
-        if key == "sacred weapon":
-            return toggle_effect("Sacred Weapon", "add CHA mod to attacks with your weapon for 1 minute", True)
-        if key == "peerless athlete":
-            return toggle_effect("Peerless Athlete", "doubled carry capacity, advantage on Athletics/Acrobatics, for 10 minutes", True)
-        if "frenzi" in key:
-            return toggle_effect("Frenzy", "bonus action melee attack each turn for the rest of your rage; 1 exhaustion when it ends",
-                                 requires="Rage")
-        if key == "second wind":
-            res = next((r for r in char.get("resources", [])
-                        if "second wind" in str(r.get("name", "")).lower()), None)
-            if res is None or res.get("current", 0) <= 0:
-                self.toastRequested.emit("Second Wind: no uses left (recharges on short/long rest)")
-                return
-            fighter_lvl = class_levels(char).get("Fighter", 0)
-            roll = random.randint(1, 10)
-            heal = roll + fighter_lvl
-            res["current"] = res.get("current", 1) - 1
-            char["current_hp"] = min(char.get("max_hp", 0), char.get("current_hp", 0) + heal)
-            self._mark_turn_used(bucket)
-            self.toastRequested.emit(f"Second Wind: rolled {roll} + {fighter_lvl} (Fighter level) = {heal} HP healed "
-                                     f"({res['current']}/{res.get('current_max')} left)")
-            self.statsChanged.emit()
+    @Slot(str)
+    def answerActionQuestion(self, choice: str):
+        """The player's answer to actionQuestion ("" = cancelled)."""
+        pending = getattr(self, "_pending_use", None)
+        if not pending or not choice:
+            self._pending_use = None
             return
-        if key == "divine smite":
-            used = char.setdefault("spell_slots_used", [0] * 9)
-            maxes = char.get("spell_slots_max", [0] * 9)
-            lvl = next((l for l in range(1, 6) if maxes[l - 1] > used[l - 1]), None)
-            if lvl is None:
-                self.toastRequested.emit("Divine Smite: no available spell slots to expend")
-                return
-            used[lvl - 1] += 1
-            dice = min(5, 1 + lvl)
-            self.toastRequested.emit(f"Divine Smite: expended a level-{lvl} slot -- {dice}d8 radiant damage "
-                                     f"(+1d8 vs. undead or fiends)")
-            self.statsChanged.emit()
+        pending["answers"][pending.pop("key")] = choice
+        self._run_pending_use()
+
+    def _run_pending_use(self):
+        p = self._pending_use
+        res = p["call"](p["answers"])
+        ask = res.get("ask")
+        if ask:
+            p["key"] = ask["key"]
+            self.actionQuestion.emit(p["title"], ask["title"], list(ask["options"]))
             return
-        for res in char.get("resources", []):
-            rname = str(res.get("name", "")).lower()
-            if key and (key in rname or rname in key) and res.get("current_max", 0) > 0:
-                if display in RESOURCE_POOL_TOGGLES and display in fx:
-                    self.toastRequested.emit(f"{display} already active -- end it from its resource row")
-                    return
-                # e.g. Rage in heavy armor -- refused before a use is spent
-                why = effect_start_problem(char, display)
-                if why:
-                    self.toastRequested.emit(f"{display}: {why}")
-                    return
-                cur = res.get("current", 0)
-                if cur <= 0:
-                    self.toastRequested.emit(f"{display}: no uses left (recharges on {res.get('reset', 'rest')})")
-                    return
-                res["current"] = cur - 1
-                note = ""
-                if display in RESOURCE_POOL_TOGGLES and display not in fx:
-                    fx.append(display)
-                    note = on_effect_started(char, display)   # Rage ends concentration
-                    self.ctrl.refresh()
-                self._mark_turn_used(bucket)
-                self.toastRequested.emit(f"Used {display} ({res['current']}/{res.get('current_max')} left)"
-                                         + (f" -- {note}" if note else ""))
-                self.statsChanged.emit()
-                return
-        self._mark_turn_used(bucket)
-        self.toastRequested.emit(f"{display}: {desc[:90]}")
-        self.statsChanged.emit()
+        self._pending_use = None
+        p["done"](res)
 
     @Slot(str)
     def toggleQuickSpell(self, name: str):
@@ -2836,9 +2762,11 @@ class CharacterSheetBridge(QObject):
         self._action_spell_is_cantrip = None
         self._bonus_action_spell_is_cantrip = None
         self.char["_action_surge_used_this_turn"] = False
-        fx = self.char.get("active_effects", [])
-        if "Reckless Attack" in fx:
-            fx.remove("Reckless Attack")
+        # what lasted until now ends: Reckless Attack, Dodge, Agile Parry,
+        # Kensei's Shot... and once-per-turn uses come back (core/action_use.py)
+        from dnd_app.core.action_use import new_turn
+        if new_turn(self.char):
+            self.ctrl.refresh()
         # Surprise lasts until the end of your first turn -- a new turn
         # means it's over.
         from dnd_app.core.calculator import get_turn_blocks
@@ -2859,6 +2787,8 @@ class CharacterSheetBridge(QObject):
     def _mark_spell_cast_time(self, spell: dict):
         ct = (spell.get("cast_time") or "1 action").strip().lower()
         is_cantrip = spell.get("level", 1) == 0
+        from dnd_app.core.action_use import note_spell_cast
+        note_spell_cast(self.char, spell.get("name", ""))   # no second spell from the attack dialog
         if ct == "1 action":
             self._mark_turn_used("Action")
             self._action_spell_is_cantrip = is_cantrip
@@ -2868,38 +2798,48 @@ class CharacterSheetBridge(QObject):
         elif ct == "reaction":
             self._mark_turn_used("Reaction")
 
-    def _maybe_apply_spell_active_effect(self, spell: dict):
-        """Mirrors ui_desktop's _apply_spell_active_effect: if this
-        spell has a real active_effects hook (Bless/Haste/Shield of
-        Faith, dozens more), self-only spells auto-apply with no
-        ambiguity; a spell with a real range instead asks QML to prompt
-        self-vs-another (via spellEffectPromptRequested), since these
-        buff spells can target either and only self-targeting should
-        land on this character's own Active Effects."""
+    def _maybe_apply_spell_active_effect(self, spell: dict, level: int = 0, said: str = ""):
+        """Casting puts the spell's effect on your Active Effects (Haste,
+        Bless, Divine Favor, a smite...) -- the shared rules (core/
+        spell_effects.py, as desktop's _apply_spell_active_effect) ask what
+        only the player knows: who it's on, which weapon, which damage type.
+        `said` is the cast's own toast, shown with what the effect did."""
+        from dnd_app.core.spell_effects import cast_effect, effect_names
         name = spell["name"]
-        if name not in EFFECT_TABLE:
+        if not effect_names(name):
+            if said:
+                self.toastRequested.emit(said)
             return
-        rng = (spell.get("range") or "").strip().lower()
-        is_self_only = rng == "self" or rng.startswith("self (") or rng.startswith("self(")
-        if is_self_only:
-            self.applySpellActiveEffect(name)
-        else:
-            self.spellEffectPromptRequested.emit(name)
 
-    @Slot(str)
-    def applySpellActiveEffect(self, name: str):
-        fx = self.char.setdefault("active_effects", [])
-        if name not in fx:
-            fx.append(name)
-            # Bless/Haste/Shield of Faith/etc. feed their actual bonus
-            # (AC, saves, attack rolls...) into calculator.py's
-            # update_all() -- without this refresh() the spell would
-            # show up in Active Effects but its mechanical bonus would
-            # never actually land on the sheet (same bug/fix as
-            # toggleResourceEffect and setConditionActive above).
-            self.ctrl.refresh()
-            self.toastRequested.emit(f"{name} added to Active Effects")
+        def done(res):
+            if res.get("refresh"):
+                self.ctrl.refresh()
+            msg = "\n".join(m for m in (said, res.get("toast", "")) if m)
+            if msg:
+                self.toastRequested.emit(msg)
             self.statsChanged.emit()
+        self._ask_through(name, lambda a: cast_effect(self.char, name, level, a), done)
+
+    def _weapon_cantrip(self, spell: dict):
+        """Green-Flame Blade and Booming Blade: which melee weapon you
+        swing (from the weapon rows), then what to roll -- the weapon's
+        damage plus the spell's, each with its type -- in a dialog
+        (sheetMessage). The turn is spent once a weapon is picked."""
+        from dnd_app.core.spell_effects import weapon_cantrip
+        name = spell["name"]
+        rows = [{"name": w["name"], "atk": w["attackBonusText"], "damage": w["damageDisplay"],
+                 "type": w["damageType"], "melee": "melee" in w["category"].lower(),
+                 "riders": w["onHitBonusText"]} for w in self.weapons]
+
+        def done(res):
+            if not res.get("ok"):
+                if res.get("toast"):
+                    self.toastRequested.emit(res["toast"])
+                return
+            self._mark_spell_cast_time(spell)
+            self.sheetMessage.emit(name, res["message"])
+            self.statsChanged.emit()
+        self._ask_through(name, lambda a: weapon_cantrip(self.char, name, rows, a), done)
 
     @Slot(str)
     def castSpell(self, name: str):
@@ -2940,8 +2880,12 @@ class CharacterSheetBridge(QObject):
                 f"means the only other spell you can cast this turn is a cantrip")
             return
         if is_cantrip:
+            from dnd_app.core.spell_effects import WEAPON_CANTRIPS
+            if name in WEAPON_CANTRIPS:
+                self._weapon_cantrip(spell)
+                return
             self._mark_spell_cast_time(spell)
-            self.toastRequested.emit(f"Cast {name} (cantrip -- at will)")
+            self._maybe_apply_spell_active_effect(spell, 0, f"Cast {name} (cantrip -- at will)")
             self.statsChanged.emit()
             return
         # A free daily cast (a racial spell, Fey Touched, Firbolg Magic...)
@@ -2951,9 +2895,8 @@ class CharacterSheetBridge(QObject):
         if free:
             if spell.get("concentration"):
                 start_concentration(self.char, name)
-            self._maybe_apply_spell_active_effect(spell)
             self._mark_spell_cast_time(spell)
-            self.toastRequested.emit(free_cast_message(name, free))
+            self._maybe_apply_spell_active_effect(spell, lvl, free_cast_message(name, free))
             self.statsChanged.emit()
             return
         slots_used = self.char.setdefault("spell_slots_used", [0] * 9)
@@ -2963,18 +2906,17 @@ class CharacterSheetBridge(QObject):
                 slots_used[i] += 1
                 if spell.get("concentration"):
                     start_concentration(self.char, name)
-                self._maybe_apply_spell_active_effect(spell)
                 self._mark_spell_cast_time(spell)
-                self.toastRequested.emit(f"Cast {name} -- slot expended")
+                self._maybe_apply_spell_active_effect(spell, i + 1, f"Cast {name} -- slot expended")
                 self.statsChanged.emit()
                 return
         if self.char.get("pact_slots_max", 0) > 0 and self.char.get("pact_slots_used", 0) < self.char["pact_slots_max"]:
             self.char["pact_slots_used"] = self.char.get("pact_slots_used", 0) + 1
             if spell.get("concentration"):
                 start_concentration(self.char, name)
-            self._maybe_apply_spell_active_effect(spell)
             self._mark_spell_cast_time(spell)
-            self.toastRequested.emit(f"Cast {name} -- pact slot expended")
+            self._maybe_apply_spell_active_effect(spell, self.char.get("pact_slot_level", 0) or lvl,
+                                                  f"Cast {name} -- pact slot expended")
             self.statsChanged.emit()
             return
         self.toastRequested.emit(f"Can't cast {name} -- no level-{lvl}+ spell slots available")
@@ -3003,8 +2945,8 @@ class CharacterSheetBridge(QObject):
         # a ritual casting still needs concentration (Detect Magic, ...)
         if spell.get("concentration"):
             start_concentration(self.char, name)
-        self._maybe_apply_spell_active_effect(spell)
-        self.toastRequested.emit(
+        self._maybe_apply_spell_active_effect(
+            spell, spell.get("level", 0),
             f"Cast {name} as a ritual -- no spell slot used, but casting time is {base_time} + 10 minutes.")
         self.statsChanged.emit()
 
@@ -3827,13 +3769,17 @@ class CharacterSheetBridge(QObject):
         if was_concentrating:
             drop_concentration(char)
             expired.append(f"concentration on {was_concentrating}")
+        # dawn comes: magic items get their charges back (core/magic_items.py)
+        from dnd_app.core.magic_items import charges_at_dawn
+        dawn = charges_at_dawn(char)
         rebuild(char)
         self.ctrl.refresh()
         from dnd_app.data.flavor_text import random_long_rest_dream
+        items = ("\nAt dawn: " + "; ".join(dawn)) if dawn else ""
         if expired:
-            self.restToastRequested.emit(f"Faded: {', '.join(expired)}")
+            self.restToastRequested.emit(f"Faded: {', '.join(expired)}{items}")
         else:
-            self.restToastRequested.emit(f"Long rest complete -- HP, slots & resources restored\n{random_long_rest_dream()}")
+            self.restToastRequested.emit(f"Long rest complete -- HP, slots & resources restored{items}\n{random_long_rest_dream()}")
         self.statsChanged.emit()
 
     # ── Rest options ("also reconfigure?" checklist) -- one Slot per

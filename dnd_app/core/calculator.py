@@ -564,7 +564,14 @@ def get_save_advantage_status(char: dict, ability: str) -> dict:
     # list via the advantage_save effect type in core/magic_items.py.
     for item_ability, item_name in char.get("advantage_saves_magic", []):
         if item_ability in ("all", ability):
-            sources.append({"ability": ability, "source": item_name})
+            sources.append({"ability": ability, "source": item_name,
+                            "note": f"advantage on {ability} saves"})
+    # Active effects with save advantage (Dodge: DEX)
+    from dnd_app.core.effects import EFFECT_TABLE
+    for name in char.get("active_effects", []):
+        if ability in EFFECT_TABLE.get(name, {}).get("save_adv", ()):
+            sources.append({"ability": ability, "source": name,
+                            "note": f"advantage on {ability} saves"})
     return {
         "has_advantage": len(sources) > 0,
         "conditional": any(s.get("conditional") for s in sources),
@@ -3466,6 +3473,10 @@ def update_all(char: dict) -> dict:
     # core/spellcasting.py.
     from dnd_app.core.spellcasting import innate_free_cast_resources
     new_resources.extend(innate_free_cast_resources(char, new_resources))
+    # Per-rest uses of actions nothing above tracks (Wholeness of Body,
+    # Warding Flare...) -- see core/action_use.py
+    from dnd_app.core.action_use import feature_use_resources
+    new_resources.extend(feature_use_resources(char, new_resources))
 
     merged = []
     for res in new_resources:

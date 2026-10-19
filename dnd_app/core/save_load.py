@@ -166,8 +166,14 @@ def validate_character(char: dict, *, strict: bool = True) -> tuple[bool, list[s
 
 
 def migrate_character(data: dict) -> dict:
-    """Upgrade older character saves to current schema."""
-    return _migrate(data)
+    """Upgrade older character saves to current schema. Every save read
+    from disk comes through here, so it's also marked as just reopened:
+    the sheet then asks about effects left on (core/action_use.py
+    leftover_effects). An underscore key, so it's never saved."""
+    data = _migrate(data)
+    if isinstance(data, dict):
+        data["_reopened"] = True
+    return data
 
 
 def _make_serialisable(obj, _strip_private=True):

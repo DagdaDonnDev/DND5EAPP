@@ -124,6 +124,8 @@ Page {
             opts.push({key: "attune", text: item.attuned ? "End attunement" : "Attune", icon: "magic"})
         if (item.canStudy)
             opts.push({key: "study", text: "Study", icon: "spells"})
+        if (item.baseOptions && item.baseOptions.length > 0)
+            opts.push({key: "base", text: "Which weapon is it? (now a " + item.base + ")", icon: "combat"})
         opts.push({key: "remove", text: "Remove", icon: "trash"})
         magicOptionsDialog.heading = item.name
         magicOptionsDialog.accent = Theme.rarityColor(item.rarity)
@@ -140,7 +142,20 @@ Page {
             if (key === "attune") sheetBridge.setMagicItemAttuned(it.uid, !it.attuned)
             else if (key === "study") sheetBridge.studyAbilityManual(it.uid)
             else if (key === "remove") sheetBridge.removeMagicItem(it.uid)
+            else if (key === "base") {
+                weaponBasePicker.dialogTitle = "Which weapon is your " + it.name + "?"
+                weaponBasePicker.options = it.baseOptions
+                weaponBasePicker.open()
+            }
         }
+    }
+
+    // an "any sword" item: which weapon it is (its dice follow on Combat);
+    // searchable, since "any weapon" is a long list
+    MPickerDialog {
+        id: weaponBasePicker
+        objectName: "weaponBasePicker"
+        onPicked: (value) => { if (root.heldItem) sheetBridge.setWeaponBase(root.heldItem.name, value) }
     }
 
     // How many you have: type a number or use - / + (hold to step by 5)

@@ -1,5 +1,6 @@
 module Mimic
 singleton Theme 1.0 Theme.qml
+MAttackOption 1.0 MAttackOption.qml
 MButton 1.0 MButton.qml
 MCard 1.0 MCard.qml
 MCheese 1.0 MCheese.qml

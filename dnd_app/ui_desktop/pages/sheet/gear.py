@@ -941,11 +941,32 @@ class GearMixin:
             if is_magic_ammunition(_name):
                 qty_act = menu.addAction(_icons.icon("ammo"), "Set quantity…")
                 qty_act.triggered.connect(lambda checked=False, u=_uid, e=_entry: self._set_magic_ammo_qty(u, e))
+            # an "any sword" item (Flame Tongue, Holy Avenger...): which weapon it is
+            from dnd_app.core.riders import base_weapon_options, weapon_base_of
+            if base_weapon_options(_name):
+                base_act = menu.addAction(_icons.icon("combat"),
+                                          f"Which weapon is it? (now a {weapon_base_of(self.char, _name)})")
+                base_act.triggered.connect(lambda checked=False, n=_name: self._pick_weapon_base(n))
             rm_act = menu.addAction(_icons.icon("trash"), f"Remove {_name[:36]}")
             rm_act.triggered.connect(lambda: self._remove_magic_item(_uid))
             menu.exec(self._magic_items_tree.viewport().mapToGlobal(pos))
         self._magic_items_tree.customContextMenuRequested.connect(_mi_ctx_menu)
         self._mi_tree_ctx_handler = _mi_ctx_menu
+
+    def _pick_weapon_base(self, item_name: str):
+        """Which weapon an "any sword" item is: its dice, properties and
+        proficiency on the Combat tab follow (core/riders.py)."""
+        from dnd_app.core.riders import base_weapon_options, weapon_base_of, set_weapon_base
+        opts = base_weapon_options(item_name)
+        now = weapon_base_of(self.char, item_name)
+        pick, ok = QInputDialog.getItem(self, item_name, f"Which weapon is your {item_name}?",
+                                        opts, opts.index(now) if now in opts else 0, False)
+        if ok and set_weapon_base(self.char, item_name, pick):
+            self._mark_dirty()
+            self.ctrl.refresh()
+            if hasattr(self, "_refresh_combat"):
+                self._refresh_combat()
+            self._toast(f"{item_name} is a {pick.lower()}")
 
     def _set_item_damage_type(self, item_name: str, dmg_type):
         """Store which damage type a resistance-choice item (Ring/Armor of
@@ -1532,7 +1553,9 @@ class GearMixin:
                 start_concentration(self.char, spell_name)
                 self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
                 self._refresh_concentration()
-            self._apply_spell_active_effect(spell)
+            fx_msg = self._apply_spell_active_effect(spell, spell.get("level", 0))
+            if fx_msg:
+                res["message"] += f"\n{fx_msg}"
             self._mark_spell_cast_time(spell)
         elif res["status"] == "failed" and spell:
             self._mark_spell_cast_time(spell)

@@ -118,7 +118,19 @@ your computer, or on your phone with the same character file.
 - **Full HP tracking** — max, current and temporary HP, with one-click damage and healing
 - **A turn tracker** — Action, Bonus Action and Reaction, with a one-click New Turn
 - **Every real action you have**, filterable by category and spell level, each using the right part of your turn — and the "one leveled spell per turn" rule enforced, with Haste's extra action recognised
-- **Casting a buff applies it** — a spell that matches an existing buff or condition switches it on
+- **Casting a buff applies it** — a spell that matches an existing buff or condition switches it on, asking what only you know: who it's on, which weapon (Magic Weapon, Elemental Weapon, Holy Weapon), which damage type. A smite, Hex or Hunter's Mark is always yours, so it never asks, and ending concentration takes the effect off
+- **Use does what the action does**, the same on both apps — it spends the right thing (ki for Flurry of Blows, Channel Divinity for Turn Undead, a Bardic Inspiration die for Cutting Words, a spell slot, a Psionic Energy die), switches on its effect (Patient Defense's Dodge, Agile Parry's +2 AC), heals or adds temporary hit points, and rolls its luck and healing dice. It asks when there's a choice (how many ki, which slot, who's healed), and the message at the top says what it did and what's left
+- **Damage is your roll** — Deflect Missiles, Divine Smite, Radiance of the Dawn, a Breath Weapon and every other damage ability say what to roll and its damage type ("roll 1d10 + 8 and take that much off the damage", "add 3d8 radiant damage to the hit"). Damage you take for a feature (Crimson Rite) asks what you rolled
+- **Every weapon shows what's on now**, by damage type — a line under each attack lists only what's active (Divine Favor's +1d4 radiant, Hunter's Mark, a smite at the level you cast it, Kensei's Shot, Symbiotic Entity, a Crimson Rite on that weapon, Flame Tongue alight, Improved Divine Smite). Flat bonuses (Magic Weapon, Bracers of Archery) go straight into the numbers
+- **Attack, then choose what to add** — Hit (Roll to Hit on Android) rolls, then shows the total and what it hits ("Hits AC 18 or lower"), what to roll if it hits — the weapon's damage and each extra that's on, with where it's from and what else it does (Searing Smite: the target catches fire) — and what you can add with its cost: Sneak Attack (once a turn), Divine Smite (one row per spell slot level you have, plus +1d8 if the target is undead or a fiend), a maneuver (a superiority die), Deft Strike or Hand of Harm (1 ki), Psychic Blades (Bardic Inspiration), lighting a Flame Tongue, a Fire Rune (once a rest)... then what your bonus action can do (the off-hand attack, Flurry of Blows, a butt-end attack). Only what you can pay for right now is offered, and a spell you could add (the 2024 Divine Smite) isn't once you've cast a spell this turn. **It hit** spends what's ticked and the toast says what to roll; **Missed** only takes the bonus action ones. On a critical hit the dice shown are already doubled
+- **Smite spells go off on the hit** — Searing Smite, Wrathful Smite, Branding Smite and the rest add their damage to your next hit; once it lands the extra damage is gone from the weapon, and what's left stays while you concentrate (the target burns, is frightened...) — the Active Effects list says so. Thunderous Smite, Hail of Thorns and Absorb Elements end with the hit. Once-a-turn extras (Divine Fury, Favored Foe, Giant's Might) are done for the turn after a hit and come back on New Turn
+- **Two weapons in hand** show the off-hand attack's damage (a light weapon, or any with Dual Wielder): no ability modifier unless you have Two-Weapon Fighting
+- **Green-Flame Blade and Booming Blade** ask which melee weapon you swing, then show its damage plus the spell's, with every type and the second creature's fire
+- **Magic weapons are real weapons** — a Mace of Disruption is a mace and a Sun Blade a radiant, finesse longsword, and you pick which weapon an "any sword" item is (a Greatsword Flame Tongue), each with its own extra damage (vs undead, on a 20, once lit); an item's actions spend its charges (asking how many when it can take more, like a Wand of Fireballs), once-a-day ones are counted, and a long rest's dawn brings charges back the way each item says
+- **Attacks that aren't a weapon in hand** — Martial Arts (and the Arms of the Astral Self), natural weapons, the unarmed strike, Psychic Blades, Shadow Blade, a polearm's butt end, Form of the Beast, armor spikes, an Armorer's armor, a Wild Shape beast's attacks — on both apps, with their riders
+- **Per-rest uses are counted** — Wholeness of Body, Warding Flare, Arcane Shot and every other "once per rest" action has its own counter under Resources & Charges
+- **Effects end when they should** — turn-long ones (Dodge, Reckless Attack, Kensei's Shot) at New Turn; minute-long ones on a rest, and when you open a saved character with any still on, it asks whether they've ended
+- **Wild Shape keeps what the beast can do** — no spellcasting, but anything needing hands, a held weapon or an unarmed strike asks first, since your DM decides whether your form can manage it
 - **Class resources** — Rage, Ki, Sorcery Points, Superiority Dice, Channel Divinity and every other one, reset by short and long rests
 - **Dying by the book** — temp HP soak damage first; massive damage (enough left over after hitting 0 HP to equal your maximum) kills outright; at 0 HP you're unconscious and a hit is a failed death save; three successes leave you stable, still out cold at 0 HP until healed (or 1 HP after 1d4 hours); the dead can't be healed until revived, and the death screen says what killed you
 - **Conditions and exhaustion with real effects** on saves, attacks, ability checks and movement — Surprised included (no moving, acting or reacting until your first turn ends)
@@ -126,7 +138,7 @@ your computer, or on your phone with the same character file.
 - **Armor Class you can check** — the AC breakdown is the AC: armor, DEX cap, shield, items, spells and features add up to the number shown
 - **Rests and slots stay honest** — a long rest needs at least 1 HP to start, and used slots or resource uses never exceed what you have after a level change
 - **Ammunition from your inventory** — a bow, crossbow, sling, blowgun or firearm shows the shots your inventory holds (a bundle of 20 arrows counts as 20); each attack uses one, opening a bundle into loose pieces so the Gear tab stays right. Click the counter to set how many you have, and Gear tab changes show on it straight away
-- **Weapon and armor equipping** with computed attack bonuses and damage, and on-hit damage bonuses shown separately by type
+- **Weapon and armor equipping** with computed attack bonuses and damage, and what each hit can add listed under it by type
 
 </details>
 
@@ -139,6 +151,9 @@ your computer, or on your phone with the same character file.
 - **Eldritch Adept, Metamagic Adept and Martial Adept** grant a real choice of invocation, metamagic or maneuver
 - **Eldritch Versatility** — swap a cantrip, your Pact Boon or a Mystic Arcanum spell at the right levels
 - **Monk weapons follow Martial Arts** — DEX and the Martial Arts die when they're better, with no armour or shield. Kensei weapons and Tasha's Dedicated Weapon can be any simple or martial weapon without heavy or special — guns included; a Kensei is proficient with theirs, which count as magical from 6th level, and the Dedicated Weapon is picked from the inventory
+- **Kensei features work** — Kensei's Shot adds 1d4 to ranged kensei attacks this turn, Agile Parry gives +2 AC, Sharpen the Blade adds its bonus to the weapon in hand, and Deft Strike adds your Martial Arts die once per turn
+- **Rune Knight runes** each have their own once-a-rest Use, and the Fire Rune's 2d6 fire is offered when you hit
+- **Blood Hunter rites** — Crimson Rite asks which rite and which weapon (or your hybrid form's claws), takes the necrotic you rolled, and the rite's element shows on that weapon until your next rest
 
 </details>
 
@@ -227,7 +242,7 @@ The Android app runs on the same rules engine and data as the desktop app, so a 
 
 - **The full creation wizard** — race, ability scores, background and class, starting equipment
 - **The whole character sheet** — abilities, proficiencies, combat, actions, spells, equipment, features, companions, infusions and notes
-- **A combat screen** — HP and temp HP, death saves, weapon attack rolls with ammunition, favourite spells to cast, conditions, hit dice and Wild Shape
+- **A combat screen** — HP and temp HP, death saves, every attack you have (weapons, Martial Arts, natural weapons...) with what its hits can add, attack rolls with ammunition, favourite spells to cast, conditions, hit dice and Wild Shape
 - **A working turn tracker**, used by the Use and Cast buttons as you play
 - **Level-up and Choices**, with the Choices tab pulsing while you still have picks to make
 - **Rests, a dice roller, the same 26 themes, and Save & Export**
