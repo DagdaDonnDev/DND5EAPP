@@ -233,7 +233,7 @@ class ChoicesMixin:
                 # Diff relevant choice ids before/after the subclass swap
                 # and clear anything no longer relevant — subclass-scoped
                 # choice ids (rune_knight_runes, kensei_weapons, lunar_phase,
-                # guidance_of_the_spirits_skill, ...) are each named for
+                # whispers_of_the_dead_prof, ...) are each named for
                 # their specific subclass, so switching away from Rune
                 # Knight to Battle Master, say, would otherwise leave the
                 # old chosen runes permanently stuck with no way to ever

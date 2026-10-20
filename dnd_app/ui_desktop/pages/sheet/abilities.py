@@ -247,26 +247,24 @@ class AbilitiesMixin:
         self.ctrl.update("_choices.extra_save_profs", current)
 
     def _quick_roll_toast(self, label: str, bonus: int, kind: str = "check", ability: str = ""):
-        """Roll a check or save with any condition rules applied: an
-        automatic failure (Stunned/Paralyzed/... STR and DEX saves), or
-        two d20s kept high/low for advantage/disadvantage."""
-        from dnd_app.core.calculator import condition_roll_mode, roll_d20
+        """Roll a check or save: one d20 (an automatic failure for a
+        Stunned/Paralyzed/... creature's STR and DEX saves), with a
+        reminder of the advantage and disadvantage the sheet knows about
+        -- whether they apply is the table's call."""
+        from dnd_app.core.calculator import condition_roll_mode, roll_d20, roll_reminder, SKILL_ABILITY
         cm = condition_roll_mode(self.char, kind, ability)
         if cm["mode"] == "auto_fail":
             self._toast(f"{label}: automatic failure ({', '.join(cm['sources'])})", 4200)
             return
-        r = roll_d20(cm["mode"])
-        d = r["d20"]
+        d = roll_d20("normal")["d20"]
         total = d + bonus
         flair = ""
         if d == 20: flair = "  NAT 20!"
         elif d == 1: flair = "  Nat 1…"
-        if len(r["rolls"]) == 2:
-            tag = "ADV" if cm["mode"] == "advantage" else "DIS"
-            dice = f"[{r['rolls'][0]}, {r['rolls'][1]} → {d}] {tag} ({', '.join(cm['sources'])})"
-        else:
-            dice = f"[{d}]"
-        self._toast(f"{label}: {dice} {bonus:+d} = {total}{flair}", 4200)
+        skill = label[:-len(" check")] if label.endswith(" check") and label[:-len(" check")] in SKILL_ABILITY else ""
+        reminder = roll_reminder(self.char, "initiative" if label == "Initiative" else kind, ability,
+                                 skill=skill)["text"]
+        self._toast(f"{label}: [{d}] {bonus:+d} = {total}{flair}" + (f"\n{reminder}" if reminder else ""), 4200)
 
     def _update_save_advantage_badge(self, ab: str):
         """Sync one saving throw's advantage indicator badge to current

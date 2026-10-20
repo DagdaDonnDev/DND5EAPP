@@ -220,7 +220,7 @@ def _fits(p: dict, on: str) -> bool:
 
 
 def _r(source, dice="", dtype="", when="", flat=False, atk=0, tip="", use="on", cost="", pay=None,
-       then="", spend="", instead=False, apart=False, miss=""):
+       then="", spend="", instead=False, apart=False, miss="", group="", needs=""):
     """use   "on"      on now: listed under the weapon (an active spell,
                        an always-on property, a flat bonus in the numbers)
              "option"  yours to add when you hit -- offered after the
@@ -238,10 +238,14 @@ def _r(source, dice="", dtype="", when="", flat=False, atk=0, tip="", use="on", 
              of the turn after a hit
        instead  its damage replaces the weapon's own (Lightning Arrow)
        apart    its damage is rolled on its own, not added to the hit
-       miss  what a missed shot still does (Lightning Arrow)"""
+       miss  what a missed shot still does (Lightning Arrow)
+       group an option's group: one pick per group (also what "needs" names)
+       needs an option that only counts with that group picked (Wails
+             from the Grave after Sneak Attack)"""
     return {"source": source, "dice": str(dice), "type": dtype, "when": when,
             "flat": flat, "atk": atk, "tip": tip, "use": use, "cost": cost, "pay": pay or [],
-            "then": then, "spend": spend, "instead": instead, "apart": apart, "miss": miss}
+            "then": then, "spend": spend, "instead": instead, "apart": apart, "miss": miss,
+            "group": group, "needs": needs}
 
 
 TURN = ("turn",)
@@ -390,6 +394,9 @@ EFFECT_RIDERS = {
                           "then": "The target makes a STR save (with advantage if it's Large or bigger) or is restrained by vines, taking {1d6} piercing at the start of each of its turns.",
                           "after": "If the target failed its STR save, it's restrained by vines and takes {1d6} piercing at the start of each of its turns. A STR check against your spell save DC frees it."}),
     "Kensei's Shot": ("1d4", "weapon", "kensei ranged", "this turn", "Kensei's Shot: your ranged attacks with kensei weapons deal an extra 1d4 damage this turn.", {}),
+    "Precise Strike": ("1d8", "weapon", "weapon attack", "on your next hit",
+                       "Precise Strike: your next weapon attack roll this turn has advantage, and +1d8 damage if it hits.",
+                       {"next": "hit"}),
     # class features switched on with Use
     "Symbiotic Entity": ("1d6", "necrotic", "melee attack", "", "Symbiotic Entity: your melee weapon attacks deal an extra 1d6 necrotic damage.", {}),
     "Slayer's Prey": ("1d6", "weapon", "weapon attack", "on your first hit each turn against your quarry", "Slayer's Prey: the first time each turn you hit your quarry with a weapon attack, it takes an extra 1d6 damage.", {"turn": True}),
@@ -526,14 +533,17 @@ def _feature_riders(char, p, out):
         elif "(choice:" in dtype:
             kinds = dtype.split("(choice:")[1].strip(" )").split("/")
             dtype = ", ".join(kinds[:-1]) + " or " + kinds[-1]
-        when = {"Divine Fury": "on your first hit each turn", "Hexblade's Curse": "against the cursed target"}.get(n, "")
+        when = {"Divine Fury": "on your first hit each turn", "Genie's Wrath": "on your first hit each turn",
+                "Hexblade's Curse": "against the cursed target"}.get(n, "")
         flat = n == "Aura of Hate"
-        # on every hit, or on while its effect is (Rage, the curse); the
-        # free once-a-turn ones are yours to add when you hit
-        option = n in ("Divine Strike", "Genie's Wrath", "Dreadful Strikes", "Astral Spark")
+        # on every hit, or on while its effect is (Rage, the curse), or
+        # once a turn on the first hit (Divine Fury, Genie's Wrath); the
+        # other free once-a-turn ones are yours to add when you hit
+        option = n in ("Divine Strike", "Dreadful Strikes", "Astral Spark")
         out.append(_r(n, b["die"], dtype, when, flat=flat,
                       use="option" if option else "on", cost="Once a turn" if option else "",
-                      pay=[TURN] if option else None, spend="turn" if n == "Divine Fury" else "",
+                      pay=[TURN] if option else None,
+                      spend="turn" if n in ("Divine Fury", "Genie's Wrath") else "",
                       tip=f"{n}: +{b['die']} {b['damage_type']}" + (", once a turn" if option else
                                                                     f", {when}" if when else "") + "."))
 
@@ -542,7 +552,7 @@ def _feature_riders(char, p, out):
         from dnd_app.core.calculator import get_sneak_attack
         sa = get_sneak_attack(char)
         if sa and sa != "None":
-            out.append(_r("Sneak Attack", sa, "weapon", use="option",
+            out.append(_r("Sneak Attack", sa, "weapon", use="option", group="Sneak Attack",
                           cost="Once a turn, when you have advantage or an ally is next to the target",
                           pay=[TURN], tip=f"Sneak Attack: once a turn, +{sa} when you have advantage, or an ally "
                               f"is within 5 ft of the target (and you don't have disadvantage)."))
@@ -572,14 +582,24 @@ def _feature_riders(char, p, out):
         f = cl["Fighter"]
         die = "1d12" if f >= 17 else "1d10" if f >= 11 else "1d8" if f >= 5 else "1d6"
         n = max(0, mods["INT"])
+        thrust_dc = 8 + get_prof_bonus(char) + mods["INT"]
+        thrust = (f". Telekinetic Thrust: a DC {thrust_dc} STR save or you knock the target prone or move it "
+                  f"up to 10 ft" if f >= 7 else "")
         out.append(_r("Psionic Strike", f"{die}+{n}" if n else die, "force", use="option",
-                      cost="Once a turn, for a Psionic Energy die", pay=[("pool", "psi", 1), TURN], tip=f"Psionic Strike: once a turn after you hit within 30 ft, spend a Psionic Energy die: {die} + INT force."))
+                      cost="Once a turn, for a Psionic Energy die" + thrust, pay=[("pool", "psi", 1), TURN],
+                      then=(f"The target makes a DC {thrust_dc} STR save or you knock it prone or move it up to "
+                            f"10 ft (Telekinetic Thrust)" if f >= 7 else ""),
+                      tip=f"Psionic Strike: once a turn after you hit within 30 ft, spend a Psionic Energy die: "
+                          f"{die} + INT force{thrust}."))
     # Battle Master maneuvers (and Martial Adept)
     if (cl.get("Fighter", 0) >= 3 and sub("Fighter", "battle master")) or "Martial Adept" in char.get("feats", []):
         f = cl.get("Fighter", 0) if sub("Fighter", "battle master") else 0
         die = "1d12" if f >= 18 else "1d10" if f >= 10 else "1d8" if f >= 3 else "1d6"
-        out.append(_r("Maneuver", die, "weapon", use="option",
-                      cost="For a superiority die: Trip, Pushing, Menacing...", pay=[("pool", "sd", 1)], tip=f"Maneuvers (Trip, Precision, Menacing...): spend a superiority die and add {die} to the damage."))
+        out.append(_r("Maneuver", "", "", use="option",
+                      cost=f"For a superiority die ({die}): Trip, Pushing, Menacing...",
+                      pay=[("action", "Maneuver", "Passive")],
+                      tip=f"Maneuvers (Trip, Precision, Menacing...): spend a superiority die ({die}); which one you "
+                          f"pick says what the die does."))
     # Eldritch Smite and Lifedrinker (invocations; your pact weapon)
     inv = " ".join(char.get("eldritch_invocations", []) or []).lower()
     if "eldritch smite" in inv and held:
@@ -600,6 +620,56 @@ def _feature_riders(char, p, out):
         w = mods["WIS"]
         out.append(_r("Hand of Harm", f"{ma}+{w}" if w > 0 else ma, "necrotic", use="option",
                       cost="Once a turn, for 1 ki", pay=[("action", "Hand of Harm", "Passive")], tip=f"Hand of Harm: once a turn when you hit with an unarmed strike, spend 1 ki for {ma} + WIS necrotic."))
+    pb = get_prof_bonus(char)
+    monk = cl.get("Monk", 0)
+    # Stunning Strike (Monk 5th): 1 ki on a melee weapon hit (once a turn in 2024)
+    if monk >= 5 and p["melee"]:
+        dc = 8 + pb + mods["WIS"]
+        out.append(_r("Stunning Strike", use="option",
+                      cost=f"For 1 ki. The target makes a DC {dc} CON save or is stunned until the end of your next turn",
+                      pay=[("action", "Stunning Strike", "Passive")] + ([TURN] if char.get("edition") == "2024" else []),
+                      tip=f"Stunning Strike: when you hit with a melee weapon attack, spend 1 ki: the target makes a "
+                          f"DC {dc} CON save or is stunned until the end of your next turn."))
+    # Quivering Palm (Open Hand 17th): start the vibrations with an unarmed strike
+    if monk >= 17 and sub("Monk", "open hand") and p["kind"] == "unarmed":
+        out.append(_r("Quivering Palm", use="option", pay=[("pool", "ki", 3)],
+                      cost=f"For 3 ki: lethal vibrations for up to {monk} days",
+                      then=f"The vibrations last up to {monk} days. End them with your action (the Quivering Palm "
+                           f"card): a CON save, or it drops to 0 hit points",
+                      tip="Quivering Palm: when you hit with an unarmed strike, spend 3 ki to start vibrations you "
+                          "can end later with your action."))
+    # Infectious Fury (Path of the Beast 10th): a natural weapon hit while raging
+    if cl.get("Barbarian", 0) >= 10 and sub("Barbarian", "beast") and "Rage" in fx and p["kind"] == "natural":
+        dc = 8 + pb + mods["CON"]
+        out.append(_r("Infectious Fury", use="option", pay=[("action", "Infectious Fury", "Passive")],
+                      cost=f"For one of its uses. A DC {dc} WIS save or 2d12 psychic, or it attacks another creature",
+                      tip=f"Infectious Fury: when you hit with your natural weapons while raging, the target makes a "
+                          f"DC {dc} WIS save or takes 2d12 psychic damage, or uses its reaction to attack another "
+                          f"creature of your choice."))
+    rogue = cl.get("Rogue", 0)
+    dex_dc = 8 + pb + mods["DEX"]
+    # Wails from the Grave (Phantom 3rd): after your Sneak Attack, a second creature
+    if rogue >= 3 and sub("Rogue", "phantom") and _fits(p, "finesse or ranged"):
+        out.append(_r("Wails from the Grave", use="option", needs="Sneak Attack",
+                      pay=[("action", "Wails from the Grave", "Passive")],
+                      cost="With Sneak Attack, for one of its uses: half your Sneak Attack dice as necrotic "
+                           "damage to a second creature within 30 ft of the first",
+                      tip="Wails from the Grave: right after your Sneak Attack, a second creature within 30 ft of "
+                          "the first takes necrotic damage: half your Sneak Attack dice."))
+    # Rend Mind (Soulknife 17th): Sneak Attack with a psychic blade
+    if rogue >= 17 and sub("Rogue", "soulknife") and p["name"] == "Psychic Blade":
+        out.append(_r("Rend Mind", use="option", needs="Sneak Attack",
+                      pay=[("action", "Rend Mind", "Passive")],
+                      cost=f"With Sneak Attack: a DC {dex_dc} WIS save or stunned for 1 minute. Once a long rest "
+                           f"(or 3 Psionic Energy dice)",
+                      tip=f"Rend Mind: when your psychic blade deals Sneak Attack damage, the target makes a DC "
+                          f"{dex_dc} WIS save or is stunned for 1 minute."))
+    # Death Strike (Assassin 17th): against a surprised creature
+    if rogue >= 17 and sub("Rogue", "assassin"):
+        out.append(_r("Death Strike", use="option", pay=[("action", "Death Strike", "Passive")],
+                      cost=f"Against a surprised creature: a DC {dex_dc} CON save or this attack's damage is doubled",
+                      tip=f"Death Strike: when you hit a surprised creature, it makes a DC {dex_dc} CON save or the "
+                          f"attack's damage is doubled."))
     # Song of Victory (Bladesinger 14th): +INT to melee weapon damage while Bladesong is on
     if cl.get("Wizard", 0) >= 14 and sub("Wizard", "blades") and "Bladesong" in fx and held and p["melee"]:
         out.append(_r("Song of Victory", max(1, mods["INT"]), flat=True,
@@ -653,9 +723,11 @@ def _feature_riders(char, p, out):
     fighter = cl.get("Fighter", 0)
     if fighter >= 3 and sub("Fighter", "arcane archer") and held and p["ammo"]:
         d = "4d6" if fighter >= 18 else "2d6"
-        out.append(_r("Arcane Shot", d, "of the shot's type", use="option",
+        out.append(_r("Arcane Shot", "", "", use="option",
                       cost="Once a turn, for one of your 2 shots a short rest",
-                      pay=[("action", "Arcane Shot", "Passive")], tip=f"Arcane Shot: on a hit with an arrow, one of your shot options -- most add {d} damage of its own type."))
+                      pay=[("action", "Arcane Shot", "Passive")],
+                      tip=f"Arcane Shot: on a hit with an arrow, one of your shot options -- most add {d} damage of "
+                          f"its own type."))
     # Fire Rune (Rune Knight): invoked on a weapon hit, once a short rest
     known = " ".join(char.get("_choices", {}).get("rune_knight_runes", []) or [])
     if cl.get("Fighter", 0) >= 3 and sub("Fighter", "rune knight") and "Fire Rune" in known and held:
@@ -667,6 +739,25 @@ def _feature_riders(char, p, out):
     if cl.get("Ranger", 0) >= 20:
         out.append(_r("Foe Slayer", max(1, mods["WIS"]), "weapon", use="option",
                       cost="Once a turn, against a favored enemy", pay=[TURN], tip="Foe Slayer: once a turn, add your WIS modifier to the attack or the damage against a favored enemy."))
+    # Strike of the Giants: a melee or thrown weapon hit, once a turn
+    if "Strike of the Giants" in feats and held and (p["melee"] or p["thrown"]):
+        out.append(_r("Giant Strike", use="option", pay=[("action", "Giant Strike", "Passive")],
+                      cost="Once a turn, for one of its uses: your strike's extra damage and save",
+                      tip="Strike of the Giants: once a turn, your chosen strike's extra damage and its save."))
+    # Scions of the outer planes and the Knight of the Sword: once a turn on a hit
+    if "Agent of Order" in feats:
+        out.append(_r("Stasis Strike", "1d8", "force", use="option", pay=[("action", "Stasis Strike", "Passive")],
+                      cost="Once a turn, for one of its uses. A WIS save or restrained until the start of your next turn",
+                      tip="Stasis Strike: once a turn, +1d8 force and a WIS save or restrained."))
+    if "Baleful Scion" in feats:
+        out.append(_r("Grasp of Avarice", f"1d6+{get_prof_bonus(char)}", "necrotic", use="option",
+                      pay=[("action", "Grasp of Avarice", "Passive")],
+                      cost="Once a turn, for one of its uses. You regain hit points equal to the necrotic damage",
+                      tip="Grasp of Avarice: once a turn, extra necrotic damage, and you regain that many hit points."))
+    if "Knight of the Sword" in feats and held:
+        out.append(_r("Demoralizing Strike", use="option", pay=[("action", "Demoralizing Strike", "Passive")],
+                      cost="Once a turn, for one of its uses: a WIS save or frightened of you",
+                      tip="Demoralizing Strike: once a turn on a weapon hit, a WIS save or frightened of you."))
     # feats: Charger, Poisoner, Orcish Fury
     if "Charger" in feats and p["melee"]:
         out.append(_r("Charger", 5, "weapon", use="option",
@@ -694,7 +785,8 @@ def _feature_riders(char, p, out):
     if p["melee"] or "Piercer" in feats:
         b = cl.get("Barbarian", 0)
         brutal = 3 if (b >= 17 and p["melee"]) else 2 if (b >= 13 and p["melee"]) else 1 if (b >= 9 and p["melee"]) else 0
-        savage = 1 if ("half-orc" in race and p["melee"]) else 0
+        from dnd_app.data.races import keeps_race_traits
+        savage = 1 if ("half-orc" in race and p["melee"] and keeps_race_traits(char)) else 0
         piercer = 1 if ("Piercer" in feats and p["damage_type"].startswith("piercing")) else 0
         m = re.fullmatch(r"(\d+)d(\d+)", p.get("die") or "")
         if (brutal or savage or piercer) and m:
@@ -846,6 +938,66 @@ def live_riders(char: dict, riders: list) -> list:
     Fury, Favored Foe...): it's back on New Turn."""
     used = set(char.get("_turn_uses", []) or [])
     return [r for r in riders if not (r.get("spend") == "turn" and r["source"] in used)]
+
+
+# Spells that make an attack roll, by what their text says ("Ranged
+# attack: 1d10 fire"), and the few whose short text doesn't say it
+_SPELL_ATTACK = re.compile(r"\b(ranged|melee|touch|spell)\s+(spell\s+)?attacks?\b|\bhurl\b.*\battack|"
+                           r"\battack (each|on each) turn", re.I)
+_SPELL_ATTACK_ALSO = {"Shocking Grasp", "Spiritual Weapon", "Flame Blade", "Steel Wind Strike",
+                      "Vampiric Touch", "Chill Touch", "Primal Savagery", "Thorn Whip"}
+
+
+def is_attack_spell(spell: dict) -> bool:
+    """Does casting this spell make an attack roll?"""
+    if not spell:
+        return False
+    if spell.get("name") in _SPELL_ATTACK_ALSO:
+        return True
+    return bool(_SPELL_ATTACK.search(spell.get("desc") or ""))
+
+
+def spell_attack_riders(char: dict) -> list:
+    """What a spell's attack adds when it hits, as riders: Genie's Wrath
+    and Hexblade's Curse (any attack, once a turn / against the cursed
+    target), and the effects on any attack (Hex, Spirit Shroud, Radiant
+    Soul...). Weapon-only extras (Divine Strike, Divine Fury...) aren't."""
+    from dnd_app.core.calculator import get_onhit_damage_bonuses
+    out = []
+    for b in get_onhit_damage_bonuses(char):
+        if b["name"] == "Genie's Wrath":
+            out.append(_r(b["name"], b["die"], b["damage_type"], "on your first hit each turn", spend="turn",
+                          tip=f"Genie's Wrath: once a turn, +{b['die']} {b['damage_type']} on a hit."))
+        elif b["name"] == "Hexblade's Curse":
+            out.append(_r(b["name"], b["die"], "", "against the cursed target",
+                          tip=f"Hexblade's Curse: +{b['die']} damage against the cursed target."))
+    details_all = char.get("effect_details", {}) or {}
+    for name in char.get("active_effects", []):
+        spec = EFFECT_RIDERS.get(name)
+        if not spec or spec[2] != "attack":
+            continue
+        dice, dtype, _, when, tip, extra = spec
+        details = details_all.get(name, {}) or {}
+        dice = _effect_dice(char, name, dice, details)
+        if extra.get("up") and details.get("level"):
+            base_lvl, step = extra["up"]
+            dice = _more_dice(dice, max(0, (int(details["level"]) - base_lvl) // step))
+        if details.get("type") and extra.get("pick"):
+            dtype = details["type"]
+        out.append(_r(name, dice, dtype, when, spend="turn" if extra.get("turn") else "", tip=tip))
+    return live_riders(char, out)
+
+
+def spell_hit_note(char: dict, spell) -> str:
+    """"On a hit: +3 thunder on your first hit each turn (Genie's Wrath)"
+    for a spell that makes an attack roll -- "" for one that doesn't, or
+    when nothing adds to it."""
+    from dnd_app.data.spells import get_spell
+    sp = get_spell(spell) if isinstance(spell, str) else spell
+    if not is_attack_spell(sp or {}):
+        return ""
+    text = rider_text(spell_attack_riders(char))
+    return f"On a hit: {text}" if text else ""
 
 
 def rider_text(riders: list) -> str:

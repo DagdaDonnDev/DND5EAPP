@@ -443,6 +443,31 @@ def _is_infusion_target_equipped(char: dict, target_item: str, infusion_name: st
     return True  # standalone infusions have no separate equip check
 
 
+_POOL_RES = (_re.compile(r"\b(?:has|have|starts with|holds|with) (\d+) charges\b", _re.I),
+             _re.compile(r"\b(\d+) charges:", _re.I),
+             _re.compile(r"\((\d+) charges\b", _re.I),
+             _re.compile(r"\b(\d+) charges \(", _re.I),
+             _re.compile(r"\bof (\d+) charges\b", _re.I),
+             _re.compile(r"^(\d+) charges\b", _re.I))
+
+
+def _described_charges(name: str) -> list:
+    """[(charges, "dawn" or "dusk")] from the item's own text, for an
+    item whose data has no charge pool ("The cube starts with 36
+    charges"); [] when the text names none."""
+    from dnd_app.data.magic_items import get_magic_item
+    effect = get_item_effect(name)
+    effects = effect if isinstance(effect, list) else ([effect] if effect else [])
+    texts = [(get_magic_item(name) or {}).get("desc", "") or ""]
+    texts += [e.get("description", "") or "" for e in effects if e.get("type") == "grant_action"]
+    for text in texts:
+        for rx in _POOL_RES:
+            m = rx.search(text)
+            if m and int(m.group(1)) > 0:
+                return [(int(m.group(1)), "dusk" if "at dusk" in text.lower() else "dawn")]
+    return []
+
+
 def sync_item_charges(char: dict) -> None:
     """
     Ensure every active item with a chargeable grant_spell effect has a
@@ -463,28 +488,27 @@ def sync_item_charges(char: dict) -> None:
 
     for name in active:
         effect = get_item_effect(name)
-        if not effect:
+        effect_list = effect if isinstance(effect, list) else ([effect] if effect else [])
+        # charges: the item's charge pool (Staff of Power, Blackstaff...);
+        # grant_spell: a single fixed spell with its own pool (Wand of
+        # Fireballs) -- the item's pool when it has one decides the size
+        pools = [(sub.get("max", 0), sub.get("recharge", "dawn")) for sub in effect_list
+                 if sub.get("type") == "charges" and sub.get("max")]
+        pools = pools or [(sub.get("uses"), sub.get("recharge", "dawn")) for sub in effect_list
+                          if sub.get("type") == "grant_spell" and sub.get("uses")]
+        if not pools:
+            # charges its description gives ("This ring has 3 charges")
+            pools = _described_charges(name)
+        if not pools:
             continue
-        effect_list = effect if isinstance(effect, list) else [effect]
-        for sub in effect_list:
-            # grant_spell: a single fixed spell with its own charge pool
-            # (Wand of Fireballs). charges: a general charge pool for
-            # items whose reference text describes multiple charge-
-            # costed abilities that don't fit the single-spell
-            # grant_spell model (Staff of Power, Blackstaff, etc.).
-            if sub.get("type") not in ("grant_spell", "charges"):
-                continue
-            uses = sub.get("uses") if sub["type"] == "grant_spell" else sub.get("max", 0)
-            if not uses:
-                continue
-            recharge = sub.get("recharge", "dawn")
-            existing = tracked.get(name)
-            if existing:
-                existing["max"] = uses
-                existing["recharge"] = recharge
-                existing["current"] = min(existing.get("current", uses), uses)
-            else:
-                tracked[name] = {"current": uses, "max": uses, "recharge": recharge}
+        uses, recharge = max(pools)
+        existing = tracked.get(name)
+        if existing:
+            existing["max"] = uses
+            existing["recharge"] = recharge
+            existing["current"] = min(existing.get("current", uses), uses)
+        else:
+            tracked[name] = {"current": uses, "max": uses, "recharge": recharge}
 
     from dnd_app.data.classes import ARTIFICER_INFUSION_CHARGES
     infusion_charge_keys = set()
@@ -546,31 +570,30 @@ def _apply_infusion_bonuses(char: dict) -> None:
             char["magic_ac_bonus"] = char.get("magic_ac_bonus", 0) + bonus
 
 
-def concentration_save(char: dict, damage: int) -> tuple[bool, int]:
-    """
-    Roll concentration save after taking damage.
-    Returns (maintained, roll_total).
-    """
+def concentration_save(char: dict, damage: int, rng=None) -> dict:
+    """The save to keep concentrating after taking damage: one d20 + your
+    CON save against DC 10 or half the damage. Advantage and disadvantage
+    are never applied for you (the table decides), so the sources the
+    sheet knows come back as a reminder -- and a failure with a source of
+    advantage (War Caster...) leaves the spell up: whether your second
+    d20 saves it is your call.
+    Returns {"kept": True / False / None (your call), "total", "dc",
+    "reminder"}."""
     import random
-    from .calculator import get_saving_throw_bonus
+    from .calculator import get_saving_throw_bonus, roll_reminder
 
     conc = char.get("concentration", {})
-    if not conc or not conc.get("spell"):
-        return True, 0
-
     dc = max(10, damage // 2)
-    con_save = get_saving_throw_bonus(char, "CON")
-    # War Caster: advantage on CON saves made to maintain concentration.
-    if "War Caster" in char.get("feats", []):
-        roll = max(random.randint(1, 20), random.randint(1, 20))
-    else:
-        roll = random.randint(1, 20)
-    total = roll + con_save
+    if not conc or not conc.get("spell"):
+        return {"kept": True, "total": 0, "dc": dc, "reminder": ""}
+    reminder = roll_reminder(char, "concentration")
+    total = (rng or random).randint(1, 20) + get_saving_throw_bonus(char, "CON")
     if total >= dc:
-        return True, total
-    conc["spell"] = None
-    conc["since_round"] = 0
-    return False, total
+        return {"kept": True, "total": total, "dc": dc, "reminder": reminder["text"]}
+    if reminder["advantage"]:
+        return {"kept": None, "total": total, "dc": dc, "reminder": reminder["text"]}
+    drop_concentration(char)
+    return {"kept": False, "total": total, "dc": dc, "reminder": reminder["text"]}
 
 
 def start_concentration(char: dict, spell_name: str, *, round_num: int = 0) -> None:

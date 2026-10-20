@@ -47,20 +47,37 @@ Dialog {
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
         }
-        Repeater {
-            model: root.options
-            delegate: MButton {
-                objectName: "option_" + modelData.key
-                Layout.fillWidth: true
-                primary: false
-                wrapText: true
-                iconName: modelData.icon || ""
-                iconSize: 16
-                text: modelData.text
-                onClicked: {
-                    var key = modelData.key
-                    root.close()
-                    root.picked(key)
+        // a long list (a druid's Wild Shape forms) scrolls instead of
+        // running off the screen
+        Flickable {
+            id: optionsFlick
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.min(optionsCol.implicitHeight,
+                                             (root.parent ? root.parent.height : 800) * 0.6)
+            contentHeight: optionsCol.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollIndicator.vertical: ScrollIndicator {}
+            ColumnLayout {
+                id: optionsCol
+                width: optionsFlick.width
+                spacing: 10
+                Repeater {
+                    model: root.options
+                    delegate: MButton {
+                        objectName: "option_" + modelData.key
+                        Layout.fillWidth: true
+                        primary: false
+                        wrapText: true
+                        iconName: modelData.icon || ""
+                        iconSize: 16
+                        text: modelData.text
+                        onClicked: {
+                            var key = modelData.key
+                            root.close()
+                            root.picked(key)
+                        }
+                    }
                 }
             }
         }

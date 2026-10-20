@@ -104,8 +104,32 @@ Page {
                                 font.bold: true
                             }
                         }
+                        // Portent: the foretelling rolls themselves; tapping one uses it
+                        Label {
+                            visible: modelData.key === "portent"
+                            text: modelData.rolls.length > 0 ? "Tap a roll to use it as the d20"
+                                                              : "No rolls left until your next long rest"
+                            color: Theme.text3
+                            font.pixelSize: Theme.fsSmall
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
                         Flow {
-                            visible: !modelData.unlimited
+                            visible: modelData.key === "portent" && modelData.rolls.length > 0
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Repeater {
+                                model: modelData.rolls
+                                delegate: MButton {
+                                    primary: false
+                                    height: 32
+                                    text: String(modelData)
+                                    onClicked: sheetBridge.usePortentRoll(modelData)
+                                }
+                            }
+                        }
+                        Flow {
+                            visible: !modelData.unlimited && modelData.key !== "portent"
                             Layout.fillWidth: true
                             spacing: 8
                             MButton {

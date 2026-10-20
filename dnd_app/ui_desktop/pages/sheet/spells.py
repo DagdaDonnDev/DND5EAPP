@@ -1450,14 +1450,16 @@ class SpellsMixin:
         then shows on the weapon rows.
         Returns what it did, for the cast's toast ("" if nothing)."""
         from dnd_app.core.spell_effects import cast_effect
+        from dnd_app.core.riders import spell_hit_note
+        hit = spell_hit_note(self.char, spell)       # what its hit adds (Genie's Wrath, Hex...)
         res = self._ask_through(spell["name"], lambda a: cast_effect(self.char, spell["name"], level, a))
         if not res:
-            return ""
+            return hit
         if res.get("refresh"):
             self.ctrl.refresh()
             self._refresh_effects_list()
             self._apply_turn_state()
-        return res.get("toast", "")
+        return "\n".join(m for m in (res.get("toast", ""), hit) if m)
 
     def _weapon_cantrip(self, spell) -> bool:
         """Green-Flame Blade and Booming Blade: which melee weapon you swing
@@ -1490,9 +1492,12 @@ class SpellsMixin:
         dmg, ok = QInputDialog.getInt(self, "Concentration Save", "Damage taken this turn:", 10, 0, 999)
         if not ok:
             return
+        from dnd_app.core.calculator import roll_reminder
+        reminder = roll_reminder(self.char, "concentration")["text"]
         roll, ok_roll = QInputDialog.getInt(
             self, "Concentration Save",
-            "Enter your d20 roll (CON modifier applied automatically):",
+            "Enter your d20 roll (CON modifier applied automatically):"
+            + (f"\n{reminder}" if reminder else ""),
             10, 1, 30,
         )
         if not ok_roll:

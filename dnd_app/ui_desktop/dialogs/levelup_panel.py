@@ -97,6 +97,20 @@ class ChoiceWidget(QFrame):
             self._build_language_chooser()
         elif ctype == "asi_or_feat":
             self._build_asi_chooser()
+        elif ctype in ("asi", "feat"):
+            # one half of an ASI-or-feat pick on its own: a Variant Human's
+            # two +1s or its feat, a dragonmark's +1 (one point, not to the
+            # ability its +2 went to)
+            self._asi_points = choice_info.get("points", 2)
+            self._build_asi_chooser()
+            for ab in choice_info.get("exclude") or []:
+                self._asi_ctrls[ab].setEnabled(False)
+            self._asi_type.setCurrentText("+1 to two abilities" if ctype == "asi" else "Take a Feat")
+            self._asi_type.hide()
+            self._asi_total.setVisible(ctype == "asi")
+            if choice_info.get("max_per"):        # Fizban's dragonborn: +2/+1 or three +1s
+                for sp in self._asi_spins.values():
+                    sp.setRange(0, choice_info["max_per"])
         elif ctype == "fighting_style":
             self._build_radio_chooser(choice_info.get("pool", []))
         elif ctype == "subclass":
@@ -303,7 +317,7 @@ class ChoiceWidget(QFrame):
         self._asi_frame = QWidget(); self._asi_frame.setStyleSheet("background:transparent;border:none;")
         asf = QGridLayout(self._asi_frame)
         asf.setSpacing(4); asf.setContentsMargins(0,0,0,0)
-        self._asi_spins = {}; self._asi_mod_lbls = {}
+        self._asi_spins = {}; self._asi_mod_lbls = {}; self._asi_ctrls = {}
 
         for col_i, ab in enumerate(ABILITIES):
             asf.addWidget(_lbl(ab, TEXT3, bold=True, size=FS_SMALL, align=Qt.AlignCenter), 0, col_i)
@@ -353,6 +367,7 @@ class ChoiceWidget(QFrame):
             ctrl_lay.setContentsMargins(0,0,0,0); ctrl_lay.setSpacing(2)
             ctrl_lay.addWidget(minus); ctrl_lay.addWidget(val_lbl); ctrl_lay.addWidget(plus)
             asf.addWidget(ctrl_w, 2, col_i)
+            self._asi_ctrls[ab] = ctrl_w
 
             def _wire(ability, vl, sp_ref):
                 def _minus():
@@ -418,104 +433,64 @@ class ChoiceWidget(QFrame):
         self._feat_search.textChanged.connect(_filter_feats)
         self._feat_list.currentItemChanged.connect(lambda cur,prev: self._on_feat_list_changed(cur.text() if cur else ""))
         ff.addWidget(self._feat_list)
-        # Keep _feat_combo alias for backward compatibility
-        self._feat_combo = self._feat_list
+        # a feat already picked (the choice reopened) shows selected, without
+        # picking it again
         for item in self._selected:
             if item.startswith("feat:"):
-                idx = self._feat_combo.findText(item.split(":",1)[1])
-                if idx >= 0: self._feat_combo.setCurrentIndex(idx)
-        ff.addWidget(self._feat_combo); ff.addStretch()
+                found = self._feat_list.findItems(item.split(":", 1)[1], Qt.MatchExactly)
+                if found:
+                    self._feat_list.blockSignals(True)
+                    self._feat_list.setCurrentItem(found[0])
+                    self._feat_list.blockSignals(False)
+        ff.addStretch()
         self._feat_frame.setVisible(False)
         self._lay.addWidget(self._feat_frame)
 
         # Points remaining label
-        self._asi_total = _lbl("Points: 0/2", TEXT2, size=FS_SMALL, bold=True)
+        self._asi_total = _lbl(f"Points: 0/{getattr(self, '_asi_points', 2)}", TEXT2, size=FS_SMALL, bold=True)
         self._asi_total.setStyleSheet(f"color:{TEXT2};font-size:{FS_SMALL}px;font-weight:700;background:transparent;border:none;")
         self._lay.addWidget(self._asi_total)
 
         self._asi_type.currentTextChanged.connect(self._on_asi_type)
-        self._feat_combo.currentTextChanged.connect(self._on_feat_pick)
 
     def _on_feat_list_changed(self, feat_name: str):
         """
-        Called when user selects a feat from the searchable list. If the feat
-        grants an ability score increase (fixed asi={} or a player-chosen
-        asi_flex=[...]), bake an "asi:ABILITY:VALUE" entry into the same
-        selection list — rebuild() already scans every _choices list for
-        these regardless of which key they live under, so this is enough
-        for the bonus to actually apply with no further engine changes.
+        Called when user selects a feat from the searchable list. What the
+        choice keeps -- "feat:Name" and the feat's own ability increase
+        ("asi:CON:1", which rebuild() reads from any _choices list) -- and
+        what the pick decides (Resilient's save, Elemental Adept's type)
+        come from core/builder.py feat_choice_picks, the same on Android;
+        this only asks the questions it raises.
         """
         if not feat_name:
             return
-        # Reset fully — only one feat can be active in "Take a Feat" mode,
-        # so any stale asi:/feat: entries from a previous pick must go too.
-        self._selected = []
-        self._selected.append(f"feat:{feat_name}")
-
-        from dnd_app.data.feats import get_feat
-        fdata = get_feat(feat_name) or {}
-        fixed_asi = fdata.get("asi") or {}
-        flex_asi = fdata.get("asi_flex") or []
-        chosen_ability = None
-
-        if fixed_asi:
-            for ab, val in fixed_asi.items():
-                self._selected.append(f"asi:{ab}:{val}")
-                chosen_ability = ab  # only relevant for single-key fixed dicts
-        elif len(flex_asi) == 1:
-            chosen_ability = flex_asi[0]
-            self._selected.append(f"asi:{chosen_ability}:1")
-        elif len(flex_asi) > 1:
-            chosen_ability = self._prompt_feat_ability_choice(feat_name, flex_asi)
-            if chosen_ability:
-                self._selected.append(f"asi:{chosen_ability}:1")
-
-        # Resilient also grants saving throw proficiency in the SAME ability
-        # chosen for its +1 — write directly into the dedicated extra_save_profs
-        # slot that builder.py's rebuild() already reads.
-        if feat_name == "Resilient" and chosen_ability:
-            extra_saves = self.char.setdefault("_choices", {}).setdefault("extra_save_profs", [])
-            if chosen_ability not in extra_saves:
-                extra_saves.append(chosen_ability)
-
-        # Forest Sage: the same +1-ability choice also determines which
-        # ability substitutes for Animal Handling/Arcana/Nature/Survival
-        # checks — store it for get_skill_bonus() to read.
-        if feat_name == "Forest Sage" and chosen_ability:
-            self.char.setdefault("_choices", {})["forest_sage_ability"] = chosen_ability
-
-        # Generic fallback: ANY feat with a multi-option asi_flex (e.g.
-        # Telekinetic's INT/WIS/CHA choice) gets its chosen ability
-        # stored too, keyed by feat name — not just the two feats above
-        # that already had dedicated storage for their own specific
-        # mechanical use of the choice. This is what lets the Features
-        # tab show which ability a feat like Telekinetic actually keyed off.
-        if chosen_ability and len(flex_asi) > 1:
-            self.char.setdefault("_choices", {})[f"feat_ability_{feat_name.lower().replace(' ','_')}"] = chosen_ability
-
-        # Elemental Adept: reuses the same generic choice dialog (it only
-        # needs a list of options, not specifically abilities). This was
-        # a documented, deliberate gap — no choice-tracking mechanism
-        # existed for it before, so the resistance table couldn't
-        # represent a feat needing a chosen damage type.
-        if feat_name == "Elemental Adept":
-            chosen_element = self._prompt_feat_ability_choice(
-                feat_name, ["Acid", "Cold", "Fire", "Lightning", "Thunder"])
-            if chosen_element:
-                self.char.setdefault("_choices", {})["elemental_adept_type"] = chosen_element
+        from dnd_app.core.builder import feat_choice_picks
+        answers = {}
+        while True:
+            res = feat_choice_picks(self.char, feat_name, answers)
+            ask = res.get("ask")
+            if not ask:
+                break
+            pick = self._prompt_feat_ability_choice(feat_name, ask["options"], ask["title"])
+            if not pick:
+                return            # closed without picking: the feat isn't taken
+            answers[ask["key"]] = pick
+        self._selected = list(res["picks"])
+        self._set_confirmed()
 
         # Notify parent via the same signal other choices use
         if hasattr(self, "choice_confirmed"):
             self.choice_confirmed.emit(self.choice_info["id"], self._selected)
 
-    def _prompt_feat_ability_choice(self, feat_name: str, options: list) -> str | None:
-        """Small dialog letting the player pick which ability gets +1 from a feat."""
+    def _prompt_feat_ability_choice(self, feat_name: str, options: list, question: str = "") -> str | None:
+        """Small dialog letting the player pick what a feat asks: which
+        ability gets its +1, Elemental Adept's damage type."""
         dlg = QDialog(self)
-        dlg.setWindowTitle(f"{feat_name} — Choose Ability")
+        dlg.setWindowTitle(feat_name)
         dlg.setMinimumWidth(320)
         lay = QVBoxLayout(dlg); lay.setSpacing(10)
         lay.addWidget(_lbl(
-            f"{feat_name} grants +1 to one ability score. Which one?",
+            question or f"{feat_name} grants +1 to one ability score. Which one?",
             TEXT2, size=FS_BODY, wrap=True))
         btn_row = QHBoxLayout(); btn_row.setSpacing(6)
         chosen = {"value": None}
@@ -555,7 +530,7 @@ class ChoiceWidget(QFrame):
                 vl.setStyleSheet(f"color:{TEAL2};font-size:{FS_BODY}px;font-weight:700;"
                                  f"background:{SURF2};border:2px solid {BORDER2};border-radius:4px;")
         self._selected = []
-        self._asi_total.setText("Points: 0/2")
+        self._asi_total.setText(f"Points: 0/{getattr(self, '_asi_points', 2)}")
         self._asi_total.setStyleSheet(f"color:{TEXT2};font-size:{FS_SMALL}px;font-weight:700;background:transparent;border:none;")
         # Reset modifier labels to base scores
         from dnd_app.core.character import ability_score as _as, ability_mod as _am
@@ -574,7 +549,7 @@ class ChoiceWidget(QFrame):
         from dnd_app.core.character import ability_score as _as
         asi_text = self._asi_type.currentText() if hasattr(self, "_asi_type") else "+2 to one ability"
         is_plus2_one = "+2 to one" in asi_text
-        max_pts = 2
+        max_pts = getattr(self, "_asi_points", 2)
         total = sum(sp.value() for sp in self._asi_spins.values())
         # For +2 to one: clear other spinboxes
         if is_plus2_one and changed_ab:
@@ -612,12 +587,6 @@ class ChoiceWidget(QFrame):
         if total == max_pts:
             self._set_confirmed()
             self.choice_confirmed.emit(self.choice_info["id"], list(self._selected))
-
-    def _on_feat_pick(self, name):
-        if name != "— Choose Feat —":
-            self._selected = [f"feat:{name}"]
-            self._set_confirmed()
-            self.choice_confirmed.emit(self.choice_info["id"], [f"feat:{name}"])
 
 
     # ── Subclass chooser ──────────────────────────────────────────────
@@ -974,7 +943,7 @@ class GrantsSummaryWidget(QFrame):
         if bg:
             bg_skills = get_background_skills(bg)
             if bg_skills: rows.append((bg[:12], f"Skills: {', '.join(bg_skills)}", GOLD))
-        race_skills = get_race_skills(race) if race else []
+        race_skills = get_race_skills(race, char.get("subrace", "")) if race else []
         if race_skills: rows.append((race[:12], f"Auto-skill: {', '.join(race_skills)}", TEAL2))
         save_profs = sorted(grants.get("save_profs",set()))
         if classes and save_profs:
@@ -1262,7 +1231,10 @@ class LevelUpPanel(QWidget):
 
         # ── ASI: store in _choices['asi_bonuses'] only, rebuild() applies ──
 
-        elif choice_id.endswith("_asi_") or "asi_" in choice_id:
+        elif choice_id.endswith("_asi_") or "asi_" in choice_id or choice_id in ("variant_human_asi",
+                                                                                 "variant_human_feat",
+                                                                                 "dragonmark_asi",
+                                                                                 "race_flex_asi"):
             # Store choice by its ID — rebuild() accumulates all ASI keys fresh
             self.char.setdefault("_choices", {})[choice_id] = selected
             # Handle feat selection

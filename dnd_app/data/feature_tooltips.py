@@ -547,7 +547,7 @@ FEATURE_DESCS = {
     'Mystic Arcanum': "Choose a spell of a level you can't normally cast. Cast it once per long rest without a spell slot.",
     'Mystic Chronicle': 'Prerequisite: 6th level. Once per long rest, spend 1 minute weaving a longer tale to duplicate a spell of 5th level or lower without a slot.',
     'Mystic Frenzy': 'When you cast a cantrip using Pact Magic, make one weapon attack as a bonus action.',
-    'Mystic Frenzy + Revealed Arcana': 'Mystic Frenzy (7th level): when you cast a cantrip with your action, you can immediately make one weapon attack as a bonus action. Revealed Arcana (7th level): your patron grants a bonus spell (cast once per long rest without a slot) based on your chosen pact — e.g. Blur (Archfey), Lesser Restoration (Celestial), Scorching Ray (Fiend), and similar per-patron options.',
+    'Mystic Frenzy + Revealed Arcana': 'Mystic Frenzy (7th level): when you cast a cantrip with your action, you can immediately make one weapon attack as a bonus action. Revealed Arcana (7th level): your patron grants a bonus spell (cast with a Pact Magic slot, once per long rest) based on your chosen pact — e.g. Blur (Archfey), Lesser Restoration (Celestial), Scorching Ray (Fiend), and similar per-patron options.',
     'Natural Armor': 'Your tough hide gives you AC 13 + your Dexterity modifier when not wearing armor.',
     'Natural Explorer': 'Favored terrain: double PB for certain checks, no disadvantage vs difficult terrain, always forage double.',
     'Natural Recovery': 'After a SR: recover spell slots totaling up to half your Druid level (rounded up). Max slot Lv5. 1/LR.',
@@ -727,7 +727,6 @@ FEATURE_DESCS = {
     'Split Enchantment': 'Prerequisite: 10th level. When you cast an enchantment spell targeting one creature, you can target a second creature within range.',
     'Spores': 'Symbiotic Entity and Halo of Spores are signature Spore Druid abilities.',
     'Spreading Spores': 'Wild Shape: create a 10-ft spore cloud you can move. Any creature starting in cloud makes CON save.',
-    'Spreading Spores (Improved)': 'The damage die of your Halo of Spores increases further, and the range you can move your spores as a bonus action extends.',
     "Stalker's Flurry": 'Once per turn on a miss, immediately make another weapon attack (as part of the same action).',
     "Stalker's Prowess": '+10 ft speed, +10 ft long jump distance, +3 ft high jump distance. Hybrid form also gains Improved Predatory Strikes: +1 to unarmed strike attack rolls (+2 at 11th level, +3 at 18th).',
     'Star Map': 'You bear a star chart (book, tattoo, or similar) that lets you cast Guidance at will, and it doubles as a druidic focus.',
@@ -1714,7 +1713,6 @@ FEATURE_DESCS.update({
     'Extra Attack (Bladesinging)': "You can attack twice, instead of once, whenever you take the Attack action on your turn. Moreover, you can cast one of your cantrips in place of one of those attacks.",
     'Gravity Fissure': "You can create a fissure in gravity along a line, dealing significant force damage to creatures caught within it.",
     'Faithful Summons': "If you are dropped to 0 hit points or otherwise incapacitated against your will, you can immediately (no action required) cast Conjure Animals as if using a 9th-level spell slot, without expending a spell slot, to protect yourself.",
-    'Spreading Spores (Improved)': "The damage die of your Halo of Spores increases further, and the range you can move your spores as a bonus action extends.",
     'Twinkling Constellations': "Prerequisite: 10th level. Starry Form's benefits improve: Archer's damage increases, Chalice's healing increases, and Dragon grants a 20 ft flying speed. You can also change which constellation is active as a bonus action at the start of each of your turns, with no action required.",
 })
 

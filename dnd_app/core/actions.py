@@ -15,6 +15,7 @@ Date: 2026-08-20
 """
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 
 def sign(n): return f"+{n}" if n >= 0 else str(n)
@@ -68,6 +69,13 @@ def _breath_weapon_desc(char: dict) -> str:
     dc = 8 + con_mod + pb
     dmg_type = dmg_type or "elemental"
     shape = shape or "15 ft cone"
+    # Fizban's dragonborn: in place of an attack, a d10 breath and a DEX save
+    sub = (char.get("subrace") or "").lower()
+    if any(w in sub for w in ("chromatic", "metallic", "gem")):
+        dice = f"{1 + (lvl >= 5) + (lvl >= 11) + (lvl >= 17)}d10"
+        shape = "30-ft line, 5 ft wide" if "chromatic" in sub else "15-ft cone"
+        return (f"In place of one attack of your Attack action: a {shape}, {dice} {dmg_type.lower()} damage. "
+                f"DC {dc} DEX save for half. Uses = proficiency bonus per long rest.")
     return (f"{shape}, {dice} {dmg_type.lower()} damage. "
             f"Targets must beat DC {dc} {save_ab} save or take full damage "
             f"(half on a successful save). Once per short or long rest.")
@@ -231,9 +239,7 @@ def build_action_abilities(char):
             "Spend 1 minute observing or interacting with a creature outside combat to learn how it "
             "compares to you in two chosen categories (Strong/Weak, Fast/Slow, etc.)."),
         ('Fighter','Improved Combat Superiority'): ('Passive', 'Improved Combat Superiority (passive)',
-            "Your Superiority Dice upgrade to d10s."),
-        ('Fighter','Improved Combat Superiority (18th)'): ('Passive', 'Improved Combat Superiority (18th) (passive)',
-            "Your Superiority Dice upgrade further, to d12s."),
+            "Your Superiority Dice become d10s, and d12s at 18th level."),
         ('Fighter','Relentless'): ('Passive', 'Relentless (passive)',
             "If you have no Superiority Dice remaining when you roll initiative, you regain one."),
         ('Fighter','Weapon Bond'): ('Action', 'Weapon Bond',
@@ -241,8 +247,8 @@ def build_action_abilities(char):
             "unless incapacitated, and can summon it to your hand as a bonus action if it's on the "
             "same plane. Bond with up to two weapons at a time."),
         ('Fighter','War Magic'): ('Bonus Action', 'War Magic',
-            "When you take the Attack action, you can replace one of its attacks with casting a "
-            "cantrip."),
+            "After you use your action to cast a cantrip: make one weapon attack as a bonus action "
+            "(after any spell, from 18th level)."),
         ('Fighter','Eldritch Strike'): ('Passive', 'Eldritch Strike (passive)',
             "When you hit a creature with a weapon attack, it has disadvantage on its next save "
             "against a spell you cast before the end of your next turn."),
@@ -266,12 +272,8 @@ def build_action_abilities(char):
         ('Fighter','Curving Shot'): ('Bonus Action', 'Curving Shot',
             "When you make an attack roll with a magic arrow and miss, reroll the attack roll "
             "against a different target within 60 ft. of the original target."),
-        ('Fighter','Arcane Shot (10th)'): ('Passive', 'Arcane Shot (10th) (passive)',
-            "Gain 1 additional Arcane Shot option of your choice."),
         ('Fighter','Ever-Ready Shot'): ('Passive', 'Ever-Ready Shot (passive)',
             "If you have no uses of Arcane Shot left when you roll initiative, you regain one use."),
-        ('Fighter','Arcane Shot (18th)'): ('Passive', 'Arcane Shot (18th) (passive)',
-            "Gain 1 additional Arcane Shot option of your choice."),
         ('Fighter','Rallying Cry'): ('Passive', 'Rallying Cry (passive)',
             "When you use Second Wind, up to 3 allies within 60 ft. who can see or hear you each "
             "regain HP equal to your Fighter level."),
@@ -412,7 +414,7 @@ def build_action_abilities(char):
         ('Barbarian','Storm Aura'): ('Bonus Action', 'Storm Aura', "10-ft aura while raging, activates on entering rage and again each turn as a bonus action — Desert: all other creatures in the aura take fire damage; Sea: one chosen creature makes a DEX save or takes lightning damage (half on success); Tundra: creatures of your choice in the aura gain temp HP. Damage/HP amount scales with level (2 at 3rd, 3 at 5th, 4 at 10th, 5 at 15th, 6 at 20th for Desert/Tundra; 1d6→4d6 for Sea)."),
         ('Barbarian','Shielding Storm'): ('Passive', 'Shielding Storm (passive)', "While raging, allies within your Storm Aura also gain your Storm Soul's benefits."),
         ('Barbarian','Raging Storm'): ('Reaction', 'Raging Storm', "Desert: after a creature in your aura hits you, force a DEX save or it takes fire damage = half your Barbarian level. Sea: after you hit a creature in your aura, force a STR save or knock it prone. Tundra: whenever Storm Aura activates, choose a creature in the aura — STR save or its speed is 0 until the start of your next turn."),
-        ('Barbarian','Magic Awareness'): ('Action', 'Magic Awareness', "Sense the location of spells and magic items within 60 ft (through walls) for 1 minute."),
+        ('Barbarian','Magic Awareness'): ('Action', 'Magic Awareness', "Until the end of your next turn, you know where every spell and magic item within 60 ft is (not behind total cover), and each spell's school. Proficiency bonus times per long rest."),
         ('Barbarian','Wild Surge'): ('Passive', 'Wild Surge (passive)', "When you enter your rage, roll on the Wild Magic table to determine the magical effect produced."),
         ('Barbarian','Bolstering Magic'): ('Bonus Action', 'Bolstering Magic', "Roll a d3: give a creature that many extra dice for its next attack/save/check, or grant a spellcaster a spell slot of that level."),
         ('Barbarian','Unstable Backlash'): ('Reaction', 'Unstable Backlash', "Immediately after you take damage or fail a saving throw while raging, roll on the Wild Magic table and immediately produce that effect, replacing your current Wild Magic effect."),
@@ -583,7 +585,7 @@ def build_action_abilities(char):
             "+1 to all saving throws per attuned magic item. If reduced to 0 HP but not killed "
             "outright: end one of your infusions to drop to 1 HP instead of 0 — use the button on "
             "the HP card to actually do this."),
-        ('Barbarian','Fanatical Focus'): ('Reaction', 'Fanatical Focus', "Once per rage, if you fail a saving throw, reroll it and take the new result."),
+        ('Barbarian','Fanatical Focus'): ('Passive', 'Fanatical Focus', "Once per rage, if you fail a saving throw while raging, reroll it and take the new result."),
         ('Barbarian','Zealous Presence'): ('Bonus Action', 'Zealous Presence', "Up to 10 chosen creatures within 60 ft gain advantage on attack rolls and saves until the start of your next turn. 1/LR."),
         ('Rogue','Cunning Action'):    ('Bonus Action','Cunning Action','Dash, Disengage, or Hide as a bonus action.'),
         ('Rogue','Uncanny Dodge'):     ('Reaction',    'Uncanny Dodge','Halve damage from one attack you can see. Requires no incapacitation.'),
@@ -688,8 +690,7 @@ def build_action_abilities(char):
         ('Monk','Draconic Disciple'): ('Passive', 'Draconic Disciple (passive)', "Learn a cantrip from the Draconic Sorcery-adjacent list and gain a small bonus tied to your chosen dragon ancestor's damage type."),
         ('Monk','Breath of the Dragon'): ('Action', 'Breath of the Dragon', "Spend 2 ki to exhale a breath weapon (line or cone) matching your dragon ancestor's damage type, dealing martial-arts-die-based damage (DEX or CON save for half)."),
         ('Monk','Wings Unfurled'):  ('Bonus Action', 'Wings Unfurled', "When you use Step of the Wind, spectral wings unfurl (vanishing at end of turn), granting a flying speed equal to your walking speed while they last. Uses = proficiency bonus per long rest."),
-        ('Monk','Aspect of the Wyrm'): ('Bonus Action', 'Aspect of the Wyrm', "Spend 2 ki to frighten creatures in a cone matching your dragon ancestor's energy, or gain a protective aspect (resistance to your ancestor's damage type and one other minor benefit) for 1 minute."),
-        ('Monk','Draconic Presence (Monk)'): ('Action', 'Draconic Presence (Monk)', "Spend 3 ki to emanate draconic awe or dread for 1 minute: each creature of your choice within 60 ft must WIS save or be charmed/frightened by you."),
+        ('Monk','Aspect of the Wyrm'): ('Bonus Action', 'Aspect of the Wyrm', "A 10-ft aura of draconic power for 1 minute: Frightful Presence (each creature of your choice in it makes a WIS save or is frightened of you for 1 minute) or Resistance (you and your allies in it resist acid, cold, fire, lightning or poison, your pick). Once per long rest, or spend 3 ki."),
         ('Monk','Flurry of Blows'):    ('Bonus Action','Flurry of Blows','Spend 1 Ki: make 2 extra unarmed strikes as bonus action after Attack action.'),
         ('Monk','Patient Defense'):    ('Bonus Action','Patient Defense','Spend 1 Ki: take Dodge action as bonus action.'),
         ('Monk','Step of the Wind'):   ('Bonus Action','Step of the Wind','Spend 1 Ki: take Dash or Disengage as bonus action; jump distance doubled this turn.'),
@@ -827,7 +828,7 @@ def build_action_abilities(char):
         ('Fighter',"Giant's Might"): ('Bonus Action', "Giant's Might", "Magically grow one size larger for 1 minute (if space allows): unarmed strikes/weapon attacks deal an extra 1d6 damage (1d8 at 10th, 1d10 at 18th if Huge), and you have advantage on STR checks. Uses = proficiency bonus per long rest."),
         ('Fighter','Runic Shield'): ('Reaction', 'Runic Shield', "When another creature you can see within 60 ft is hit by an attack roll, force the attacker to reroll and accept the new result. Uses = proficiency bonus per long rest."),
         ('Fighter','Great Stature'): ('Passive', 'Great Stature (passive)', "You permanently grow 3d4 inches taller. Giant's Might's damage die increases from 1d6 to 1d8."),
-        ('Fighter','Master of Runes'): ('Passive', 'Master of Runes (passive)', "Each of your runes can be invoked twice per long rest instead of once."),
+        ('Fighter','Master of Runes'): ('Passive', 'Master of Runes (passive)', "Each rune you know can be invoked twice instead of once, and the uses come back on a short or long rest."),
         ('Fighter','Runic Juggernaut'): ('Passive', 'Runic Juggernaut (passive)', "While Giant's Might is active, you can grow to Huge size instead (+5 ft reach), and its damage die becomes 1d10."),
         ('Fighter','Fighting Spirit'): ('Bonus Action', 'Fighting Spirit', "Gain advantage on all weapon attack rolls until the end of the current turn, and 5 temporary HP. Uses = 3 per long rest."),
         ('Fighter','Elegant Courtier'): ('Passive', 'Elegant Courtier (passive)', "Add your WIS modifier to CHA (Persuasion) checks. Also gain proficiency in WIS saving throws."),
@@ -877,7 +878,6 @@ def build_action_abilities(char):
         ('Druid','Symbiotic Entity'): ('Bonus Action', 'Symbiotic Entity', "Expend a Wild Shape use to gain temp HP (4x Druid level) and boost your Halo of Spores' damage die and unarmed strike damage for 10 minutes."),
         ('Druid','Fungal Infestation'): ('Reaction', 'Fungal Infestation', "When a Small or Medium beast or humanoid dies within 10 ft, animate it as a zombie with 1 HP under your control (only the Attack action, acts right after you) for 1 hour. Uses = WIS modifier (min 1) per long rest."),
         ('Druid','Spreading Spores'): ('Bonus Action', 'Spreading Spores', "While Symbiotic Entity is active: hurl spores up to 30 ft into a 10-ft cube for 1 minute. Creatures that move into it or start their turn there take your Halo of Spores damage (CON save negates, once per turn each). You can't use your Halo of Spores reaction while the cube persists."),
-        ('Druid','Spreading Spores (Improved)'): ('Passive', 'Spreading Spores (Improved) (passive)', "Halo of Spores' damage die increases further, and Spreading Spores' range extends."),
         ('Druid','Star Map'):        ('Passive', 'Star Map (passive)', "Gain a star chart focus usable as a spellcasting focus, granting +5 ft to Guidance/Guiding Bolt-style range and letting you cast Guidance at will."),
         ('Druid','Starry Form'):     ('Bonus Action', 'Starry Form', "Expend a Wild Shape use: assume a starry form for 10 minutes, choosing Archer (bonus action ranged spell attack, 1d8+WIS radiant), Chalice (when you cast a healing spell with a slot, you or an ally within 30 ft also heals 1d8+WIS), or Dragon (treat a 9 or lower as a 10 on INT/WIS checks or CON concentration saves)."),
         ('Druid','Cosmic Omen'):     ('Reaction', 'Cosmic Omen', "After a long rest, roll a die: even is Weal, odd is Woe. When a creature you can see within 30 ft is about to make an attack roll, saving throw or ability check, use your reaction to roll a d6 and add it to the roll (Weal) or subtract it (Woe). Uses = proficiency bonus per long rest."),
@@ -905,12 +905,17 @@ def build_action_abilities(char):
             "Proficiency in 3 skills of your choice."),
         ('Bard','Additional Magical Secrets'): ('Passive', 'Additional Magical Secrets (passive)',
             "Learn 2 more spells from any class's spell list."),
-        ('Bard','Guidance of the Spirits'): ('Passive', 'Guidance of the Spirits (passive)',
-            "Proficiency in a chosen skill; cast Guidance at will using that skill's ability. "
-            "Swappable on a long rest."),
-        ('Bard','Spirit Session'): ('Action', 'Spirit Session',
-            "Commune with spirits for a d6 Spirit Tale Die (heal/damage/status, story-dependent). "
-            "Uses = proficiency bonus per long rest."),
+        ('Bard','Guiding Whispers'): ('Passive', 'Guiding Whispers (passive)',
+            "You learn the Guidance cantrip (it doesn't count against your cantrips), and its range is 60 ft."),
+        ('Bard','Spiritual Focus'): ('Passive', 'Spiritual Focus (passive)',
+            "A candle, crystal ball, skull, spirit board or tarokka deck is your spellcasting focus. From 6th "
+            "level, a bard spell cast through it that deals damage or restores hit points adds 1d6 to one roll."),
+        ('Bard','Spirit Session'): ('Passive', 'Spirit Session (passive)',
+            "An hour-long ritual (it can be part of a rest) with up to your proficiency bonus willing creatures: "
+            "learn one divination or necromancy spell of a level up to the number of creatures, until your next "
+            "long rest. Once per long rest."),
+        ('Bard','Mystical Connection'): ('Passive', 'Mystical Connection (passive)',
+            "When you roll on the Spirit Tales table, roll twice and pick either tale; on doubles, pick any tale."),
         ('Bard','Bonus Proficiencies (Swords)'): ('Passive', 'Bonus Proficiencies (passive)',
             "Proficiency with medium armor, shields, and scimitars."),
         ('Bard','Fighting Style (Swords)'): ('Passive', 'Fighting Style (passive)',
@@ -926,7 +931,7 @@ def build_action_abilities(char):
         ('Bard','Battle Magic'): ('Passive', 'Battle Magic (passive)', "When you cast a spell as an action, you can make a weapon attack as a bonus action."),
         ('Bard','Blade Flourish'): ('Passive', 'Blade Flourish (passive)', "When you take the Attack action, your walking speed increases by 10 ft. On a hit, expend a Bardic Inspiration die for a Flourish: Defensive, Slashing, or Mobile."),
         ('Bard',"Master's Flourish"): ('Passive', "Master's Flourish (passive)", "Use a rolled d6 for Blade Flourishes instead of expending a Bardic Inspiration die."),
-        ('Bard','Mote of Potential'): ('Passive', 'Mote of Potential (passive)', "Bardic Inspiration dice you give out become Motes of Potential — the recipient rolls twice and takes the better result, or you can spend them for other creation effects."),
+        ('Bard','Mote of Potential'): ('Passive', 'Mote of Potential (passive)', "When you give Bardic Inspiration, a mote of potential comes with it. Ability check: roll the die twice and use either. Attack roll: on a hit, the target and each creature of your choice within 5 ft make a CON save or take thunder damage equal to the die roll. Saving throw: gain temporary hit points equal to the die roll + your CHA modifier."),
         ('Bard','Performance of Creation'): ('Action', 'Performance of Creation', "Create one nonmagical item worth up to 20 gp x your Bard level in an unoccupied space within 10 ft (Medium or smaller; Large at 6th, Huge at 14th). It lasts a number of hours equal to your proficiency bonus. Once per long rest, or again by expending a 2nd-level or higher spell slot."),
         ('Bard','Animating Performance'): ('Action', 'Animating Performance', "Target a Large or smaller nonmagical object within 30 ft and animate it as a temporary ally for 1 hour. Command it with a bonus action alongside Bardic Inspiration. Only one at a time; reuse by spending a 3rd-level+ spell slot."),
         ('Bard','Creative Crescendo'): ('Passive', 'Creative Crescendo (passive)', "You can have a number of animated objects from Animating Performance equal to your CHA modifier at once (only one can be Large, the rest Small or smaller)."),
@@ -939,8 +944,6 @@ def build_action_abilities(char):
         ('Bard','Enthralling Performance'): ('Action', 'Enthralling Performance', "Perform for 1 minute: up to CHA mod humanoids who watched become charmed by you for 1 hour (WIS save)."),
         ('Bard','Mantle of Majesty'): ('Bonus Action', 'Mantle of Majesty', "Cast Command without a spell slot, then again as a bonus action each turn for 1 minute. 1/LR."),
         ('Bard','Unbreakable Majesty'): ('Bonus Action', 'Unbreakable Majesty', "For 1 minute, a creature that attacks you must succeed on a CHA save or choose a new target. 1/SR."),
-        ('Bard','Mystic Chronicle'): ('Action', 'Mystic Chronicle', "Spend 1 minute weaving a longer tale to duplicate a spell of 5th level or lower without a spell slot. 1/LR."),
-        ('Bard','Awakened Spirit'): ('Passive', 'Awakened Spirit (passive)', "Your Spirit Tale Die becomes a d12. Once per turn when you deal damage with a spell, you can also apply a Spirit Tale Die effect."),
         ('Bard','Psychic Blades (Whispers)'): ('Passive', 'Psychic Blades (passive)', "When you hit with a weapon attack, expend a Bardic Inspiration die to deal extra 2d6 psychic damage (scales higher by level), if you can perceive the target's mind."),
         ('Bard','Words of Terror'): ('Action', 'Words of Terror', "Spend 1 minute talking with a humanoid: WIS save or it becomes frightened of you (or a creature of your choice) for 1 hour or until it takes damage."),
         ('Bard','Mantle of Whispers'): ('Passive', 'Mantle of Whispers (passive)', "When a humanoid dies within 30 ft, capture its shadow and later assume its appearance and mannerisms (not memories or voice) for as long as you wish."),
@@ -969,7 +972,6 @@ def build_action_abilities(char):
             "slot's level."),
         ('Wizard','Song of Victory'): ('Passive', 'Song of Victory (passive)',
             "While Bladesong is active, add your INT modifier to weapon damage rolls."),
-        ('Wizard','Extra Attack (Bladesinging)'): ('Action', 'Extra Attack (Bladesinging)', "Attack twice instead of once when you take the Attack action. You can cast one of your cantrips in place of one of those attacks."),
         ('Wizard','Arcane Ward'):     ('Passive', 'Arcane Ward (passive)', "Absorbs damage before it reaches your HP (implemented as a pool). Recharges when you cast an Abjuration spell of 1st level or higher, by twice that spell's level — not on a rest, so adjust the pool manually when that happens."),
         ('Wizard','Projected Ward'):  ('Reaction', 'Projected Ward', "Use your reaction to protect a creature within 30 ft with your Arcane Ward, absorbing the damage instead."),
         ('Wizard','Improved Abjuration'): ('Passive', 'Improved Abjuration (passive)', "Add your proficiency bonus to the effectiveness of certain Abjuration spells (Alarm, Arcane Lock, Banishment, etc.) that don't already use it."),
@@ -978,10 +980,10 @@ def build_action_abilities(char):
         ('Wizard','Benign Transposition'): ('Action', 'Benign Transposition', "Teleport up to 30 ft to an unoccupied space you can see, or swap places with a willing Small/Medium creature summoned by one of your conjuration spells. 1/LR, or again by expending a spell slot."),
         ('Wizard','Focused Conjuration'): ('Passive', 'Focused Conjuration (passive)', "Your concentration on a conjuration spell can't be broken by taking damage."),
         ('Wizard','Durable Summons'): ('Passive', 'Durable Summons (passive)', "Any creature you summon or create with a conjuration spell gains 30 temporary HP."),
-        ('Wizard','Portent'):        ('Reaction', 'Portent', "Roll 2 (3 at 14th) d20s after a long rest; replace any attack roll, saving throw, or ability check with one of these dice instead of rolling."),
+        ('Wizard','Portent'):        ('Reaction', 'Portent', "After a long rest you roll two d20s (three from 14th level). Use one in place of an attack roll, saving throw or ability check by you or a creature you can see: before the roll, once a turn."),  # rewritten at the end, with the rolls
         ('Wizard','Expert Divination'): ('Passive', 'Expert Divination (passive)', "When you cast a divination spell of 2nd level or higher using a spell slot, regain one expended spell slot of a lower level (max 5th)."),
         ('Wizard','The Third Eye'):  ('Action', 'The Third Eye', "Gain one at will: darkvision 60 ft, read any language, see invisible creatures/objects within 10 ft, or see the true form of a shapechanged/polymorphed/transmuted creature within 10 ft."),
-        ('Wizard','Greater Portent'): ('Passive', 'Greater Portent (passive)', "Your Portent dice pool increases to 3 (implemented)."),
+        ('Wizard','Greater Portent'): ('Passive', 'Greater Portent (passive)', "You roll three d20s for Portent after a long rest, instead of two."),
         ('Wizard','Hypnotic Gaze'):  ('Action', 'Hypnotic Gaze', "Fix a creature within 5 ft with your gaze: if it can see/hear you, WIS save or it's charmed until the end of your next turn (speed 0, incapacitated). Ends early if you move away, it can't see/hear you, or it takes damage. Once resolved, can't reuse on that creature until a long rest."),
         ('Wizard','Instinctive Charm'): ('Reaction', 'Instinctive Charm', "When a creature you can see within 30 ft targets you with an attack, redirect it (WIS save) to the nearest other creature."),
         ('Wizard','Split Enchantment'): ('Passive', 'Split Enchantment (passive)', "When you cast an enchantment spell targeting only one creature, you can target a second creature with it."),
@@ -996,7 +998,7 @@ def build_action_abilities(char):
         ('Wizard','Grim Harvest'):   ('Passive', 'Grim Harvest (passive)', "Once per turn when you kill a creature with a spell, regain HP equal to twice the spell's level (thrice if Necromancy)."),
         ('Wizard','Undead Thralls'): ('Passive', 'Undead Thralls (passive)', "Animate Dead is added to your spellbook for free if you don't have it, and targets one extra corpse/pile of bones. Any undead you create with a necromancy spell gets +Wizard level HP max and +proficiency bonus to its weapon damage rolls."),
         ('Wizard','Inured to Undeath'): ('Passive', 'Inured to Undeath (passive)', "Resistance to necrotic damage, and your hit point maximum can't be reduced."),
-        ('Wizard','Command Undead'): ('Action', 'Command Undead', "Prerequisite: 14th level. Choose one undead you can see within 60 ft; it makes a CHA save against your Wizard spell save DC. On a failure, it becomes friendly to you and obeys your commands until you use this again (on it or another target). On a success, you can't use this on it again. Undead with INT 8+ have advantage on the save; if INT 12+ and it fails, it can repeat the save every hour until it succeeds and breaks free."),
+        ('Wizard','Command Undead'): ('Action', 'Command Undead', "Choose one undead you can see within 60 ft; it makes a CHA save against your Wizard spell save DC. On a failure, it becomes friendly to you and obeys your commands until you use this again (on it or another target). On a success, you can't use this on it again. Undead with INT 8+ have advantage on the save; if INT 12+ and it fails, it can repeat the save every hour until it succeeds and breaks free."),
         ('Wizard','Minor Alchemy'):  ('Action', 'Minor Alchemy', "Transform one nonmagical object of one material into another material for up to 1 hour."),
         ("Wizard","Transmuters Stone"): ('Bonus Action', "Transmuter's Stone", "Create a stone granting darkvision, +10 ft speed, proficiency in CON saves, or resistance to one damage type, to whoever holds it. Can change the benefit when you cast a Transmutation spell."),
         ('Wizard','Shapechanger'):   ('Action', 'Shapechanger', "Cast Polymorph on yourself without a spell slot, gaining the option to transform into a CR-1 beast. 1/SR or LR."),
@@ -1010,17 +1012,16 @@ def build_action_abilities(char):
         ('Wizard','Gravity Well'):   ('Passive', 'Gravity Well (passive)', "Whenever you cast a spell on a creature and it's willing to move, is hit by the spell's attack roll, or fails its save against the spell — move that target 5 ft to an unoccupied space of your choice."),
         ('Wizard','Violent Attraction'): ('Passive', 'Violent Attraction (passive)', "Increase the damage of a spell that deals bludgeoning, force, piercing, or slashing damage."),
         ('Wizard','Event Horizon'):  ('Action', 'Event Horizon', "Create a localized gravitational field for 1 minute: creatures within 15 ft are pulled toward its center at the start of each of their turns."),
-        ('Wizard','Gravity Fissure'): ('Action', 'Gravity Fissure', "Create a line of intense gravity: creatures in it take force damage and are pulled toward its center. 1/LR or via a spell slot."),
         ('Wizard','Wizardly Quill'): ('Passive', 'Wizardly Quill (passive)', "Gain a magic quill (bonus action to create): needs no ink (any color you choose), copies spells into your spellbook in just 2 min/spell level if used, and can erase its own writing within 5 ft as a bonus action."),
         ('Wizard','Awakened Spellbook'): ('Passive', 'Awakened Spellbook (passive)', "While holding your spellbook: use it as a spellcasting focus; when you cast a spell with a spell slot, temporarily change its damage type to one from another spell in the book of the same level; and cast a ritual spell at its normal casting time instead of +10 minutes, once per long rest."),
         ('Wizard','Manifest Mind'):  ('Bonus Action', 'Manifest Mind', "Manifest an invisible, sensor-like mind within 60 ft that you can perceive and cast spells through for 1 hour. Uses = INT mod per long rest."),
         ('Wizard','Master Scrivener'): ('Action', 'Master Scrivener', "Inscribe a temporary spell scroll of a spell in your spellbook, usable by anyone who can cast spells, lasting until your next long rest."),
-        ('Wizard','One with the Word'): ('Reaction', 'One with the Word', "Reduce the damage of a spell you or an ally within 60 ft is targeted by, at the cost of a spell slot from your own spellbook-linked pool."),
+        ('Wizard','One with the Word'): ('Reaction', 'One with the Word', "While your spellbook's mind is manifested and you take damage: dismiss it and take none of the damage. Roll 3d6: your spellbook loses spells totaling that many levels until you finish 1d6 long rests. Once per long rest."),
         ('Wizard','Arcane Deflection'): ('Reaction', 'Arcane Deflection', "Gain +2 AC against one attack, or +4 to one saving throw, but can't cast a spell (other than cantrips) on your next turn."),
         ('Wizard','Tactical Wit'):   ('Passive', 'Tactical Wit (passive)', "Add your INT modifier to your initiative rolls."),
         ('Wizard','Power Surge'):    ('Passive', 'Power Surge (passive)', "Store excess magical energy when you don't cast a leveled spell on your turn, up to a max, then release it to add damage to a later spell."),
         ('Wizard','Durable Magic'):  ('Passive', 'Durable Magic (passive)', "While concentrating on a spell, gain +2 AC and +2 to all saving throws."),
-        ('Wizard','Deflecting Shroud'): ('Reaction', 'Deflecting Shroud', "When you take damage, deal force damage equal to your INT modifier to up to 3 creatures within 60 ft that you can see."),
+        ('Wizard','Deflecting Shroud'): ('Passive', 'Deflecting Shroud', "When you use Arcane Deflection: up to three creatures of your choice within 60 ft that you can see each take force damage equal to half your wizard level."),
         ('Cleric','Channel Divinity'): ('Action',      'Channel Divinity','Use one Channel Divinity option. 1/SR (2/SR at 6, 3/SR at 18).'),
         ('Cleric','Disciple of Life'): ('Passive', 'Disciple of Life (passive)', "Healing spells you cast of 1st level or higher restore additional HP equal to 2 + the spell's level."),
         ('Cleric','Preserve Life'):    ('Action',      'Preserve Life (Channel Divinity)','Distribute healing equal to 5 × Cleric level among creatures in 30 ft (≤ half their max HP).'),
@@ -1105,7 +1106,7 @@ def build_action_abilities(char):
         ('Sorcerer','Trance of Order'): ('Passive', 'Trance of Order (passive)', "While concentrating on a spell, you have advantage on ability checks and can't be surprised, plus one attack roll per turn against you can be treated as a 10 if lower."),
         ('Sorcerer','Clockwork Cavalcade'): ('Action', 'Clockwork Cavalcade', "Spend 7 sorcery points to restore HP, remove conditions, and repair objects in a 30-ft cube. 1/LR or 7 sorcery points."),
         ('Sorcerer','Lunar Embodiment'): ('Passive', 'Lunar Embodiment (passive)', "Your spells are empowered by moon phases, granting a Moulting die you spend for various minor bonus effects."),
-        ('Sorcerer','Moon Fire'): ('Action', 'Moon Fire', "A ranged spell attack dealing radiant damage, scaling with your moon phase and Sorcerer level."),
+        ('Sorcerer','Moon Fire'): ('Passive', 'Moon Fire (passive)', "You know Sacred Flame (it doesn't count against your cantrips); when you cast it, you can target one creature or two within 5 ft of each other."),
         ('Sorcerer','Lunar Boons + Waxing and Waning'): ('Passive', 'Lunar Boons (passive)', "Gain an additional benefit tied to your current moon phase, changing over time."),
         ('Sorcerer','Lunar Empowerment'): ('Passive', 'Lunar Empowerment (passive)', "Your Moon Fire and lunar boons grow more powerful."),
         ('Sorcerer','Lunar Phenomenon'): ('Action', 'Lunar Phenomenon', "A powerful capstone effect tied to your moon phase, usable once per long rest."),
@@ -1126,7 +1127,7 @@ def build_action_abilities(char):
         ('Warlock','Mystic Arcanum (9th)'): ('Action', 'Mystic Arcanum (9th)', "Cast your chosen 9th-level spell once, without expending a spell slot. 1/LR."),
         ('Warlock','Fey Presence'): ('Action', 'Fey Presence', "Each creature in a 10-ft cube of you must WIS save or be charmed or frightened by you until the end of your next turn. 1/SR."),
         ('Warlock','Misty Escape'): ('Reaction', 'Misty Escape', "When you take damage, turn invisible and teleport up to 60 ft to an unoccupied space you can see. Invisibility ends if you attack, cast a spell, or the start of your next turn. 1/SR."),
-        ('Warlock','Beguiling Defenses'): ('Reaction', 'Beguiling Defenses (passive/reaction)', "You're immune to being charmed. When a creature tries to charm you, you can use your reaction to turn the attempt back on it (WIS save) instead."),
+        ('Warlock','Beguiling Defenses'): ('Reaction', 'Beguiling Defenses', "You're immune to being charmed. When a creature tries to charm you, you can use your reaction to turn the attempt back on it (WIS save) instead."),
         ('Warlock','Dark Delirium'): ('Action', 'Dark Delirium', "One creature within 60 ft: WIS save or be charmed or frightened by you for 1 minute, perceiving confused visions of another place. 1/SR."),
         ('Warlock','Gift of the Sea'): ('Passive', 'Gift of the Sea (passive)', "You have a swimming speed of 40 ft and can breathe underwater."),
         ('Warlock','Tentacle of the Deep'): ('Bonus Action', 'Tentacle of the Deep', "Summon a single 10-ft spectral tentacle within 60 ft for 1 minute (replaces any existing one). Melee spell attack against a creature within 10 ft of it: 1d8 cold damage (2d8 at 10th) and its speed is reduced by 10 ft. As a bonus action, move it 30 ft and attack again. Uses = proficiency bonus per long rest."),
@@ -1184,7 +1185,7 @@ def build_action_abilities(char):
         ('Cleric','Arcane Abjuration'): ('Action', 'Arcane Abjuration (Channel Divinity)', "Present your holy symbol and target one celestial, elemental, fey, or fiend within 30 ft: WIS save or it's turned (forced to flee), or banished to its home plane if summoned/conjured."),
         ('Cleric','Spell Breaker'): ('Passive', 'Spell Breaker (passive)', "When you restore HP to a creature with a spell of 1st level or higher, you can also end one spell of equal or lower level affecting it."),
         ('Cleric','Arcane Mastery'): ('Passive', 'Arcane Mastery (passive)', "Choose 4 Wizard spells (one each of 6th/7th/8th/9th level); add them to your domain spells, always prepared."),
-        ('Cleric','Blessing of the Forge'): ('Action', 'Blessing of the Forge', "Also grants proficiency with heavy armor. Touch a nonmagical weapon or suit of armor: it becomes magical, granting +1 to its attack/damage rolls (weapon) or AC (armor), until your next long rest. Once per long rest."),
+        ('Cleric','Blessing of the Forge'): ('Action', 'Blessing of the Forge', "At the end of a long rest, touch a nonmagical weapon or suit of armor: it becomes a +1 weapon (attack and damage) or +1 armor (AC) until the end of your next long rest. Once per long rest."),
         ('Cleric',"Artisan's Blessing"): ('Action', "Artisan's Blessing", "Spend 1 hour and any needed materials at smith's tools to conjure a nonmagical metal item worth up to 100 gp."),
         ('Cleric','Soul of the Forge'): ('Passive', 'Soul of the Forge (passive)', "Resistance to fire damage. While wearing heavy armor, gain +1 AC."),
         ('Cleric','Saint of Forge and Fire'): ('Passive', 'Saint of Forge and Fire (passive)', "Immunity to fire damage. While wearing heavy armor, also gain resistance to nonmagical bludgeoning/piercing/slashing damage."),
@@ -1210,7 +1211,7 @@ def build_action_abilities(char):
         ('Cleric',"Oketra's Blessing"): ('Reaction', "Oketra's Blessing", "Channel Divinity: when a creature within 30 ft makes an attack roll, grant it +10 to that roll, chosen after seeing the roll but before the outcome."),
         ('Cleric','Blessing of the Trickster'): ('Action', 'Blessing of the Trickster', "Touch a willing creature other than yourself to grant it advantage on DEX (Stealth) checks for 1 hour, or until you use this again."),
         ('Cleric','Invoke Duplicity'): ('Action', 'Invoke Duplicity', "Channel Divinity: create an illusory duplicate of yourself for 1 minute. Bonus action to move it up to 30 ft (within 120 ft of you). Cast spells as though from its space; advantage on attacks against a creature within 5 ft of both you and the illusion."),
-        ('Cleric','Cloak of Shadows'): ('Action', 'Cloak of Shadows', "Channel Divinity: as an action while in dim light or darkness, become invisible until you make an attack, cast a spell, or are in an area of bright light."),
+        ('Cleric','Cloak of Shadows'): ('Action', 'Cloak of Shadows (Channel Divinity)', "Channel Divinity: become invisible until the end of your next turn, or until you attack or cast a spell."),
         ('Cleric','Divine Strike (Trickery)'): ('Passive', 'Divine Strike (Trickery) (passive)', "Once per turn, deal an extra 1d8 psychic damage on a weapon hit (2d8 at 14th level)."),
         ('Cleric','Improved Duplicity'): ('Passive', 'Improved Duplicity (passive)', "Invoke Duplicity creates up to 4 duplicates instead of 1; move any number of them up to 30 ft each (still within 120 ft of you) as a bonus action."),
         ('Cleric','Oketra\'s Blessing'): ('Reaction', "Oketra's Blessing", "Channel Divinity: when a creature within 30 ft makes an attack roll, grant it a +10 bonus, chosen after seeing the roll but before the outcome is known."),
@@ -1336,7 +1337,7 @@ def build_action_abilities(char):
             'Undead Thralls': 6, 'Inured to Undeath': 10, 'Command Undead': 14,
             "Transmuters Stone": 6, 'Shapechanger': 10, 'Master Transmuter': 14,
             'Momentary Stasis': 6, 'Arcane Abeyance': 10, 'Convergent Future': 14,
-            'Violent Attraction': 6, 'Event Horizon': 10, 'Gravity Fissure': 14,
+            'Violent Attraction': 10, 'Event Horizon': 14,
             'Manifest Mind': 6, 'Master Scrivener': 10, 'One with the Word': 14,
             'Power Surge': 6, 'Durable Magic': 10, 'Deflecting Shroud': 14,
             'Brand of Castigation': 6, 'Grim Psychometry': 9, 'Dark Augmentation': 10,
@@ -1350,7 +1351,7 @@ def build_action_abilities(char):
             "Lands Stride": 6, "Natures Sanctuary": 14,
             'Hearth of Moonlight and Shadow': 6, 'Hidden Paths': 10, 'Walker in Dreams': 14,
             'Mighty Summoner': 6, 'Guardian Spirit': 10, 'Faithful Summons': 14,
-            'Fungal Infestation': 6, 'Spreading Spores': 10, 'Spreading Spores (Improved)': 14,
+            'Fungal Infestation': 6, 'Spreading Spores': 10,
             'Cosmic Omen': 6, 'Twinkling Constellations': 10, 'Full of Stars': 14,
             'Enhanced Bond': 6, 'Cauterizing Flames': 10, 'Blazing Revival': 14,
             'Elemental Attunement': 3,
@@ -1362,7 +1363,7 @@ def build_action_abilities(char):
             'Hour of Reaping': 6, 'Mastery of Death': 11, 'Touch of the Long Death': 17,
             "Physician's Touch": 6, 'Flurry of Healing and Harm': 11, 'Hand of Ultimate Mercy': 17,
             'Searing Arc Strike': 6, 'Searing Sunburst': 11, 'Sun Shield': 17,
-            'Wings Unfurled': 6, 'Aspect of the Wyrm': 11, 'Draconic Presence (Monk)': 17,
+            'Wings Unfurled': 6, 'Aspect of the Wyrm': 11,
             'Indomitable': 9, 'Aura of Protection': 6, 'Song of Rest': 2,
             'Slow Fall': 4, 'Patient Defense': 2, 'Step of the Wind': 2,
             'Deflect Missiles': 3, 'Flurry of Blows': 2, 'Stunning Strike': 5,
@@ -1375,16 +1376,16 @@ def build_action_abilities(char):
             'Shielding Storm': 10, 'Raging Storm': 14, 'Bolstering Magic': 6,
             'Unstable Backlash': 10, 'Fanatical Focus': 6, 'Zealous Presence': 10,
             'Controlled Surge': 14,
-            'Arcane Firearm': 5, 'Fortified Position': 9, 'Explosive Cannon': 15,
+            'Arcane Firearm': 5, 'Fortified Position': 15, 'Explosive Cannon': 9,
             'Superior Inspiration': 20, 'Peerless Skill': 14, 'Battle Magic': 14,
             "Master's Flourish": 14, 'Animating Performance': 6, 'Creative Crescendo': 14,
             'Universal Speech': 6, 'Infectious Inspiration': 14, 'Unfailing Inspiration': 6,
-            'Divine Strike': 8, 'Improved Flare': 8, 'Corona of Light': 17,
-            'Wrath of the Storm': 2, 'Arcane Abjuration': 2, "Artisan's Blessing": 2,
+            'Divine Strike': 8, 'Improved Flare': 6, 'Corona of Light': 17,
+            'Wrath of the Storm': 1, 'Arcane Abjuration': 2, "Artisan's Blessing": 2,
             'Path to the Grave': 2, "Order's Demand": 2, 'Balm of Peace': 2, 'Twilight Sanctuary': 2,
             'Blessed Healer': 6, 'Radiance of the Dawn': 2,
             'Mantle of Majesty': 6, 'Unbreakable Majesty': 14,
-            'Mystic Chronicle': 6, 'Awakened Spirit': 14,
+            'Spirit Session': 6, 'Mystical Connection': 14,
             'Mantle of Whispers': 6, 'Shadow Lore': 14,
             'Purity of Spirit': 15, 'Holy Nimbus': 20,
             'Relentless Avenger': 7, 'Soul of Vengeance': 15, 'Avenging Angel': 20,
@@ -1424,7 +1425,7 @@ def build_action_abilities(char):
             'Consuming Fervor': 2, 'Resounding Strike': 6, 'Blaze of Glory': 17,
             "War God's Blessing": 6, 'Touch of Death': 2, 'Avatar of Battle': 17,
             'Inescapable Destruction': 6, 'Improved Reaper': 17,
-            'Destructive Wrath': 6, 'Thunderbolt Strike': 8, 'Stormborn': 17,
+            'Destructive Wrath': 6, 'Thunderbolt Strike': 6, 'Stormborn': 17,
             'Spell Breaker': 6, 'Arcane Mastery': 17,
             'Soul of the Forge': 6, 'Saint of Forge and Fire': 17,
             "Sentinel at Death's Door": 6, 'Keeper of Souls': 17,
@@ -1441,7 +1442,6 @@ def build_action_abilities(char):
             "Drakes Breath": 7, 'Symbiotic Link': 11, "Dragons Purpose": 15,
             'Remarkable Athlete': 7, 'Additional Fighting Style': 10,
             'Superior Critical': 15, 'Survivor (Champion)': 18,
-            'Extra Attack (Bladesinging)': 6,
             'Unwavering Mark': 3, 'Warding Maneuver': 7, 'Hold the Line': 10,
             'Ferocious Charger': 15, 'Vigilant Defender': 18,
             'Runic Shield': 7, 'Great Stature': 10, 'Master of Runes': 15, 'Runic Juggernaut': 18,
@@ -1469,10 +1469,9 @@ def build_action_abilities(char):
             'Jack of All Trades': 2, 'Expertise': 3, 'Font of Inspiration': 5,
             'Bond of Fang and Scale': 7, 'Perfected Bond': 15,
             'Survivor (Champion)': 18, 'Know Your Enemy': 7, 'Improved Combat Superiority': 10,
-            'Improved Combat Superiority (18th)': 18,
             'Relentless': 15, 'War Magic': 7, 'Eldritch Strike': 10, 'Arcane Charge': 15,
-            'Improved War Magic': 18, 'Magic Arrow': 7, 'Curving Shot': 7, 'Arcane Shot (10th)': 10,
-            'Ever-Ready Shot': 15, 'Arcane Shot (18th)': 18, 'Bulwark': 15, 'Inspiring Surge (18th)': 18,
+            'Improved War Magic': 18, 'Magic Arrow': 7, 'Curving Shot': 7,
+            'Ever-Ready Shot': 15, 'Bulwark': 15, 'Inspiring Surge (18th)': 18,
             'Telekinetic Adept': 7, 'Guarded Mind': 10, 'Bulwark of Force': 15, 'Telekinetic Master': 18,
             'Dragon Wings': 14, 'Psychic Defenses': 6, 'Otherworldly Wings': 14,
             'Bend Luck': 6, 'Controlled Chaos': 14, 'Storm Guide': 6, "Storm's Fury": 14,
@@ -1615,7 +1614,7 @@ def build_action_abilities(char):
                 # text-match can find them — named directly rather than
                 # chasing a fully generic pattern for this
                 # inconsistently-labeled data.
-                CD_TEXT_EXCEPTIONS = {'Blessing of the Forge', 'Balm of Peace'}
+                CD_TEXT_EXCEPTIONS = {'Balm of Peace'}
                 for (k_cls, k_frag), (k_bucket, k_disp, k_desc) in KNOWN_ACTIONS.items():
                     if k_cls != 'Cleric' or k_frag == 'Channel Divinity':
                         continue
@@ -1673,20 +1672,31 @@ def build_action_abilities(char):
         RUNE_CARDS = (
             ("Fire Rune", "Passive", "When you hit a creature with a weapon attack: an extra 2d6 fire damage, "
                                      "and a STR save or it's restrained for 1 minute, taking 2d6 fire at the start "
-                                     "of each of its turns (it saves again at the end of each)."),
-            ("Cloud Rune", "Reaction", "When a creature you can see within 30 ft is hit by an attack, the attack "
-                                       "hits a different creature of your choice within 30 ft of you instead."),
+                                     "of each of its turns (it saves again at the end of each).",
+             "your proficiency bonus is doubled on ability checks with tools you're proficient with"),
+            ("Cloud Rune", "Reaction", "When you or a creature you can see within 30 ft is hit by an attack roll, "
+                                       "the attack hits a different creature of your choice within 30 ft of you "
+                                       "(not the attacker) instead, with the same roll.",
+             "advantage on Sleight of Hand and Deception checks"),
             ("Frost Rune", "Bonus Action", "For 10 minutes, +2 to ability checks and saving throws that use "
-                                           "Strength or Constitution."),
+                                           "Strength or Constitution.",
+             "advantage on Animal Handling and Intimidation checks"),
             ("Stone Rune", "Reaction", "When a creature you can see ends its turn within 30 ft: a WIS save or "
-                                       "it's charmed for 1 minute -- speed 0 and incapacitated, in a dreamy stupor."),
-            ("Hill Rune", "Bonus Action", "For 1 minute, resistance to bludgeoning, piercing and slashing damage."),
+                                       "it's charmed for 1 minute -- speed 0 and incapacitated, in a dreamy stupor.",
+             "advantage on Insight checks and darkvision to 120 ft"),
+            ("Hill Rune", "Bonus Action", "For 1 minute, resistance to bludgeoning, piercing and slashing damage.",
+             "advantage on saves against being poisoned and resistance to poison damage"),
             ("Storm Rune", "Bonus Action", "For 1 minute, in a prophetic state: as a reaction, give advantage or "
-                                           "disadvantage to a roll made within 60 ft."),
+                                           "disadvantage to an attack roll, save or check made within 60 ft.",
+             "advantage on Arcana checks, and you can't be surprised while you aren't incapacitated"),
         )
-        for rune, bucket, text in RUNE_CARDS:
+        # One card per rune: what invoking it does, then what having it
+        # carved always gives you
+        times = "Twice" if fighter_lvl_r >= 15 else "Once"          # Master of Runes
+        for rune, bucket, text, carved in RUNE_CARDS:
             if rune in known:
-                buckets[bucket].append((rune, text + " Once per short or long rest.", "Fighter"))
+                buckets[bucket].append((rune, f"{text} {times} per short or long rest. While it's carved: "
+                                              f"{carved}.", "Fighter"))
 
     # Way of the Kensei: Kensei's Shot and Agile Parry (3rd level) and
     # Deft Strike (One with the Blade, 6th) each get a button of their own
@@ -1841,7 +1851,7 @@ def build_action_abilities(char):
 
         # ── Big-ticket Legendary / Artifact actions ──────────────────────────
         'Holy Symbol of Ravenkind': ('Action','Holy Symbol of Ravenkind (1/day)','30-ft sunlight burst for 1 minute, or 20 radiant burst vs. one vampire.'),
-        'Eye and Hand of Vecna': ('Action','Eye/Hand of Vecna (1/day each)','Eye: Disintegrate (DC 18). Hand: Finger of Death (DC 18).'),
+        'Eye and Hand of Vecna': ('Action','Eye and Hand of Vecna (1/day each)','Eye: Disintegrate (DC 18). Hand: Finger of Death (DC 18).'),
         'Wand of Orcus':       ('Action','Wand of Orcus','Animate Dead at will. 1 ch: Create Undead. 3 ch: Circle of Death (DC 18). 7 ch: Power Word Kill.'),
         'Spell Bottle':        ('Action','Spell Bottle (1/day)','Release the spell stored within, cast at your stored save DC/attack bonus.'),
         'Crown of Lies':       ('Action','Crown of Lies (1/day)','Dominate a creature that can hear you speak (DC 20 WIS).'),
@@ -1990,19 +2000,8 @@ def build_action_abilities(char):
         # ── Bonus Action feats ───────────────────────────────────────────────
         'Charger':           ('Bonus Action','Charger','After Dashing: melee attack +5 damage, or shove 10 ft.'),
         'Great Weapon Master': ('Bonus Action','Great Weapon Master','On a crit or kill with a heavy weapon: one bonus action melee attack.'),
-        'Polearm Master':     ('Bonus Action','Polearm Master','Butt-end attack: 1d4 + STR bludgeoning (spear/glaive/halberd/pike/quarterstaff).'),
-        'Shield Master':      ('Bonus Action','Shield Master','Shove a creature with your shield after taking the Attack action.'),
         'Tavern Brawler':     ('Bonus Action','Tavern Brawler (Grapple)','Attempt to grapple a creature as a bonus action after an unarmed strike hit.'),
-        'Telekinetic':        ('Bonus Action','Telekinetic Shove','Shove a creature up to 5 ft (STR save vs. 8+prof+CHA/INT/WIS) within 30 ft.'),
         'Gift of the Chromatic Dragon': ('Bonus Action','Chromatic Infusion (1/LR)','Add 1d4 of your chosen damage type to a weapon for 1 minute.'),
-        'Strike of the Giants': ('Bonus Action','Giant Strike (PB/LR)','On hit: infuse the attack with chosen Giant power (push, slow, etc.).'),
-        'Ember of the Fire Giant': ('Bonus Action','Fire Giant Strike (PB/LR)','On hit: ignite the area, creatures take fire damage.'),
-        'Fury of the Frost Giant': ('Bonus Action','Frost Giant Strike (PB/LR)','On hit: reduce target speed to 0 until your next turn.'),
-        'Guile of the Cloud Giant': ('Bonus Action','Cloud Giant Strike (PB/LR)','On hit: teleport up to 30 ft with the target.'),
-        'Keenness of the Stone Giant': ('Bonus Action','Stone Giant Strike (PB/LR)','On hit: push the target and knock it prone.'),
-        'Soul of the Storm Giant': ('Bonus Action','Storm Giant Strike (PB/LR)','On hit: deal extra lightning damage and teleport the target.'),
-        'Vigor of the Hill Giant': ('Bonus Action','Hill Giant Strike (PB/LR)','On hit: push the target up to 10 ft away.'),
-        'Knight of the Crown': ('Bonus Action','Knight of the Crown','On hit with Attack action: one additional weapon attack.'),
         # These 5 feats have accurate descriptions but no other mechanical presence in the app.
         'Vital Sacrifice': ('Bonus Action','Vital Sacrifice',
             "Take 1d6 necrotic damage (can't be reduced) for a blood boon lasting 1 hour or until "
@@ -2031,10 +2030,6 @@ def build_action_abilities(char):
             "turn this way, at most one can be 3rd level or higher."),
 
         # ── Passive combat-modifier feats ─────────────────────────────
-        'Crossbow Expert':    ('Passive','Crossbow Expert',
-            "Ignore the loading property of crossbows you're proficient with. Being within 5 ft. "
-            "of a hostile creature doesn't impose disadvantage on your ranged attack rolls. When "
-            "you attack with a one-handed weapon, bonus action: attack with a hand crossbow you're holding."),
         'Dual Wielder':       ('Passive','Dual Wielder',
             "+1 AC while wielding two melee weapons. Can use two-weapon fighting even if the "
             "weapons aren't light. Can draw/stow two one-handed weapons when you'd normally draw/stow one."),
@@ -2073,10 +2068,6 @@ def build_action_abilities(char):
             "Spend 10 minutes inspiring up to 6 companions within 30 ft. who can see/hear you — "
             "each gains temp HP equal to your level + CHA mod. Can't use on the same creature "
             "twice until it finishes a short or long rest."),
-        'War Caster':         ('Passive','War Caster',
-            "Advantage on CON saves to maintain concentration. Perform spells' somatic components "
-            "even with weapons/a shield in your hands. Can cast a spell (instead of a melee "
-            "attack) as your opportunity attack."),
         'Skulker':            ('Passive','Skulker',
             "Can hide when only lightly obscured. Missing with a ranged attack doesn't reveal "
             "your position. Dim light doesn't impose disadvantage on sight-based Perception checks."),
@@ -2086,13 +2077,11 @@ def build_action_abilities(char):
 
         # ── Reaction feats ───────────────────────────────────────────────────
         'Defensive Duelist':  ('Reaction','Defensive Duelist','When hit by a melee attack (finesse weapon equipped): add proficiency bonus to AC.'),
-        'Mage Slayer':        ('Reaction','Mage Slayer','Melee attack against a caster within 5 ft who casts a spell.'),
         'Bountiful Luck':     ('Reaction','Bountiful Luck','Ally within 30 ft rolls a 1: they reroll instead.'),
         'Fade Away':          ('Reaction','Fade Away','When you take damage: become invisible until the start of your next turn.'),
         'Flames of Phlegethos': ('Reaction','Flame Shield','When hit by a melee attack: attacker takes fire damage.'),
         'Second Chance':      ('Reaction','Second Chance','When hit by an attack: force the attacker to reroll.'),
         'Gift of the Gem Dragon': ('Reaction','Telekinetic Reprisal (1/LR)','When you take damage: 20-ft burst, STR save or be pushed and take force damage.'),
-        'Sentinel':           ('Reaction','Sentinel (enhanced OA)','Opportunity attacks reduce speed to 0; trigger even on Disengage.'),
 
         # ── Action feats ──────────────────────────────────────────────────────
         'Grappler':           ('Action','Grappler (Pin)','While grappling a creature: attempt to pin it (both restrained).'),
@@ -2111,10 +2100,11 @@ def build_action_abilities(char):
         'Aberrant Dragonmark': ('Action','Aberrant Dragonmark (1/LR)','Cast your chosen cantrip at will and 1st-level spell once per long rest (CON-based).'),
         'Strixhaven Initiate': ('Action','Strixhaven Initiate (1/LR)','Cast your chosen 1st-level college spell once per long rest, or the cantrips at-will.'),
         'Divinely Favored':   ('Action','Divinely Favored (1/LR)','Cast your chosen 1st-level cleric spell once per long rest, or the cantrip at-will.'),
-        'Gift of the Metallic Dragon': ('Action','Draconic Healing','Cast Cure Wounds a number of times per long rest equal to half your proficiency bonus.'),
-        'Squire of Solamnia': ('Action','Lay On Hands (SR)','Heal HP from a 5-HP pool that refills on a short rest.'),
+        'Gift of the Metallic Dragon': ('Action','Draconic Healing','Cast Cure Wounds without a spell slot, once a long rest (or with your slots).'),
         'Initiate of High Sorcery': ('Action','Wizard Cantrip','Cast your chosen wizard cantrip at will.'),
     }
+    for bucket, name, text, feat in _feat_cards(char):
+        buckets[bucket].append((name, text, feat))
     covered_feat_sources = set()  # avoid double-listing if a feat ever gets a structured effect
     for fname in char.get('feats', []):
         if fname in covered_feat_sources:
@@ -2198,9 +2188,10 @@ def build_action_abilities(char):
         buckets['Action'].append(('Identify a Spell (optional rule, XGE)',
             'Reaction (as it\'s cast) or action (after, by its effect): INT (Arcana) check, DC 15 + the '
             'spell\'s level. Advantage if it was cast by a member of your own class.', 'Universal'))
-        buckets['Reaction'].append(('Mark (optional rule, DMG)',
-            'On a melee hit: mark the target — your opportunity attacks against it have advantage '
-            'until the end of your next turn (doesn\'t cost your reaction to make).', 'Universal'))
+        buckets['Passive'].append(('Mark (optional rule, DMG)',
+            'When you make a melee attack, mark its target: until the end of your next turn, your '
+            'opportunity attack against it has advantage and doesn\'t use your reaction (one per turn).',
+            'Universal'))
         buckets['Passive'].append(('Waking Someone (optional rule, XGE)',
             'Action to shake/slap a naturally sleeping creature awake, or any damage/sudden loud noise '
             'wakes it automatically.', 'Universal'))
@@ -2408,10 +2399,13 @@ def build_action_abilities(char):
     # choice via the feat-selection dialog; falls back to a generic
     # note if not yet chosen.
     if "Elemental Adept" in char.get("feats", []):
-        _ea_type = char.get("_choices", {}).get("elemental_adept_type", "your chosen")
+        _ea_pick = char.get("_choices", {}).get("elemental_adept_type")
+        _ea_type = str((_ea_pick[0] if _ea_pick else "") if isinstance(_ea_pick, list) else (_ea_pick or "")).lower()
         buckets['Passive'].append(('Elemental Adept',
-            f"Your {_ea_type} spells ignore resistance to {_ea_type} damage, and you can treat "
-            f"any 1 rolled on a {_ea_type} damage die as a 2.", 'Elemental Adept'))
+            (f"Spells you cast ignore resistance to {_ea_type} damage, and you treat any 1 rolled on "
+             f"their {_ea_type} damage dice as a 2." if _ea_type else
+             "Pick a damage type (acid, cold, fire, lightning or thunder): spells you cast ignore "
+             "resistance to it, and you treat any 1 rolled on its damage dice as a 2."), 'Elemental Adept'))
 
     # Dragon Fear: used "in place of your Breath Weapon" (same
     # resource, an alternative choice each time), so shown as an
@@ -2504,7 +2498,7 @@ def build_action_abilities(char):
     sorc_lvl_pf = class_levels(char).get("Sorcerer", 0)
     if sorc_lvl_pf >= 14 and "pyromancer" in subclasses(char).get("Sorcerer", "").lower():
         buckets['Reaction'].append(("Pyromancer's Fury",
-            f"Unofficial (Plane Shift: Kaladesh). When hit by a melee attack, deal fire "
+            f"When hit by a melee attack, deal fire "
             f"damage equal to your sorcerer level ({sorc_lvl_pf}) to the attacker, ignoring "
             f"resistance to fire damage.", 'Sorcerer'))
     # Heart of Fire (Pyromancer, PSK, 1st level): this app has no
@@ -2526,14 +2520,10 @@ def build_action_abilities(char):
         "Breath Weapon":     ("Action", "Breath Weapon",
             "Exhale destructive energy (shape/type by ancestry). "
             "DC 8+CON+prof, half on save. 2d6→5d6 by level. 1/SR."),
-        "Healing Hands":     ("Action", "Healing Hands",
-            "Touch a creature: it regains HP equal to your level. 1/LR."),
-        "Hidden Step":       ("Bonus Action", "Hidden Step",
-            "Turn invisible until your next turn starts or you attack/deal damage. PB/LR."),
-        "Fury of the Small": ("Passive", "Fury of the Small",
-            "When you damage a larger creature: +your level damage. 1/SR."),
-        "Stone's Endurance": ("Reaction", "Stone's Endurance",
-            "When you take damage: reduce it by 1d12 + CON. 1/SR."),
+        "Healing Hands":     ("Action", "Healing Hands", "VERSIONED"),
+        "Hidden Step":       ("Bonus Action", "Hidden Step", "VERSIONED"),
+        "Fury of the Small": ("Passive", "Fury of the Small", "VERSIONED"),
+        "Stone's Endurance": ("Reaction", "Stone's Endurance", "VERSIONED"),
         "Daunting Roar":     ("Bonus Action", "Daunting Roar",
             "Creatures within 10 ft: CON save or frightened until your next turn. 1/SR."),
         "Mimicry":           ("Passive", "Mimicry (passive)", "MIMICRY_DYNAMIC"),
@@ -2541,41 +2531,43 @@ def build_action_abilities(char):
             "After you Dash: one melee attack with your horns."),
         "Hammering Horns":   ("Bonus Action", "Hammering Horns",
             "After you hit with melee: shove that target with your horns."),
-        "Rabbit Hop":        ("Bonus Action", "Rabbit Hop",
-            "Jump Prof×5 ft without provoking opportunity attacks. PB/LR."),
+        "Rabbit Hop":        ("Bonus Action", "Rabbit Hop", "VERSIONED"),
         "Adrenaline Rush":   ("Bonus Action", "Adrenaline Rush",
-            "Dash as a bonus action + temp HP equal to prof. 1/LR."),
+            "Dash as a bonus action and gain temporary hit points equal to your proficiency bonus. Uses = "
+            "proficiency bonus per long rest."),
         "Nimble Escape":     ("Bonus Action", "Nimble Escape",
             "Disengage or Hide as a bonus action."),
         "Grovel, Cower":     ("Action", "Grovel, Cower, and Beg",
             "Allies gain advantage vs enemies within 10 ft of you until your next turn. 1/SR."),
-        "Hungry Jaws":       ("Bonus Action", "Hungry Jaws",
-            "Special bite: on hit, gain CON mod temp HP. 1/SR."),
+        "Hungry Jaws":       ("Bonus Action", "Hungry Jaws", "VERSIONED"),
         "Flurry of":         (None, "", ""),  # guard: never match monk via race
         "Second Chance":     ("Reaction", "Second Chance",
             "When hit by an attack: force a reroll. 1/LR."),
         "Fey Step":          ("Bonus Action", "Fey Step",
             "Teleport 30 ft (seasonal rider effect). 1/SR."),
-        "Shifting":          ("Bonus Action", "Shifting",
-            "Bestial form 1 min: temp HP = prof + CON, subrace perks. 1/SR."),
+        "Shifting":          ("Bonus Action", "Shifting", "VERSIONED"),
         "Vampiric Bite":     ("Passive", "Vampiric Bite",
             "Natural weapon bite, 1d4+CON piercing (CON instead of STR). Advantage on attack rolls with it while you have half or fewer HP. On a hit against a non-Construct/non-Undead, empower yourself: regain HP equal to the damage dealt, or gain a bonus to your next check/attack equal to it. Uses = PB per long rest."),
-        "Ram":               ("Passive", "Ram (Satyr)",
-            "1d6+STR bludgeon; after 10 ft straight move, STR save or pushed 5 ft."),
     }
     if race_name:
         try:
             from dnd_app.data.races import get_race
             rdata = get_race(race_name) or {}
-            traits_blob = " || ".join(rdata.get("traits", []))
-            # subrace strings can also carry actions (Eladrin Fey Step etc.)
+            from dnd_app.data.races import race_traits_for
+            traits_blob = " || ".join(race_traits_for(char))   # less what a dragonmark replaces
+            # subrace strings can also carry actions (Eladrin Fey Step etc.);
+            # the sheet keeps only the subrace's name, so its text is looked up
             sub = char.get("subrace", "") or ""
-            traits_blob += " || " + sub
+            sub_text = next((t for t in rdata.get("subraces", []) or []
+                             if isinstance(t, str) and t.split("(")[0].strip() == sub.strip()), sub)
+            traits_blob += " || " + sub_text
             for frag, spec in RACE_ACTIONS.items():
                 bucket = spec[0]
                 if not bucket or frag.lower() not in traits_blob.lower():
                     continue
-                if frag == "Breath Weapon":
+                if spec[2] == "VERSIONED":
+                    desc = _race_version_text(char, race_name, frag)
+                elif frag == "Breath Weapon":
                     # Fully dynamic: real damage type/shape/save from the
                     # character's chosen ancestry, real dice for their level,
                     # real DC — not the generic level-progression text.
@@ -2602,6 +2594,8 @@ def build_action_abilities(char):
                 buckets[bucket].append((spec[1], desc, race_name))
         except Exception:
             pass
+        for bucket, name, text in _race_cards(char, race_name):
+            buckets[bucket].append((name, text, race_name))
 
     # ── Spells routed by casting time ─────────────────────────────────────────
     # Cantrips + pinned spells + all bonus-action/reaction spells appear as
@@ -2647,6 +2641,11 @@ def build_action_abilities(char):
             sp_desc = sp.get('desc','')
             if lvl == 0:
                 sp_desc = _append_cantrip_scaling_note(sp_name, sp_desc, char)
+            # what its hit adds (Genie's Wrath, Hex...)
+            from dnd_app.core.riders import spell_hit_note
+            hit_note = spell_hit_note(char, sp)
+            if hit_note:
+                sp_desc = f"{sp_desc}  {hit_note}."
             buckets[bucket].append(
                 (f"{star}{sp_name}{extra}", sp_desc, tag, sp))
     except Exception:
@@ -2676,20 +2675,6 @@ def build_action_abilities(char):
             shot_name = shot.split(" – ")[0].strip()
             shot_desc = shot.split(" – ", 1)[1].strip() if " – " in shot else shot
             buckets['Action'].append((shot_name, shot_desc, 'Fighter'))
-    except Exception:
-        pass
-
-    # Rune Knight: chosen Runes. Each rune grants both a passive skill
-    # benefit and an active, limited-use effect (bonus action or
-    # reaction depending on the rune) — shown together here as one
-    # entry per rune rather than splitting the passive/active halves
-    # apart, since the reference text describes them as a single package per rune.
-    try:
-        chosen_runes = char.get("_choices", {}).get("rune_knight_runes", [])
-        for rune in chosen_runes:
-            rune_name = rune.split(" – ")[0].strip()
-            rune_desc = rune.split(" – ", 1)[1].strip() if " – " in rune else rune
-            buckets['Passive'].append((rune_name, rune_desc, 'Fighter'))
     except Exception:
         pass
 
@@ -2954,5 +2939,533 @@ def build_action_abilities(char):
             "rest.",
             'Pact of the Talisman'))
 
+    # Cards the rules books have that the catalog above doesn't (or has
+    # only as a note): what each one does on Use is in core/action_use.py.
+    # One of these replaces a catalog card of the same name ("Overchannel
+    # (passive)"), so the feature shows once.
+    from dnd_app.core.action_use import normalize as _norm_card
+    for bucket, entry in _more_cards(char):
+        same = _norm_card(entry[0])
+        for b in buckets:
+            buckets[b] = [e for e in buckets[b]
+                          if (len(e) > 3 and e[3] is not None) or _norm_card(e[0]) != same]
+        buckets[bucket].append(entry)
+
+    # Each card on the tab its rules say: the action, the bonus action, the
+    # reaction -- or none at all ("Other": Indomitable, Stroke of Luck,
+    # a maneuver used on a hit...), so using it doesn't take a reaction
+    # or a bonus action the feature never costs.
+    moved = defaultdict(list)
+    for bucket in list(buckets):
+        keep = []
+        for e in buckets[bucket]:
+            to = CARD_TABS.get(_norm_card(e[0]), bucket) if len(e) <= 3 or e[3] is None else bucket
+            if to is None:
+                continue                      # a duplicate card
+            (keep if to == bucket else moved[to]).append(e)
+        buckets[bucket] = keep
+    for bucket, entries in moved.items():
+        buckets[bucket].extend(entries)
+    # "Arcane Jolt (passive)" -> "Arcane Jolt": the Other tab already says
+    # it takes no action, and many of these are still things you use
+    for bucket in buckets:
+        buckets[bucket] = [((re.sub(r"\s*\(passive\)$", "", e[0]),) + tuple(e[1:])
+                            if len(e) <= 3 or e[3] is None else e) for e in buckets[bucket]]
+    # Portent's card: how many d20s you roll, and the ones still left
+    portent = next((r for r in char.get("resources", []) if r.get("key") == "portent"), None)
+    if portent is not None:
+        from dnd_app.core.action_use import portent_rolls
+        rolls = portent_rolls(char)
+        n = portent.get("current_max") or portent.get("max") or 2
+        text = (f"After a long rest you roll {'three' if n >= 3 else 'two'} d20s. Use one in place of an "
+                f"attack roll, saving throw or ability check by you or a creature you can see: before "
+                f"the roll, once a turn. "
+                + (f"Your rolls: {', '.join(map(str, rolls))}." if rolls
+                   else "No rolls left until your next long rest."))
+        for bucket in buckets:
+            buckets[bucket] = [(e[0], text) + tuple(e[2:]) if e[0] == "Portent" and (len(e) <= 3 or e[3] is None)
+                               else e for e in buckets[bucket]]
     return dict(buckets)
+
+
+def _feat_cards(char) -> list:
+    """[(bucket, name, rules text, feat)] -- the feats' actions, bonus
+    actions, reactions and limited uses, by the books (docs/reference/
+    feats-sublist.md). What Use does: core/action_use.py."""
+    from dnd_app.core.character import ability_mod
+    from dnd_app.core.calculator import get_prof_bonus
+    feats = set(char.get("feats", []) or [])
+    pb = get_prof_bonus(char)
+    best = lambda *abs_: max(ability_mod(char, a) for a in abs_)
+    uses = "Uses = proficiency bonus per long rest."
+    out = []
+
+    def add(feat, bucket, name, text):
+        if feat in feats:
+            out.append((bucket, name, text, feat))
+
+    add("Lucky", "Passive", "Lucky", "Spend a luck point: roll another d20 for your attack roll, check or save "
+        "(or when you're attacked) and choose which d20 counts. 3 luck points a long rest.")
+    add("Chef", "Bonus Action", "Chef's Treat", f"Eat one of your treats: {pb} temporary hit points. Treats = "
+        "proficiency bonus, made in an hour or at the end of a long rest.")
+    # Strike of the Giants and the giant feats that follow it
+    add("Strike of the Giants", "Passive", "Giant Strike", "Once a turn, when you hit with a melee weapon or a "
+        "thrown weapon: your strike's extra damage and its save (DC 8 + PB + STR or CON). " + uses)
+    dc = 8 + pb + best("STR", "CON", "WIS")
+    add("Ember of the Fire Giant", "Action", "Searing Ignition", f"In place of one attack: creatures of your "
+        f"choice within 15 ft make a DC {dc} DEX save or take 1d8 + {pb} fire damage and are blinded until "
+        f"the start of your next turn (half damage on a success). " + uses)
+    add("Fury of the Frost Giant", "Reaction", "Frigid Retaliation", f"When a creature within 30 ft hits and "
+        f"damages you: it makes a DC {dc} CON save or takes 1d8 + {pb} cold damage and its speed is 0 until "
+        f"the end of its next turn. " + uses)
+    add("Guile of the Cloud Giant", "Reaction", "Cloudy Escape", "When a creature you can see hits you: "
+        "resistance to that attack's damage, then teleport up to 30 ft. " + uses)
+    stone = best("STR", "CON", "WIS")
+    add("Keenness of the Stone Giant", "Bonus Action", "Stone Throw", f"A ranged spell attack (+{pb + stone}) "
+        f"with a rock, 60 ft: 1d10 force damage, and a DC {8 + pb + stone} STR save or prone. " + uses)
+    add("Soul of the Storm Giant", "Bonus Action", "Maelstrom Aura", "Until the start of your next turn: a "
+        "10-ft aura, resistance to lightning and thunder damage, attacks against you have disadvantage, and a "
+        "creature starting its turn in it makes a STR save or its speed is halved. " + uses)
+    add("Vigor of the Hill Giant", "Reaction", "Hill Giant Bulwark", "When an effect would move you 5 ft or more or knock "
+        "you prone: you aren't moved and aren't knocked prone.")
+    # Knights of Solamnia
+    add("Squire of Solamnia", "Passive", "Precise Strike", "Once a turn, give a weapon attack roll advantage; if "
+        "it hits, +1d8 damage. A use is spent only on a hit. " + uses)
+    add("Knight of the Crown", "Bonus Action", "Commanding Rally", "An ally within 30 ft who can see or hear you "
+        "makes one weapon attack with its reaction; on a hit it adds 1d8 to the damage. " + uses)
+    add("Knight of the Rose", "Bonus Action", "Bolstering Rally", f"A creature within 30 ft (you can choose "
+        f"yourself) gains 1d8 + {pb + best('STR', 'CON', 'CHA')} temporary hit points. " + uses)
+    add("Knight of the Sword", "Passive", "Demoralizing Strike", "Once a turn, when you hit with a weapon attack: "
+        "a WIS save or the target is frightened of you until the end of your next turn (on a success, "
+        "disadvantage on its next attack roll). " + uses)
+    # dragon gifts
+    add("Gift of the Metallic Dragon", "Reaction", "Protective Wings", f"When you or a creature within 5 ft is "
+        f"hit by an attack: +{pb} AC against it, maybe turning the hit into a miss. " + uses)
+    add("Gift of the Chromatic Dragon", "Reaction", "Reactive Resistance", "When you take acid, cold, fire, "
+        "lightning or poison damage: resistance to it. " + uses)
+    # scions of the outer planes
+    add("Agent of Order", "Passive", "Stasis Strike", "Once a turn, when you damage a creature within 60 ft: "
+        "+1d8 force damage, and a WIS save or it's restrained until the start of your next turn. " + uses)
+    add("Baleful Scion", "Passive", "Grasp of Avarice", f"Once a turn, when you damage a creature within 60 ft: "
+        f"+1d6 + {pb} necrotic damage, and you regain that many hit points. " + uses)
+    add("Righteous Heritor", "Reaction", "Soothe Pain", f"When you or a creature within 30 ft takes damage: "
+        f"reduce it by 1d10 + {pb}. " + uses)
+    add("Planar Wanderer", "Action", "Portal Cracker", "Open or close a portal within 5 ft for 1 hour without "
+        "its key: a DC 20 Arcana check (on a failure, 3d8 psychic damage).")
+    add("Planar Wanderer", "Action", "Portal Sense", "Find any portals within 30 ft that aren't behind total "
+        "cover. Once a long rest.")
+    # Dragonlance robes, and other spellcasting feats
+    add("Adept of the White Robes", "Reaction", "Protective Ward", "When you or a creature within 30 ft takes "
+        "damage: spend a spell slot; reduce the damage by a d6 per slot level + your spellcasting modifier.")
+    add("Cartomancer", "Bonus Action", "Hidden Ace", "Flourish your imbued card and cast its spell. Once a long "
+        "rest.")
+    add("Flash Recall", "Bonus Action", "Flash Recall", "Prepare a 1st-level or higher spell in place of one of "
+        "equal or higher level. Once a short or long rest.")
+    add("Field Medic", "Bonus Action", "Spare the Dying (Field Medic)", "Cast Spare the Dying as a bonus action.")
+    add("Flamewoken", "Bonus Action", "Empower Flames", "The next time you deal fire damage before the end of "
+        "your next turn, one of the creatures takes 2d10 more fire damage. Once a short or long rest.")
+    add("Metamagic Adept", "Passive", "Metamagic Adept", "Spend your 2 sorcery points (a long rest) on your "
+        "Metamagic options, one point per Use.")
+    add("Cruel", "Passive", "Cruel", "Once a turn, spend a cruelty die (d6): add it to a creature's damage, "
+        "regain that many hit points on a critical hit, or add it to an Intimidation check. Dice = proficiency "
+        "bonus per long rest.")
+    add("Orcish Fury", "Reaction", "Orcish Fury: Attack", "Right after Relentless Endurance keeps you up: one "
+        "weapon attack.")
+    add("Bandit Cunning", "Reaction", "Lucky Break", "When you make a saving throw: add your INT modifier to it. "
+        "Once a long rest.")
+    add("Bandit Cunning", "Action", "Study a Foe", "An INT (Investigation) check against DC 10 + the creature's "
+        "challenge rating to learn one fact about how it fights.")
+    add("Plantmender", "Action", "Plant Vision", "Touch a plant: visions of what happened around it in the last "
+        "24 hours, and its health.")
+    add("Poisoner", "Bonus Action", "Apply Poison", "Coat a weapon or piece of ammunition with poison.")
+    add("Strixhaven Mascot", "Action", "Mascot Swap", "Swap places with your mascot familiar within 60 ft. Once "
+        "a long rest, or for a 2nd-level or higher spell slot.")
+    add("Cat's Caress", "Bonus Action", "Cat's Caress", "After the Attack action with a claw: up to two attacks "
+        "with the claw in your other hand (no ability modifier to their damage unless it's negative).")
+    add("Fearsome Flourisher", "Bonus Action", "Nunchaku Strike", "After the Attack action with a nunchaku: one "
+        "more attack with it, a d4 for its damage.")
+    add("Spray 'n' Pray", "Bonus Action", "Spray 'n' Pray", "After the Attack action with a tommybow or magitech "
+        "firearm: one or two more ranged attacks with it (-5 to both if you make two; no ability modifier to "
+        "their damage unless it's negative).")
+    return out
+
+
+def _race_version_text(char, race_name, trait) -> str:
+    """A trait whose numbers differ between a race's two books: its level
+    (VGM, ERLW) or its proficiency bonus (MPMM), and how often."""
+    from dnd_app.core.character import total_level, ability_mod
+    from dnd_app.core.calculator import get_prof_bonus
+    mpmm = "MPMM" in race_name
+    lvl, pb, con = total_level(char), get_prof_bonus(char), ability_mod(char, "CON")
+    often = "Uses = proficiency bonus per long rest." if mpmm else "Once a short or long rest."
+    if trait == "Healing Hands":
+        return (f"Touch a creature: it regains {pb}d4 hit points (your proficiency bonus in d4s). Once a long rest."
+                if mpmm else f"Touch a creature: it regains {lvl} hit points (your level). Once a long rest.")
+    if trait == "Hidden Step":
+        return ("Turn invisible until the start of your next turn, or until you attack, make a damage roll or "
+                "force a saving throw. " + often)
+    if trait == "Fury of the Small":
+        return (f"When you damage a creature larger than you with an attack or spell: +{pb if mpmm else lvl} "
+                f"damage, once a turn. " + often)
+    if trait == "Stone's Endurance":
+        return f"When you take damage: roll 1d12 + {con} (CON) and take that much less. " + often
+    if trait == "Hungry Jaws":
+        return (f"A bonus action bite: on a hit, gain {pb if mpmm else max(1, con)} temporary hit points. " + often)
+    if trait == "Rabbit Hop":
+        return (f"Jump up to {5 * pb} ft (5 × your proficiency bonus) without provoking opportunity attacks, if "
+                f"your speed isn't 0. Uses = proficiency bonus per long rest.")
+    if trait == "Shifting":
+        hp = 2 * pb if mpmm else max(1, lvl + con)
+        return (f"Bestial form for 1 minute: {hp} temporary hit points, and your shifter kind's benefit while "
+                f"shifted. " + ("Uses = proficiency bonus per long rest." if mpmm else "Once a short or long rest."))
+    return ""
+
+
+def _race_cards(char, race_name) -> list:
+    """[(bucket, name, rules text)] -- the race and subrace traits that are
+    an action, a bonus action, a reaction or a limited use, by the books
+    (docs/reference/races-sublist.md). What Use does: core/action_use.py."""
+    from dnd_app.core.character import total_level, ability_mod
+    from dnd_app.core.calculator import get_prof_bonus
+    lvl, pb = total_level(char), get_prof_bonus(char)
+    sub = (char.get("subrace") or "").lower()
+    made = char.get("_choices", {}) or {}
+    race = race_name
+    out = []
+
+    def add(bucket, name, text, at=1):
+        if lvl >= at:
+            out.append((bucket, name, text))
+
+    # Aasimar: the transformation (an action in VGM, a bonus action in MPMM)
+    if race == "Aasimar":
+        forms = {"protector": "Radiant Soul (Aasimar)", "scourge": "Radiant Consumption", "fallen": "Necrotic Shroud"}
+        for word, name in forms.items():
+            if word in sub:
+                add("Action", name, "Transform for 1 minute (end it early with a bonus action). Once a long rest.", 3)
+    if race == "Aasimar (MPMM)":
+        pick = " ".join(made.get("aasimar_revelation", []) or [])
+        for name, word in (("Radiant Soul (Aasimar)", "Radiant Soul"), ("Radiant Consumption", "Radiant Consumption"),
+                           ("Necrotic Shroud", "Necrotic Shroud")):
+            if word in pick:
+                add("Bonus Action", name, "Transform for 1 minute (end it early with a bonus action). Once a long rest.", 3)
+    if race == "Astral Elf":
+        add("Bonus Action", "Starlight Step", "Teleport up to 30 ft to an unoccupied space you can see. Uses = "
+            "proficiency bonus per long rest.")
+    if race == "Autognome":
+        add("Passive", "Built for Success", "Add a d4 to one attack roll, ability check or saving throw, after "
+            "seeing the d20. Uses = proficiency bonus per long rest.")
+    if race == "Dragonborn":
+        if "chromatic" in sub:
+            add("Action", "Chromatic Warding", "For 1 minute, immunity to your ancestry's damage type. Once a long "
+                "rest.", 5)
+        if "metallic" in sub:
+            add("Action", "Metallic Breath Weapon", "In place of one attack of your Attack action: a 15-ft cone, "
+                "Enervating (CON save or incapacitated until the start of your next turn) or Repulsion (STR save "
+                "or pushed 20 ft and knocked prone). Once a long rest.", 5)
+        if "gem" in sub:
+            add("Bonus Action", "Gem Flight", "Spectral wings for 1 minute: a flying speed equal to your walking "
+                "speed, and you can hover. Once a long rest.", 5)
+        if "draconblood" in sub:
+            add("Passive", "Forceful Presence", "Make a CHA (Intimidation or Persuasion) check with advantage. Once "
+                "a short or long rest.")
+        if "ravenite" in sub:
+            add("Reaction", "Vengeful Assault", "When a creature within reach of your weapon damages you: one "
+                "attack with that weapon against it. Once a short or long rest.")
+    if race == "Elf" and "shadar" in sub:
+        add("Bonus Action", "Blessing of the Raven Queen", "Teleport up to 30 ft to an unoccupied space you can "
+            "see; from 3rd level, resistance to all damage until the start of your next turn. Once a long rest.")
+    if race == "Genasi (MPMM)" and "earth" in sub:
+        add("Bonus Action", "Merge with Stone", "Cast Blade Ward as a bonus action. Uses = proficiency bonus per "
+            "long rest.")
+    if race == "Hadozee":
+        add("Bonus Action", "Dexterous Feet", "Use your feet to manipulate an object, open or close a door or "
+            "container, or pick up or set down a Tiny object.")
+        add("Reaction", "Glide", "When you fall at least 10 ft: glide up to your walking speed horizontally and "
+            "take no damage from the fall.")
+        add("Reaction", "Hadozee Dodge", "When you take damage: roll a d6, add your proficiency bonus, and take "
+            "that much less damage. Uses = proficiency bonus per long rest.")
+    from dnd_app.data.races import keeps_race_traits
+    if race in ("Half-Orc", "Orc") and keeps_race_traits(char):       # not a Mark of Finding half-orc
+        add("Passive", "Relentless Endurance", "When you drop to 0 hit points but aren't killed outright, drop "
+            "to 1 hit point instead. Once a long rest.")
+    if race == "Harengon":
+        add("Reaction", "Lucky Footwork", "When you fail a DEX save: roll a d4 and add it to the save. Not while "
+            "you're prone or your speed is 0.")
+    if race == "Hexblood":
+        add("Bonus Action", "Eerie Token", "Make a token of your hair, a nail or a tooth, imbued until your next "
+            "long rest: with your action, send it a telepathic message or see and hear through it. Once a long "
+            "rest.")
+    if race == "Hobgoblin":
+        add("Passive", "Saving Face", "When you miss an attack or fail a check or save: +1 to the roll for each "
+            "ally you can see within 30 ft (up to +5). Once a short or long rest.")
+    if race == "Hobgoblin (MPMM)":
+        add("Bonus Action", "Fey Gift", "Take the Help action as a bonus action; from 3rd level with Hospitality, "
+            "Passage or Spite. Uses = proficiency bonus per long rest.")
+        add("Passive", "Fortune from the Many", "When you miss an attack or fail a check or save: +1 to the roll "
+            "for each ally you can see within 30 ft (up to +3). Uses = proficiency bonus per long rest.")
+    if race == "Human" and "sentinel" in sub:
+        add("Reaction", "Vigilant Guardian", "When a creature you can see within 5 ft is hit by an attack: swap "
+            "places with it, and the attack hits you instead. Once a long rest.")
+    if race == "Kender":
+        add("Bonus Action", "Taunt", "A creature within 60 ft that can hear and understand you makes a WIS save "
+            "or has disadvantage on attacks against anyone but you until the start of your next turn. Uses = "
+            "proficiency bonus per long rest.")
+        add("Passive", "Fearless", "When you fail a save to avoid or end being frightened, succeed instead. Once "
+            "a long rest.")
+    if race == "Kobold (MPMM)":
+        add("Bonus Action", "Draconic Cry", "Until the start of your next turn, you and your allies have "
+            "advantage on attacks against enemies within 10 ft that heard you. Uses = proficiency bonus per "
+            "long rest.")
+    if race == "Orc (VGM/MTF)":
+        add("Bonus Action", "Aggressive", "Move up to your speed toward a hostile creature you can see or hear, "
+            "ending closer to it.")
+    if race == "Plasmoid":
+        add("Action", "Shape Self", "Reshape your body: a head, one or two arms and legs, and makeshift hands "
+            "and feet, or back to a limbless blob.")
+    if race in ("Reborn",):
+        add("Passive", "Knowledge from a Past Life", "After seeing the d20 on a skill check: roll a d6 and add "
+            "it. Uses = proficiency bonus per long rest.")
+    if race in ("Shifter", "Shifter (MPMM)") and "swiftstride" in sub and "Shifting" in char.get("active_effects", []):
+        add("Reaction", "Swiftstride Step", "While shifted, when a creature ends its turn within 5 ft: move up "
+            "to 10 ft without provoking opportunity attacks.")
+    if race in ("Tabaxi", "Tabaxi (MPMM)"):
+        add("Passive", "Feline Agility", "When you move on your turn, double your speed until the end of the "
+            "turn. It comes back once you spend a turn without moving.")
+    if race in ("Tortle", "Tortle (MPMM)"):
+        if "Shell Defense" in char.get("active_effects", []):
+            add("Bonus Action", "Leave Your Shell", "Come out of your shell.")
+        else:
+            add("Action", "Shell Defense", "Withdraw into your shell: +4 AC and advantage on STR and CON saves, "
+                "but you're prone, your speed is 0, you have disadvantage on DEX saves and can't take "
+                "reactions; your only action is a bonus action to come out.")
+    return out
+
+
+def _more_cards(char) -> list:
+    """[(bucket, (name, rules text, source))] -- class, race and feat
+    actions the catalog above was missing, each only when the character
+    has it (its level, subclass, pick or optional feature)."""
+    from dnd_app.core.character import class_levels, subclasses
+    cl, subs = class_levels(char), {k: (v or "").lower() for k, v in subclasses(char).items()}
+    made = char.get("_choices", {}) or {}
+    picks = lambda key: " ".join(made.get(key, []) or []).lower()
+    out = []
+
+    def add(bucket, name, text, source):
+        out.append((bucket, (name, text, source)))
+
+    # ── Barbarian ──
+    bb = cl.get("Barbarian", 0)
+    if bb >= 10 and "ancestral" in subs.get("Barbarian", ""):
+        add("Action", "Consult the Spirits", "Cast Augury or Clairvoyance without a spell slot or material "
+            "components; Clairvoyance's sensor is one of your ancestral spirits. Once per short or long rest.",
+            "Barbarian")
+    if bb >= 3 and "totem" in subs.get("Barbarian", ""):
+        if "eagle" in picks("totem_spirit_3"):
+            add("Bonus Action", "Eagle Spirit: Dash", "While raging and not in heavy armor: take the Dash "
+                "action as a bonus action (and opportunity attacks against you have disadvantage).", "Barbarian")
+        if bb >= 14:
+            at = picks("totem_attune_14")
+            if "elk" in at:
+                add("Bonus Action", "Elk Attunement: Trample", "While raging, during your move: pass through "
+                    "a Large or smaller creature's space. It makes a STR save or is knocked prone and takes "
+                    "1d12 + STR bludgeoning damage.", "Barbarian")
+            if "tiger" in at:
+                add("Bonus Action", "Tiger Attunement: Pounce", "While raging, after moving 20 ft straight "
+                    "at a Large or smaller target and attacking it: one more melee weapon attack against it.",
+                    "Barbarian")
+            if "wolf" in at:
+                add("Bonus Action", "Wolf Attunement: Knock Prone", "While raging, when you hit a Large or "
+                    "smaller creature with a melee weapon attack: knock it prone.", "Barbarian")
+    if bb >= 3 and "beast" in subs.get("Barbarian", "") and "tail" in picks("beast_form_3"):
+        add("Reaction", "Tail Swipe (Form of the Beast)", "While your tail is out: when a creature you can "
+            "see within 10 ft hits you with an attack roll, roll a d8 and add it to your AC against that "
+            "attack, possibly making it miss.", "Barbarian")
+    # ── Bard ──
+    bd = cl.get("Bard", 0)
+    if bd >= 3 and "spirits" in subs.get("Bard", ""):
+        add("Bonus Action", "Tales from Beyond", "While holding your Spiritual Focus: expend a Bardic "
+            "Inspiration use and roll your Bardic Inspiration die on the Spirit Tales table. Bestow the "
+            "tale with an action on a creature within 30 ft (you included).", "Bard")
+    # ── Cleric / Paladin: Harness Divine Power (optional) ──
+    cleric, pal = cl.get("Cleric", 0), cl.get("Paladin", 0)
+    if (cleric >= 2 or pal >= 3) and _optional_feature_enabled(char, "Harness Divine Power"):
+        add("Bonus Action", "Harness Divine Power", "Expend a use of Channel Divinity to regain one "
+            "expended spell slot of up to half your proficiency bonus (rounded up).",
+            "Cleric" if cleric >= 2 else "Paladin")
+    if cleric >= 10:
+        add("Action", "Divine Intervention", "Call on your deity: roll percentile dice; if you roll your "
+            "cleric level or lower, your deity intervenes (automatic at 20th level). Success: not again "
+            "for 7 days. Otherwise: again after a long rest.", "Cleric")
+    if cleric >= 2 and "zeal" in subs.get("Cleric", ""):
+        add("Passive", "Consuming Fervor", "Channel Divinity: when you roll fire or thunder damage, deal "
+            "the maximum instead of rolling.", "Cleric")
+    # ── Fighter ──
+    ft = cl.get("Fighter", 0)
+    if ft >= 3 and "psi warrior" in subs.get("Fighter", ""):
+        add("Reaction", "Protective Field", "When you or a creature you can see within 30 ft takes damage: "
+            "expend a Psionic Energy die and reduce the damage by the roll + your INT modifier.", "Fighter")
+        add("Action", "Telekinetic Movement", "Expend a Psionic Energy die: move a Large or smaller loose "
+            "object or willing creature within 30 ft up to 30 ft (Tiny objects to or from your hand).",
+            "Fighter")
+        add("Bonus Action", "Psionic Power: Recover", "Regain one expended Psionic Energy die. Once per short "
+            "or long rest.", "Fighter")
+    if ft >= 3 and "echo knight" in subs.get("Fighter", ""):
+        add("Passive", "Unleash Incarnation", "When you take the Attack action: one more melee attack, from "
+            "your echo's position. CON modifier times per long rest.", "Fighter")
+        if ft >= 15:
+            add("Passive", "Reclaim Potential", "When your echo is destroyed by damage: gain 2d6 + CON "
+                "temporary hit points (if you have none). CON modifier times per long rest.", "Fighter")
+    # ── Monk ──
+    mk = cl.get("Monk", 0)
+    if mk >= 5:
+        add("Passive", "Stunning Strike", "When you hit with a melee weapon attack: spend 1 ki. The target "
+            "makes a CON save or is stunned until the end of your next turn.", "Monk")
+    if mk >= 7:
+        add("Action", "Stillness of Mind", "End one effect on yourself that's causing you to be charmed or "
+            "frightened.", "Monk")
+    if mk >= 14:
+        add("Passive", "Diamond Soul", "When you fail a saving throw: spend 1 ki to reroll it and take the "
+            "second result.", "Monk")
+    if mk >= 18:
+        add("Action", "Empty Body", "Spend 4 ki: invisible for 1 minute, with resistance to all damage but "
+            "force. Or spend 8 ki to cast Astral Projection (no material components, just you).", "Monk")
+    if mk >= 3 and "ascendant dragon" in subs.get("Monk", ""):
+        add("Reaction", "Draconic Disciple: Reroll", "When you fail a CHA (Intimidation) or CHA "
+            "(Persuasion) check: reroll it. Once it turns a failure into a success, not again until a long "
+            "rest.", "Monk")
+    # ── Ranger ──
+    rg = cl.get("Ranger", 0)
+    if rg >= 10 and _optional_feature_enabled(char, "Deft Explorer"):
+        add("Action", "Tireless", "Gain 1d8 + WIS temporary hit points. Proficiency bonus times per long "
+            "rest. A short rest also lowers your exhaustion by 1.", "Ranger")
+    if rg >= 10 and _optional_feature_enabled(char, "Nature's Veil"):
+        add("Bonus Action", "Nature's Veil", "Become invisible until the start of your next turn. "
+            "Proficiency bonus times per long rest.", "Ranger")
+    if rg >= 3 and "hunter" in subs.get("Ranger", ""):
+        if "giant killer" in picks("hunter_prey_3"):
+            add("Reaction", "Giant Killer", "When a Large or larger creature within 5 ft hits or misses you "
+                "with an attack: attack it.", "Ranger")
+        if "horde breaker" in picks("hunter_prey_3"):
+            add("Passive", "Horde Breaker", "Once on each of your turns when you make a weapon attack: one "
+                "more attack with the same weapon against a different creature within 5 ft of the original "
+                "target.", "Ranger")
+        if rg >= 15 and "stand against" in picks("hunter_defense_15"):
+            add("Reaction", "Stand Against the Tide", "When a hostile creature misses you with a melee "
+                "attack: force it to repeat the attack against another creature (not itself) of your choice.",
+                "Ranger")
+        if rg >= 15 and "uncanny dodge" in picks("hunter_defense_15"):
+            add("Reaction", "Uncanny Dodge", "When an attacker you can see hits you with an attack: halve "
+                "the attack's damage.", "Ranger")
+    # ── Rogue ──
+    ro = cl.get("Rogue", 0)
+    if ro >= 3 and "soulknife" in subs.get("Rogue", ""):
+        add("Passive", "Psi-Bolstered Knack", "When you fail an ability check using a skill or tool you're "
+            "proficient with: roll a Psionic Energy die and add it, possibly succeeding. The die is spent "
+            "only if it succeeds.", "Rogue")
+        add("Action", "Psychic Whispers", "Telepathy with up to PB creatures you can see for hours equal to "
+            "a Psionic Energy die roll. The first use after a long rest is free; after that it spends a die.",
+            "Rogue")
+        if ro >= 17:
+            add("Passive", "Rend Mind", "When you deal Sneak Attack damage with a psychic blade: the target "
+                "makes a WIS save or is stunned for 1 minute (it repeats the save at the end of each of its "
+                "turns). Once per long rest, or spend 3 Psionic Energy dice.", "Rogue")
+    if ro >= 17 and "assassin" in subs.get("Rogue", ""):
+        add("Passive", "Death Strike", "When you hit a surprised creature: it makes a CON save or the "
+            "attack's damage is doubled.", "Rogue")
+    # ── Sorcerer ──
+    so = cl.get("Sorcerer", 0)
+    known_mm = [m.split(" –")[0].split(" (")[0].strip() for m in (made.get("sorcerer_metamagic") or [])]
+    if so >= 3 and known_mm:
+        add("Passive", "Metamagic", "Spend sorcery points to change a spell as you cast it: "
+            + ", ".join(known_mm) + ".", "Sorcerer")
+    # ── Warlock ──
+    wl = cl.get("Warlock", 0)
+    wsub = subs.get("Warlock", "")
+    if wl >= 1 and "genie" in wsub:
+        add("Action", "Bottled Respite", "Vanish into your Genie's Vessel (it stays behind) for up to twice "
+            "your proficiency bonus in hours; leave early with a bonus action. Once per long rest.", "Warlock")
+    if wl >= 1 and "fiend" in wsub:
+        add("Passive", "Dark One's Blessing", "When you drop a hostile creature to 0 hit points: gain CHA + "
+            "warlock level temporary hit points.", "Warlock")
+        if wl >= 14:
+            add("Passive", "Hurl Through Hell", "When you hit a creature with an attack: it vanishes through "
+                "the lower planes until the end of your next turn, then takes 10d10 psychic damage if it "
+                "isn't a fiend. Once per long rest.", "Warlock")
+    if wl >= 6 and "undying" in wsub:
+        add("Passive", "Defy Death", "When you succeed on a death saving throw, or stabilize someone with "
+            "Spare the Dying: regain 1d8 + CON hit points. Once per long rest.", "Warlock")
+    # ── Wizard ──
+    wz = cl.get("Wizard", 0)
+    wzs = subs.get("Wizard", "")
+    if wz >= 14 and "evocation" in wzs:
+        add("Passive", "Overchannel", "When you cast a damaging wizard spell of 1st-5th level: it deals "
+            "maximum damage. The first time after a long rest is free; each time after, you take 2d12 "
+            "necrotic per spell level (1d12 more each further use), which can't be reduced.", "Wizard")
+    if wz >= 2 and "necromancy" in wzs:
+        add("Passive", "Grim Harvest", "Once per turn when a spell of yours drops a creature to 0 hit "
+            "points: regain twice the spell's level in hit points (three times for a necromancy spell).",
+            "Wizard")
+    # ── Artificer ──
+    ar = cl.get("Artificer", 0)
+    if ar >= 3 and "artillerist" in subs.get("Artificer", ""):
+        add("Bonus Action", "Command Eldritch Cannon", "Activate your cannon within 60 ft: Flamethrower, "
+            "Force Ballista or Protector.", "Artificer")
+    return out
+
+
+# The tab each card belongs on, by its name, where the catalog had it on
+# another (checked against docs/reference). None drops a duplicate card.
+CARD_TABS = {
+    # Artificer: done during a rest or over an hour, not in a turn
+    "infuse item": "Passive", "the right tool for the job": "Passive",
+    # Barbarian
+    "bolstering magic": "Action",
+    # Bard
+    "battle magic": "Bonus Action", "mantle of whispers": "Reaction",
+    # Cleric
+    "knowledge of the ages": "Action", "corona of light": "Action", "emboldening bond": "Action",
+    "guided strike": "Passive", "destructive wrath": "Passive", "feat of strength": "Passive",
+    # Druid
+    "symbiotic entity": "Action", "natural recovery": "Passive",
+    # Fighter
+    "indomitable": "Passive", "rallying cry": "Passive", "weapon bond": "Bonus Action",
+    "echo avatar": "Action",
+    "banishing arrow": "Passive", "beguiling arrow": "Passive", "bursting arrow": "Passive",
+    "enfeebling arrow": "Passive", "grasping arrow": "Passive", "piercing arrow": "Passive",
+    "seeking arrow": "Passive", "shadow arrow": "Passive",
+    # Battle Master maneuvers: on a hit or a check (no action), as a
+    # reaction, or with the bonus action they name
+    "parry": "Reaction", "riposte": "Reaction", "brace": "Reaction",
+    "feinting attack": "Bonus Action", "rally": "Bonus Action", "quick toss": "Bonus Action",
+    "grappling strike": "Bonus Action", "commander's strike": "Bonus Action",
+    "ambush": "Passive", "bait and switch": "Passive", "commanding presence": "Passive",
+    "disarming attack": "Passive", "distracting strike": "Passive", "evasive footwork": "Passive",
+    "goading attack": "Passive", "lunging attack": "Passive", "maneuvering attack": "Passive",
+    "menacing attack": "Passive", "precision attack": "Passive", "pushing attack": "Passive",
+    "sweeping attack": "Passive", "tactical assessment": "Passive", "trip attack": "Passive",
+    # Monk
+    "shadow arts": "Action",
+    # Paladin
+    "sacred weapon": "Action", "holy nimbus": "Action", "champion challenge": "Bonus Action",
+    # Ranger
+    "ranger's companion": "Action", "hunter's mark": None,
+    # Rogue
+    "stroke of luck": "Passive", "master duelist": "Passive", "wails from the grave": "Passive",
+    "mage hand legerdemain": "Bonus Action", "unerring eye": "Action", "psychic blades": "Passive",
+    "impostor": "Passive",
+    # Sorcerer
+    "favored by the gods": "Passive", "tides of chaos": "Passive", "strength of the grave": "Passive",
+    "umbral form": "Bonus Action", "lunar phenomenon": "Bonus Action", "telepathic speech": "Bonus Action",
+    "trance of order": "Bonus Action", "moon fire": "Passive",
+    # Warlock
+    "dark one's own luck": "Passive", "fathomless plunge": "Action", "armor of hexes": "Reaction",
+    "master of hexes": "Passive", "pact of the blade": None,
+    # Wizard
+    "portent": "Passive", "violent attraction": "Reaction", "malleable illusions": "Action",
+    "wizardly quill": "Bonus Action", "transmuter's stone": "Passive",
+    # Feats
+    "flame shield": "Passive",
+}
 

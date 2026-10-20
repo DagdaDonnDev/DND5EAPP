@@ -123,19 +123,10 @@ class FeaturesMixin:
         if race:
             rdata = get_race(race)
             if rdata and rdata.get("traits"):
-                display_traits = rdata["traits"]
-                # If the active subrace carries its OWN ability score bonus
-                # (Dragonmarks, etc.), it fully REPLACES the base race's ASI
-                # per builder.py's actual math — so don't show a contradictory
-                # "+1 to all six ability scores"-style line alongside it.
-                subrace_now = self.char.get("subrace", "")
-                if subrace_now:
-                    from dnd_app.core.builder import _get_subrace_asi
-                    if _get_subrace_asi(race, subrace_now):
-                        _asi_line = re.compile(
-                            r'^\s*\+\d.*\b(ability scores?|STR|DEX|CON|INT|WIS|CHA)\b',
-                            re.IGNORECASE)
-                        display_traits = [t for t in display_traits if not _asi_line.match(t)]
+                # the race's own traits, less what a dragonmark (or a
+                # subrace's own ability scores) replaces: data/races.py
+                from dnd_app.data.races import race_traits_for
+                display_traits = race_traits_for(self.char)
                 # Only add the section if there's still something left to
                 # show — the check above (rdata.get("traits")) only looked
                 # at the UNFILTERED list, so a race whose traits happened to

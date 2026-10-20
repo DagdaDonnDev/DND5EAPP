@@ -59,9 +59,10 @@ SUBCLASS_TOGGLE_MOVEMENT = [
     {"race": "Aasimar", "subrace_match": "protector", "min_char_level": 3,
      "toggle_key": "Radiant Soul (Aasimar)",
      "grants": [{"kind": "fly", "speed": 30, "source": "Radiant Soul"}]},
-    {"race": "Aasimar", "subrace_match": "fallen", "min_char_level": 3,
-     "toggle_key": "Necrotic Shroud",
-     "grants": [{"kind": "fly", "speed": 30, "source": "Necrotic Shroud"}]},
+    # (Necrotic Shroud's wings are flightless: no flying speed)
+    {"race": "Aasimar (MPMM)", "min_char_level": 3,
+     "toggle_key": "Radiant Soul (Aasimar)",
+     "grants": [{"kind": "fly", "speed": "walk", "source": "Radiant Soul"}]},
     {"race": "Dragonborn", "subrace_match": "gem", "min_char_level": 5,
      "toggle_key": "Gem Flight",
      "grants": [{"kind": "fly", "speed": "walk", "source": "Gem Flight"}]},

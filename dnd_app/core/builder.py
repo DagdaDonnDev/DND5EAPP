@@ -27,12 +27,29 @@ RACE_SKILL_GRANTS = {
     "Half-Orc":     ["Intimidation"],
     "Gnome":        [],
     "Dwarf":        [],
+    # the other races' fixed skills (docs/reference/races-sublist.md)
+    "Bugbear": ["Stealth"], "Bugbear (MPMM)": ["Stealth"],
+    "Goliath": ["Athletics"], "Goliath (MPMM)": ["Athletics"],
+    "Tabaxi": ["Perception", "Stealth"], "Tabaxi (MPMM)": ["Perception", "Stealth"],
+    "Satyr": ["Performance", "Persuasion"], "Satyr (MPMM)": ["Performance", "Persuasion"],
+    "Harengon": ["Perception"], "Owlin": ["Stealth"], "Tortle": ["Survival"], "Verdan": ["Persuasion"],
+    "Grung": ["Perception"], "Aetherborn": ["Intimidation"], "Kor": ["Athletics", "Acrobatics"],
+    "Locathah": ["Athletics", "Perception"],
+    # ...and the ones a subrace gives, by (race, subrace)
+    ("Shifter", "Beasthide"): ["Athletics"], ("Shifter", "Longtooth"): ["Intimidation"],
+    ("Shifter", "Swiftstride"): ["Acrobatics"], ("Shifter", "Wildhunt"): ["Survival"],
+    ("Aven", "Hawk-Headed"): ["Perception"],
+    ("Merfolk", "Blue"): ["History", "Nature"], ("Merfolk", "Emeria/Wind Creed"): ["Deception", "Persuasion"],
+    ("Merfolk", "Ula/Water Creed"): ["Survival"], ("Merfolk", "Cosi Creed"): ["Sleight of Hand", "Stealth"],
 }
 
+# Tools a race or subrace is proficient with, with no choice about it
+# (the "of your choice" ones -- a dwarf's artisan's tools, a satyr's
+# instrument -- are race choices in core/choices.py)
 RACE_TOOL_GRANTS = {
-    "Dwarf":          ["choice:smith's tools,brewer's supplies,mason's tools"],
-    "Mountain Dwarf": ["choice:smith's tools,brewer's supplies,mason's tools"],
-    "Hill Dwarf":     ["choice:smith's tools,brewer's supplies,mason's tools"],
+    ("Gnome", "Rock"): ["Tinker's tools"],
+    ("Merfolk", "Ula/Water Creed"): ["Navigator's tools"],
+    "Naga": ["Poisoner's kit"],
 }
 
 BACKGROUND_SKILL_CHOICES = {
@@ -54,9 +71,18 @@ def race_requires_subrace(race_name: str) -> bool:
     race = RACE_DICT.get(race_name, {})
     return bool(race.get("subraces")) and not race.get("asi")
 
-def get_race_skills(race_name: str) -> list:
-    """Return skill proficiencies granted automatically by race."""
-    return list(RACE_SKILL_GRANTS.get(race_name, []))
+def get_race_skills(race_name: str, subrace: str = "") -> list:
+    """Return skill proficiencies granted automatically by race (and subrace)
+    -- not the race's own when a dragonmark replaces its traits (a half-orc
+    with the Mark of Finding has no Menacing)."""
+    from dnd_app.data.races import MARK_REPLACES_TRAITS
+    base = [] if (race_name, subrace) in MARK_REPLACES_TRAITS else list(RACE_SKILL_GRANTS.get(race_name, []))
+    return base + list(RACE_SKILL_GRANTS.get((race_name, subrace), []))
+
+
+def get_race_tools(race_name: str, subrace: str = "") -> list:
+    """Return tool proficiencies granted automatically by race (and subrace)."""
+    return list(RACE_TOOL_GRANTS.get(race_name, [])) + list(RACE_TOOL_GRANTS.get((race_name, subrace), []))
 
 def get_background_skills(bg_name: str) -> list:
     """Return the 2 skill proficiencies granted by a background."""
@@ -141,6 +167,11 @@ def get_level_gains(class_name: str, level: int, edition: str = "2014") -> list:
     for choice_text in choices.get(level, []):
         gains.append({"type": "choice", "text": choice_text})
     return gains
+
+def _flex_subraces() -> set:
+    from dnd_app.data.races import FLEX_ASI_SUBRACES
+    return FLEX_ASI_SUBRACES
+
 
 def _get_subrace_asi(race_name: str, subrace_name: str) -> dict:
     """Parse subrace ASI from string like 'Hill (+CON 2, +WIS 1, Dwarven Toughness)'."""
@@ -266,6 +297,15 @@ def rebuild(char: dict) -> None:
 
     # ── Race grants ───────────────────────────────────────────────────────────
     if race_name:
+        # the race's walking speed (a subrace's or anything else's bonus is
+        # added on top: core/calculator.py get_effective_speed)
+        from dnd_app.data.races import RACE_DICT, race_languages
+        char["speed"] = RACE_DICT.get(race_name, {}).get("speed", 30)
+        # ...and the languages it simply knows (Dwarvish, Elvish...; the
+        # ones of your choice are race choices)
+        for lang in race_languages(race_name, char.get("subrace", "")):
+            if lang not in grants["languages"]:
+                grants["languages"].append(lang)
         # ASI — subrace string defines the COMPLETE bonus (it includes the base race bonus).
         # When a subrace is chosen, use its ASI directly. Without a subrace, use the base race ASI.
         race_asi = get_race_asi(race_name)
@@ -274,6 +314,8 @@ def rebuild(char: dict) -> None:
             sub_asi = _get_subrace_asi(race_name, subrace_name)
             if sub_asi:
                 race_asi = sub_asi   # subrace string encodes the TOTAL, not an addend
+            elif (race_name, subrace_name) == ("Human", "Variant") or (race_name, subrace_name) in _flex_subraces():
+                race_asi = {}        # yours to choose: a race choice (core/choices.py)
         tashas_reassign = char.get("_choices", {}).get("tashas_asi_reassign", {})
         if tashas_reassign:
             # Use player's redistribution instead of fixed racial ASI.
@@ -285,15 +327,18 @@ def rebuild(char: dict) -> None:
                 grants["asi"][ab] = grants["asi"].get(ab, 0) + val
 
         # Auto-granted skills
-        for skill in get_race_skills(race_name):
+        for skill in get_race_skills(race_name, char.get("subrace", "")):
             if skill not in grants["skill_prof_set"]:
                 grants["skill_profs"].append(skill)
                 grants["skill_prof_set"].add(skill)
+        grants["tool_profs"].extend(get_race_tools(race_name, char.get("subrace", "")))
 
         # Weapon and armour training (Dwarven Combat Training, Elf Weapon
         # Training, Martial Prodigy...), by race and subrace
-        from dnd_app.data.races import race_training
+        from dnd_app.data.races import race_training, half_elf_variant, _ELF_WEAPONS
         race_weapons, race_armor = race_training(race_name, char.get("subrace", ""))
+        if half_elf_variant(char) == "Elf Weapon Training":     # a half-elf's variant feature
+            race_weapons = race_weapons + list(_ELF_WEAPONS)
         grants["weapon_profs"].extend(race_weapons)
         grants["armor_profs"].extend(race_armor)
         # Hobgoblin's Martial Training: the two martial weapons picked
@@ -830,6 +875,68 @@ def _drop_from_lists(char: dict, dropped: dict) -> None:
                 feat = p[5:]
                 if p not in named and feat not in named:
                     char["feats"] = [f for f in char.get("feats", []) if f != feat]
+                    _forget_feat_picks(char, feat, picks)
+
+
+def feat_choice_picks(char: dict, feat_name: str, answers: dict = None) -> dict:
+    """Taking a feat at a choice (an ASI level, a Variant Human's feat),
+    the same on both apps: {"picks": [...]} for the choice to keep --
+    "feat:Name" and the feat's own ability increase ("asi:CON:1") -- or
+    {"ask": {"key", "title", "options"}} while the feat still needs a
+    pick (which ability gets its +1; Elemental Adept's damage type).
+    What the pick decides is stored too: Resilient's saving throw,
+    Forest Sage's ability, the ability a "+1 to one of" feat keyed off."""
+    from dnd_app.data.feats import get_feat
+    answers = answers or {}
+    fdata = get_feat(feat_name) or {}
+    fixed, flex = fdata.get("asi") or {}, fdata.get("asi_flex") or []
+    picks, chosen = [f"feat:{feat_name}"], None
+    for ab, val in fixed.items():
+        picks.append(f"asi:{ab}:{val}")
+        chosen = ab
+    if not fixed and flex:
+        if len(flex) == 1:
+            chosen = flex[0]
+        elif answers.get("ability") in flex:
+            chosen = answers["ability"]
+        else:
+            return {"ask": {"key": "ability", "title": f"{feat_name}: +1 to which ability?",
+                            "options": list(flex)}}
+        picks.append(f"asi:{chosen}:1")
+    element = None
+    if feat_name == "Elemental Adept":
+        types = ["Acid", "Cold", "Fire", "Lightning", "Thunder"]
+        if answers.get("element") not in types:
+            return {"ask": {"key": "element", "title": "Elemental Adept: which damage type?", "options": types}}
+        element = answers["element"]
+    store = char.setdefault("_choices", {})
+    if feat_name == "Resilient" and chosen:
+        saves = store.setdefault("extra_save_profs", [])
+        if chosen not in saves:
+            saves.append(chosen)
+    if feat_name == "Forest Sage" and chosen:
+        store["forest_sage_ability"] = chosen
+    if chosen and len(flex) > 1:
+        store[f"feat_ability_{feat_name.lower().replace(' ', '_')}"] = chosen
+    if element:
+        store["elemental_adept_type"] = element
+    return {"picks": picks}
+
+
+def _forget_feat_picks(char: dict, feat: str, picks: list) -> None:
+    """What a dropped feat's pick decided goes with it: Resilient's saving
+    throw (the ability its +1 went to), Forest Sage's ability, Elemental
+    Adept's damage type, the ability a "+1 to one of" feat keyed off."""
+    store = char.get("_choices", {})
+    if feat == "Resilient":
+        gone = {p.split(":")[1] for p in picks if isinstance(p, str) and p.startswith("asi:")}
+        if "extra_save_profs" in store:
+            store["extra_save_profs"] = [a for a in store["extra_save_profs"] if a not in gone]
+    if feat == "Forest Sage":
+        store.pop("forest_sage_ability", None)
+    if feat == "Elemental Adept":
+        store.pop("elemental_adept_type", None)
+    store.pop(f"feat_ability_{feat.lower().replace(' ', '_')}", None)
 
 
 def _drop_any_list_spells(char: dict, spells: list, granted_by: str) -> None:
@@ -1348,6 +1455,11 @@ def apply_choice(char: dict, choice_id: str, selected: list) -> None:
     """Store a player's choice and trigger a rebuild."""
     choices = char.setdefault("_choices", {})
     choices[choice_id] = selected
+    # a half-elf's variant feature taken in place of Skill Versatility:
+    # the two skills it would have given go
+    if choice_id == "half_elf_variant" and not str((selected or [""])[0]).startswith("Skill Versatility"):
+        from dnd_app.core.choices import _prune_stale_choices
+        _prune_stale_choices(char, {"race_skill_profs"})
     
     # Aggregate all class skill prof choices into one list for rebuild
     if choice_id.endswith("_skill_profs") or choice_id == "race_skill_profs":
@@ -1363,5 +1475,27 @@ def apply_choice(char: dict, choice_id: str, selected: list) -> None:
             if "expertise" in k and isinstance(v, list):
                 all_expertise.extend(v)
         choices["class_skill_expertise"] = list(set(all_expertise))
+    # ...and language picks, which rebuild() reads as "extra_languages"
+    # (on both apps -- Android's picks never reached it before)
+    if "language" in choice_id and choice_id != "extra_languages":
+        langs = []
+        for k, v in choices.items():
+            if "language" in k and k != "extra_languages" and isinstance(v, list):
+                langs += [x for x in v if isinstance(x, str) and x not in langs]
+        choices["extra_languages"] = langs
+    # ...and tool picks (a race's, class's or background's tool, and the
+    # tool half of a skill-or-tool pick), which rebuild() reads as
+    # "tool_profs"
+    if choice_id.endswith("_tool_profs"):
+        from dnd_app.data.items import ALL_TOOLS
+        tools = []
+        for k, v in choices.items():
+            if not k.endswith("_tool_profs") or not isinstance(v, list):
+                continue
+            for x in v:
+                if isinstance(x, str) and x not in tools and (
+                        not k.endswith("_skill_or_tool_profs") or x in ALL_TOOLS):
+                    tools.append(x)
+        choices["tool_profs"] = tools
     
     rebuild(char)

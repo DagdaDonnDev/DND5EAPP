@@ -220,6 +220,44 @@ class ActionTabsMixin:
             rl.addWidget(reset_l)
             bl.insertWidget(bl.count()-1, row)
 
+        def _portent_row(res, reset_label):
+            """Portent: the foretelling rolls themselves, one button each;
+            clicking a roll uses it (core/action_use.py spend_portent)."""
+            from dnd_app.core.action_use import portent_rolls, spend_portent
+            rolls = portent_rolls(self.char)
+            maximum = res.get("current_max", 0)
+            pct = (len(rolls) / maximum) if maximum else 0
+            bar_color = TEAL2 if pct > 0.5 else (AMBER if pct > 0 else CRIM2)
+            row = QWidget()
+            row.setStyleSheet(
+                f"QWidget{{background:{qa(bar_color,0x14)};border:1px solid {qa(bar_color,0x44)};"
+                f"border-radius:6px;margin:1px;}}")
+            rl = QHBoxLayout(row); rl.setContentsMargins(8,5,8,5); rl.setSpacing(6)
+            name_l = _lbl(res.get("name", "Portent"), TEXT, FS_TINY, bold=True, wrap=False)
+            tip = ("Your foretelling rolls. Click one to use it in place of an attack roll, saving throw "
+                   "or ability check by you or a creature you can see: before the roll, once a turn.")
+            for w in (row, name_l): w.setToolTip(tip)
+            rl.addWidget(name_l, 1)
+            if not rolls:
+                rl.addWidget(_lbl("none left", TEXT3, FS_TINY, wrap=False))
+            for value in rolls:
+                b = QPushButton(str(value)); b.setFixedSize(36, 26)
+                b.setToolTip(f"Use {value} as the d20 roll")
+                b.setStyleSheet(_btn("", bar_color, variant="chip", radius=5, text_color=TEXT,
+                                     hover_text=TEXT, font_size=FS_TINY, padding="0px").styleSheet())
+                def _use(checked=False, _v=value):
+                    self._toast(spend_portent(self.char, _v))
+                    self._mark_dirty()
+                    # after this click: the row (and this button) is rebuilt
+                    QTimer.singleShot(0, self.ctrl.refresh)
+                b.clicked.connect(_use)
+                rl.addWidget(b)
+            reset_l = _lbl(reset_label, TEXT3, FS_TINY-1, wrap=False)
+            reset_l.setFixedWidth(70)
+            rl.addWidget(reset_l)
+            self._resource_widgets.append(row)
+            bl.insertWidget(bl.count()-1, row)
+
         has_any = False
 
         # ── Class/subclass resource pools (Ki, Lay on Hands, Sorcery Points...) ─
@@ -238,6 +276,10 @@ class ActionTabsMixin:
             if not isinstance(maximum, int) or maximum <= 0:
                 continue
             reset_label = RESET_LABEL.get(r.get('reset',''), r.get('reset','—'))
+            if r.get('key') == 'portent':       # the rolls, not a counter
+                _portent_row(r, reset_label)
+                has_any = True
+                continue
             TOGGLE_KEY_MAP = {
                 "hybrid_form": "Hybrid Transformation",
                 "rage": "Rage",
@@ -367,9 +409,21 @@ class ActionTabsMixin:
         res = self._ask_through(display, lambda answers: use_action(self.char, bucket, display, desc, answers))
         if res is None:
             return
+        if res.get("cast"):
+            # a feat's or trait's spell: the spell's own cast spends its free use
+            from dnd_app.data.spells import get_spell
+            spell = get_spell(res["cast"])
+            if spell:
+                self._cast_spell(spell)
+            return
         if res.get("toast"):
             self._toast(res["toast"])
         if not res.get("ok"):
+            return
+        if res.get("wild_shape") and hasattr(self, "_wildshape_shown"):
+            if res.get("slot"):
+                self._mark_turn_used(res["slot"])
+            self._wildshape_shown()           # the card above shows the beast now
             return
         if res.get("slot"):
             self._mark_turn_used(res["slot"])

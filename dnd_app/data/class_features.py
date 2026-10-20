@@ -138,7 +138,7 @@ SUBCLASS_FEATURES: dict[tuple[str,str], list[str]] = {
     ('Barbarian', 'Path of the Zealot'): ['Divine Fury', 'Warrior of the Gods', 'Fanatical Focus', 'Zealous Presence', 'Rage Beyond Death'],
     ('Bard', 'College of Creation'): ['Mote of Potential', 'Performance of Creation', 'Animating Performance'],
     ('Bard', 'College of Eloquence'): ['Silver Tongue', 'Unsettling Words', 'Unfailing Inspiration', 'Universal Speech'],
-    ('Bard', 'College of Spirits'): ['Guidance of the Spirits', 'Spirit Session', 'Mystic Chronicle', 'Awakened Spirit'],
+    ('Bard', 'College of Spirits'): ['Guiding Whispers', 'Spiritual Focus', 'Tales from Beyond', 'Spirit Session', 'Mystical Connection'],
     ('Bard', 'College of Whispers'): ['Psychic Blades (Whispers) – when you hit with a weapon attack, expend a Bardic Inspiration die to deal an extra 2d6 psychic damage (scales with level) to a creature whose mind you can perceive', 'Words of Terror', 'Mantle of Whispers', 'Shadow Lore'],
     ('Cleric', 'Arcana Domain'): ['Arcana Domain Spells', 'Arcane Initiate', 'Channel Divinity: Arcane Abjuration', 'Spell Breaker', 'Potent Spellcasting', 'Arcane Mastery'],
     ('Cleric', 'Grave Domain'): ['Grave Domain Spells', 'Circle of Mortality', 'Eyes of the Grave', 'Channel Divinity: Path to the Grave', "Sentinel at Death's Door", 'Keeper of Souls'],
@@ -421,9 +421,9 @@ CLASS_FEATURE_INDEX: dict[str, dict] = {
             14: ["Peerless Skill"],
         },
         "College of Spirits": {
-            3: ["Guidance of the Spirits", "Spirit Session"],
-            6: ["Mystic Chronicle"],
-            14: ["Awakened Spirit"],
+            3: ["Guiding Whispers", "Spiritual Focus", "Tales from Beyond"],
+            6: ["Spirit Session"],
+            14: ["Mystical Connection"],
         },
         "College of Swords": {
             3: ["Bonus Proficiencies (Swords)", "Fighting Style (Swords)", "Blade Flourish"],

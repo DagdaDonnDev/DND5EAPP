@@ -619,6 +619,9 @@ def long_rest(char: dict) -> None:
     for res in char.get("resources", []):
         if res.get("reset") in ("LR", "SR/LR"):
             res["current"] = res.get("current_max") or res.get("max", 0)
+    # a Diviner's Portent: the unused rolls are lost and new ones rolled
+    from dnd_app.core.action_use import roll_portent
+    roll_portent(char)
     # Restore hit dice up to half total (rounded up, min 1) — PHB p.186
     # Restore is a shared POOL distributed across all die types
     total = total_level(char)
@@ -760,13 +763,7 @@ def rest_options(char: dict, rest_type: str) -> list:
             "detail": "1-hour ceremony, performable during a short or long rest. Destroys "
                       "the previous amulet.",
         })
-    # Guidance of the Spirits (Bard, College of Spirits) resets on a long rest only. Whispers of the Dead (Rogue, Phantom) resets on either rest type.
-    if rest_type == "long" and char.get("_choices", {}).get("guidance_of_the_spirits_skill"):
-        opts.append({
-            "kind": "guidance_spirits_swap",
-            "label": "Swap Guidance of the Spirits' skill",
-            "detail": "Changes which skill you gained proficiency in.",
-        })
+    # Whispers of the Dead (Rogue, Phantom) resets on either rest type.
     if char.get("_choices", {}).get("whispers_of_the_dead_prof"):
         opts.append({
             "kind": "whispers_dead_swap",

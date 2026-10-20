@@ -109,6 +109,24 @@ _NOT_DAILY = {
 # Extra wording for a free cast that isn't quite the plain spell.
 _CAST_NOTES = {
     ("Tiefling", "Hellish Rebuke"): "cast as a 2nd-level spell",
+    # dragonmarks (only that mark's race gets each of these spells)
+    ("Dwarf", "Alarm"): "no material components",
+    ("Dwarf", "Mage Armor"): "no material components",
+    ("Dwarf", "Arcane Lock"): "no material components",
+    ("Half-Elf", "Detect Magic"): "no material components",
+    ("Half-Elf", "Detect Poison and Disease"): "no material components",
+    ("Half-Elf", "See Invisibility"): "no material components",
+    ("Human", "Animal Friendship"): "no material components",
+    ("Human", "Speak with Animals"): "no material components",
+    ("Human", "Magic Weapon"): "it lasts 1 hour and doesn't need concentration",
+}
+
+# Free racial casts that come back on a short rest too (the rest are once
+# per long rest): Mark of Scribing's Comprehend Languages, Mark of
+# Handling's two spells
+_SHORT_REST_CASTS = {
+    ("Gnome", "Comprehend Languages"),
+    ("Human", "Animal Friendship"), ("Human", "Speak with Animals"),
 }
 
 # Resources whose spell is the player's pick: {resource key: _choices key}
@@ -132,9 +150,20 @@ def free_spells_of(char: dict, resource: dict) -> list[str]:
     m = re.search(r"\bcast\s+(.*?)(?:\swithout\b|\susing\b|\(|\.\s|$)", note, re.IGNORECASE)
     if not m:
         return []
-    named = m.group(1).lower()
+    found = _spells_named(m.group(1))
+    if not found:
+        # a spell with "without" in its name ("Cast pass without trace without
+        # a spell slot"): the rest of the sentence
+        whole = re.search(r"\bcast\s+([^.(]*)", note, re.IGNORECASE)
+        found = _spells_named(whole.group(1)) if whole else []
+    return found
+
+
+def _spells_named(text: str) -> list[str]:
+    """The spells named in `text`, longest names first, so "Greater
+    Invisibility" isn't also read as "Invisibility"."""
     from dnd_app.data.spells import SPELL_NAMES
-    # longest names first, so "Greater Invisibility" isn't also read as "Invisibility"
+    named = text.lower()
     found = []
     for name in sorted(SPELL_NAMES, key=len, reverse=True):
         pat = r"(?<![a-z])" + re.escape(name.lower()) + r"(?![a-z])"
@@ -190,7 +219,7 @@ def innate_free_cast_resources(char: dict, existing: list) -> list[dict]:
     species = char.get("species") or char.get("race", "")
     out = []
 
-    def _add(spell, source, key_prefix, note_extra=""):
+    def _add(spell, source, key_prefix, note_extra="", reset="LR"):
         sp = get_spell(spell)
         if not sp or sp.get("level", 0) == 0 or spell in covered:
             return   # cantrips are at will; one counter per spell
@@ -199,17 +228,21 @@ def innate_free_cast_resources(char: dict, existing: list) -> list[dict]:
         note += f", {note_extra}." if note_extra else "."
         out.append({
             "name": f"{spell} ({source})", "key": f"{key_prefix}_{_slug(spell)}",
-            "reset": "LR", "current_max": 1, "track": "uses",
+            "reset": reset, "current_max": 1, "track": "uses",
             "note": note, "free_spells": [spell],
             "source_class": "", "subclass": "",
         })
 
+    # a dragonmark's spells are named for the mark ("Shield (Mark of Sentinel)")
+    subrace = char.get("subrace") or ""
+    source = subrace if subrace.startswith("Mark of") else (species or "racial")
     for spell in racial_innate_spells(char):
         race_prefix = next((r for (r, s) in _NOT_DAILY if species.startswith(r) and s == spell), None)
         if race_prefix:
             continue
         extra = next((n for (r, s), n in _CAST_NOTES.items() if species.startswith(r) and s == spell), "")
-        _add(spell, species or "racial", "free_racial", extra)
+        short = any(species.startswith(r) and s == spell for (r, s) in _SHORT_REST_CASTS)
+        _add(spell, source, "free_racial", extra, "SR/LR" if short else "LR")
 
     choices = char.get("_choices", {})
     for feat in ("Fey Touched", "Shadow Touched"):

@@ -570,25 +570,104 @@ EFFECT_TABLE: dict[str, dict] = {
     # one of these for a character who doesn't qualify is harmless (no
     # resistance gets added, it just sits in active_effects unused).
     "Umbral Form": {
-        "note": "Sorcerer (Shadow Magic, 18th): resistance to all damage except force and radiant.",
+        "note": "Resistance to all damage except force and radiant, and you move through creatures and objects as difficult terrain (1 minute).",
     },
     "Spirit Projection": {
-        "note": "Warlock (Undead, 10th): resistance to all damage except force and radiant.",
+        "note": "Your spirit is out of your body (up to 1 hour, as concentration): resistance to bludgeoning, piercing and slashing damage.",
     },
     "Invincible Conqueror": {
-        "note": "Paladin (Oath of Conquest, 20th): resistance to all damage.",
+        "note": "For 1 minute: resistance to all damage, one more attack with the Attack action, and critical hits on a 19 or 20.",
     },
     "Emissary of Redemption": {
-        "note": "Paladin (Oath of Redemption, 20th): resistance to all damage from others' attacks/spells.",
+        "note": "Resistance to all damage from other creatures; a creature that hits you takes radiant damage equal to half the damage you take. Not against a creature you've attacked or harmed until your next long rest.",
     },
     "Starry Form": {
-        "note": "Druid (Circle of Stars, 10th+): resistance to bludgeoning/piercing/slashing while in Starry Form.",
+        "note": "Starry Form for 10 minutes: bright light 10 ft and your constellation's benefit (Archer, Chalice or Dragon); from 14th level, resistance to bludgeoning, piercing and slashing damage.",
     },
     "Dragon Wings": {
-        "note": "Sorcerer (Draconic Bloodline, 14th): bonus action, flying speed equal to your walking speed.",
+        "note": "Draconic wings: a flying speed equal to your walking speed until you dismiss them.",
     },
     "Elemental Gift": {
-        "note": "Warlock (Genie, 6th): bonus action, flying speed of 30 ft for 10 minutes, plus resistance to your genie kind's damage type.",
+        "note": "A 30-ft flying speed for 10 minutes (you can hover).",
+    },
+    "Elder Champion": {
+        "duration_category": "short",
+        "note": "For 1 minute: regain 10 hit points at the start of each of your turns, cast 1-action paladin spells as a bonus action, and enemies within 10 ft have disadvantage on saves against your paladin spells and Channel Divinity.",
+    },
+    "Living Legend": {
+        "duration_category": "short",
+        "note": "For 1 minute: advantage on CHA checks; once on each of your turns a missed weapon attack can hit instead; your reaction can reroll a failed save.",
+    },
+    "Mortal Bulwark": {
+        "duration_category": "short",
+        "note": "For 1 minute: truesight 120 ft, advantage on attacks against aberrations, celestials, elementals, fey and fiends, and a creature you damage makes a CHA save or is banished to its own plane.",
+    },
+    "Exalted Champion": {
+        "duration_category": "short",
+        "note": "For 1 hour: resistance to nonmagical bludgeoning, piercing and slashing damage; allies within 30 ft have advantage on death saves; you and they have advantage on WIS saves.",
+    },
+    "Awakened Astral Self": {
+        "duration_category": "short",
+        "note": "For 10 minutes: +2 AC, and the Attack action makes three attacks with your astral arms.",
+    },
+    "Otherworldly Wings": {
+        "note": "Spectral wings: a 30-ft flying speed until you're incapacitated or dismiss them.",
+    },
+    "Writhing Tide": {
+        "duration_category": "short",
+        "note": "Your swarm lifts you: a 10-ft flying speed and you can hover, for 1 minute.",
+    },
+    "Ghost Walk": {
+        "duration_category": "short",
+        "note": "Spectral form for 10 minutes: a 10-ft flying speed and hover, attack rolls against you have disadvantage, and you move through creatures and objects (1d10 force if you end a turn inside one).",
+    },
+    "Empty Body": {
+        "duration_category": "short",
+        "note": "Invisible for 1 minute, with resistance to all damage but force.",
+    },
+    "Steady Aim": {
+        "note": "Advantage on your next attack roll this turn; your speed is 0 until the end of the turn.",
+    },
+    "Trance of Order": {
+        "duration_category": "short",
+        "note": "For 1 minute: attack rolls against you can't have advantage, and your attack rolls, checks and saves treat a d20 roll of 9 or lower as a 10.",
+    },
+    "Maelstrom Aura": {
+        "duration_category": "short",
+        "note": "Until the start of your next turn: resistance to lightning and thunder damage, attack rolls against you have disadvantage, and a creature that starts its turn within 10 ft makes a STR save or its speed is halved.",
+    },
+    "Precise Strike": {
+        "duration_category": "short",
+        "note": "Advantage on your next weapon attack roll this turn; +1d8 damage if it hits (a use is spent then).",
+    },
+    # Race traits switched on with Use (core/actions.py _race_cards)
+    "Shell Defense": {
+        "ac": 4, "save_adv": ["STR", "CON"], "speed_mult": 0,
+        "note": "In your shell: +4 AC and advantage on STR and CON saves; you're prone, your speed is 0, you have disadvantage on DEX saves, you can't take reactions, and your only action is a bonus action to come out.",
+    },
+    "Chromatic Warding": {
+        "duration_category": "short",
+        "note": "Immunity to your ancestry's damage type for 1 minute.",
+    },
+    "Gem Flight": {
+        "duration_category": "short",
+        "note": "Spectral wings for 1 minute: a flying speed equal to your walking speed, and you can hover.",
+    },
+    "Shifting": {
+        "duration_category": "short",
+        "note": "Shifted for 1 minute (end it with a bonus action): your subrace's benefit while it lasts.",
+    },
+    "Tentacle of the Deeps": {
+        "duration_category": "short",
+        "note": "A 10-ft spectral tentacle within 60 ft for 1 minute. Attack with it from its row on the Combat page now, and with your bonus action on later turns (it can move up to 30 ft first).",
+    },
+    "Spirit Totem": {
+        "duration_category": "short",
+        "note": "A spirit's 30-ft aura for 1 minute (Bear, Hawk or Unicorn).",
+    },
+    "Vow of Enmity": {
+        "duration_category": "short",
+        "note": "Advantage on attack rolls against the creature you vowed against, for 1 minute.",
     },
     "Warding Bond": {
         "note": "2nd-level spell (Cleric/Paladin, 1 hour, no concentration): while within 60 ft of the bonded creature, you both gain +1 AC and +1 to saving throws, and resistance to all damage. Whenever the target takes damage, you take the same amount.",
@@ -943,6 +1022,9 @@ def effect_ac_parts(char: dict) -> list:
         int_mod = max(0, ability_mod(char, "INT"))
         if int_mod:
             parts.append(("Bladesong (INT modifier)", int_mod))
+    # A beasthide shifter: +1 AC while shifted
+    if "Shifting" in char.get("active_effects", []) and "beasthide" in (char.get("subrace") or "").lower():
+        parts.append(("Shifting (Beasthide)", 1))
     # Dual Wielder: +1 AC while wielding a separate melee weapon in each
     # hand. Checks the character's actual equipped weapons (not just
     # "has the feat") for 2+ distinct melee weapons, neither Two-handed,
@@ -986,6 +1068,9 @@ def effect_speed(char: dict, base: int) -> int:
         if "speed_mult" in e:
             speed = int(speed * e["speed_mult"])
         speed += e.get("speed_add", 0)
+    # a swiftstride shifter: +10 ft walking speed while shifted
+    if "Shifting" in char.get("active_effects", []) and "swiftstride" in (char.get("subrace") or "").lower():
+        speed += 10
     return speed
 
 

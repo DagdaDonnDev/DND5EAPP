@@ -1111,10 +1111,9 @@ BONUS_SPELLS = {
 # cantrip (High Elf, Astral Elf, several Half-Elf/Genasi Versatility
 # options) — those need a real chooser, not a guessed default, the same
 # reasoning applied throughout this file for class features. Also not
-# included: "Spells of the Mark" style tables (Mark of Shadow/Detection/
-# Storm) which EXPAND what a spellcasting class can choose from rather
-# than granting an innate spell directly — a different mechanic from
-# everything else here.
+# included: a dragonmark's "Spells of the Mark" table, which EXPANDS what
+# a spellcasting class can choose from rather than granting an innate
+# spell directly (MARK_EXPANDED_SPELLS below).
 RACIAL_BONUS_SPELLS = {
     # ── Tiefling bloodlines (PHB base + MToF bloodlines + SCAG variant) ──
     ("Tiefling", "Asmodeus"): {1: ["Thaumaturgy"], 3: ["Hellish Rebuke"], 5: ["Darkness"]},
@@ -1136,10 +1135,11 @@ RACIAL_BONUS_SPELLS = {
     # ── Elf subraces ─────────────────────────────────────────────────────
     ("Elf", "Drow"): {1: ["Dancing Lights"], 3: ["Faerie Fire"], 5: ["Darkness"]},
     ("Elf", "Pallid"): {1: ["Light"], 3: ["Sleep"], 5: ["Invisibility"]},
-    ("Elf", "Mark of Shadow"): {1: ["Dancing Lights", "Minor Illusion"], 3: ["Invisibility"]},
+    ("Elf", "Mark of Shadow"): {1: ["Minor Illusion"], 3: ["Invisibility"]},
 
     # ── Half-Elf ─────────────────────────────────────────────────────────
-    ("Half-Elf", "Drow Descent"): {1: ["Dancing Lights"]},
+    # (only with Drow Magic as its variant feature: racial_innate_spells)
+    ("Half-Elf", "Drow Descent"): {1: ["Dancing Lights"], 3: ["Faerie Fire"], 5: ["Darkness"]},
     ("Half-Elf", "Mark of Detection"): {1: ["Detect Magic", "Detect Poison and Disease"], 3: ["See Invisibility"]},
     ("Half-Elf", "Mark of Storm"): {1: ["Gust"], 3: ["Gust of Wind"]},
 
@@ -1163,6 +1163,18 @@ RACIAL_BONUS_SPELLS = {
     ("Githyanki", None): {1: ["Mage Hand"], 3: ["Jump"], 5: ["Misty Step"]},
     ("Githzerai", None): {1: ["Mage Hand"], 3: ["Shield"], 5: ["Detect Thoughts"]},
     ("Triton", None): {1: ["Fog Cloud"], 3: ["Gust of Wind"], 5: ["Water Walk"]},
+    # ── The other dragonmarks' own spells (docs/reference/races-sublist.md)
+    ("Dwarf", "Mark of Warding"): {1: ["Alarm", "Mage Armor"], 3: ["Arcane Lock"]},
+    ("Gnome", "Mark of Scribing"): {1: ["Message", "Comprehend Languages"], 3: ["Magic Mouth"]},
+    ("Half-Orc", "Mark of Finding"): {1: ["Hunter's Mark"], 3: ["Locate Object"]},
+    ("Human", "Mark of Finding"): {1: ["Hunter's Mark"], 3: ["Locate Object"]},
+    ("Halfling", "Mark of Healing"): {1: ["Cure Wounds"], 3: ["Lesser Restoration"]},
+    ("Halfling", "Mark of Hospitality"): {1: ["Prestidigitation", "Purify Food and Drink", "Unseen Servant"]},
+    ("Human", "Mark of Handling"): {1: ["Animal Friendship", "Speak with Animals"]},
+    ("Human", "Mark of Making"): {1: ["Mending", "Magic Weapon"]},
+    ("Human", "Mark of Passage"): {1: ["Misty Step"]},
+    # Mark of Sentinel: Guardian's Shield
+    ("Human", "Mark of Sentinel"): {1: ["Shield"]},
 }
 
 
@@ -1187,6 +1199,10 @@ def racial_innate_spells(char: dict) -> list[str]:
             continue
         if subrace_key is not None and not char_subrace.lower().startswith(subrace_key.lower()):
             continue
+        if (race_key, subrace_key) == ("Half-Elf", "Drow Descent"):
+            from dnd_app.data.races import half_elf_variant
+            if half_elf_variant(char) != "Drow Magic":
+                continue
         for req_lvl, spells in by_level.items():
             if char_lvl >= req_lvl:
                 out.extend(spells)
@@ -1205,6 +1221,8 @@ FEAT_FIXED_SPELLS = {
     "Outlands Envoy": ["Misty Step", "Tongues"],
     "Mystic Conflux": ["Identify"],
     "Field Medic": ["Cure Wounds"],
+    "Wood Elf Magic": ["Longstrider", "Pass without Trace"],
+    "Drow High Magic": ["Levitate", "Dispel Magic"],
 }
 FEAT_CHOSEN_SPELL_KEYS = {
     "Fey Touched": ["feat_fey_touched_spell"],
@@ -1316,7 +1334,7 @@ def get_bonus_spells(char: dict) -> list[str]:
     # Astral Elf) — the choice itself is made via the level-up panel's
     # race choosers; this just reads back whatever was picked.
     choices = char.get("_choices", {})
-    for choice_id in ("race_wizard_cantrip", "astral_elf_cantrip", "race_merfolk_cantrip"):
+    for choice_id in ("race_wizard_cantrip", "astral_elf_cantrip", "race_merfolk_cantrip", "race_sorcerer_cantrip"):
         picked = choices.get(choice_id, [])
         if picked:
             out.append(picked[0])
@@ -1390,10 +1408,11 @@ def get_bonus_spells(char: dict) -> list[str]:
     if pact_choice and "chain" in pact_choice[0].lower():
         out.append("Find Familiar")
 
-    # Guidance of the Spirits (Bard, College of Spirits) grants Guidance
-    # at will; doesn't count against normal cantrips known.
-    if choices.get("guidance_of_the_spirits_skill"):
-        out.append("Guidance")
+    # Guiding Whispers (Bard, College of Spirits, 3rd level): Guidance,
+    # not counted against cantrips known
+    for c in char.get("classes", []):
+        if c.get("class") == "Bard" and c.get("level", 0) >= 3 and "spirits" in (c.get("subclass") or "").lower():
+            out.append("Guidance")
 
     return list(dict.fromkeys(out))  # dedupe, preserve order
 
@@ -1409,26 +1428,68 @@ def get_bonus_spells(char: dict) -> list[str]:
 #
 # Structure: {(race, subrace): {spell_level: [spell names]}}
 MARK_EXPANDED_SPELLS = {
+    # (Mordenkainen's Faithful Hound and Private Sanctum aren't in the spell
+    # catalog yet, so they can't be picked until they are)
+    ("Dwarf", "Mark of Warding"): {
+        1: ["Alarm", "Armor of Agathys"], 2: ["Arcane Lock", "Knock"],
+        3: ["Glyph of Warding", "Magic Circle"],
+        4: ["Leomund's Secret Chest", "Mordenkainen's Faithful Hound"], 5: ["Antilife Shell"],
+    },
     ("Elf", "Mark of Shadow"): {
-        1: ["Disguise Self", "Silent Image"],
-        2: ["Darkness", "Pass without Trace"],
-        3: ["Clairvoyance", "Major Image"],
-        4: ["Greater Invisibility", "Hallucinatory Terrain"],
+        1: ["Disguise Self", "Silent Image"], 2: ["Darkness", "Pass without Trace"],
+        3: ["Clairvoyance", "Major Image"], 4: ["Greater Invisibility", "Hallucinatory Terrain"],
         5: ["Mislead"],
     },
+    ("Gnome", "Mark of Scribing"): {
+        1: ["Comprehend Languages", "Illusory Script"], 2: ["Animal Messenger", "Silence"],
+        3: ["Sending", "Tongues"], 4: ["Arcane Eye", "Confusion"], 5: ["Dream"],
+    },
     ("Half-Elf", "Mark of Detection"): {
-        1: ["Detect Magic", "Detect Poison and Disease"],
-        2: ["Detect Thoughts", "Find Traps"],
-        3: ["Clairvoyance", "Nondetection"],
-        4: ["Arcane Eye", "Divination"],
-        5: ["Legend Lore"],
+        1: ["Detect Evil and Good", "Detect Poison and Disease"], 2: ["Detect Thoughts", "Find Traps"],
+        3: ["Clairvoyance", "Nondetection"], 4: ["Arcane Eye", "Divination"], 5: ["Legend Lore"],
     },
     ("Half-Elf", "Mark of Storm"): {
-        1: ["Feather Fall", "Fog Cloud"],
-        2: ["Gust of Wind", "Levitate"],
-        3: ["Sleet Storm", "Wind Wall"],
-        4: ["Conjure Minor Elementals", "Control Water"],
+        1: ["Feather Fall", "Fog Cloud"], 2: ["Gust of Wind", "Levitate"],
+        3: ["Sleet Storm", "Wind Wall"], 4: ["Conjure Minor Elementals", "Control Water"],
         5: ["Conjure Elemental"],
+    },
+    ("Half-Orc", "Mark of Finding"): {
+        1: ["Faerie Fire", "Longstrider"], 2: ["Locate Animals or Plants", "Locate Object"],
+        3: ["Clairvoyance", "Speak with Plants"], 4: ["Divination", "Locate Creature"],
+        5: ["Commune with Nature"],
+    },
+    ("Human", "Mark of Finding"): {
+        1: ["Faerie Fire", "Longstrider"], 2: ["Locate Animals or Plants", "Locate Object"],
+        3: ["Clairvoyance", "Speak with Plants"], 4: ["Divination", "Locate Creature"],
+        5: ["Commune with Nature"],
+    },
+    ("Halfling", "Mark of Healing"): {
+        1: ["Cure Wounds", "Healing Word"], 2: ["Lesser Restoration", "Prayer of Healing"],
+        3: ["Aura of Vitality", "Mass Healing Word"], 4: ["Aura of Purity", "Aura of Life"],
+        5: ["Greater Restoration"],
+    },
+    ("Halfling", "Mark of Hospitality"): {
+        1: ["Goodberry", "Sleep"], 2: ["Aid", "Calm Emotions"],
+        3: ["Create Food and Water", "Leomund's Tiny Hut"],
+        4: ["Aura of Purity", "Mordenkainen's Private Sanctum"], 5: ["Hallow"],
+    },
+    ("Human", "Mark of Handling"): {
+        1: ["Animal Friendship", "Speak with Animals"], 2: ["Beast Sense", "Calm Emotions"],
+        3: ["Beacon of Hope", "Conjure Animals"], 4: ["Aura of Life", "Dominate Beast"], 5: ["Awaken"],
+    },
+    ("Human", "Mark of Making"): {
+        1: ["Identify", "Tenser's Floating Disk"], 2: ["Continual Flame", "Magic Weapon"],
+        3: ["Conjure Barrage", "Elemental Weapon"], 4: ["Fabricate", "Stone Shape"], 5: ["Creation"],
+    },
+    ("Human", "Mark of Passage"): {
+        1: ["Expeditious Retreat", "Jump"], 2: ["Misty Step", "Pass without Trace"],
+        3: ["Blink", "Phantom Steed"], 4: ["Dimension Door", "Freedom of Movement"],
+        5: ["Teleportation Circle"],
+    },
+    ("Human", "Mark of Sentinel"): {
+        1: ["Compelled Duel", "Shield of Faith"], 2: ["Warding Bond", "Zone of Truth"],
+        3: ["Counterspell", "Protection from Energy"], 4: ["Death Ward", "Guardian of Faith"],
+        5: ["Bigby's Hand"],
     },
 }
 

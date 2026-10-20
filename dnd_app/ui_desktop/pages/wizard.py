@@ -700,11 +700,9 @@ class Step2Abilities(QWidget):
         different +1s) — the each-style checkbox picker can represent
         neither valid distribute option, so the style must be read from
         asi_flex_style before deciding which card to show."""
-        from dnd_app.data.races import RACE_DICT
+        from dnd_app.data.races import race_flex
         race = char.get("race", "")
-        rdata = RACE_DICT.get(race, {})
-        flex = rdata.get("asi_flex", 0)
-        style = rdata.get("asi_flex_style", "distribute")
+        flex, style = race_flex(race, char.get("subrace", ""))   # none for a dragonmark
         use_dist = flex == 2 and style == "distribute"
         if hasattr(self, '_flex_card'):
             self._flex_card.setVisible(flex > 0 and not use_dist)
@@ -826,12 +824,12 @@ class Step2Abilities(QWidget):
     def _update_race_bonuses(self, char):
         """Update the racial ASI preview label. Uses combined_racial_asi
         so it never double-counts the base race bonus."""
+        from dnd_app.data.races import race_flex
         race  = char.get("race","")
-        rdata = RACE_DICT.get(race, {})
-        flex  = rdata.get("asi_flex", 0)
+        sub_name = char.get("subrace","")
+        flex, _ = race_flex(race, sub_name)     # none for a dragonmark
         asi   = combined_racial_asi(char)
         parts = [f"{ab} +{v}" for ab, v in sorted(asi.items())]
-        sub_name = char.get("subrace","")
         if flex:
             parts.append(f"+1 to {flex} abilities of your choice")
         if hasattr(self, "_race_bonus_card"):

@@ -529,6 +529,7 @@ RACIAL_NATURAL_WEAPONS = {
     "Lizardfolk (MPMM)": [{"name": "Bite", "die": "1d6", "damage_type": "slashing", "stat": "STR",
                      "note": "Hungry Jaws (1/short or long rest): bonus action bite attack; on a hit, gain temporary HP equal to your proficiency bonus."}],
     "Satyr (MPMM)": [{"name": "Ram", "die": "1d6", "damage_type": "bludgeoning", "stat": "STR"}],
+    "Satyr": [{"name": "Ram", "die": "1d4", "damage_type": "bludgeoning", "stat": "STR"}],
     "Tabaxi (MPMM)": [{"name": "Cat's Claws", "die": "1d6", "damage_type": "slashing", "stat": "STR"}],
     "Tortle (MPMM)": [{"name": "Claws", "die": "1d6", "damage_type": "slashing", "stat": "STR"}],
     "Tabaxi": [{"name": "Cat's Claws", "die": "1d4", "damage_type": "slashing", "stat": "STR"}],

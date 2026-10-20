@@ -475,9 +475,9 @@ class AbilityWizardBridge(QObject):
 
     # ── Racial ASI preview + flex/distribute pickers ──────────────────
     def _flex_info(self):
-        rdata = RACE_DICT.get(self.char.get("race", ""), {})
-        flex = rdata.get("asi_flex", 0)
-        style = rdata.get("asi_flex_style", "distribute")
+        from dnd_app.data.races import race_flex
+        # none for a dragonmark: its mark sets the ability scores
+        flex, style = race_flex(self.char.get("race", ""), self.char.get("subrace", ""))
         use_dist = flex == 2 and style == "distribute"
         return flex, style, use_dist
 

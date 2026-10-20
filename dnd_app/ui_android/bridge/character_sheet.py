@@ -71,6 +71,7 @@ from dnd_app.core.spellcasting import (
     prepared_caster_caps, attribute_prepared_spells, spell_limits,
 )
 from dnd_app.core.actions import build_action_abilities
+from dnd_app.core.action_use import portent_rolls, spend_portent
 from dnd_app.data.items import WEAPON_DICT, ALL_WEAPONS, ARMOR, gear_icon, is_scroll_name, is_thrown_consumable
 from dnd_app.data.spells import (
     get_spell, spells_for_class, spells_for_class_at_level, SPELL_DICT, SPELLS_BY_LEVEL,
@@ -319,9 +320,11 @@ class CharacterSheetBridge(QObject):
     @Slot(str, int)
     def rollQuickCheck(self, label: str, bonus: int):
         """"<Ability> Save" rolls a save, anything else (ability checks,
-        skills, initiative) a check -- with condition rules applied: an
-        automatic failure, or two d20s kept high/low."""
-        from dnd_app.core.calculator import condition_roll_mode, roll_d20
+        skills, initiative) a check -- one d20 (an automatic failure for a
+        Stunned/Paralyzed/... creature's STR and DEX saves), with a
+        reminder of the advantage and disadvantage the sheet knows about,
+        as desktop: whether they apply is the table's call."""
+        from dnd_app.core.calculator import condition_roll_mode, roll_d20, roll_reminder, SKILL_ABILITY
         first = label.split(" ")[0].strip().lower()
         ability = self._AB_SHORT.get(first, first.upper() if first.upper() in self._AB_SHORT.values() else "")
         kind = "save" if label.lower().endswith(" save") else "check"
@@ -329,21 +332,16 @@ class CharacterSheetBridge(QObject):
         if cm["mode"] == "auto_fail":
             self.toastRequested.emit(f"{label}: automatic failure ({', '.join(cm['sources'])})")
             return
-        r = roll_d20(cm["mode"])
-        d = r["d20"]
+        d = roll_d20("normal")["d20"]
         total = d + bonus
         flair = ""
         if d == 20:
             flair = "  NAT 20!"
         elif d == 1:
             flair = "  Nat 1..."
-        sign = f"{bonus:+d}"
-        if len(r["rolls"]) == 2:
-            tag = "adv" if cm["mode"] == "advantage" else "dis"
-            dice = f"[{r['rolls'][0]}/{r['rolls'][1]} {tag}: {', '.join(cm['sources'])}]"
-        else:
-            dice = f"[{d}]"
-        self.toastRequested.emit(f"{label}: {dice} {sign} = {total}{flair}")
+        reminder = roll_reminder(self.char, "initiative" if label == "Initiative" else kind, ability,
+                                 skill=label if label in SKILL_ABILITY else "")["text"]
+        self.toastRequested.emit(f"{label}: [{d}] {bonus:+d} = {total}{flair}" + (f"\n{reminder}" if reminder else ""))
 
     # ── Inspiration ──────────────────────────────────────────────────
     @Property(bool, notify=statsChanged)
@@ -651,7 +649,7 @@ class CharacterSheetBridge(QObject):
             out.append(d)
 
         for a in other_attacks(char):
-            card(a, "Unarmed" if a["kind"] == "unarmed" else "Natural weapon", {})
+            card(a, {"unarmed": "Unarmed", "spell": "Spell attack"}.get(a["kind"], "Natural weapon"), {})
         for wpn_name in char.get("equipped_weapons", []):
             w = weapon_attack(char, wpn_name)
             card(w, w["category"], {
@@ -1722,6 +1720,8 @@ class CharacterSheetBridge(QObject):
                 "reset": res.get("reset", ""),
                 "toggleEffect": toggle_effect or "",
                 "toggleActive": bool(toggle_effect) and toggle_effect in self.char.get("active_effects", []),
+                # Portent: the foretelling rolls themselves (core/action_use.py)
+                "rolls": portent_rolls(self.char) if res.get("key") == "portent" else [],
             })
         # magic item charges (desktop lists them under Resources & Charges too)
         for name, data in self.char.get("item_charges", {}).items():
@@ -1732,9 +1732,16 @@ class CharacterSheetBridge(QObject):
                 "current": data.get("current", 0), "currentMax": data.get("max", 0),
                 "unlimited": False, "sourceClass": "Magic item",
                 "reset": {"dawn": "Dawn", "dusk": "Dusk"}.get(data.get("recharge", "dawn"), "Never"),
-                "toggleEffect": "", "toggleActive": False,
+                "toggleEffect": "", "toggleActive": False, "rolls": [],
             })
         return out
+
+    @Slot(int)
+    def usePortentRoll(self, roll: int):
+        """A Portent roll tapped under Resources: it's used (the same as
+        desktop's Resources & Charges row)."""
+        self.toastRequested.emit(spend_portent(self.char, roll))
+        self.statsChanged.emit()
 
     @Slot(str)
     def spendResource(self, key: str):
@@ -1880,24 +1887,14 @@ class CharacterSheetBridge(QObject):
 
     @Slot(str)
     def transformWildShape(self, beast_name: str):
-        beast = WILDSHAPE_BEASTS.get(beast_name)
-        if not beast:
-            return
-        res = next((r for r in self.char.get("resources", []) if r.get("key") == "wild_shape"), None)
-        if res is not None and isinstance(res.get("current_max"), int):
-            if res.get("current", 0) <= 0:
-                self.toastRequested.emit(
-                    "No Wild Shape uses remaining -- available again after a short or long rest.")
-                return
-            res["current"] -= 1
-        char = self.char
-        char["_wildshape_active"] = beast_name
-        char["_wildshape_hp"] = beast["hp"]
-        if "Wild Shape" not in char.get("active_effects", []):
-            char.setdefault("active_effects", []).append("Wild Shape")
-        self.ctrl.refresh()
-        self.toastRequested.emit(f"Transformed into {beast_name}")
-        self.statsChanged.emit()
+        """Transform (core/action_use.py wild_shape_into, as desktop: the
+        use or two it costs, the beast's hit points)."""
+        from dnd_app.core.action_use import wild_shape_into
+        ok, msg = wild_shape_into(self.char, beast_name)
+        self.toastRequested.emit(msg)
+        if ok:
+            self.ctrl.refresh()
+            self.statsChanged.emit()
 
     @Slot()
     def revertWildShape(self):
@@ -1941,7 +1938,10 @@ class CharacterSheetBridge(QObject):
         if race:
             rdata = get_race(race)
             if rdata and rdata.get("traits"):
-                add_section(f"Race: {race}", rdata["traits"])
+                # less what a dragonmark (or a subrace's ability scores)
+                # replaces -- the same list as desktop's Features tab
+                from dnd_app.data.races import race_traits_for
+                add_section(f"Race: {race}", race_traits_for(char))
             subrace = char.get("subrace", "")
             if subrace and rdata:
                 for sub_str in rdata.get("subraces", []):
@@ -2697,6 +2697,10 @@ class CharacterSheetBridge(QObject):
         self._run_pending_use()
 
     def _after_use(self, res):
+        if res.get("cast"):
+            # a feat's or trait's spell: the spell's own cast spends its free use
+            self.castSpell(res["cast"])
+            return
         if res.get("toast"):
             self.toastRequested.emit(res["toast"])
         if not res.get("ok"):
@@ -2805,7 +2809,10 @@ class CharacterSheetBridge(QObject):
         only the player knows: who it's on, which weapon, which damage type.
         `said` is the cast's own toast, shown with what the effect did."""
         from dnd_app.core.spell_effects import cast_effect, effect_names
+        from dnd_app.core.riders import spell_hit_note
         name = spell["name"]
+        # what its hit adds (Genie's Wrath, Hex...)
+        said = "\n".join(m for m in (said, spell_hit_note(self.char, spell)) if m)
         if not effect_names(name):
             if said:
                 self.toastRequested.emit(said)
@@ -2992,12 +2999,16 @@ class CharacterSheetBridge(QObject):
 
     @Slot(int)
     def rollConcentrationSave(self, damage: int):
-        maintained, total = concentration_save(self.char, damage)
-        dc = max(10, damage // 2)
-        if maintained:
-            self.toastRequested.emit(f"Concentration maintained ({total} vs DC {dc})")
+        res = concentration_save(self.char, damage)
+        total, dc = res["total"], res["dc"]
+        if res["kept"]:
+            msg = f"Concentration maintained ({total} vs DC {dc})"
+        elif res["kept"] is None:
+            msg = (f"Concentration save: {total} vs DC {dc} -- a failure on this d20. If your second d20 "
+                   f"doesn't save it, tap Drop")
         else:
-            self.toastRequested.emit(f"Concentration failed ({total} vs DC {dc}) -- spell dropped")
+            msg = f"Concentration failed ({total} vs DC {dc}) -- spell dropped"
+        self.toastRequested.emit(msg + (f"\n{res['reminder']}" if res["reminder"] else ""))
         self.statsChanged.emit()
 
     # ── Identity (race/subrace/ancestry/background, editable post-
@@ -3772,10 +3783,14 @@ class CharacterSheetBridge(QObject):
         # dawn comes: magic items get their charges back (core/magic_items.py)
         from dnd_app.core.magic_items import charges_at_dawn
         dawn = charges_at_dawn(char)
+        # a Diviner's new Portent rolls (core/action_use.py)
+        from dnd_app.core.action_use import roll_portent
+        portent = roll_portent(char)
         rebuild(char)
         self.ctrl.refresh()
         from dnd_app.data.flavor_text import random_long_rest_dream
         items = ("\nAt dawn: " + "; ".join(dawn)) if dawn else ""
+        items += f"\n{portent}" if portent else ""
         if expired:
             self.restToastRequested.emit(f"Faded: {', '.join(expired)}{items}")
         else:
@@ -3797,8 +3812,6 @@ class CharacterSheetBridge(QObject):
                     "Winter – Fey Step frightens one creature within 5 ft. of your destination",
                     "Spring – a willing creature within 5 ft. can teleport with you",
                     "Summer – Fey Step deals 2d6 fire damage to creatures within 5 ft. of your origin"]
-        if kind == "guidance_spirits_swap":
-            return list(_LEVELUP_ALL_SKILLS)
         if kind == "whispers_dead_swap":
             return list(_LEVELUP_ALL_SKILLS) + list(SWAP_TOOLS_POOL)
         if kind == "lunar_phase_swap":
@@ -3848,9 +3861,6 @@ class CharacterSheetBridge(QObject):
         elif kind == "eladrin_season":
             choices["eladrin_season"] = [value]
             self.toastRequested.emit(f"Eladrin season changed to {value.split(' – ')[0]}")
-        elif kind == "guidance_spirits_swap":
-            choices["guidance_of_the_spirits_skill"] = [value]
-            self.toastRequested.emit(f"Guidance of the Spirits now grants {value}")
         elif kind == "whispers_dead_swap":
             choices["whispers_of_the_dead_prof"] = [value]
             self.toastRequested.emit(f"Whispers of the Dead now grants {value}")
@@ -4094,9 +4104,15 @@ class CharacterSheetBridge(QObject):
 
     @Property(list, notify=statsChanged)
     def pendingAsiOrFeatChoices(self):
+        # mode: "asi_or_feat", or one half on its own -- "asi" (two +1s)
+        # or "feat" (a Variant Human's)
         return [
-            {"id": c["id"], "label": c["label"], "sourceName": c["source_name"]}
-            for c in self._raw_choices_needed() if c["type"] == "asi_or_feat"
+            {"id": c["id"], "label": c["label"], "sourceName": c["source_name"], "mode": c["type"],
+             # a dragonmark's +1: one point, not to the ability with the +2;
+             # Fizban's dragonborn: three points, at most two on one
+             "points": c.get("points", 2), "exclude": c.get("exclude") or [],
+             "maxPer": c.get("max_per", 0)}
+            for c in self._raw_choices_needed() if c["type"] in ("asi_or_feat", "asi", "feat")
         ]
 
     @Property(list, notify=statsChanged)
@@ -4195,10 +4211,17 @@ class CharacterSheetBridge(QObject):
         feat = get_feat(feat_name)
         if feat and not feat_prereq_met(self.char, feat)[0]:
             return
-        add_feat(self.char, feat_name)
-        apply_choice(self.char, choice_id, [f"feat:{feat_name}"])
-        self.statsChanged.emit()
-        self.autosaveRequested.emit()
+        # the feat's own +1 (which ability, when it's one of several) and
+        # Elemental Adept's type are asked first -- core/builder.py, the
+        # same as desktop
+        from dnd_app.core.builder import feat_choice_picks
+
+        def done(res):
+            add_feat(self.char, feat_name)
+            apply_choice(self.char, choice_id, res["picks"])
+            self.statsChanged.emit()
+            self.autosaveRequested.emit()
+        self._ask_through(feat_name, lambda a: feat_choice_picks(self.char, feat_name, a), done)
 
     @Slot(str, result=list)
     def searchFeatsForLevelUp(self, query: str):

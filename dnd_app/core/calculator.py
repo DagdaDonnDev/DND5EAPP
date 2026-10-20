@@ -504,6 +504,9 @@ SAVE_ADVANTAGE_SOURCES = [
              "(Magic also can't put you to sleep — a separate immunity, not tracked here.)"},
     {"race": "Astral Elf", "ability": "WIS", "source": "Fey Ancestry", "conditional": True,
      "note": "Advantage specifically against being charmed, not all WIS saves."},
+    {"race": "Kobold (MPMM)", "ability": "WIS", "source": "Defiance", "conditional": True,
+     "requires_choice": ("kobold_legacy", "Defiance"),
+     "note": "Advantage on saves to avoid or end being frightened, not all WIS saves."},
     {"race": "Halfling", "ability": "WIS", "source": "Brave", "conditional": True,
      "note": "Advantage specifically against being frightened, not all WIS saves."},
     {"race": "Kor", "ability": "WIS", "source": "Brave", "conditional": True,
@@ -558,6 +561,11 @@ def get_save_advantage_status(char: dict, ability: str) -> dict:
         if "race" in entry:
             char_race = char.get("species") or char.get("race", "")
             if char_race != entry["race"]:
+                continue
+        if "requires_choice" in entry:          # a Kobold Legacy picked
+            key, want = entry["requires_choice"]
+            picked = ((char.get("_choices") or {}).get(key) or [""])[0]
+            if not picked.startswith(want):
                 continue
         sources.append(entry)
     # Magic items (Ring of Protection, Mindguard Crown, etc.) populate this
@@ -798,6 +806,31 @@ def _get_ac_base(char: dict) -> int:
     return sum(v for _, v in _ac_base_parts(char))
 
 
+def _fleet_of_foot(char: dict) -> bool:
+    """+5 ft base walking speed: a wood elf's Fleet of Foot (a half-elf's
+    only as its variant feature) or a Mark of Passage's Courier's Speed."""
+    from dnd_app.data.races import half_elf_variant
+    sub = char.get("subrace") or ""
+    if (char.get("species") or char.get("race", "")) == "Half-Elf":
+        return half_elf_variant(char) == "Fleet of Foot"
+    return "wood" in sub.lower() or sub == "Mark of Passage"
+
+
+def _heavy_armor_speed_penalty(char: dict):
+    """("Plate (needs STR 15)", -10) when the character wears heavy armor
+    with a Strength score above theirs (PHB p.144) -- None otherwise, and
+    always for a dwarf, whose speed heavy armor doesn't reduce."""
+    from dnd_app.data.items import ARMOR_DICT
+    from .magic_items import parse_magic_suffix
+    name, _ = parse_magic_suffix(char.get("armor_worn", "No Armor") or "No Armor")
+    need = (ARMOR_DICT.get(name) or {}).get("str_req", 0)
+    if not need or ability_score(char, "STR") >= need:
+        return None
+    if (char.get("species") or char.get("race", "")) == "Dwarf":
+        return None
+    return (f"{name} (needs STR {need})", -10)
+
+
 def get_speed_breakdown(char: dict) -> list[tuple[str, str]]:
     """Return [(label, display_str), ...] explaining the character's
     current walking speed, for a right-click breakdown popup. Mirrors
@@ -808,6 +841,12 @@ def get_speed_breakdown(char: dict) -> list[tuple[str, str]]:
     parts: list[tuple[str, str]] = []
     base = char.get("speed", 30)
     parts.append(("Base speed", f"{base} ft"))
+    sub = (char.get("subrace") or "")
+    if _fleet_of_foot(char):
+        parts.append(("Courier's Speed" if sub == "Mark of Passage" else "Fleet of Foot", "+5 ft"))
+    penalty = _heavy_armor_speed_penalty(char)
+    if penalty:
+        parts.append((penalty[0], f"{penalty[1]} ft"))
     monk_bonus = char.get("monk_speed_bonus", 0)
     if monk_bonus:
         parts.append(("Monk (Unarmored Movement)", f"+{monk_bonus} ft"))
@@ -963,7 +1002,21 @@ def effect_start_problem(char: dict, name: str) -> str:
 def on_effect_started(char: dict, name: str) -> str:
     """What else switching an effect on changes; returns a note for the
     message ("" for nothing). Entering a Rage ends concentration -- you
-    can't concentrate while raging."""
+    can't concentrate while raging. A new one also brings back what's
+    once per rage (Fanatical Focus)."""
+    char.setdefault("_once_per", {})[name] = []
+    if name == "Shifting":
+        # temporary hit points: your level + CON (ERLW), or twice your
+        # proficiency bonus (MPMM); a beasthide shifter gets 1d6 more
+        import random as _random
+        race = char.get("species") or char.get("race", "")
+        hp = 2 * get_prof_bonus(char) if "MPMM" in race else max(1, total_level(char) + ability_mod(char, "CON"))
+        extra = _random.randint(1, 6) if "beasthide" in (char.get("subrace") or "").lower() else 0
+        temp = hp + extra
+        if temp > char.get("temp_hp", 0):
+            char["temp_hp"] = temp
+            return f"{temp} temporary hit points" + (f" ({hp} + {extra} on the 1d6)" if extra else "")
+        return f"you keep your {char.get('temp_hp', 0)} temporary hit points (more than {temp})"
     if name == "Rage":
         conc = (char.get("concentration") or {}).get("spell")
         if conc:
@@ -986,20 +1039,82 @@ def get_condition_check_status(char: dict, ability: str = "") -> dict:
 
 
 def condition_roll_mode(char: dict, kind: str, ability: str = "") -> dict:
-    """How a d20 roll of `kind` ("attack", "save", "check") should be
-    rolled right now: {'mode': 'normal'|'advantage'|'disadvantage'|
-    'auto_fail', 'sources': [str]}. Both apps' roll buttons use this, so
-    conditions change the dice rather than only a label."""
+    """How a d20 roll of `kind` ("attack", "save", "check") is made:
+    {'mode': 'normal' or 'auto_fail', 'sources': [why it fails]} -- a
+    Paralyzed, Stunned, Unconscious or Petrified creature's STR and DEX
+    saves fail. Advantage and disadvantage are never applied for you:
+    the table decides (cover, the target, your DM), so roll_reminder
+    lists what the sheet knows of them instead."""
+    if kind == "save" and ability in ("STR", "DEX"):
+        active = effective_conditions(char)
+        fails = [c for c in ("Paralyzed", "Stunned", "Unconscious", "Petrified") if c in active]
+        if fails:
+            return {"mode": "auto_fail", "sources": fails}
+    return {"mode": "normal", "sources": []}
+
+
+def roll_reminder(char: dict, kind: str, ability: str = "", skill: str = "", extra_adv=()) -> dict:
+    """The sources of advantage and disadvantage the sheet knows for a d20
+    roll of `kind` -- "attack", "save", "check", "initiative" or
+    "concentration" (a CON save to keep concentrating) -- as a reminder
+    only: rolls are always one d20, since the table can change it (cover,
+    the target's conditions, your DM). extra_adv: more for this one roll
+    (Reckless Attack on a STR melee swing).
+    {'advantage': [str], 'disadvantage': [str], 'text': "Reminder:
+    advantage from Steady Aim; disadvantage from Poisoned." or ""}"""
+    active = effective_conditions(char)
+    fx = char.get("active_effects", [])
+    exh = char.get("exhaustion", 0)
+    adv, dis, add_d4 = list(extra_adv), [], []
+    race = char.get("species") or char.get("race", "")
+    sub = char.get("subrace") or ""
+    sunlit = race == "Kobold" or (race, sub) in (("Elf", "Drow"), ("Dwarf", "Duergar"))
     if kind == "attack":
-        st = get_condition_attack_status(char)
-        mode = "advantage" if st["advantage"] else "disadvantage" if st["disadvantage"] else "normal"
-        return {"mode": mode, "sources": st["sources"]}
-    if kind == "save":
-        st = get_condition_save_status(char, ability)
-        mode = "auto_fail" if st["auto_fail"] else "disadvantage" if st["disadvantage"] else "normal"
-        return {"mode": mode, "sources": st["sources"]}
-    st = get_condition_check_status(char, ability)
-    return {"mode": "disadvantage" if st["disadvantage"] else "normal", "sources": st["sources"]}
+        if "Invisible" in active:
+            adv.append("Invisible")
+        if race == "Kobold":
+            adv.append("Pack Tactics (an ally within 5 ft of the target)")
+        if sunlit:
+            dis.append("Sunlight Sensitivity (in direct sunlight)")
+        adv += [n for n in ("Steady Aim", "Precise Strike") if n in fx]
+        dis += [c for c in ("Blinded", "Frightened", "Poisoned", "Prone", "Restrained") if c in active]
+        if exh >= 3:
+            dis.append("Exhaustion (3+)")
+    elif kind in ("save", "concentration"):
+        ability = "CON" if kind == "concentration" else ability
+        adv += [s["source"] for s in get_save_advantage_status(char, ability)["sources"]]
+        if kind == "concentration" and "War Caster" in char.get("feats", []):
+            adv.append("War Caster")
+        if ability == "DEX" and "Restrained" in active:
+            dis.append("Restrained")
+        if exh >= 3:
+            dis.append("Exhaustion (3+)")
+    else:
+        if kind == "initiative":
+            st = get_initiative_advantage_status(char)
+            adv += [s["source"] for s in st["sources"]]
+        if skill:
+            st = get_skill_advantage_status(char, skill)
+            adv += st.get("adv_reasons") or []
+            dis += st.get("disadv_reasons") or []
+            if skill == "Perception" and sunlit:
+                dis.append("Sunlight Sensitivity (relying on sight, in direct sunlight)")
+            # a dragonmark's d4 intuition (Deductive Intuition on Insight...)
+            from dnd_app.data.races import DRAGONMARK_INTUITION
+            mark = DRAGONMARK_INTUITION.get(char.get("subrace") or "")
+            if mark and skill in mark[1]:
+                add_d4.append(mark[0])
+        if exh >= 1:
+            dis.append("Exhaustion (1+)")
+        dis += [c for c in ("Frightened", "Poisoned") if c in active]
+    adv, dis = list(dict.fromkeys(adv)), list(dict.fromkeys(dis))
+
+    def said(names):
+        return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+    parts = (([f"you can add a d4 from {said(add_d4)}"] if add_d4 else [])
+             + ([f"advantage from {said(adv)}"] if adv else []) + ([f"disadvantage from {said(dis)}"] if dis else []))
+    return {"advantage": adv, "disadvantage": dis, "add": add_d4,
+            "text": ("Reminder: " + "; ".join(parts) + ".") if parts else ""}
 
 
 def roll_d20(mode: str = "normal", rng=None) -> dict:
@@ -1012,14 +1127,6 @@ def roll_d20(mode: str = "normal", rng=None) -> dict:
         return {"d20": max(a, b) if mode == "advantage" else min(a, b), "rolls": [a, b], "mode": mode}
     d = rng.randint(1, 20)
     return {"d20": d, "rolls": [d], "mode": mode}
-
-
-def describe_roll(roll: dict, sources: list) -> str:
-    """'Disadvantage (Poisoned): 15 / 3' style prefix for a roll result."""
-    if roll["mode"] in ("advantage", "disadvantage") and len(roll["rolls"]) == 2:
-        why = f" ({', '.join(sources)})" if sources else ""
-        return f"{roll['mode'].title()}{why}: rolled {roll['rolls'][0]} and {roll['rolls'][1]}, kept {roll['d20']}"
-    return ""
 
 
 def get_condition_save_status(char: dict, ability: str) -> dict:
@@ -1046,36 +1153,16 @@ def get_condition_save_status(char: dict, ability: str) -> dict:
             "sources": auto_fail_sources + dis_sources}
 
 
-def get_condition_attack_status(char: dict) -> dict:
-    """Whether the character's own attack rolls currently have
-    advantage/disadvantage from active conditions and exhaustion. Real
-    5e rule: if a roll would have both advantage and disadvantage from
-    different sources, they cancel and neither applies — handled
-    explicitly here rather than just returning whichever was checked
-    first.
-    Returns {'advantage': bool, 'disadvantage': bool, 'sources': [str]}."""
-    active = effective_conditions(char)
-    adv_sources = []
-    dis_sources = []
-    # The creature's OWN attack rolls have disadvantage:
-    for cond in ("Blinded", "Frightened", "Poisoned", "Prone", "Restrained"):
-        if cond in active:
-            dis_sources.append(cond)
-    # The creature's OWN attack rolls have advantage:
-    if "Invisible" in active:
-        adv_sources.append("Invisible")
-    if char.get("exhaustion", 0) >= 3:
-        dis_sources.append("Exhaustion (3+)")
-    has_adv = bool(adv_sources)
-    has_dis = bool(dis_sources)
-    if has_adv and has_dis:
-        # Cancel per the real rule — neither applies, but still worth
-        # surfacing why in the sources list for the tooltip.
-        return {"advantage": False, "disadvantage": False,
-                "sources": adv_sources + dis_sources,
-                "note": "Advantage and disadvantage sources both present — they cancel out."}
-    return {"advantage": has_adv, "disadvantage": has_dis,
-            "sources": adv_sources + dis_sources, "note": ""}
+def get_condition_attack_status(char: dict, extra_adv=()) -> dict:
+    """Reminder flags for an attack row: whether the sheet knows a source
+    of advantage or disadvantage on your attack rolls (roll_reminder:
+    conditions, exhaustion, Steady Aim...). Both can be on; the roll
+    itself is always one d20, since the table decides.
+    Returns {'advantage': bool, 'disadvantage': bool, 'sources': [str],
+    'note': the reminder}."""
+    r = roll_reminder(char, "attack", extra_adv=extra_adv)
+    return {"advantage": bool(r["advantage"]), "disadvantage": bool(r["disadvantage"]),
+            "sources": r["advantage"] + r["disadvantage"], "note": r["text"]}
 
 
 def get_weapon_attack_breakdown(char: dict, ability: str, proficient: bool,
@@ -2118,10 +2205,12 @@ def get_effective_speed(char: dict) -> dict:
     from .magic_items import parse_magic_suffix
     base = char.get("speed", 30) + char.get("monk_speed_bonus", 0) + char.get("magic_speed_bonus", 0)
 
-    # Subrace walking speed bonuses: Wood Elf, Half-Elf Wood Descent, and
-    # Shifter Swiftstride each grant +5 ft base walking speed.
+    # Subrace walking speed bonuses: Wood Elf, Half-Elf Wood Descent and
+    # Mark of Passage (Courier's Speed) each grant +5 ft base walking speed
+    # (a Swiftstride shifter's +10 ft is only while shifted: core/effects.py
+    # effect_speed).
     subrace_speed = (char.get("subrace") or "").lower()
-    if "wood" in subrace_speed or "swiftstride" in subrace_speed:
+    if _fleet_of_foot(char):
         base += 5
 
     # Race-granted swim/climb speeds. Each race's specific value is used
@@ -2130,7 +2219,8 @@ def get_effective_speed(char: dict) -> dict:
     race_name_sp = (char.get("species") or char.get("race", "")).strip()
     race_swim_bonus = 0
     race_climb_bonus = 0
-    if race_name_sp in ("Locathah", "Triton", "Merfolk"):
+    from dnd_app.data.races import half_elf_variant
+    if race_name_sp in ("Locathah", "Triton", "Merfolk") or half_elf_variant(char) == "Swim":
         race_swim_bonus = 30
     elif race_name_sp == "Tabaxi":
         race_climb_bonus = 20
@@ -2229,6 +2319,11 @@ def get_effective_speed(char: dict) -> dict:
     # Squat Nimbleness (feat, Dwarf/Small race): always-on +5 ft.
     if "Squat Nimbleness" in char.get("feats", []):
         base += 5
+
+    # Heavy armor you aren't strong enough for: -10 ft (a dwarf's isn't reduced)
+    penalty = _heavy_armor_speed_penalty(char)
+    if penalty:
+        base += penalty[1]
 
     walk = effect_speed(char, base)
     exh = char.get("exhaustion", 0)
@@ -2818,8 +2913,16 @@ def update_all(char: dict) -> dict:
             "name": "Shifting", "key": "shifting",
             "reset": "SR/LR", "current_max": 1, "track": "uses",
             "note": "Bonus action, 1 min (or until you revert as a bonus action): gain temp HP "
-                    "equal to your proficiency bonus + CON modifier (min 1), plus subrace-specific "
+                    "equal to your level + CON modifier (min 1), plus subrace-specific "
                     "benefits while shifted.",
+            "source_class": "", "subclass": "",
+        })
+    if char_race_res == "Shifter (MPMM)":
+        new_resources.append({
+            "name": "Shifting", "key": "shifting",
+            "reset": "LR", "current_max": get_prof_bonus(char), "track": "uses",
+            "note": "Bonus action, 1 min (or until you revert as a bonus action): gain temp HP "
+                    "equal to twice your proficiency bonus, plus your shifter kind's benefit while shifted.",
             "source_class": "", "subclass": "",
         })
 
@@ -3355,7 +3458,8 @@ def update_all(char: dict) -> dict:
             "note": "Bonus action: Dash, gaining temp HP equal to your proficiency bonus.",
             "source_class": "", "subclass": "",
         })
-    if race_res in ("half-orc", "orc"):
+    from dnd_app.data.races import keeps_race_traits
+    if race_res in ("half-orc", "orc") and keeps_race_traits(char):   # not a Mark of Finding half-orc
         new_resources.append({
             "name": "Relentless Endurance", "key": "relentless_endurance",
             "reset": "LR", "current_max": 1, "track": "uses",

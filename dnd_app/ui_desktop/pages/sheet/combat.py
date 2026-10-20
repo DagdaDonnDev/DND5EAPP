@@ -392,22 +392,23 @@ class CombatMixin:
         container.addWidget(new_card, 4)
 
     def _wildshape_transform(self, beast_name: str):
+        """Transform (core/action_use.py wild_shape_into: the use or two
+        it costs, the beast's hit points), then show the beast."""
         if not beast_name: return
-        from dnd_app.data.statblocks import WILDSHAPE_BEASTS
-        beast = WILDSHAPE_BEASTS.get(beast_name)
-        if not beast: return
-        if not self._spend_wildshape_use():
-            self._toast("No Wild Shape uses remaining — available again after a short or long rest.")
+        from dnd_app.core.action_use import wild_shape_into
+        ok, msg = wild_shape_into(self.char, beast_name)
+        self._toast(msg)
+        if not ok:
             return
-        self.char["_wildshape_active"] = beast_name
-        self.char["_wildshape_hp"] = beast["hp"]
-        if "Wild Shape" not in self.char.get("active_effects", []):
-            self.char.setdefault("active_effects", []).append("Wild Shape")
+        self._wildshape_shown()
+
+    def _wildshape_shown(self):
+        """After a transform (here or from the Wild Shape action card): the
+        sheet, the combat page and the Wild Shape card show the beast."""
         self._mark_dirty()
         self.ctrl.refresh()
         self._refresh_combat()
         self._rebuild_wildshape_card()
-        self._toast(f"Transformed into {beast_name}")
 
     def _wildshape_moon_heal(self):
         """Circle of the Moon's Combat Wild Shape: spend a spell slot as
@@ -1094,16 +1095,6 @@ class CombatMixin:
         if note:
             self._toast(note)
 
-    def _attack_d20(self):
-        """The d20 for an attack roll, with condition advantage/disadvantage
-        applied (Poisoned, Prone, Invisible, ...). Returns (kept die, a
-        line explaining a two-dice roll, or "")."""
-        from dnd_app.core.calculator import condition_roll_mode, roll_d20, describe_roll
-        cm = condition_roll_mode(self.char, "attack")
-        r = roll_d20(cm["mode"])
-        note = describe_roll(r, cm["sources"])
-        return r["d20"], (note + "\n") if note else ""
-
     # ═══ Turn tracker ══════════════════════════════════════════════════════
     def _turn_limit(self, bucket: str) -> int:
         from dnd_app.core.effects import has_extra_action
@@ -1594,12 +1585,13 @@ class CombatMixin:
         row_f.setStyleSheet(f"QFrame{{background:{SURF2};border:1px solid {BORDER};border-radius:8px;}}")
         rl = self._attack_row_layout(row_f)
         rl.addWidget(_lbl(name, TEXT, FS_BODY, bold=True, wrap=False))
+        # a reminder of what the sheet knows gives advantage or disadvantage
+        # (the roll is one d20 either way -- the table decides)
         cond_status = get_condition_attack_status(self.char)
         atk_text = f"{atk} to hit"
-        if cond_status["advantage"]:
-            atk_text += "  (ADV)"
-        elif cond_status["disadvantage"]:
-            atk_text += "  (DISADV)"
+        if cond_status["advantage"] or cond_status["disadvantage"]:
+            atk_text += "  (" + "/".join(t for t, on in (("ADV", cond_status["advantage"]),
+                                                         ("DISADV", cond_status["disadvantage"])) if on) + ")"
         atk_lbl = _lbl(atk_text, TEAL2 if w["proficient"] else AMBER, FS_BODY, wrap=False)
         if not w["proficient"]:
             atk_lbl.setToolTip(

@@ -495,12 +495,16 @@ class BaseSheetMixin:
         # dawn comes: magic items get their charges back (core/magic_items.py)
         from dnd_app.core.magic_items import charges_at_dawn
         dawn = charges_at_dawn(char)
+        # a Diviner's new Portent rolls (core/action_use.py)
+        from dnd_app.core.action_use import roll_portent
+        portent = roll_portent(char)
         rebuild(char); update_all(char)
         self.ctrl.refresh()
         self._mark_dirty()
         self._apply_rest_options(selected_options)
         from dnd_app.data.flavor_text import random_long_rest_dream
         items = ("\nAt dawn: " + "; ".join(dawn)) if dawn else ""
+        items += f"\n{portent}" if portent else ""
         if expired:
             self._toast(f"Faded: {', '.join(expired)}{items}")
         else:
@@ -646,17 +650,6 @@ class BaseSheetMixin:
         if "pact_talisman_replace" in selected:
             self._toast("Received a replacement Talisman from your patron")
             changed_anything = True
-
-        if "guidance_spirits_swap" in selected:
-            from dnd_app.core.choices import ALL_SKILLS
-            current = char.get("_choices", {}).get("guidance_of_the_spirits_skill", [])
-            choice, ok = QInputDialog.getItem(
-                self, "Guidance of the Spirits", "New skill:", ALL_SKILLS,
-                ALL_SKILLS.index(current[0]) if current and current[0] in ALL_SKILLS else 0, False)
-            if ok and choice:
-                char.setdefault("_choices", {})["guidance_of_the_spirits_skill"] = [choice]
-                self._toast(f"Guidance of the Spirits now grants {choice}")
-                changed_anything = True
 
         if "whispers_dead_swap" in selected:
             from dnd_app.core.choices import ALL_SKILLS

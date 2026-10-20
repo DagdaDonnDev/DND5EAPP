@@ -82,6 +82,30 @@ RACE_SKILL_CHOICES = {
                   "label": "Ancestral Legacy (Hexblood): choose 2 skill proficiencies"},
     "Reborn":    {"count": 2, "pool": ALL_SKILLS,
                   "label": "Ancestral Legacy (Reborn): choose 2 skill proficiencies"},
+    "Centaur (MPMM)": {"count": 1, "pool": ["Animal Handling","Medicine","Nature","Survival"],
+                       "label": "Natural Affinity (Centaur): choose 1 of Animal Handling, Medicine, Nature, Survival"},
+    "Changeling": {"count": 2, "pool": ["Deception","Insight","Intimidation","Persuasion"],
+                   "label": "Changeling Instincts: choose 2 of Deception, Insight, Intimidation, Persuasion"},
+    "Changeling (MPMM)": {"count": 2, "pool": ["Deception","Insight","Intimidation","Performance","Persuasion"],
+                          "label": "Changeling Instincts: choose 2 of Deception, Insight, Intimidation, "
+                                   "Performance, Persuasion"},
+    "Lizardfolk": {"count": 2, "pool": ["Animal Handling","Nature","Perception","Stealth","Survival"],
+                   "label": "Hunter's Lore (Lizardfolk): choose 2 of Animal Handling, Nature, Perception, "
+                            "Stealth, Survival"},
+    "Lizardfolk (MPMM)": {"count": 2, "pool": ["Animal Handling","Medicine","Nature","Perception","Stealth","Survival"],
+                          "label": "Nature's Intuition (Lizardfolk): choose 2 of Animal Handling, Medicine, Nature, "
+                                   "Perception, Stealth, Survival"},
+    "Tortle (MPMM)": {"count": 1, "pool": ["Animal Handling","Medicine","Nature","Perception","Stealth","Survival"],
+                      "label": "Nature's Intuition (Tortle): choose 1 of Animal Handling, Medicine, Nature, "
+                               "Perception, Stealth, Survival"},
+    "Orc (VGM/MTF)": {"count": 2, "pool": ["Animal Handling","Insight","Intimidation","Medicine","Nature",
+                                            "Perception","Survival"],
+                      "label": "Primal Intuition (Orc): choose 2 of Animal Handling, Insight, Intimidation, "
+                               "Medicine, Nature, Perception, Survival"},
+    "Shifter (MPMM)": {"count": 1, "pool": ["Acrobatics","Athletics","Intimidation","Survival"],
+                       "label": "Bestial Instincts (Shifter): choose 1 of Acrobatics, Athletics, Intimidation, Survival"},
+    "Kender": {"count": 1, "pool": ["Insight","Investigation","Sleight of Hand","Stealth","Survival"],
+               "label": "Kender Curiosity: choose 1 of Insight, Investigation, Sleight of Hand, Stealth, Survival"},
 }
 
 
@@ -178,8 +202,12 @@ def feat_prereq_met(char: dict, feat: dict) -> tuple[bool, str]:
             ok = any(n in race for n in needles)
         return (ok, prereq)
 
-    # Anything else (campaign-specific, "No other dragonmark", etc.) —
-    # left unenforced, same as before.
+    # Aberrant Dragonmark: not with a dragonmark of your own (a Mark of ... subrace)
+    if prereq.lower() == "no other dragonmark":
+        mark = (char.get("subrace") or "").startswith("Mark of")
+        return (not mark, f"{prereq} (you have the {char.get('subrace')})" if mark else prereq)
+
+    # Anything else (campaign-specific) — left unenforced, same as before.
     return True, ""
 
 
@@ -246,19 +274,6 @@ def _get_subclass_choices(char):
                     "type": "skill_prof", "count": 1,
                     "pool": ["Deception", "Performance", "Persuasion"],
                     "label": "Otherworldly Glamour: choose Deception, Performance or Persuasion",
-                    "already_chosen": already,
-                })
-
-        # Guidance of the Spirits (Bard, College of Spirits, 3rd level):
-        # skill choice, swappable on long rest via RestOptionsDialog.
-        if cname == "Bard" and clvl >= 3 and "spirits" in sub:
-            key = "guidance_of_the_spirits_skill"
-            already = made.get(key, [])
-            if not already:
-                choices.append({
-                    "id": key, "source": "subclass", "source_name": "Guidance of the Spirits",
-                    "type": "skill_prof", "count": 1, "pool": ALL_SKILLS,
-                    "label": "Choose a skill for Guidance of the Spirits (swappable on long rest)",
                     "already_chosen": already,
                 })
 
@@ -1166,6 +1181,24 @@ def _get_feat_choices(char):
                     "already_chosen": already,
                 })
 
+    # Strike of the Giants: which giant's strike (the feats that follow it
+    # name it, but the first one needs a pick)
+    if "Strike of the Giants" in all_feats:
+        key = "feat_strike_of_the_giants"
+        if not made.get(key):
+            choices.append({
+                "id": key, "source": "feat", "source_name": "Strike of the Giants",
+                "type": "fighting_style", "count": 1,
+                "pool": ["Cloud Strike – 1d4 thunder; WIS save or you're invisible to the target",
+                         "Fire Strike – 1d10 fire",
+                         "Frost Strike – 1d6 cold; CON save or its speed is 0",
+                         "Hill Strike – 1d6 of the weapon's type; STR save or prone",
+                         "Stone Strike – 1d6 force; STR save or pushed 10 ft",
+                         "Storm Strike – 1d6 lightning; CON save or disadvantage on its attacks"],
+                "label": "Choose your strike (Strike of the Giants)",
+                "already_chosen": made.get(key, []),
+            })
+
     if "Ritual Caster" in all_feats:
         key = "feat_ritual_caster_spells"
         already = made.get(key, [])
@@ -1426,8 +1459,21 @@ def _get_race_choices(char):
     made = char.get("_choices",{})
     race = char.get("species") or char.get("race","")
 
-    if race in RACE_SKILL_CHOICES:
-        cfg = RACE_SKILL_CHOICES[race]
+    # by race, or by race and subrace ("Human (Variant)"); a half-elf's
+    # Skill Versatility only when it has it (not a dragonmark, nor a
+    # descent that took another variant feature)
+    from dnd_app.data.races import HALF_ELF_VARIANTS, half_elf_variant
+    cfg = RACE_SKILL_CHOICES.get(race) or RACE_SKILL_CHOICES.get(f"{race} ({char.get('subrace') or ''})")
+    if race == "Half-Elf" and half_elf_variant(char) != "Skill Versatility":
+        cfg = None
+    if race == "Half-Elf" and (char.get("subrace") or "") in HALF_ELF_VARIANTS and not made.get("half_elf_variant"):
+        choices.append({
+            "id": "half_elf_variant", "source": "race", "source_name": f"Half-Elf ({char.get('subrace')})",
+            "type": "fighting_style", "count": 1, "pool": HALF_ELF_VARIANTS[char.get("subrace")],
+            "label": "Half-elf variant feature: choose one (in place of Skill Versatility)",
+            "already_chosen": [],
+        })
+    if cfg:
         already = made.get("race_skill_profs",[])
         if len(already) < cfg["count"]:
             choices.append({
@@ -1438,6 +1484,102 @@ def _get_race_choices(char):
                 "pool": cfg["pool"],
                 "label": cfg["label"],
                 "already_chosen": already,
+            })
+
+    # Variant Human: +1 to two ability scores of your choice, and a feat
+    # (both go if the race or subrace changes: core/choices.py change_and_prune)
+    if race == "Human" and (char.get("subrace") or "") == "Variant":
+        if not made.get("variant_human_asi"):
+            choices.append({
+                "id": "variant_human_asi", "source": "race", "source_name": "Human (Variant)",
+                "type": "asi", "count": 1, "pool": None,
+                "label": "Variant Human: +1 to two ability scores of your choice",
+                "already_chosen": [],
+            })
+        if not made.get("variant_human_feat"):
+            choices.append({
+                "id": "variant_human_feat", "source": "race", "source_name": "Human (Variant)",
+                "type": "feat", "count": 1, "pool": None,
+                "label": "Variant Human: choose a feat",
+                "already_chosen": [],
+            })
+
+    # A dragonmark's "+1 to one other ability of your choice" (Mark of
+    # Detection, Handling, Making, Passage): not the one with the +2
+    from dnd_app.data.races import DRAGONMARK_FLEX_ASI
+    mark = char.get("subrace") or ""
+    if DRAGONMARK_FLEX_ASI.get(mark) and not made.get("dragonmark_asi"):
+        fixed = DRAGONMARK_FLEX_ASI[mark]
+        choices.append({
+            "id": "dragonmark_asi", "source": "race", "source_name": mark,
+            "type": "asi", "count": 1, "pool": None, "points": 1, "exclude": [fixed],
+            "label": f"{mark}: +1 to one ability other than {fixed}",
+            "already_chosen": [],
+        })
+
+    # A subrace whose ability scores are yours to choose (Fizban's
+    # dragonborn): +2 to one and +1 to another, or +1 to three -- three
+    # points, at most two on one ability
+    from dnd_app.data.races import FLEX_ASI_SUBRACES
+    sub = char.get("subrace") or ""
+    if (race, sub) in FLEX_ASI_SUBRACES and not made.get("race_flex_asi"):
+        choices.append({
+            "id": "race_flex_asi", "source": "race", "source_name": f"{race} ({sub})",
+            "type": "asi", "count": 1, "pool": None, "points": 3, "max_per": 2,
+            "label": f"{sub} {race}: +2 to one ability and +1 to another, or +1 to three",
+            "already_chosen": [],
+        })
+
+    # A kobold's (MPMM) Kobold Legacy, and what Craftiness or Draconic
+    # Sorcery then asks for (Defiance is a saving throw advantage:
+    # core/calculator.py)
+    if race == "Kobold (MPMM)":
+        from dnd_app.data.races import KOBOLD_LEGACIES, kobold_legacy
+        if not made.get("kobold_legacy"):
+            choices.append({
+                "id": "kobold_legacy", "source": "race", "source_name": race,
+                "type": "fighting_style", "count": 1, "pool": KOBOLD_LEGACIES,
+                "label": "Kobold Legacy: choose one", "already_chosen": [],
+            })
+        legacy = kobold_legacy(char)
+        if legacy == "Craftiness" and len(made.get("race_skill_profs", [])) < 1:
+            choices.append({
+                "id": "race_skill_profs", "source": "race", "source_name": race,
+                "type": "skill_prof", "count": 1,
+                "pool": ["Arcana", "Investigation", "Medicine", "Sleight of Hand", "Survival"],
+                "label": "Craftiness (Kobold): choose 1 of Arcana, Investigation, Medicine, Sleight of Hand, Survival",
+                "already_chosen": made.get("race_skill_profs", []),
+            })
+        if legacy == "Draconic Sorcery" and not made.get("race_sorcerer_cantrip"):
+            from dnd_app.data.spells import ALL_SPELLS
+            choices.append({
+                "id": "race_sorcerer_cantrip", "source": "race", "source_name": "Draconic Sorcery",
+                "type": "fighting_style", "count": 1,
+                "pool": sorted({s["name"] for s in ALL_SPELLS
+                                if s.get("level") == 0 and "Sorcerer" in s.get("classes", [])}),
+                "label": "Draconic Sorcery: choose a sorcerer cantrip", "already_chosen": [],
+            })
+
+    # A race's (or subrace's) tool of your choice
+    from dnd_app.data.items import ARTISAN_TOOLS, INSTRUMENT_TOOLS
+    race_tools = {
+        "Dwarf": (1, ["Smith's tools", "Brewer's supplies", "Mason's tools"],
+                  "Tool Proficiency (Dwarf): choose smith's tools, brewer's supplies or mason's tools"),
+        "Satyr": (1, INSTRUMENT_TOOLS, "Reveler (Satyr): choose a musical instrument"),
+        "Satyr (MPMM)": (1, INSTRUMENT_TOOLS, "Reveler (Satyr): choose a musical instrument"),
+        "Human (Mark of Making)": (1, ARTISAN_TOOLS,
+                                   "Maker's Gift (Mark of Making): choose one type of artisan's tools"),
+        "Autognome": (2, None, "Specialized Design (Autognome): choose 2 tool proficiencies"),
+    }
+    tool = race_tools.get(race) or race_tools.get(f"{race} ({char.get('subrace') or ''})")
+    if tool:
+        count, pool, label = tool
+        already_tl = made.get("race_tool_profs", [])
+        if len(already_tl) < count:
+            choices.append({
+                "id": "race_tool_profs", "source": "race", "source_name": race,
+                "type": "tool_prof", "count": count, "pool": pool, "label": label,
+                "already_chosen": already_tl,
             })
 
     # Aasimar (MPMM) Celestial Revelation: lets the player select which
@@ -1573,8 +1715,20 @@ def _get_race_choices(char):
                 "already_chosen": already_season,
             })
 
-    # Human extra language
-    if race == "Human":
+    # Another race's languages of your choice ("Common and one other of your
+    # choice"; a human's is its Extra Language just below)
+    from dnd_app.data.races import race_language_picks
+    n_lang, lang_pool = race_language_picks(race, char.get("subrace") or "")
+    if n_lang and race != "Human" and len(made.get("race_languages", [])) < n_lang:
+        choices.append({
+            "id": "race_languages", "source": "race", "source_name": race,
+            "type": "language", "count": n_lang, "pool": lang_pool or LANGUAGES,
+            "label": f"{race}: choose {n_lang} language{'s' if n_lang > 1 else ''}",
+            "already_chosen": made.get("race_languages", []),
+        })
+
+    # Human extra language (not with the Mark of Finding: Common and Goblin)
+    if race == "Human" and (char.get("subrace") or "") != "Mark of Finding":
         already = made.get("human_extra_language",[])
         if not already:
             choices.append({
@@ -1591,7 +1745,7 @@ def _get_race_choices(char):
     # default can be guessed here any more than a Genie's kind could.
     subrace = char.get("subrace", "") or ""
     is_high_elf = race == "Elf" and "high" in subrace.lower()
-    is_high_half_elf = race == "Half-Elf" and "high" in subrace.lower()
+    is_high_half_elf = race == "Half-Elf" and "high" in subrace.lower() and half_elf_variant(char) == "Cantrip"
     if is_high_elf or is_high_half_elf:
         from dnd_app.data.spells import ALL_SPELLS
         wiz_cantrips = sorted({s["name"] for s in ALL_SPELLS
@@ -1658,6 +1812,10 @@ def _get_race_choices(char):
     ability_source = RACES_WITH_ABILITY_CHOICE.get(race)
     if not ability_source and race == "Yuan-ti Pureblood" and "mpmm" in subrace.lower():
         ability_source = "Innate Spellcasting"
+    if not ability_source and race == "Kobold (MPMM)":
+        from dnd_app.data.races import kobold_legacy
+        if kobold_legacy(char) == "Draconic Sorcery":
+            ability_source = "Draconic Sorcery"
     if ability_source:
         key = "racial_spell_ability"
         already = made.get(key, [])
@@ -1898,7 +2056,7 @@ def _trim_over_count(char: dict) -> dict:
 # answer looks superficially complete". Astral Elf and Githyanki (MPMM)
 # happen to share the same two ids since they're mechanically identical.
 RACE_SCOPED_CHOICE_IDS = {
-    "race_skill_profs", "race_tool_profs", "race_skill_or_tool_profs",
+    "race_skill_profs", "race_tool_profs", "race_skill_or_tool_profs", "race_languages",
     "aasimar_revelation", "astral_knowledge_skill",
     "astral_knowledge_weapon_or_tool", "eladrin_season", "human_extra_language",
 }

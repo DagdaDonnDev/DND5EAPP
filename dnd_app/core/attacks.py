@@ -48,28 +48,35 @@ def _mod_text(n: int) -> str:
 
 
 def _dmg(die: str, mod: int) -> str:
-    """"1d8" + 3 -> "1d8+3"; nothing to add -> just "1d8"."""
+    """"1d8" + 3 -> "1d8+3"; nothing to add -> just "1d8"; a plain number
+    (an unarmed strike's 1) -> the total: "4"."""
     if not die or die == "—":
         return die
+    if str(die).isdigit():
+        return str(max(1, int(die) + mod))
     return f"{die}{_mod_text(mod)}" if mod else die
 
 
 def _attack(char, name, die, damage_type, stat, *, badge="", note="", kind="natural", tone="natural",
             melee=True, ranged=False, no_mod=False, atk_extra=0, dmg_extra=0, hybrid=False, extra_riders=(),
             finesse=False, thrown=False, base=""):
+    """kind "spell": a spell attack (Radiant Sun Bolt, Luminous Arrow) --
+    only what adds to any attack rides on it (Hex, Genie's Wrath...), not
+    what needs a weapon."""
     from dnd_app.core.character import ability_mod
     from dnd_app.core.calculator import get_prof_bonus
-    from dnd_app.core.riders import weapon_riders, live_riders
+    from dnd_app.core.riders import weapon_riders, live_riders, spell_attack_riders
     mod = ability_mod(char, stat)
     weapon = {"name": name, "base": base, "kind": kind, "die": die, "damage_type": damage_type.split(" ")[0].rstrip(","),
               "melee": melee, "ranged": ranged, "hybrid": hybrid, "finesse": finesse, "thrown": thrown}
     dmg_mod = mod + dmg_extra
+    riders = spell_attack_riders(char) if kind == "spell" else weapon_riders(char, weapon)
     return {
         "name": name, "badge": badge, "note": note, "stat": stat,
         "atk": get_prof_bonus(char) + mod + atk_extra, "atk_extra": atk_extra,
         "die": die, "damage": die if no_mod else _dmg(die, dmg_mod),
         "damage_type": damage_type, "kind": kind, "melee": melee, "ranged": ranged, "tone": tone,
-        "riders": weapon_riders(char, weapon) + live_riders(char, list(extra_riders)),
+        "riders": riders + live_riders(char, list(extra_riders)),
     }
 
 
@@ -172,6 +179,29 @@ def other_attacks(char: dict) -> list:
                            finesse=True, thrown=True, tone="natural",
                            note="A blade of psychic energy: finesse, thrown 60 ft, vanishes after the hit or "
                                 "miss. As a bonus action after attacking with one, a second blade: 1d4 psychic."))
+    # Spell attacks of a class's own: Radiant Sun Bolt, the Archer's
+    # Luminous Arrow, the Fathomless warlock's tentacle
+    sab = char.get("spell_attack_bonus", 0) or 0
+    if monk and cl.get("Monk", 0) >= 3 and "sun soul" in subs.get("Monk", "").lower():
+        out.append(_attack(char, "Radiant Sun Bolt", ma_die, "radiant", "DEX", badge="Sun Soul", kind="spell",
+                           melee=False, ranged=True, atk_extra=sab, tone="monk",
+                           note="A ranged spell attack, 30 ft, in place of one attack of your Attack action. "
+                                "After using it in that action, you can spend 1 ki to make it twice more with "
+                                "your bonus action."))
+    star = ((char.get("effect_details") or {}).get("Starry Form") or {}).get("choice")
+    if "Starry Form" in fx and star == "Archer":
+        out.append(_attack(char, "Luminous Arrow", "2d8" if cl.get("Druid", 0) >= 10 else "1d8", "radiant", "WIS",
+                           badge="Starry Form", kind="spell", melee=False, ranged=True, atk_extra=sab,
+                           note="A ranged spell attack, 60 ft: when you take the form, and with your bonus action "
+                                "on later turns while it lasts."))
+    if "Tentacle of the Deeps" in fx:
+        from dnd_app.core.calculator import _detect_spell_ability
+        out.append(_attack(char, "Tentacle of the Deeps", "2d8" if cl.get("Warlock", 0) >= 10 else "1d8", "cold",
+                           _detect_spell_ability(char) or "CHA", badge="Fathomless", kind="spell", no_mod=True,
+                           atk_extra=sab,
+                           note="A melee spell attack against a creature within 10 ft of the tentacle; on a hit "
+                                "its speed drops by 10 ft until the start of your next turn. Your bonus action "
+                                "moves the tentacle up to 30 ft and attacks again."))
     # Shadow Blade (the spell): a weapon you hold while it lasts
     if "Shadow Blade" in fx:
         lvl = int(((char.get("effect_details", {}) or {}).get("Shadow Blade", {}) or {}).get("level") or 2)
@@ -425,14 +455,20 @@ def crit_range(char: dict) -> int:
 
 
 def roll_attack(char: dict, row: dict, rng=None) -> dict:
-    """The d20 for an attack with this row: advantage or disadvantage from
-    conditions (two dice, one kept). {"d20", "rolls", "mode", "note",
-    "total", "crit", "nat20", "nat1"}"""
-    from dnd_app.core.calculator import condition_roll_mode, roll_d20, describe_roll
-    cm = condition_roll_mode(char, "attack")
-    r = roll_d20(cm["mode"], rng)
+    """The d20 for an attack with this row -- always one: advantage and
+    disadvantage are the table's call (cover, the target, your DM), so
+    what the sheet knows of them (Reckless Attack, Steady Aim, Poisoned,
+    exhaustion...) is a reminder in the note. Steady Aim is for one attack
+    roll, so this roll uses it up.
+    {"d20", "rolls", "mode", "note", "total", "crit", "nat20", "nat1"}"""
+    from dnd_app.core.calculator import roll_d20, roll_reminder
+    reminder = roll_reminder(char, "attack", extra_adv=["Reckless Attack"] if row.get("reckless") else [])
+    r = roll_d20("normal", rng)
+    fx = char.get("active_effects", [])
+    if "Steady Aim" in fx:
+        char["active_effects"] = [n for n in fx if n != "Steady Aim"]
     atk = row.get("atk") or 0
-    return {"d20": r["d20"], "rolls": r["rolls"], "mode": r["mode"], "note": describe_roll(r, cm["sources"]),
+    return {"d20": r["d20"], "rolls": r["rolls"], "mode": r["mode"], "note": reminder["text"],
             "total": r["d20"] + atk, "crit": r["d20"] >= crit_range(char), "nat20": r["d20"] == 20,
             "nat1": r["d20"] == 1}
 
@@ -472,6 +508,11 @@ def _can_pay(char, r, free) -> bool:
             card, bucket = item[1], item[2]
             if bucket != "Passive" and bucket not in free:
                 return False
+            if card == "Maneuver":
+                sd = au._find_pool(char, "sd")
+                if sd is None or (not au._unlimited(sd) and sd.get("current", 0) < 1):
+                    return False
+                continue
             if card == "Divine Smite":
                 if not any(s[1] == "slot" and s[2] <= 5 for s in au._slots_free(char)):
                     return False
@@ -483,6 +524,10 @@ def _can_pay(char, r, free) -> bool:
                     return False
                 continue
             if spec.get("once") and card in turn:
+                return False
+            if spec.get("needs") and au._need_problem(char, spec["needs"]):
+                return False
+            if spec.get("once_per") and card in (char.get("_once_per") or {}).get(spec["once_per"], []):
                 return False
             uses = au._uses_resource(char, card, spec) if spec.get("uses") else None
             if uses is not None and not au._unlimited(uses) and uses.get("current", 0) <= 0 and not spec.get("alt"):
@@ -589,6 +634,21 @@ def _followups(char, row, free) -> list:
     if "Tavern Brawler" in feats and row.get("kind") == "unarmed":
         out.append(("Tavern Brawler", "Grapple", "", "Tavern Brawler: try to grapple the target",
                     BA, "Grapple with your bonus action (Tavern Brawler)"))
+    # Soulknife: a second psychic blade, a d4
+    if row.get("name") == "Psychic Blade":
+        dmg = f"{_dmg('1d4', ability_mod(char, row.get('stat') or 'DEX'))} psychic"
+        out.append(("Second psychic blade", "Second psychic blade", dmg, "With your other hand free",
+                    BA, f"A second psychic blade with your bonus action: {dmg} on a hit"))
+    # Sudden Strike (Scout 17th): one more attack, Sneak Attack can apply to another target
+    if cl.get("Rogue", 0) >= 17 and "scout" in subclasses(char).get("Rogue", "").lower():
+        out.append(("Sudden Strike", "Sudden Strike", "1 more attack",
+                    "Its Sneak Attack can't be on a creature you've already Sneak Attacked this turn",
+                    BA, "Sudden Strike: 1 more attack with your bonus action"))
+    # Great Weapon Master: after a critical hit, or a hit that drops a creature to 0 HP
+    if "Great Weapon Master" in feats and row.get("kind") == "weapon" and row.get("melee"):
+        out.append(("Great Weapon Master", "Great Weapon Master attack", "1 more melee weapon attack",
+                    "After a critical hit, or a hit that drops a creature to 0 hit points",
+                    BA, "Great Weapon Master: 1 more melee weapon attack with your bonus action"))
     return out
 
 
@@ -672,8 +732,11 @@ def attack_report(char: dict, row: dict, roll: dict, free=("Action", "Bonus Acti
     options = []
     if not nat1:
         # what you can add, with its cost -- only what you can pay for now
+        offered = {r.get("group") for r in riders if r.get("use") == "option" and _can_pay(char, r, free)}
         for r in riders:
             if r.get("use") != "option" or not _can_pay(char, r, free):
+                continue
+            if r.get("needs") and r["needs"] not in offered:
                 continue
             if ("smite",) in [tuple(x) for x in r.get("pay") or []]:
                 two = char.get("edition") == "2024"
@@ -694,10 +757,11 @@ def attack_report(char: dict, row: dict, roll: dict, free=("Action", "Bonus Acti
                                     "group": "", "needs": "Divine Smite", "section": "add",
                                     "head": "", "head_note": ""})
                 continue
+            dice = r["dice"] if r.get("apart") else twice(r["dice"])
             options.append({"key": r["source"], "title": r["source"],
-                            "dice": f"+{twice(r['dice'])} {r['type']}".strip() if r["dice"] else "",
-                            "cost": r.get("cost", ""), "group": "", "needs": "", "section": "add",
-                            "head": "", "head_note": ""})
+                            "dice": f"+{dice} {r['type']}".strip() if r["dice"] else "",
+                            "cost": r.get("cost", ""), "group": r.get("group", ""), "needs": r.get("needs", ""),
+                            "section": "add", "head": "", "head_note": ""})
     # what your bonus action can do
     for key, title, what, sub, pay, said in _followups(char, row, free):
         options.append({"key": key, "title": title, "dice": what, "cost": sub,
@@ -837,6 +901,8 @@ def take_attack_options(char: dict, row: dict, picked, answers: dict, hit: bool 
         r = by_name.get(key)
         if r is None or not hit:
             continue
+        if r.get("needs") and not any(by_name[k].get("group") == r["needs"] for k in picked if k in by_name):
+            continue
         if done not in answers:
             got = {"spent": [], "notes": [], "ok": True}
             for item in r.get("pay") or []:
@@ -875,22 +941,39 @@ def take_attack_options(char: dict, row: dict, picked, answers: dict, hit: bool 
                     if res.get("ask"):
                         ask = dict(res["ask"])
                         ask["key"] = f"{key}:{ask['key']}"
-                        ask["title"] = f"{key}: {ask['title']}"
+                        if not ask["title"].startswith(key):
+                            ask["title"] = f"{key}: {ask['title']}"
                         return result(ask)
                     if not res.get("ok"):
                         got = {"spent": [], "notes": [res.get("toast") or f"{key}: can't add it now"], "ok": False}
                         break
                     if res.get("slot"):
                         slots.append(res["slot"])
-                    m = re.search(r"\(([^()]*(?:spent|left)[^()]*)\)\s*$", res.get("toast") or "")
+                    toast = res.get("toast") or ""
+                    m = re.search(r"\(([^()]*(?:spent|left)[^()]*)\)\s*$", toast)
                     got["spent"].append(f"{key} ({m.group(1)})" if m else key)
+                    # what it does, said by its card ("the target makes a DC 15 CON save...")
+                    said_it = toast[:m.start()].strip() if m else toast.strip()
+                    if not r["dice"] and ":" in said_it:
+                        got["said"] = said_it
             answers[done] = got
             refresh = True
         got = answers[done]
         if got["ok"] and r["dice"]:
-            rolls.append({"dice": twice(r["dice"]), "type": r["type"], "source": key, "apart": False})
-        if got["ok"] and not r["dice"] and r.get("cost"):
-            notes.append(f"{key}: {r['cost'][0].lower() + r['cost'][1:]}")
+            rolls.append({"dice": r["dice"] if r.get("apart") else twice(r["dice"]), "type": r["type"],
+                          "source": key, "apart": bool(r.get("apart"))})
+        if got["ok"] and not r["dice"]:
+            # a maneuver or strike that adds dice to the hit (Trip Attack, Fire Strike): they're in the roll
+            m = re.search(r"\badd (\d+d\d+(?:\s*\+\s*\d+)?)\s+(?:(acid|bludgeoning|cold|fire|force|lightning|"
+                          r"necrotic|piercing|poison|psychic|radiant|slashing|thunder)\s+)?(?:damage\s+)?"
+                          r"to the (?:damage|hit)", got.get("said", ""))
+            if m:
+                rolls.append({"dice": twice(m.group(1).replace(" ", "")),
+                              "type": m.group(2) or row.get("damage_type", ""), "source": key, "apart": False})
+        if got["ok"] and r.get("then"):
+            notes.append(f"{key}: {r['then'][0].lower() + r['then'][1:]}")
+        elif got["ok"] and not r["dice"] and (got.get("said") or r.get("cost")):
+            notes.append(got.get("said") or f"{key}: {r['cost'][0].lower() + r['cost'][1:]}")
         spent.extend(got["spent"])
         notes.extend(got["notes"])
     # 4. what the hit (or the shot) itself set off -- once
@@ -898,6 +981,16 @@ def take_attack_options(char: dict, row: dict, picked, answers: dict, hit: bool 
         lines = []
         for r in riders:
             if r.get("use", "on") != "on":
+                continue
+            if r["source"] == "Precise Strike" and r.get("spend") == "hit":
+                # Squire of Solamnia: a use is spent only if the attack hits
+                char["active_effects"] = [n for n in char.get("active_effects", []) if n != "Precise Strike"]
+                refresh = True
+                if hit:
+                    res = au._own_resource(char, "Precise Strike")
+                    if res is not None and not au._unlimited(res):
+                        res["current"] = max(0, res.get("current", 0) - 1)
+                        lines.append(f"Precise Strike: a use spent ({res['current']} left)")
                 continue
             if r.get("spend") == "shot" or (hit and r.get("spend") == "hit"):
                 # a spell this hit carried: it goes off

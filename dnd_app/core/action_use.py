@@ -51,7 +51,8 @@ POOLS = {
 
 # Effects that last until the start of your next turn (or to the end of
 # this one): New Turn takes them off (new_turn below).
-TURN_EFFECTS = ("Reckless Attack", "Dodge", "Agile Parry", "Kensei's Shot", "Fighting Spirit")
+TURN_EFFECTS = ("Reckless Attack", "Dodge", "Agile Parry", "Kensei's Shot", "Fighting Spirit", "Steady Aim",
+                "Precise Strike", "Maelstrom Aura")
 
 _CLASSES = ("artificer", "barbarian", "bard", "blood hunter", "cleric", "druid", "fighter",
             "monk", "paladin", "ranger", "rogue", "sorcerer", "warlock", "wizard")
@@ -87,6 +88,11 @@ def normalize(name: str) -> str:
 RULES = {}
 
 
+def _mpmm(char):
+    """A Monsters of the Multiverse race (its traits count by proficiency bonus)."""
+    return "MPMM" in (char.get("species") or char.get("race", "") or "")
+
+
 def R(*names, exact=False, **spec):
     """Register a rule under each name — normalized ("Turn Undead
     (Channel Divinity)" finds "Turn Undead"), or the exact full name when
@@ -110,28 +116,18 @@ R("Defensive Field", uses="PB/LR", temp="artificer", replace_temp=True,
   say="temporary hit points equal to your Artificer level")
 R("Perfected Armor", uses="PB/LR", say="Guardian: pull the creature up to 25 ft toward you (STR save)")
 # Barbarian
-R("Magic Awareness", uses="PB/LR")
-R("Bolstering Magic", uses="PB/LR", roll="1d3", say="rolled {roll}: that many extra d3s, or a spell slot of that level")
-R("Call the Hunt", uses="PB/LR", needs="rage")
 R("Zealous Presence", uses="1/LR")
 R("Elemental Cleaver", needs="rage", fx="Elemental Cleaver", pick_weapon=True,
   pick_type=("Acid", "Cold", "Fire", "Lightning", "Thunder"))
-R("Mighty Impel", needs="rage")
-R("Storm Aura", needs="rage")
-R("Raging Storm", needs="rage")
-R("Fanatical Focus", needs="rage", say="reroll the failed saving throw (once per rage)")
-R("Spirit Shield", needs="rage", roll="NAMEDICE", damage=True, say="roll {roll} and take that much off the damage")
-R("Unstable Backlash", needs="rage", roll="1d8", say="Wild Magic table: rolled {roll}")
+R("Fanatical Focus", needs="rage", once_per="Rage", say="reroll the failed saving throw and use the new roll")
 R("Battlerager Charge", needs="rage", say="Dash as a bonus action")
 R("Battlerager Armor", needs="rage", say="attack with your armor spikes: 1d4 piercing")
 # Bard
 R("Enthralling Performance", uses="1/SR")
-R("Mystic Chronicle", uses="1/LR")
 R("Performance of Creation", uses="1/LR", alt=("slot", 2))
 R("Shadow Lore", uses="1/LR")
 R("Universal Speech", uses="1/LR", alt=("slot", 1))
 R("Words of Terror", uses="1/SR")
-R("Mantle of Inspiration", cost=("bi", 1))
 R("Mantle of Majesty", uses="1/LR")
 R("Unbreakable Majesty", uses="1/SR")
 R("Unsettling Words", cost=("bi", 1), roll="BI", say="the creature subtracts {roll} from its next saving throw")
@@ -140,9 +136,16 @@ R("Peerless Skill", cost=("bi", 1), roll="BI", say="add {roll} to the check")
 R("Infectious Inspiration", uses="CHA/LR")
 # Blood Hunter
 R("Blood Curse of the Howl", "Blood Curse of Corrosion", "Blood Curse of the Exorcist",
-  "Blood Curse of the Souleater", cost=("maledict", 1))
-R("Revealed Arcana", uses="1/LR", cost=("slot", "pact"))
-R("Unsealed Arcana", uses="1/LR")
+  "Blood Curse of the Souleater", "Blood Curse of the Anxious", "Blood Curse of Binding",
+  "Blood Curse of Bloated Agony", "Blood Curse of the Eyeless", "Blood Curse of the Fallen Puppet",
+  "Blood Curse of the Marked", "Blood Curse of the Muddled Mind", "Blood Curse of Spell Sunder",
+  "Blood Curse of the Exposed", cost=("maledict", 1), ask="Amplify the curse?", choose=[
+      {"label": "Invoke it", "say": ""},
+      {"label": "Amplify it (take your hemocraft die in necrotic damage)", "self_damage": "HEMODIE",
+       "say": "amplified"}])
+R("Revealed Arcana", uses="1/LR", cost=("slot", "pact"), spell=True,
+  say="cast your patron's Revealed Arcana spell with the Pact Magic slot")
+R("Unsealed Arcana", uses="1/LR", spell=True, say="cast your patron's Unsealed Arcana spell without a spell slot")
 R("Crimson Rite", self_damage="HEMODIE", fx="Crimson Rite", rite=True, again=True)
 R("Mutagencraft", cost=("mut", 1))
 R("Rite Revival", hp1=True, say="end your active rites: you drop to 1 hit point instead")
@@ -152,12 +155,10 @@ for _n in ("Arcane Abjuration", "Artisan's Blessing", "Charm Animals and Plants"
            "Twilight Sanctuary", "Feat of Strength", "Knowledge of the Ages", "Destructive Wrath",
            "Oketra's Blessing", "Rhonas' Blessing", "War God's Blessing"):
     R(_n, cost=("cd", 1))
-R("Guided Strike", cost=("cd", 1), say="+10 to the attack roll")
 R("Balm of Peace", cost=("cd", 1), roll="2d6+WIS", say="each creature you touch regains {roll} HP")
 R("Preserve Life", cost=("cd", 1), roll="5*cleric", say="share {roll} HP among creatures within 30 ft (up to half their maximum)")
 R("Radiance of the Dawn", cost=("cd", 1), roll="2d10+cleric", damage=True,
   say="the darkness is dispelled; roll {roll} radiant damage for each hostile creature within 30 ft (CON save halves)")
-R("Blessing of the Forge", uses="1/LR")
 R("Eyes of the Grave", uses="WIS/LR")
 R("Visions of the Past", uses="1/SR")
 R("Priest of Zeal", "Solidarity's Action", uses="WIS/LR")
@@ -176,7 +177,6 @@ R("Fungal Infestation", uses="WIS/LR")
 R("Halo of Spores", roll="HALO", damage=True, say="roll {roll} necrotic damage (CON save negates)")
 R("Symbiotic Entity", cost=("ws", 1), temp="4*druid", fx="Symbiotic Entity")
 # Fighter
-R("Arcane Shot", uses="2/SR", once=True)
 R("Telekinetic Master", uses="1/LR", alt=("psi", 1))
 R("Bulwark of Force", uses="1/LR", alt=("psi", 1))
 R("Telekinetic Adept", uses="1/SR", alt=("psi", 1), say="Psi-Powered Leap: fly at double your walking speed until the end of the turn")
@@ -185,27 +185,27 @@ R("Shadow Martyr", uses="1/SR")
 R("Strength before Death", uses="1/LR")
 R("Warding Maneuver", uses="CON/LR", roll="1d8", say="+{roll} AC against that attack; if it still hits, resistance to its damage")
 R("Fighting Spirit", uses="3/LR", fx="Fighting Spirit", temp="FIGHTINGSPIRIT")
-R("Action Surge", uses="1/SR", surge=True, slot=False, say="take one more action this turn")
-R("Fire Rune", uses="1/SR", slot=False,
-  say="add 2d6 fire damage to the hit; STR save or it's restrained, taking 2d6 fire each turn")
-R("Cloud Rune", "Stone Rune", uses="1/SR")
-R("Frost Rune", uses="1/SR", say="+2 to STR and CON checks and saves for 10 minutes")
-R("Hill Rune", uses="1/SR", say="resistance to bludgeoning, piercing and slashing damage for 1 minute")
-R("Storm Rune", uses="1/SR", say="for 1 minute, your reaction can give advantage or disadvantage to a roll within 60 ft")
 # Feats and races
-R("Stone's Endurance", uses="1/SR", roll="1d12+CON", damage=True, say="roll {roll} and take that much off the damage")
-R("Breath Weapon", uses="1/SR", roll="BW", damage=True, say="roll {roll} {ANCESTRY} damage (DC {BWDC} {BWSAVE} save halves)")
+R("Stone's Endurance", uses=lambda c: "PB/LR" if _mpmm(c) else "1/SR", roll="1d12+CON", damage=True,
+  say="roll {roll} and take that much off the damage")
+R("Breath Weapon", uses=lambda c: "PB/LR" if _ftd_breath(c) else "1/SR", roll="BW", damage=True,
+  say="roll {roll} {ANCESTRY} damage (DC {BWDC} {BWSAVE} save halves)")
 R("Dragon Fear", share="Breath Weapon")
 R("Grovel, Cower, and Beg", "Daunting Roar", uses="1/SR")
-R("Hungry Jaws", uses="1/SR", temp="CON")
-R("Fire Giant Strike", "Frost Giant Strike", "Cloud Giant Strike", "Stone Giant Strike",
-  "Hill Giant Strike", "Storm Giant Strike", "Giant Strike", uses="PB/LR")
+R("Hungry Jaws", uses=lambda c: "PB/LR" if _mpmm(c) else "1/SR",
+  choose=lambda c: [{"label": "go", "temp": "PB" if _mpmm(c) else "CON"}])
 R("Defensive Duelist", say="+{PB} AC against that attack")
 R("Healer", roll="1d6+4", target="ask", heal_self="1d6+4+level",
   say="the creature regains {roll} HP plus its number of Hit Dice")
 R("Inspiring Leader", temp="level+CHA", say="up to six creatures, you included, gain temporary hit points")
 R("Adrenaline Rush", uses="PB/LR", temp="PB", say="Dash as a bonus action")
-R("Healing Hands", uses="1/LR", roll="level", target="ask", say="the creature regains {roll} HP")
+R("Healing Hands", uses="1/LR", target="ask", say="the creature regains {roll} HP",
+  choose=lambda c: [{"label": "go", "roll": "PB*1d4" if _mpmm(c) else "level"}])
+R("Hidden Step", uses=lambda c: "PB/LR" if _mpmm(c) else "1/SR",
+  say="you turn invisible until the start of your next turn, or until you attack, make a damage roll or force a "
+      "saving throw")
+R("Fury of the Small", uses=lambda c: "PB/LR" if _mpmm(c) else "1/SR", slot=False, choose=lambda c: [
+    {"label": "go", "say": f"add {_pb(c) if _mpmm(c) else _level(c)} to the damage against the larger creature"}])
 R("Vital Sacrifice", self_damage="1d6", say="you take {roll} necrotic damage for a blood boon that lasts 1 hour")
 R("Favored Foe", uses="PB/LR", fx="Favored Foe")
 R("Cunning Action", say="Dash, Disengage or Hide")
@@ -215,20 +215,14 @@ R("Chromatic Infusion", uses="1/LR", fx="Chromatic Infusion", pick_weapon=True,
 R("Flurry of Blows", cost=("ki", 1), say="make two unarmed strikes")
 R("Patient Defense", cost=("ki", 1), fx="Dodge")
 R("Step of the Wind", cost=("ki", 1), say="Dash or Disengage; your jump distance doubles this turn")
-R("Breath of the Dragon", uses="PB/LR", alt=("ki", 2), roll="2*MA", damage=True,
-  say="roll {roll} acid, cold, fire, lightning or poison damage, your pick (DEX or CON save halves)")
-R("Draconic Presence (Monk)", exact=True, cost=("ki", 3))
 R("Hand of Healing", cost=("ki", 1), roll="MA+WIS", target="ask", say="the creature regains {roll} HP")
 R("Hand of Ultimate Mercy", cost=("ki", 5), uses="1/LR", roll="4d10+WIS", say="the creature returns to life with {roll} HP")
-R("Hour of Reaping", cost=("ki", 1))
 R("Radiant Sun Bolt", roll="MA+DEX", damage=True, say="on a hit, roll {roll} radiant damage")
 R("Searing Sunburst", cost=("ki", (0, 3)), roll="2d6+KI*2d6", damage=True, say="roll {roll} radiant damage for each creature in the 20-ft sphere (CON save negates)")
 R("Touch of the Long Death", cost=("ki", (1, 10)), roll="KI*2d10", damage=True, say="roll {roll} necrotic damage (CON save halves)")
 R("Wholeness of Body", uses="1/LR", heal="3*monk")
 R("Hand of Harm", cost=("ki", 1), once=True, roll="MA+WIS", damage=True, say="add {roll} necrotic damage to the hit")
-R("Quivering Palm", cost=("ki", 3))
 R("Searing Arc Strike", cost=("ki", (2, "HALFMONK")), say="cast Burning Hands at level KI-1")
-R("Shadow Arts", cost=("ki", 2))
 R("Sharpen the Blade", cost=("ki", (1, 3)), fx="Sharpen the Blade", sharpen=True,
   say="+KI to attack and damage rolls with your WEAPON for 1 minute")
 R("Visage of the Astral Self", cost=("ki", 1))
@@ -270,8 +264,6 @@ R("Slayer's Prey", fx="Slayer's Prey")
 R("Planar Warrior", fx="Planar Warrior")
 # Rogue
 R("Psychic Veil", uses="1/LR", alt=("psi", 1))
-R("Wails from the Grave", uses="PB/LR")
-R("Soul Blades", cost=("psi", 1))
 R("Master Duelist", uses="1/SR", say="reroll the attack with advantage")
 R("Spell Thief", uses="1/LR")
 R("Uncanny Dodge", say="halve the attack's damage")
@@ -296,24 +288,600 @@ R("Grasping Tentacles", uses="1/LR", temp="warlock", say="cast Evard's Black Ten
 R("Limited Wish", uses="1/LR", say="can't be used again for 1d4 long rests")
 R("Spirit Projection", uses="1/LR")
 R("Dark One's Own Luck", uses="1/SR", roll="1d10", say="add {roll} to the roll")
-R("Guardian Coil", roll="1d8", damage=True, say="roll {roll} and take that much off the damage")
 R("Necrotic Husk", uses="1/LR", hp1=True, roll="2d10+warlock", damage=True,
   say="you drop to 1 HP instead; roll {roll} necrotic damage for each creature within 30 ft")
-R("Searing Vengeance", uses="1/LR", heal="maxhp/2", say="you stand up and creatures within 30 ft take radiant damage and are blinded")
 # Wizard
 R("Benign Transposition", uses="1/LR")
 R("Event Horizon", uses="1/LR", alt=("slot", 3))
-R("Gravity Fissure", uses="1/LR", alt=("slot", 1))
 R("Shapechanger", "The Third Eye", "Illusory Self", uses="1/SR")
+R("Dragon Wings", fx="Dragon Wings")
+# Feats (actions.py _feat_cards)
+R("Lucky", share="Luck Points", uses="3/LR", slot=False, roll="1d20",
+  say="your extra d20: {roll}. Choose which d20 counts")
+R("Chef's Treat", share="Chef's Treats", uses="PB/LR", temp="PB", say="you eat one of your treats")
+
+
+def _giant_strikes(char):
+    """Strike of the Giants: the strike you chose -- known from the giant
+    feat you took after it, or asked."""
+    strikes = {
+        "Cloud Strike": {"say": "add 1d4 thunder damage to the hit; the target makes a DC {GIANT_DC} WIS save or "
+                                "you're invisible to it until the start of your next turn (or until you attack "
+                                "or cast a spell)"},
+        "Fire Strike": {"say": "add 1d10 fire damage to the hit"},
+        "Frost Strike": {"say": "add 1d6 cold damage to the hit; the target makes a DC {GIANT_DC} CON save or its "
+                                "speed is 0 until the start of your next turn"},
+        "Hill Strike": {"say": "add 1d6 to the damage; the target makes a DC {GIANT_DC} STR save or is knocked "
+                               "prone"},
+        "Stone Strike": {"say": "add 1d6 force damage to the hit; the target makes a DC {GIANT_DC} STR save or is "
+                                "pushed 10 ft away"},
+        "Storm Strike": {"say": "add 1d6 lightning damage to the hit; the target makes a DC {GIANT_DC} CON save "
+                                "or has disadvantage on attack rolls until the start of your next turn"},
+    }
+    later = {"Guile of the Cloud Giant": "Cloud Strike", "Ember of the Fire Giant": "Fire Strike",
+             "Fury of the Frost Giant": "Frost Strike", "Vigor of the Hill Giant": "Hill Strike",
+             "Keenness of the Stone Giant": "Stone Strike", "Soul of the Storm Giant": "Storm Strike"}
+    known = [v for k, v in later.items() if k in (char.get("feats") or [])]
+    picked = [p.split(" –")[0].strip() for p in ((char.get("_choices") or {}).get("feat_strike_of_the_giants") or [])]
+    known = known or [p for p in picked if p in strikes]
+    dc = str(8 + _pb(char) + max(_mods(char)["STR"], _mods(char)["CON"]))
+    return [{"label": n, "say": strikes[n]["say"].replace("{GIANT_DC}", dc)}
+            for n in (known or list(strikes))]
+
+
+R("Giant Strike", share="Strike of the Giants", uses="PB/LR", once=True, slot=False, choose=_giant_strikes,
+  ask="Which strike?")
+R("Searing Ignition", uses="PB/LR")
+R("Frigid Retaliation", uses="PB/LR")
+R("Cloudy Escape", uses="PB/LR", say="resistance to that attack's damage; now teleport up to 30 ft to a space you "
+  "can see")
+R("Stone Throw", uses="PB/LR")
+R("Hill Giant Bulwark", say="you aren't moved and aren't knocked prone")
+R("Precise Strike", once=True, slot=False, needs="precise", fx="Precise Strike")
+R("Commanding Rally", uses="PB/LR", say="an ally within 30 ft makes one weapon attack with its reaction; on a hit "
+  "it adds 1d8 to the damage")
+R("Bolstering Rally", uses="PB/LR", choose=lambda c: [
+    {"label": "Yourself", "temp": f"1d8+{_pb(c) + max(_mods(c)[a] for a in ('STR', 'CON', 'CHA'))}"},
+    {"label": "Someone else", "roll": f"1d8+{_pb(c) + max(_mods(c)[a] for a in ('STR', 'CON', 'CHA'))}",
+     "say": "the creature gains {roll} temporary hit points"}], ask="Bolstering Rally: for whom?")
+R("Demoralizing Strike", uses="PB/LR", once=True, slot=False, choose=lambda c: [
+    {"label": "go", "say": f"the target makes a DC {8 + _pb(c) + max(_mods(c)[a] for a in ('STR', 'DEX', 'CON'))} "
+                           f"WIS save or is frightened of you until the end of your next turn (on a success it "
+                           f"has disadvantage on its next attack roll)"}])
+R("Protective Wings", uses="PB/LR", say="+{PB} AC against that attack")
+R("Reactive Resistance", uses="PB/LR", say="resistance to that acid, cold, fire, lightning or poison damage")
+R("Stasis Strike", uses="PB/LR", once=True, slot=False, say="add 1d8 force damage to the hit; the target makes a "
+  "WIS save or is restrained until the start of your next turn")
+R("Grasp of Avarice", uses="PB/LR", once=True, slot=False, say="add 1d6+{PB} necrotic damage to the hit, and you "
+  "regain hit points equal to that necrotic damage")
+R("Soothe Pain", uses="PB/LR", roll="1d10+PB", damage=True, say="roll {roll} and take that much off the damage")
+R("Portal Sense", uses="1/LR", say="you sense any portals within 30 ft that aren't behind total cover")
+R("Protective Ward", cost=("slot", 1), say="roll a d6 per level of the slot, add your spellcasting modifier, and "
+  "take that much off the damage")
+R("Hidden Ace", uses="1/LR", spell=True, say="you flourish the card and cast its spell")
+R("Flash Recall", uses="1/SR", say="prepare the spell in place of one of equal or higher level")
+R("Spare the Dying (Field Medic)", exact=True, spell=True, say="cast Spare the Dying")
+R("Empower Flames", uses="1/SR", say="the next time you deal fire damage before the end of your next turn, one of "
+  "the creatures takes 2d10 more fire damage")
+R("Metamagic Adept", share="Sorcery Points (Metamagic Adept)", uses="2/LR", slot=False,
+  say="1 sorcery point on Metamagic (an option that costs more: Use again)")
+R("Cruel", share="Cruelty Dice (d6)", uses="PB/LR", once=True, slot=False, ask="Cruel:", choose=[
+    {"label": "Extra damage", "roll": "1d6", "damage": True, "say": "add {roll} to the damage"},
+    {"label": "Hit points on a critical hit", "heal": "1d6", "say": ""},
+    {"label": "An Intimidation check", "roll": "1d6", "say": "add {roll} to the Intimidation check"}])
+R("Orcish Fury: Attack", exact=True, say="one weapon attack, right after Relentless Endurance")
+R("Lucky Break", share="Bandit Cunning (Lucky Break)", uses="1/LR", say="add {INT} to the saving throw")
+R("Plant Vision", uses="1/LR", say="visions of what happened around the plant in the last 24 hours, and its "
+  "health")
+R("Mascot Swap", uses="1/LR", alt=("slot", 2), say="you and your mascot familiar swap places")
+# Fighting styles with a reaction (Fighter, Paladin, Ranger, Fighting Initiate)
+R("Interception", roll="1d10+PB", damage=True, say="roll {roll} and take that much off the damage the creature "
+  "takes (to a minimum of 0)")
+R("Protection", needs="shield", say="the attack roll against the creature next to you has disadvantage")
+R("Thousand Forms", spell=True, say="cast Alter Self at will, without a spell slot")
 R("Arcane Deflection", say="+2 AC against the attack or +4 to the save; only cantrips on your next turn")
-R("Deflecting Shroud", say="{INT} force damage to up to three creatures within 60 ft")
 R("Song of Defense", cost=("slot", 1), needs="bladesong", say="reduce the damage by 5 per slot level")
+
+
+# ── Checked against the rules books (docs/reference) ──────────────────────
+# Later entries replace earlier ones of the same name.
+from dnd_app.data.classes import WILD_MAGIC_BARBARIAN_TABLE, WILD_MAGIC_SURGE_TABLE
+
+
+def _by_level(lvl, steps):
+    """steps [(level, value)] ascending -> the value for this level."""
+    out = steps[0][1]
+    for at, v in steps:
+        if lvl >= at:
+            out = v
+    return out
+
+
+def _sub(char, cls):
+    from dnd_app.core.character import subclasses
+    return (subclasses(char).get(cls, "") or "").lower()
+
+
+def _one(say, **kw):
+    """A rule whose words depend on the character: one option, worked out."""
+    return lambda char: [dict(label="go", say=say(char), **kw)]
+
+
+# Race traits (actions.py _race_cards)
+R("Starlight Step", uses="PB/LR", say="teleport up to 30 ft to an unoccupied space you can see")
+R("Built for Success", uses="PB/LR", slot=False, roll="1d4", say="add {roll} to the attack roll, check or save")
+R("Chromatic Warding", uses="1/LR", fx="Chromatic Warding")
+R("Metallic Breath Weapon", uses="1/LR", ask="Metallic Breath Weapon:", choose=[
+    {"label": "Enervating Breath", "say": "each creature in the 15-ft cone makes a DC {BWDC} CON save or is "
+                                          "incapacitated until the start of your next turn"},
+    {"label": "Repulsion Breath", "say": "each creature in the 15-ft cone makes a DC {BWDC} STR save or is "
+                                         "pushed 20 ft away from you and knocked prone"}])
+R("Forceful Presence", uses="1/SR", slot=False, say="make the Intimidation or Persuasion check with advantage")
+R("Vengeful Assault", uses="1/SR", say="one attack with your weapon against the creature that damaged you")
+R("Blessing of the Raven Queen", uses="1/LR", choose=_one(
+    lambda c: "teleport up to 30 ft to an unoccupied space you can see"
+              + ("; resistance to all damage until the start of your next turn" if _level(c) >= 3 else "")))
+R("Merge with Stone", uses="PB/LR", spell=True, say="cast Blade Ward as a bonus action")
+R("Dexterous Feet", say="use your feet to manipulate an object, open or close a door or container, or pick up or "
+  "set down a Tiny object")
+R("Glide", say="glide up to your walking speed horizontally, taking no damage from the fall")
+R("Hadozee Dodge", uses="PB/LR", roll="1d6+PB", damage=True, say="roll {roll} and take that much off the damage")
+R("Relentless Endurance", uses="1/LR", slot=False, needs="down", hp1=True, say="you drop to 1 hit point instead")
+R("Lucky Footwork", roll="1d4", say="add {roll} to the failed DEX save")
+R("Eerie Token", uses="1/LR", say="your token is imbued until your next long rest: within 10 miles of it, your "
+  "action can send a 25-word telepathic message to whoever holds it, or let you see and hear through it for up "
+  "to 1 minute (then it's destroyed)")
+R("Saving Face", uses="1/SR", slot=False, say="+1 to the roll for each ally you can see within 30 ft (up to +5)")
+R("Fey Gift", uses="PB/LR", choose=lambda c: [{"label": "Help", "say": "take the Help action"}] if _level(c) < 3 else [
+    {"label": "Hospitality", "temp": "1d6+PB", "say": "take the Help action; the creature you help also gains "
+                                                    "1d6 + {PB} temporary hit points"},
+    {"label": "Passage", "say": "take the Help action; you and the creature you help each get +10 ft walking "
+                                "speed until the start of your next turn"},
+    {"label": "Spite", "say": "take the Help action; until the start of your next turn, the first target the "
+                              "creature you help hits has disadvantage on its next attack roll within a minute"}],
+  ask="Fey Gift:")
+R("Fortune from the Many", uses="PB/LR", slot=False, say="+1 to the roll for each ally you can see within 30 ft "
+  "(up to +3)")
+R("Vigilant Guardian", uses="1/LR", say="swap places with the creature that was hit; the attack hits you instead")
+R("Taunt", uses="PB/LR", choose=_one(
+    lambda c: f"the creature makes a DC {8 + _pb(c) + max(_mods(c)[a] for a in ('INT', 'WIS', 'CHA'))} WIS save or "
+              f"has disadvantage on attacks against anyone but you until the start of your next turn"))
+R("Fearless", uses="1/LR", slot=False, say="the failed save against being frightened succeeds instead")
+R("Draconic Cry", uses="PB/LR", say="until the start of your next turn, you and your allies have advantage on attack "
+  "rolls against the enemies within 10 ft that heard you")
+R("Aggressive", say="move up to your speed toward a hostile creature you can see or hear, ending closer to it")
+R("Shape Self", say="reshape your body: a head, one or two arms and legs, and makeshift hands and feet, or back to "
+  "a limbless blob")
+R("Knowledge from a Past Life", uses="PB/LR", slot=False, roll="1d6", say="add {roll} to the skill check")
+R("Swiftstride Step", needs="shifting", say="move up to 10 ft without provoking opportunity attacks")
+R("Feline Agility", slot=False, say="double your speed until the end of the turn; it comes back once you spend a "
+  "turn without moving")
+R("Shell Defense", fx="Shell Defense")
+R("Leave Your Shell", end_fx="Shell Defense", say="you come out of your shell")
+
+# Barbarian
+R("Bolstering Magic", uses="PB/LR", choose=[
+    {"label": "A d3 on attack rolls and checks",
+     "say": "for 10 minutes the creature you touch adds a d3 to its attack rolls and ability checks"},
+    {"label": "Regain a spell slot", "roll": "1d3",
+     "say": "rolled {roll}: the creature you touch regains one expended spell slot of that level or lower "
+            "(each creature once per long rest)"}])
+R("Call the Hunt", uses="PB/LR", needs="rage", ask="Call the Hunt: how many creatures accept?",
+  choose=lambda char: [{"label": f"{n} creature{'s' if n > 1 else ''}", "temp": str(5 * n),
+                        "say": "until your rage ends, each of them can add 1d6 to the damage of one hit on each "
+                               "of its turns"} for n in range(1, max(1, _mods(char)["CON"]) + 1)])
+R("Intimidating Presence", say="a creature within 30 ft that can see or hear you makes a DC {DC_CHA} WIS save "
+  "or is frightened of you until the end of your next turn (use your action each turn to extend it; "
+  "if it succeeds, not again on it for 24 hours)")
+R("Mighty Impel", needs="rage", say="move a Medium or smaller creature within your reach to a space within "
+  "30 ft; an unwilling one makes a DC {DC_STR} STR save to resist")
+
+
+def _storm_options(char, which):
+    from dnd_app.core.character import class_levels
+    bb = class_levels(char).get("Barbarian", 0)
+    env = " ".join((char.get("_choices", {}) or {}).get("storm_aura_3", []) or []).lower()
+    n = _by_level(bb, [(0, 2), (5, 3), (10, 4), (15, 5), (20, 6)])
+    sea = _by_level(bb, [(0, "1d6"), (10, "2d6"), (15, "3d6"), (20, "4d6")])
+    if which == "aura":
+        opts = [{"label": "Desert", "say": f"each other creature in your 10-ft aura takes {n} fire damage"},
+                {"label": "Sea", "roll": sea, "damage": True,
+                 "say": "one creature in your aura makes a DC {DC_CON} DEX save: {roll} lightning damage, "
+                        "half on a success"},
+                {"label": "Tundra", "say": f"each creature of your choice in your aura gains {n} temporary "
+                                           f"hit points"}]
+    else:
+        opts = [{"label": "Desert", "say": f"after a creature in your aura hits you: it makes a DC {{DC_CON}} "
+                                           f"DEX save or takes {bb // 2} fire damage"},
+                {"label": "Sea", "say": "when you hit a creature in your aura: it makes a DC {DC_CON} STR save "
+                                        "or is knocked prone"},
+                {"label": "Tundra", "say": "when your Storm Aura activates: one creature in it makes a DC "
+                                           "{DC_CON} STR save or its speed is 0 until the start of your next "
+                                           "turn"}]
+    mine = [o for o in opts if o["label"].lower() in env]
+    return mine or opts
+
+
+R("Storm Aura", needs="rage", ask="Storm Aura: which environment?", choose=lambda c: _storm_options(c, "aura"))
+R("Raging Storm", needs="rage", ask="Raging Storm: which environment?", choose=lambda c: _storm_options(c, "raging"))
+R("Unstable Backlash", needs="rage", table=("1d8", WILD_MAGIC_BARBARIAN_TABLE), say="")
+R("Magic Awareness", uses="PB/LR", say="until the end of your next turn, you know where every spell and magic "
+  "item within 60 ft is (not behind total cover), and the school of any spell")
+R("Spirit Shield", needs="rage", choose=_one(
+    lambda c: "roll {roll} and take that much off the damage"
+              + ("; the attacker takes that much force damage (Vengeful Ancestors)" if _lvl(c, "barbarian") >= 14 else ""),
+    roll="NAMEDICE", damage=True))
+R("Infectious Fury", uses="PB/LR", needs="rage", slot=False, choose=[
+    {"label": "2d12 psychic damage", "roll": "2d12", "damage": True,
+     "say": "the target makes a DC {DC_CON} WIS save or takes {roll} psychic damage"},
+    {"label": "It attacks another creature",
+     "say": "the target makes a DC {DC_CON} WIS save or uses its reaction to make a melee attack against "
+            "another creature of your choice"}])
+R("Consult the Spirits", uses="1/SR", spell=True, say="cast Augury or Clairvoyance without a spell slot or "
+  "material components")
+R("Eagle Spirit: Dash", exact=True, needs="rage", say="Dash as a bonus action")
+R("Elk Attunement: Trample", exact=True, needs="rage", roll="1d12+STR", damage=True,
+  say="the creature makes a DC {DC_STR} STR save or is knocked prone and takes {roll} bludgeoning damage")
+R("Tiger Attunement: Pounce", exact=True, needs="rage", say="one more melee weapon attack against the target")
+R("Wolf Attunement: Knock Prone", exact=True, needs="rage", say="the Large or smaller creature you hit is "
+  "knocked prone")
+R("Tail Swipe", roll="1d8", say="add {roll} to your AC against that attack")
+# Bard
+SPIRIT_TALES = [
+    (1, "Tale of the Clever Animal: for 10 minutes, the target adds a roll of your Bardic Inspiration die to "
+        "its INT, WIS and CHA checks"),
+    (2, "Tale of the Renowned Duelist: make a melee spell attack against the target; on a hit it takes two "
+        "rolls of your Bardic Inspiration die + {CHA} force damage"),
+    (3, "Tale of the Beloved Friends: the target and another creature within 5 ft of it gain a roll of your "
+        "Bardic Inspiration die + {CHA} temporary hit points"),
+    (4, "Tale of the Runaway: the target can use its reaction to teleport up to 30 ft, and up to {CHA} "
+        "creatures within 30 ft of it can do the same"),
+    (5, "Tale of the Avenger: for 1 minute, a creature that hits the target with a melee attack takes a roll "
+        "of your Bardic Inspiration die in force damage"),
+    (6, "Tale of the Traveler: the target gains a roll of your Bardic Inspiration die + {LVL:Bard} temporary "
+        "hit points, and while it has them, +10 ft speed and +1 AC"),
+    (7, "Tale of the Beguiler: the target makes a WIS save or takes two rolls of your Bardic Inspiration die "
+        "in psychic damage and is incapacitated until the end of its next turn"),
+    (8, "Tale of the Phantom: the target is invisible until the end of its next turn or until it hits with an "
+        "attack; the creature it hits takes a roll of your die in necrotic damage and is frightened"),
+    (9, "Tale of the Brute: each creature of the target's choice within 30 ft makes a STR save: three rolls of "
+        "your Bardic Inspiration die in thunder damage and knocked prone, or half and not prone on a success"),
+    (10, "Tale of the Dragon: the target breathes a 30-ft cone of fire: DEX save, four rolls of your Bardic "
+         "Inspiration die in fire damage, half on a success"),
+    (11, "Tale of the Angel: the target regains two rolls of your Bardic Inspiration die + {CHA} hit points, "
+         "and you end one of: blinded, deafened, paralyzed, petrified or poisoned on it"),
+    (12, "Tale of the Mind-Bender: the target makes an INT save or takes three rolls of your Bardic Inspiration "
+         "die in psychic damage and is stunned until the end of its next turn"),
+]
+R("Tales from Beyond", cost=("bi", 1), table=("BI", SPIRIT_TALES), choose=_one(
+    lambda c: "bestow it with an action on a creature within 30 ft (you included)"
+              + ("; Mystical Connection: roll again and use either tale" if _lvl(c, "bard") >= 14 else "")))
+R("Mantle of Inspiration", cost=("bi", 1), choose=_one(
+    lambda c: f"up to {{CHA}} creatures within 60 ft gain "
+              f"{_by_level(_lvl(c, 'bard'), [(0, 5), (5, 8), (10, 11), (15, 14)])} temporary hit points, and each "
+              f"can use its reaction to move up to its speed without provoking opportunity attacks"))
+R("Battle Magic", say="one weapon attack, after casting a bard spell with your action")
+R("Mantle of Whispers", say="capture the humanoid's shadow (kept until you use it or finish a long rest); use it "
+  "as an action to take on its appearance for 1 hour")
+# Cleric
+R("Turn Undead", cost=("cd", 1), choose=_one(
+    lambda c: "each undead within 30 ft that can see or hear you makes a DC {SPELL_DC} WIS save or is turned "
+              "for 1 minute"
+              + (f"; undead of CR {_by_level(_lvl(c, 'cleric'), [(5, '1/2'), (8, '1'), (11, '2'), (14, '3'), (17, '4')])} "
+                 f"or lower are destroyed instead" if _lvl(c, "cleric") >= 5 else "")))
+R("Arcane Abjuration", cost=("cd", 1), choose=_one(
+    lambda c: "one celestial, elemental, fey or fiend within 30 ft makes a DC {SPELL_DC} WIS save or is turned "
+              "for 1 minute"
+              + (f"; if its CR is {_by_level(_lvl(c, 'cleric'), [(5, '1/2'), (8, '1'), (11, '2'), (14, '3'), (17, '4')])} "
+                 f"or lower it's banished for 1 minute instead" if _lvl(c, "cleric") >= 5 else "")))
+R("Harness Divine Power", cost=("cd", 1), uses="HDP/LR", ask="Regain which spell slot?",
+  choose=lambda c: [{"label": f"A {_ordinal(n)}-level slot", "regain_slot": n}
+                    for n in range(1, -(-_pb(c) // 2) + 1)
+                    if c.get("spell_slots_used", [0] * 9)[n - 1] > 0])
+R("Blessing of the Forge", uses="1/LR", say="the nonmagical weapon or armor you touch becomes a +1 weapon or +1 "
+  "armor until the end of your next long rest")
+R("Guided Strike", cost=("cd", 1), slot=False, say="+10 to the attack roll")
+R("Destructive Wrath", cost=("cd", 1), slot=False, say="deal the maximum lightning or thunder damage instead of "
+  "rolling")
+R("Consuming Fervor", cost=("cd", 1), slot=False, say="deal the maximum fire or thunder damage instead of rolling")
+R("Feat of Strength", cost=("cd", 1), slot=False, say="+10 to that Strength roll")
+R("Divine Intervention", uses="1/LR")
+R("Cloak of Shadows (Channel Divinity)", exact=True, cost=("cd", 1),
+  say="you become invisible until the end of your next turn, or until you attack or cast a spell")
+# Druid
+R("Wild Companion", cost=("ws", 1), spell=True, say="cast Find Familiar without material components; it's a fey "
+  "and lasts {HALF:Druid} hours")
+R("Spirit Totem", uses="1/SR", fx="Spirit Totem", remember=True, ask="Spirit Totem: which spirit?", choose=lambda c: [
+    {"label": "Bear", "say": f"each creature of your choice in the 30-ft aura gains {5 + _lvl(c, 'druid')} temporary "
+                             f"hit points, and advantage on STR checks and saves while in it"},
+    {"label": "Hawk", "say": "your reaction can give advantage on an attack roll against a target in the aura; "
+                             "creatures in it have advantage on Perception checks"},
+    {"label": "Unicorn", "say": f"advantage on checks to detect creatures in the aura; when you cast a healing "
+                                f"spell with a slot, each creature of your choice in it regains {_lvl(c, 'druid')} HP"}])
+def _starry_forms(c):
+    """Starry Form's constellations, each with what it gives at this level
+    (Twinkling Constellations at 10th, Full of Stars at 14th)."""
+    die = _by_level(_lvl(c, 'druid'), [(0, '1d8'), (10, '2d8')])
+    full = "; resistance to bludgeoning, piercing and slashing damage" if _lvl(c, "druid") >= 14 else ""
+    return [
+        {"label": "Archer", "say": f"bright light 10 ft; when you take the form and with your bonus action on later "
+                                   f"turns, a ranged spell attack within 60 ft: {die} + {{WIS}} radiant damage on a "
+                                   f"hit (Luminous Arrow on the Combat page){full}"},
+        {"label": "Chalice", "say": f"bright light 10 ft; when you cast a healing spell with a slot, you or a creature "
+                                    f"within 30 ft regains {die} + {{WIS}} hit points{full}"},
+        {"label": "Dragon", "say": "bright light 10 ft; INT and WIS checks and CON saves to concentrate: a roll of 9 "
+                                   "or lower counts as 10" + ("; a 20-ft flying speed (you can hover)"
+                                                              if _lvl(c, "druid") >= 10 else "") + full}]
+
+
+R("Starry Form", cost=("ws", 1), fx="Starry Form", remember=True, ask="Starry Form: which constellation?",
+  choose=_starry_forms)
+R("Natural Recovery", uses="1/LR", slot=False, say="during a short rest, recover spell slots with a combined level "
+  "up to half your druid level (rounded up), none of 6th level or higher")
+# Fighter
+R("Action Surge", uses="1/SR", surge=True, slot=False, choose=_one(
+    lambda c: "take one more action this turn"
+              + ("; Inspiring Surge: {N} creature{S} within 60 ft can use its reaction to make one weapon attack"
+                 .replace("{N}", "two" if _lvl(c, "fighter") >= 18 else "one").replace("{S}", "s" if _lvl(c, "fighter") >= 18 else "")
+                 if _lvl(c, "fighter") >= 10 and ("banneret" in _sub(c, "Fighter") or "purple dragon" in _sub(c, "Fighter")) else "")
+              + ("; Arcane Charge: teleport up to 30 ft before or after the action"
+                 if _lvl(c, "fighter") >= 15 and "eldritch knight" in _sub(c, "Fighter") else "")))
+R("Unwavering Mark", uses="STR/LR", say="a special melee weapon attack against the marked creature, with advantage "
+  "and +{HALF:Fighter} damage on a hit")
+R("Unleash Incarnation", uses="CON/LR", slot=False, say="one more melee attack, from your echo's position")
+R("Reclaim Potential", uses="CON/LR", slot=False, temp="2d6+CON")
+R("Echo Avatar", say="see and hear through your echo for up to 10 minutes (deafened and blinded yourself); it can "
+  "be up to 1,000 ft away")
+R("Weapon Bond", say="summon a bonded weapon to your hand, if it's on the same plane")
+R("Protective Field", cost=("psi", 1), roll="PSI+INT", damage=True, say="roll {roll} and take that much off the damage")
+R("Telekinetic Movement", cost=("psi", 1), say="move a Large or smaller loose object or a willing creature within "
+  "30 ft up to 30 ft")
+R("Psionic Power: Recover", exact=True, uses="1/SR", regain_pool=("psi", 1))
+R("Cloud Rune", uses="RUNE/SR", say="the attack hits a different creature of your choice within 30 ft of you "
+  "instead, with the same roll")
+R("Stone Rune", uses="RUNE/SR", say="the creature makes a DC {DC_CON} WIS save or is charmed for 1 minute: speed 0 "
+  "and incapacitated (it saves again at the end of each of its turns)")
+R("Frost Rune", uses="RUNE/SR", say="+2 to STR and CON checks and saves for 10 minutes")
+R("Hill Rune", uses="RUNE/SR", say="resistance to bludgeoning, piercing and slashing damage for 1 minute")
+R("Storm Rune", uses="RUNE/SR", say="for 1 minute, your reaction can give advantage or disadvantage to a roll "
+  "within 60 ft")
+R("Fire Rune", uses="RUNE/SR", slot=False,
+  say="add 2d6 fire damage to the hit; the target makes a DC {DC_CON} STR save or is restrained for 1 minute, "
+      "taking 2d6 fire at the start of each of its turns (it saves again at the end of each)")
+# Arcane Shot: which of your shots (Arcane Archer)
+_SHOTS = {
+    "Banishing Arrow": ("", "the target makes a DC {DC_INT} CHA save or is banished until the end of its next turn"
+                        " (speed 0, incapacitated){X}"),
+    "Beguiling Arrow": ("2d6", "+{roll} psychic; the target makes a DC {DC_INT} WIS save or is charmed by an ally "
+                        "of your choice within 30 ft until the start of your next turn"),
+    "Bursting Arrow": ("2d6", "the target and each creature within 10 ft of it take {roll} force damage"),
+    "Enfeebling Arrow": ("2d6", "+{roll} necrotic; the target makes a DC {DC_INT} CON save or its weapon damage is "
+                         "halved until the start of your next turn"),
+    "Grasping Arrow": ("2d6", "+{roll} poison; for 1 minute its speed drops by 10 ft and it takes {roll} slashing "
+                       "the first time each turn it moves (a STR (Athletics) check against DC {DC_INT} frees it)"),
+    "Piercing Arrow": ("1d6", "no attack roll: each creature in a 30-ft line makes a DC {DC_INT} DEX save: the "
+                       "arrow's damage + {roll} piercing, half on a success"),
+    "Seeking Arrow": ("1d6", "no attack roll at a creature you've seen in the last minute: it makes a DC {DC_INT} "
+                      "DEX save: the arrow's damage + {roll} force, half on a success, and you learn where it is"),
+    "Shadow Arrow": ("2d6", "+{roll} psychic; the target makes a DC {DC_INT} WIS save or can't see farther than "
+                     "5 ft until the start of your next turn"),
+}
+
+
+def _shot_options(char):
+    high = _lvl(char, "fighter") >= 18
+    out = []
+    for raw in (char.get("_choices", {}) or {}).get("arcane_shot_options", []) or []:
+        shot = raw.split(" –")[0].split(" (")[0].strip()
+        if shot not in _SHOTS:
+            continue
+        dice, say = _SHOTS[shot]
+        if dice and high:
+            dice = f"{2 * int(dice[0])}d6"
+        say = say.replace("{X}", "; it also takes 2d6 force damage" if high else "")
+        out.append({"label": shot, "say": say, **({"roll": dice, "damage": True} if dice else {})})
+    return out
+
+
+R("Arcane Shot", uses="2/SR", once=True, slot=False, ask="Arcane Shot: which shot?", choose=_shot_options)
+# Battle Master maneuvers: a superiority die each, with the save DC
+_MANEUVERS = {
+    "Commander's Strike": ("forgo one of your attacks: a companion uses its reaction to make one weapon attack, "
+                           "adding {roll} to its damage", True),
+    "Disarming Attack": ("add {roll} to the damage; the target makes a DC {DC_MAN} STR save or drops one item you "
+                         "choose", True),
+    "Distracting Strike": ("add {roll} to the damage; the next attack roll against the target by someone else "
+                           "before your next turn has advantage", True),
+    "Evasive Footwork": ("add {roll} to your AC until you stop moving", True),
+    "Feinting Attack": ("advantage on your next attack against a creature within 5 ft this turn; add {roll} to "
+                        "its damage if it hits", True),
+    "Goading Attack": ("add {roll} to the damage; the target makes a DC {DC_MAN} WIS save or has disadvantage on "
+                       "attacks against anyone but you until the end of your next turn", True),
+    "Lunging Attack": ("+5 ft reach for this attack; add {roll} to the damage if it hits", True),
+    "Maneuvering Attack": ("add {roll} to the damage; an ally can use its reaction to move up to half its speed "
+                           "without provoking opportunity attacks from the target", True),
+    "Menacing Attack": ("add {roll} to the damage; the target makes a DC {DC_MAN} WIS save or is frightened of you "
+                        "until the end of your next turn", True),
+    "Parry": ("roll {roll} + {DEX} and take that much off the damage", True),
+    "Precision Attack": ("add {roll} to the attack roll", True),
+    "Pushing Attack": ("add {roll} to the damage; a Large or smaller target makes a DC {DC_MAN} STR save or is "
+                       "pushed up to 15 ft away", True),
+    "Rally": ("a friendly creature that can see or hear you gains {roll} + {CHA} temporary hit points", True),
+    "Riposte": ("make a melee weapon attack against the creature that missed you; add {roll} to the damage if it "
+                "hits", True),
+    "Sweeping Attack": ("another creature within 5 ft of the target, in your reach, takes {roll} damage of the "
+                        "attack's type if your attack roll would hit it", True),
+    "Trip Attack": ("add {roll} to the damage; a Large or smaller target makes a DC {DC_MAN} STR save or is "
+                    "knocked prone", True),
+    "Ambush": ("add {roll} to the Stealth check or initiative roll", True),
+    "Bait and Switch": ("swap places with an ally within 5 ft (5 ft of movement); you or the ally gets +{roll} AC "
+                        "until the start of your next turn", True),
+    "Brace": ("when a creature moves into your reach: one weapon attack against it, adding {roll} to the damage", True),
+    "Commanding Presence": ("add {roll} to the Intimidation, Performance or Persuasion check", True),
+    "Grappling Strike": ("after a melee hit: try to grapple the target, adding {roll} to the Athletics check", True),
+    "Quick Toss": ("a ranged attack with a thrown weapon (drawn as part of it); add {roll} to the damage if it "
+                   "hits", True),
+    "Tactical Assessment": ("add {roll} to the Investigation, History or Insight check", True),
+}
+for _m, (_say, _dmg) in _MANEUVERS.items():
+    R(_m, cost=("sd", 1), roll="SD", damage=_dmg, say=_say, maneuver=True)
+# Monk
+R("Hour of Reaping", say="each creature within 30 ft that can see you makes a DC {DC_WIS} WIS save or is "
+  "frightened of you until the end of your next turn")
+R("Breath of the Dragon", uses="PB/LR", alt=("ki", 2), roll="BREATHMONK", damage=True,
+  say="in place of one attack: each creature in a 20-ft cone or 30-ft line makes a DC {DC_WIS} DEX save: {roll} "
+      "acid, cold, fire, lightning or poison damage (your pick), half on a success")
+R("Arms of the Astral Self", cost=("ki", 1), fx="Arms of the Astral Self", roll="2*MA", damage=True,
+  say="each creature of your choice within 10 ft makes a DC {DC_WIS} DEX save or takes {roll} force damage; for "
+      "10 minutes your arms attack with WIS and deal force damage, with 5 ft more reach")
+R("Awakened Astral Self", cost=("ki", 5), fx="Awakened Astral Self",
+  say="for 10 minutes: +2 AC, and the Attack action makes three attacks with your astral arms")
+R("Stunning Strike", cost=("ki", 1), slot=False,
+  say="the target makes a DC {DC_WIS} CON save or is stunned until the end of your next turn")
+R("Stillness of Mind", end_condition=("Charmed", "Frightened"),
+  say="end one effect on yourself that's charming or frightening you")
+R("Diamond Soul", cost=("ki", 1), slot=False, say="reroll the failed saving throw and take the second result")
+R("Empty Body", ask="Empty Body: which?", choose=[
+    {"label": "Invisible (4 ki)", "cost": ("ki", 4), "fx": "Empty Body",
+     "say": "invisible for 1 minute, with resistance to all damage but force"},
+    {"label": "Astral Projection (8 ki)", "cost": ("ki", 8), "spell": True,
+     "say": "cast Astral Projection without material components, taking no one with you"}])
+R("Draconic Disciple: Reroll", exact=True, uses="1/LR", slot="Reaction",
+  say="reroll the failed CHA check (the use is spent only if it succeeds)")
+R("Quickened Healing", cost=("ki", 2), heal="MA+PB")
+R("Focused Aim", cost=("ki", (1, 3)), slot=False, say="+{KI2} to the attack roll")
+R("Ki-Fueled Attack", say="one attack with an unarmed strike or a monk weapon")
+R("Quivering Palm", ask="Quivering Palm:", choose=[
+    {"label": "Start the vibrations (3 ki)", "cost": ("ki", 3), "slot": False,
+     "say": "after your unarmed strike hits: the vibrations last {LVL:Monk} days"},
+    {"label": "End them (your action)", "slot": "Action", "roll": "10d10", "damage": True,
+     "say": "the creature makes a DC {DC_WIS} CON save: on a fail it drops to 0 hit points, on a success it takes "
+            "{roll} necrotic damage"}])
+R("Cloak of Shadows", say="in dim light or darkness, you become invisible until you attack, cast a spell, or are "
+  "in bright light")
+R("Shadow Arts", cost=("ki", 2), spell=True, say="cast Darkness, Darkvision, Pass without Trace or Silence, without "
+  "material components")
+# Paladin
+R("Vow of Enmity", cost=("cd", 1), fx="Vow of Enmity", say="advantage on attack rolls against one creature within "
+  "10 ft for 1 minute")
+R("Control Undead", cost=("cd", 1), say="one undead within 30 ft (CR lower than {LVL:Paladin}) makes a DC {SPELL_DC} "
+  "WIS save or obeys your commands for 24 hours")
+R("Champion Challenge", cost=("cd", 1), say="each creature of your choice within 30 ft makes a DC {SPELL_DC} WIS "
+  "save or can't willingly move more than 30 ft away from you")
+# Ranger
+R("Tireless", uses="PB/LR", temp="1d8+WIS")
+R("Nature's Veil", uses="PB/LR", say="you're invisible until the start of your next turn")
+R("Giant Killer", say="attack the Large or larger creature")
+R("Stand Against the Tide", say="the attacker repeats the attack against another creature of your choice")
+R("Ranger's Companion", say="command your companion to take the Attack, Dash, Disengage, Dodge or Help action")
+# Rogue
+R("Wails from the Grave", uses="PB/LR", slot=False, roll="WAILS", damage=True,
+  say="a second creature within 30 ft of the first takes {roll} necrotic damage")
+R("Steady Aim", fx="Steady Aim", say="advantage on your next attack roll this turn; your speed is 0 until the end "
+  "of the turn")
+R("Soul Blades", ask="Soul Blades:", choose=[
+    {"label": "Homing Strikes (a missed blade attack)", "cost": ("psi", 1), "slot": False, "roll": "PSI",
+     "say": "add {roll} to the missed attack roll (the die is spent only if it then hits)"},
+    {"label": "Psychic Teleportation", "slot": "Bonus Action", "cost": ("psi", 1), "roll": "PSI",
+     "say": "rolled {roll}: throw a blade and teleport up to ten times that many feet"}])
+R("Psi-Bolstered Knack", cost=("psi", 1), slot=False, roll="PSI",
+  say="add {roll} to the check (the die is spent only if the check then succeeds)")
+R("Psychic Whispers", cost=("psi", 1), roll="PSI", say="telepathy with up to {PB} creatures for {roll} hours")
+R("Rend Mind", uses="1/LR", alt=("psi", 3), slot=False,
+  say="the target makes a DC {DC_DEX} WIS save or is stunned for 1 minute (it saves again at the end of each of "
+      "its turns)")
+R("Death Strike", slot=False, say="the surprised target makes a DC {DC_DEX} CON save or the attack's damage is "
+  "doubled")
+R("Unerring Eye", uses="WIS/LR", say="for 1 minute, you sense illusions, shapechangers and other magical "
+  "deception within 30 ft")
+# Sorcerer
+R("Favored by the Gods", uses="1/SR", slot=False, roll="2d4", say="add {roll} to the failed save or missed attack")
+R("Umbral Form", cost=("sp", 6), fx="Umbral Form", say="for 1 minute: resistance to all damage except force and "
+  "radiant, and you can move through creatures and objects as difficult terrain")
+R("Lunar Phenomenon", ask="Lunar Phenomenon: which phase?", each=("Full Moon", "New Moon", "Crescent Moon"),
+  uses="1/LR", alt=("sp", 5), choose=[
+    {"label": "Full Moon", "share": "Lunar Phenomenon (Full Moon)",
+     "say": "each creature of your choice within 30 ft makes a DC {SPELL_DC} CON save or is blinded until the end "
+            "of its next turn; one creature of your choice there regains 3d8 hit points"},
+    {"label": "New Moon", "share": "Lunar Phenomenon (New Moon)",
+     "say": "each creature of your choice within 30 ft makes a DC {SPELL_DC} DEX save or takes 3d10 necrotic "
+            "damage and its speed is 0 until the end of its next turn; you're invisible until the end of your next "
+            "turn or until you attack or cast"},
+    {"label": "Crescent Moon", "share": "Lunar Phenomenon (Crescent Moon)",
+     "say": "teleport up to 60 ft, with a willing creature within 5 ft; you both have resistance to all damage "
+            "until the start of your next turn"}])
+R("Pyromancer's Fury", say="{LVL:Sorcerer} fire damage to the attacker, ignoring resistance to fire")
+R("Telepathic Speech", say="a telepathic link with a creature you can see within 30 ft, for {LVL:Sorcerer} minutes")
+R("Trance of Order", uses="1/LR", alt=("sp", 5), fx="Trance of Order",
+  say="for 1 minute: attack rolls against you can't have advantage, and your attack rolls, checks and saves treat "
+      "a d20 roll of 9 or lower as a 10")
+R("Wild Magic Surge", slot=False, table=("1d100", WILD_MAGIC_SURGE_TABLE), say="")
+# Warlock
+R("Guardian Coil", roll="COIL", damage=True, say="roll {roll} and take that much off the damage")
+R("Form of Dread", uses="PB/LR", fx="Form of Dread", temp="1d10+warlock",
+  say="for 1 minute: immune to frightened; once per turn when you hit with an attack, the target makes a DC "
+      "{SPELL_DC} WIS save or is frightened of you until the end of your next turn")
+R("Indestructible Life", uses="1/SR", heal="1d8+warlock", say="and you can reattach a severed body part")
+R("Searing Vengeance", uses="1/LR", heal="maxhp/2", roll="2d8+CHA", damage=True,
+  say="you stand up; each creature of your choice within 30 ft takes {roll} radiant damage and is blinded until "
+      "the end of the current turn")
+R("Dark One's Blessing", slot=False, temp="CHA+warlock")
+R("Hurl Through Hell", uses="1/LR", slot=False, roll="10d10", damage=True,
+  say="the creature vanishes until the end of your next turn; when it returns, if it isn't a fiend it takes "
+      "{roll} psychic damage")
+R("Defy Death", uses="1/LR", slot=False, heal="1d8+CON")
+R("Armor of Hexes", roll="1d6", say="rolled {roll}: on a 4 or higher the cursed creature's attack misses you")
+R("Rebuke of the Talisman", say="{PB} psychic damage to the attacker, and you can push it up to 10 ft away")
+R("Maddening Hex", say="{CHA} psychic damage to the cursed target and each creature of your choice within 5 ft "
+  "of it")
+R("Bottled Respite", uses="1/LR", say="you're inside your vessel for up to {PB}×2 hours; leave with a bonus action")
+R("Tentacle of the Deeps", "Tentacle of the Deep", uses="PB/LR", fx="Tentacle of the Deeps")
+for _inv, _sp in (("Ascendant Step", "Levitate"), ("Master of Myriad Forms", "Alter Self"),
+                  ("Otherworldly Leap", "Jump"), ("Visions of Distant Realms", "Arcane Eye"),
+                  ("Whispers of the Grave", "Speak with Dead")):
+    R(_inv, spell=True, say=f"cast {_sp} at will, without a spell slot")
+# Wizard
+R("Deflecting Shroud", say="{HALF:Wizard} force damage to up to three creatures within 60 ft")
+R("Convergent Future", exhaust=1, say="the roll becomes exactly the number it needs to succeed, or one less "
+  "(your choice)")
+R("Violent Attraction", uses="INT/LR", choose=[
+    {"label": "A weapon attack", "roll": "1d10", "damage": True, "say": "the weapon attack deals {roll} more damage"},
+    {"label": "A fall", "roll": "2d10", "damage": True, "say": "the falling creature takes {roll} more damage"}])
+R("Malleable Illusions", say="change the nature of an illusion of yours that lasts 1 minute or longer")
+R("One with the Word", uses="1/LR", roll="3d6",
+  say="dismiss your spellbook's mind and take none of the damage; rolled {roll}: your spellbook loses spells "
+      "totaling that many levels or more until you finish 1d6 long rests")
+R("Overchannel", uses="1/LR", slot=False, say="the 1st-5th-level wizard spell deals maximum damage")
+# Artificer
+R("Soul of Artifice", hp1=True, say="end one of your artificer infusions: you drop to 1 hit point instead of 0")
+R("Experimental Elixir", uses="1/LR", alt=("slot", 1), table=("1d6", [
+    (1, "Healing: the drinker regains 2d4 + {INT} hit points"),
+    (2, "Swiftness: the drinker's walking speed increases by 10 ft for 1 hour"),
+    (3, "Resilience: the drinker gains a +1 bonus to AC for 10 minutes"),
+    (4, "Boldness: for 1 minute the drinker adds a d4 to its attack rolls and saving throws"),
+    (5, "Flight: the drinker gains a 10-ft flying speed for 10 minutes"),
+    (6, "Transformation: the drinker's body is transformed as if by Alter Self for 10 minutes")]),
+  say="the elixir lasts until drunk or your next long rest")
+R("Command Eldritch Cannon", ask="Your cannon:", choose=lambda c: [
+    {"label": "Flamethrower", "roll": "3d8" if _lvl(c, "artificer") >= 9 else "2d8", "damage": True,
+     "say": "each creature in a 15-ft cone makes a DC {SPELL_DC} DEX save: {roll} fire damage, half on a success"},
+    {"label": "Force Ballista", "roll": "3d8" if _lvl(c, "artificer") >= 9 else "2d8", "damage": True,
+     "say": "a ranged spell attack ({SPELL_ATK}) at a creature within 120 ft: {roll} force damage on a hit, and "
+            "it's pushed 5 ft away"},
+    {"label": "Protector", "roll": "1d8+INT",
+     "say": "you and each creature of your choice within 10 ft of the cannon gain {roll} temporary hit points"}])
 
 
 # ── Small helpers ─────────────────────────────────────────────────────────
 def _lvl(char, cls):
     from dnd_app.core.character import class_levels
     return class_levels(char).get(cls.title() if cls != "blood hunter" else "Blood Hunter", 0)
+
+
+def _level(char):
+    """The character's total level (race traits that grow at 3rd level)."""
+    from dnd_app.core.character import total_level
+    return total_level(char)
 
 
 def _numeric(v):
@@ -363,11 +931,20 @@ def _pb(char):
 
 
 def _uses_max(char, uses):
-    """"WIS/LR" -> (max, reset) — reset as the resources store it."""
+    """"WIS/LR" -> (max, reset) — reset as the resources store it. `uses`
+    can also be worked out for the character (a race's two versions)."""
+    if callable(uses):
+        uses = uses(char)
     count, per = uses.split("/")
     reset = "LR" if per == "LR" else "SR/LR"
     if count == "PB":
         n = _pb(char)
+    elif count == "RUNE":
+        n = 2 if _lvl(char, "fighter") >= 15 else 1          # Master of Runes
+    elif count == "HDP":
+        c, p = _lvl(char, "cleric"), _lvl(char, "paladin")
+        n = max(3 if c >= 18 else 2 if c >= 6 else 1 if c >= 2 else 0,
+                3 if p >= 15 else 2 if p >= 7 else 1 if p >= 3 else 0)
     elif count in ("STR", "DEX", "CON", "INT", "WIS", "CHA"):
         n = max(1, _mods(char)[count])
     else:
@@ -387,6 +964,8 @@ def _special_die(char, tok, name=""):
         return "1d12" if b >= 15 else "1d10" if b >= 10 else "1d8" if b >= 5 else "1d6"
     if tok == "BW":
         lv = total_level(char)
+        if _ftd_breath(char):
+            return f"{1 + (lv >= 5) + (lv >= 11) + (lv >= 17)}d10"
         return f"{2 + (lv >= 6) + (lv >= 11) + (lv >= 16)}d6"
     if tok == "HEMODIE":
         from dnd_app.core.calculator import get_hemocraft_die
@@ -398,6 +977,29 @@ def _special_die(char, tok, name=""):
     if tok == "NAMEDICE":
         m = re.search(r"(\d+d\d+)", name)
         return m.group(1) if m else "1d6"
+    if tok == "SD":
+        # a superiority die: d8, d10 at 10th, d12 at 18th (Battle Master);
+        # a d6 from Martial Adept or Superior Technique
+        from dnd_app.core.character import subclasses
+        f = _lvl(char, "fighter")
+        if f >= 3 and "battle master" in subclasses(char).get("Fighter", "").lower():
+            return "1d12" if f >= 18 else "1d10" if f >= 10 else "1d8"
+        return "1d6"
+    if tok == "BREATHMONK":
+        # Breath of the Dragon: two Martial Arts dice, three from 11th level
+        ma = _special_die(char, "MA")
+        return f"{3 if _lvl(char, 'monk') >= 11 else 2}d{ma.split('d')[1]}"
+    if tok == "COIL":
+        return "2d8" if _lvl(char, "warlock") >= 10 else "1d8"
+    if tok == "PSI":
+        # a Psionic Energy die: d6, d8 at 5th, d10 at 11th, d12 at 17th
+        lv = max(_lvl(char, "fighter"), _lvl(char, "rogue"))
+        return "1d12" if lv >= 17 else "1d10" if lv >= 11 else "1d8" if lv >= 5 else "1d6"
+    if tok == "WAILS":
+        # Wails from the Grave: half your Sneak Attack dice, rounded up
+        from dnd_app.core.calculator import get_sneak_attack
+        m = re.match(r"(\d+)d(\d+)", get_sneak_attack(char) or "")
+        return f"{-(-int(m.group(1)) // 2)}d{m.group(2)}" if m else "1d6"
     return tok
 
 
@@ -414,7 +1016,7 @@ def _terms(char, expr, chosen=0, name=""):
         mult, dice, label = 1, None, None
         for f in term.split("*"):
             f = f.strip()
-            if f in ("MA", "BI", "BW", "HEMODIE", "NAMEDICE", "HALO"):
+            if f in ("MA", "BI", "BW", "HEMODIE", "NAMEDICE", "HALO", "SD", "BREATHMONK", "COIL", "PSI", "WAILS"):
                 dice = _special_die(char, f, name)
             elif re.fullmatch(r"\d+d\d+", f):
                 dice = f
@@ -484,13 +1086,23 @@ def formula(char, expr, chosen=0, name=""):
     return " ".join([parts[0]] + [f"+ {p}" if not p[0] in "+−" else p for p in parts[1:]])
 
 
+def _ftd_breath(char):
+    """A Fizban's dragonborn (chromatic, metallic or gem): its Breath Weapon
+    replaces an attack, uses a d10 and a DEX save, PB times a long rest."""
+    race = (char.get("species") or char.get("race", "") or "").strip()
+    sub = (char.get("subrace") or "").lower()
+    return race == "Dragonborn" and any(w in sub for w in ("chromatic", "metallic", "gem"))
+
+
 def _breath_tokens(char, say):
     """{ANCESTRY} {BWDC} {BWSAVE}: a dragonborn's Breath Weapon type and save."""
-    if "{ANCESTRY}" not in say:
+    if not any(t in say for t in ("{ANCESTRY}", "{BWDC}", "{BWSAVE}")):
         return say
     from dnd_app.data.races import DRACONIC_ANCESTRY
     dtype, _, save = DRACONIC_ANCESTRY.get(char.get("draconic_ancestry", ""), ("", "", ""))
     ab = next((a for a in ("STR", "DEX", "CON", "INT", "WIS", "CHA") if f"{a} save" in save), "DEX")
+    if _ftd_breath(char):
+        ab = "DEX"
     dc = 8 + _mods(char)["CON"] + _pb(char)
     return (say.replace("{ANCESTRY}", (dtype or "your ancestry's").lower())
                .replace("{BWDC}", str(dc)).replace("{BWSAVE}", ab))
@@ -501,12 +1113,13 @@ def _cleaver_dice(char):
 
 
 def _summary(desc, limit=150):
-    """The rules text, cut down for a toast: no "Uses = ..." sentences."""
+    """The rules text, cut down for a toast: no "Uses = ..." or
+    "Prerequisite: ..." sentences."""
     text = re.sub(r"\s+", " ", desc or "").strip()
     sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
     keep = []
     for s in sentences:
-        if re.fullmatch(r"(uses?\s*=.*|\(?\d+/(lr|sr)\)?\.?|1/(short|long) rest.*"
+        if re.fullmatch(r"(uses?\s*=.*|\(?\d+/(lr|sr)\)?\.?|1/(short|long) rest.*|\(?prerequisites?:.*"
                         r"|once per (short or long|short|long) rest\.?)", s, re.I):
             continue
         if keep and len(" ".join(keep + [s])) > limit:
@@ -579,6 +1192,16 @@ def _need_problem(char, need):
         return "needs a melee kensei weapon in hand"
     if need == "below half" and char.get("current_hp", 0) >= char.get("max_hp", 0) / 2:
         return "only when you're below half your hit points"
+    if need == "shield" and not char.get("shield"):
+        return "needs a shield"
+    if need == "down" and char.get("current_hp", 0) > 0:
+        return "only when you drop to 0 hit points"
+    if need == "shifting" and "Shifting" not in fx:
+        return "only while you're shifted"
+    if need == "precise":
+        res = _own_resource(char, "Precise Strike")
+        if res is not None and not _unlimited(res) and res.get("current", 0) <= 0:
+            return "no uses left (back on a long rest)"
     return ""
 
 
@@ -617,11 +1240,64 @@ def _wild_shape_check(char, display, answers):
     return None
 
 
-# ── The hand-written actions ──────────────────────────────────────────────
-def _special(char, key, display, bucket, answers, rng):
+# ── Wild Shape ────────────────────────────────────────────────────────────
+ELEMENTALS = ("Air Elemental", "Earth Elemental", "Fire Elemental", "Water Elemental")
+
+
+def wild_shape_into(char, beast_name):
+    """Turn into a beast: spend a Wild Shape use (two for an elemental,
+    Elemental Wild Shape; none for an Archdruid) and take the beast's hit
+    points. Both apps' Wild Shape cards and the Use button call this.
+    Returns (ok, message)."""
+    from dnd_app.data.statblocks import WILDSHAPE_BEASTS
+    beast = WILDSHAPE_BEASTS.get(beast_name)
+    if not beast:
+        return False, f"{beast_name} isn't a form you can take"
+    n = 2 if beast_name in ELEMENTALS else 1
+    res = _find_pool(char, "ws")
+    if res is None:
+        return False, "No Wild Shape uses (it comes with 2nd-level druid)"
+    left = ""
+    if not _unlimited(res):
+        if res.get("current", 0) < n:
+            return False, ("An elemental takes two Wild Shape uses" if n == 2 and res.get("current", 0)
+                           else "No Wild Shape uses left -- they come back on a short or long rest")
+        res["current"] -= n
+        left = f" ({res['current']} of {res['current_max']} Wild Shape uses left)"
+    char["_wildshape_active"] = beast_name
+    char["_wildshape_hp"] = beast["hp"]
     fx = char.setdefault("active_effects", [])
-    if key == "wild shape":
-        return _result(False, "Use the Wild Shape card to pick a beast and transform")
+    if "Wild Shape" not in fx:
+        fx.append("Wild Shape")
+    return True, f"Transformed into {beast_name}: {beast['hp']} hit points, AC {beast['ac']}{left}"
+
+
+def _wild_shape_use(char, key, bucket, answers):
+    """The Wild Shape cards: which form, then into it."""
+    from dnd_app.core.calculator import get_available_wildshape_beasts
+    if char.get("_wildshape_active"):
+        return _result(False, f"You're already in Wild Shape ({char['_wildshape_active']}) -- revert first")
+    from dnd_app.data.statblocks import WILDSHAPE_BEASTS
+    # the strongest forms first
+    forms = sorted(get_available_wildshape_beasts(char), key=lambda n: (-WILDSHAPE_BEASTS[n]["cr"], n))
+    if key == "elemental wild shape":
+        forms = [f for f in forms if f in ELEMENTALS]
+    if not forms:
+        return _result(False, "No Wild Shape forms available yet")
+    if answers.get("beast") not in forms:
+        return _result(False, ask={"key": "beast", "title": "Wild Shape into which form?", "options": forms})
+    ok, msg = wild_shape_into(char, answers["beast"])
+    return _result(ok, msg, slot=bucket if ok else None, refresh=ok, wild_shape=answers["beast"] if ok else None)
+
+
+# ── The hand-written actions ──────────────────────────────────────────────
+def _special(char, key, display, bucket, answers, rng, desc=""):
+    fx = char.setdefault("active_effects", [])
+    if key in ("wild shape", "elemental wild shape"):
+        return _wild_shape_use(char, key, bucket, answers)
+    more = _more_specials(char, key, display, bucket, answers, rng, desc)
+    if more is not None:
+        return more
     if key == "reckless attack":
         if "Reckless Attack" in fx:
             fx.remove("Reckless Attack")
@@ -647,9 +1323,13 @@ def _special(char, key, display, bucket, answers, rng):
         from dnd_app.core.dying import heal
         before = char.get("current_hp", 0)
         note = heal(char, total)
+        from dnd_app.core.character import subclasses
+        sub = subclasses(char).get("Fighter", "").lower()
+        rally = (f". Rallying Cry: up to three creatures within 60 ft regain {_lvl(char, 'fighter')} HP"
+                 if _lvl(char, "fighter") >= 3 and ("banneret" in sub or "purple dragon" in sub) else "")
         return _result(True, f"Second Wind: regained {char.get('current_hp', 0) - before} HP ({how}), "
                              f"now {char.get('current_hp', 0)}/{char.get('max_hp', 0)}"
-                             + (f". {note}" if note else "") + f" ({_left(res)})",
+                             + (f". {note}" if note else "") + rally + f" ({_left(res)})",
                        slot=bucket, refresh=True)
     if key == "divine smite":
         free = [s for s in _slots_free(char) if s[1] == "slot" and s[2] <= 5]
@@ -698,8 +1378,12 @@ def _special(char, key, display, bucket, answers, rng):
         if pool.get("current", 0) <= 0:
             return _result(False, "Lay on Hands: the pool is empty (refills on a long rest)")
         if "target" not in answers:
-            return _result(False, ask={"key": "target", "title": "Who is it for?",
-                                       "options": ["Yourself", "Someone else"]})
+            opts = ["Yourself", "Someone else"] + (["Cure a disease or poison (5 points)"] if pool["current"] >= 5 else [])
+            return _result(False, ask={"key": "target", "title": "Who is it for?", "options": opts})
+        if answers["target"].startswith("Cure"):
+            pool["current"] -= 5
+            return _result(True, f"Lay on Hands: cure one disease or neutralize one poison on the creature you touch "
+                                 f"(5 points spent, {pool['current']} left in the pool)", slot=bucket, refresh=True)
         cap = pool["current"]
         if answers["target"] == "Yourself":
             cap = min(cap, max(0, char.get("max_hp", 0) - max(0, char.get("current_hp", 0))))
@@ -720,6 +1404,317 @@ def _special(char, key, display, bucket, answers, rng):
         return _result(True, f"Lay on Hands: the creature regains {amount} HP ({pool['current']} left in the pool)",
                        slot=bucket, refresh=True)
     return None
+
+
+# ── More hand-written actions ─────────────────────────────────────────────
+METAMAGIC = {   # option: (sorcery points or "level", what it does)
+    "Careful Spell": (1, "up to your CHA modifier creatures automatically succeed on the spell's save"),
+    "Distant Spell": (1, "the spell's range doubles (touch becomes 30 ft)"),
+    "Empowered Spell": (1, "reroll up to your CHA modifier of the damage dice, using the new rolls"),
+    "Extended Spell": (1, "the spell's duration doubles (up to 24 hours)"),
+    "Heightened Spell": (3, "one target has disadvantage on its first save against the spell"),
+    "Quickened Spell": (2, "a 1-action spell is cast as a bonus action"),
+    "Subtle Spell": (1, "no verbal or somatic components"),
+    "Twinned Spell": ("level", "the single-target spell targets a second creature in range"),
+    "Seeking Spell": (2, "reroll a missed spell attack roll, using the new roll"),
+    "Transmuted Spell": (1, "change the spell's acid, cold, fire, lightning, poison or thunder damage to another of them"),
+}
+SLOT_COSTS = {1: 2, 2: 3, 3: 5, 4: 6, 5: 7}     # Flexible Casting: sorcery points for a slot
+
+
+def _free_cast_spells(char, source):
+    """The spells a feat or trait lets you cast for free ("Misty Step"
+    for Fey Touched): its own free-cast counters (core/spellcasting.py),
+    or the counter of the same name that casts them (Draconic Healing's
+    Cure Wounds)."""
+    from dnd_app.core.spellcasting import free_spells_of
+    out = []
+    for r in char.get("resources", []):
+        name = str(r.get("name", ""))
+        m = re.match(r"^(.+) \((.+)\)$", name)
+        if m and m.group(2).lower() == source.lower():
+            # "Pass Without Trace (Wood Elf Magic)": the spell, as the spell
+            # list names it ("Pass without Trace")
+            from dnd_app.data.spells import SPELL_NAMES
+            spell = ({n.lower(): n for n in SPELL_NAMES}.get(m.group(1).lower())
+                     or next(iter(free_spells_of(char, r)), None))
+            if spell and spell not in out:
+                out.append(spell)
+        elif normalize(name) == normalize(source) and r.get("track") != "info":
+            out.extend(sp for sp in free_spells_of(char, r) if sp not in out)
+    return out
+
+
+def _more_specials(char, key, display, bucket, answers, rng, desc):
+    """Actions that need more than the RULES table: delegating to another
+    card, slots and points traded, a pool spent by the die."""
+    # a feat's or trait's spell, cast from its card: the app's own cast
+    # (which spends the free use) does the rest
+    spells = _free_cast_spells(char, display.split(" (")[0])
+    if spells:
+        if len(spells) > 1 and answers.get("spell") not in spells:
+            return _result(False, ask={"key": "spell", "title": f"{display.split(' (')[0]}: cast which spell?",
+                                       "options": spells})
+        return _result(True, "", cast=answers.get("spell") if answers.get("spell") in spells else spells[0])
+    # the Cleric's Channel Divinity card: which option, then that option's card
+    if key == "channel divinity" and display.lower().startswith("channel divinity ("):
+        m = re.search(r"option: ([^.]+)\.", desc or "")
+        opts = [o.strip() for o in m.group(1).split(",")] if m else ["Turn Undead"]
+        if answers.get("cd_option") not in opts:
+            return _result(False, ask={"key": "cd_option", "title": "Which Channel Divinity?", "options": opts})
+        pick = answers["cd_option"]
+        pick = "Cloak of Shadows (Channel Divinity)" if pick == "Cloak of Shadows" else pick
+        rest = {k: v for k, v in answers.items() if k != "cd_option"}
+        return use_action(char, bucket, pick, "", rest, rng)
+    # a Battle Master maneuver on a hit (the attack dialog's option): which one
+    if key == "maneuver":
+        known = [m.split(" –")[0].split(" (")[0].strip() for m in char.get("battle_master_maneuvers", []) or []]
+        # the ones used on the attack itself; a reaction or bonus action
+        # maneuver (Riposte, Feinting Attack...) is its own card
+        on_hit = [m for m in known if m in ("Disarming Attack", "Distracting Strike", "Goading Attack",
+                                            "Lunging Attack", "Maneuvering Attack", "Menacing Attack",
+                                            "Pushing Attack", "Sweeping Attack", "Trip Attack",
+                                            "Precision Attack")]
+        if not on_hit:
+            return None
+        if answers.get("maneuver") not in on_hit:
+            return _result(False, ask={"key": "maneuver", "title": "Which maneuver?", "options": on_hit})
+        rest = {k: v for k, v in answers.items() if k != "maneuver"}
+        return use_action(char, "Passive", answers["maneuver"], "", rest, rng)
+    # Flexible Casting: a slot into sorcery points, or points into a slot
+    if key == "flexible casting":
+        sp = _find_pool(char, "sp")
+        if sp is None:
+            return None
+        ways = ["Turn a spell slot into sorcery points", "Turn sorcery points into a spell slot"]
+        if answers.get("way") not in ways:
+            return _result(False, ask={"key": "way", "title": "Flexible Casting:", "options": ways})
+        maxes = char.get("spell_slots_max", [0] * 9)
+        used = char.setdefault("spell_slots_used", [0] * 9)
+        if answers["way"] == ways[0]:
+            have = [l for l in range(1, 10) if maxes[l - 1] - used[l - 1] > 0]
+            if not have:
+                return _result(False, "Flexible Casting: no spell slots left to convert")
+            opts = [f"{_ordinal(l)}-level slot (+{l} points)" for l in have]
+            if answers.get("slot") not in opts:
+                return _result(False, ask={"key": "slot", "title": f"Which slot? ({sp.get('current', 0)}/{sp.get('current_max')} points)",
+                                           "options": opts})
+            lvl = have[opts.index(answers["slot"])]
+            used[lvl - 1] += 1
+            sp["current"] = min(sp.get("current_max", 0), sp.get("current", 0) + lvl)
+            return _result(True, f"Flexible Casting: a {_ordinal(lvl)}-level slot became {lvl} sorcery points "
+                                 f"({sp['current']}/{sp['current_max']})", slot=bucket, refresh=True, slots_changed=True)
+        can = [l for l in SLOT_COSTS if used[l - 1] > 0 and maxes[l - 1] > 0 and sp.get("current", 0) >= SLOT_COSTS[l]]
+        if not can:
+            return _result(False, "Flexible Casting: no spent slot of 5th level or lower you have the points for")
+        opts = [f"{_ordinal(l)}-level slot ({SLOT_COSTS[l]} points)" for l in can]
+        if answers.get("slot") not in opts:
+            return _result(False, ask={"key": "slot", "title": f"Which slot? ({sp.get('current', 0)} points)",
+                                       "options": opts})
+        lvl = can[opts.index(answers["slot"])]
+        sp["current"] -= SLOT_COSTS[lvl]
+        used[lvl - 1] -= 1
+        return _result(True, f"Flexible Casting: {SLOT_COSTS[lvl]} sorcery points became a {_ordinal(lvl)}-level slot "
+                             f"({sp['current']} points left)", slot=bucket, refresh=True, slots_changed=True)
+    # Metamagic: one of your options, its sorcery points spent as you cast
+    if key == "metamagic":
+        sp = _find_pool(char, "sp")
+        known = [m.split(" –")[0].split(" (")[0].strip()
+                 for m in (char.get("_choices", {}) or {}).get("sorcerer_metamagic", []) or []]
+        known = [m for m in known if m in METAMAGIC]
+        if sp is None or not known:
+            return None
+        if answers.get("metamagic") not in known:
+            return _result(False, ask={"key": "metamagic", "title": f"Which Metamagic? ({sp.get('current', 0)} points)",
+                                       "options": known})
+        pick = answers["metamagic"]
+        cost, what = METAMAGIC[pick]
+        if cost == "level":
+            lv_opts = ["A cantrip (1 point)"] + [f"{_ordinal(l)}-level spell ({l} points)" for l in range(1, 10)]
+            if answers.get("level") not in lv_opts:
+                return _result(False, ask={"key": "level", "title": "Twinned Spell: the spell's level?", "options": lv_opts})
+            cost = max(1, lv_opts.index(answers["level"]))
+        if sp.get("current", 0) < cost:
+            return _result(False, f"{pick}: needs {cost} sorcery point{'s' if cost != 1 else ''} "
+                                  f"({sp.get('current', 0)} left)")
+        sp["current"] -= cost
+        return _result(True, f"{pick}: {what} ({cost} sorcery point{'s' if cost != 1 else ''} spent, "
+                             f"{sp['current']} left)", refresh=True)
+    # Healing Light (Celestial): d6s from the pool, up to your CHA modifier
+    if key == "healing light":
+        pool = _own_resource(char, "Healing Light")
+        if pool is None:
+            return None
+        have = pool.get("current", 0)
+        if have <= 0:
+            return _result(False, "Healing Light: no dice left in the pool (back on a long rest)")
+        most = min(have, max(1, _mods(char)["CHA"]))
+        opts = [f"{n}d6" for n in range(1, most + 1)]
+        if answers.get("dice") not in opts:
+            return _result(False, ask={"key": "dice", "title": f"Healing Light: how many dice? ({have} in the pool)",
+                                       "options": opts})
+        if "target" not in answers:
+            return _result(False, ask={"key": "target", "title": "Who is it for?", "options": ["Yourself", "Someone else"]})
+        n = int(answers["dice"].split("d")[0])
+        pool["current"] = have - n
+        if answers["target"] == "Yourself":
+            from dnd_app.core.dying import heal
+            total = sum(rng.randint(1, 6) for _ in range(n))
+            before = char.get("current_hp", 0)
+            note = heal(char, total)
+            return _result(True, f"Healing Light: regained {char.get('current_hp', 0) - before} HP ({total} on "
+                                 f"{n}d6), now {char.get('current_hp')}/{char.get('max_hp')}" + (f". {note}" if note else "")
+                                 + f" ({pool['current']} dice left)", slot=bucket, refresh=True)
+        return _result(True, f"Healing Light: the creature regains {n}d6 hit points ({pool['current']} dice left)",
+                       slot=bucket, refresh=True)
+    # Grim Harvest (Necromancy): hit points back when a spell kills
+    if key == "grim harvest":
+        opts = [f"{_ordinal(l)}-level spell" for l in range(1, 10)]
+        if answers.get("level") not in opts:
+            return _result(False, ask={"key": "level", "title": "Grim Harvest: the spell's level?", "options": opts})
+        if answers.get("necro") not in ("Yes", "No"):
+            return _result(False, ask={"key": "necro", "title": "Was it a necromancy spell?", "options": ["No", "Yes"]})
+        lvl = opts.index(answers["level"]) + 1
+        amount = lvl * (3 if answers["necro"] == "Yes" else 2)
+        from dnd_app.core.dying import heal
+        before = char.get("current_hp", 0)
+        heal(char, amount)
+        return _result(True, f"Grim Harvest: regained {char.get('current_hp', 0) - before} HP, now "
+                             f"{char.get('current_hp')}/{char.get('max_hp')}", refresh=True)
+    # Combat Wild Shape: a spell slot for 1d8 hit points a level, in beast form
+    if key == "combat wild shape":
+        if not char.get("_wildshape_active"):
+            # Combat Wild Shape: Wild Shape with your bonus action
+            return _wild_shape_use(char, "wild shape", bucket, answers)
+        free = [s for s in _slots_free(char) if s[1] == "slot"]
+        if not free:
+            return _result(False, "Combat Wild Shape: no spell slots left")
+        if answers.get("slot") not in [s[0] for s in free]:
+            return _result(False, ask={"key": "slot", "title": "Expend which spell slot?", "options": [s[0] for s in free]})
+        lvl = next(s[2] for s in free if s[0] == answers["slot"])
+        char["spell_slots_used"][lvl - 1] += 1
+        from dnd_app.data.statblocks import WILDSHAPE_BEASTS
+        beast = WILDSHAPE_BEASTS.get(char["_wildshape_active"], {})
+        total = sum(rng.randint(1, 8) for _ in range(lvl))
+        cur = char.get("_wildshape_hp", beast.get("hp", 0))
+        char["_wildshape_hp"] = min(beast.get("hp", cur + total), cur + total)
+        return _result(True, f"Combat Wild Shape: the beast regains {char['_wildshape_hp'] - cur} HP ({total} on "
+                             f"{lvl}d8), now {char['_wildshape_hp']}/{beast.get('hp', '?')} (spent a "
+                             f"{_ordinal(lvl)}-level slot)", slot=bucket, refresh=True, slots_changed=True)
+    # Blood Maledict: one of your known curses, invoked or amplified with
+    # your own blood (Blood Hunter)
+    if key == "blood maledict":
+        pool = _find_pool(char, "maledict")
+        known = []
+        for c in (char.get("_choices", {}) or {}).get("blood_hunter_curses", []) or []:
+            name = c.split(" –")[0].split(" (")[0].strip()
+            text = c.split(" – ", 1)[1] if " – " in c else ""
+            known.append((name, text))
+        if pool is None or not known:
+            return None
+        if not _unlimited(pool) and pool.get("current", 0) <= 0:
+            return _result(False, "Blood Maledict: no uses left (back on a short or long rest)")
+        names = [n for n, _ in known]
+        if answers.get("curse") not in names:
+            return _result(False, ask={"key": "curse", "title": "Which blood curse?", "options": names})
+        ways = ["Invoke it", "Amplify it (take your hemocraft die in necrotic damage)"]
+        if answers.get("amplify") not in ways:
+            return _result(False, ask={"key": "amplify", "title": f"{answers['curse']}:", "options": ways})
+        text = dict(known)[answers["curse"]]
+        base, _, amp = text.partition(" Amplify: ")
+        when = re.match(r"(bonus action|reaction|action)\b[^:]*:\s*", base, re.I)
+        slot = {"bonus action": "Bonus Action", "reaction": "Reaction", "action": "Action"}.get(
+            when.group(1).lower() if when else "", bucket)
+        base = base[when.end():] if when else base
+        hurt = ""
+        if answers["amplify"] == ways[1]:
+            die = formula(char, "HEMODIE")
+            sides = int(die.split("d")[1])
+            if not str(answers.get("self_roll", "")).isdigit():
+                return _result(False, ask={"key": "self_roll", "title": f"Roll {die} for the necrotic damage you take. "
+                                                                       f"What did you roll?",
+                                           "options": [str(i) for i in range(1, sides + 1)]})
+            from dnd_app.core.dying import take_damage
+            take_damage(char, int(answers["self_roll"]))
+            hurt = (f"; amplified: {_lower_first(amp.rstrip('.'))} (you take {answers['self_roll']} necrotic damage, "
+                    f"now {char.get('current_hp', 0)}/{char.get('max_hp', 0)} HP)")
+        if not _unlimited(pool):
+            pool["current"] -= 1
+        return _result(True, f"{answers['curse']}: {_lower_first(_tokens(char, base).rstrip('.'))}{hurt} "
+                             f"({_left(pool)})", slot=slot, refresh=True)
+    # Divine Intervention: percentile dice against your cleric level
+    if key == "divine intervention":
+        uses = _uses_resource(char, display, {"uses": "1/LR"})
+        if uses is not None and uses.get("current", 0) <= 0:
+            return _result(False, "Divine Intervention: not again until after a long rest (7 days after a success)")
+        lvl = _lvl(char, "cleric")
+        roll = rng.randint(1, 100)
+        ok = lvl >= 20 or roll <= lvl
+        if uses is not None:
+            uses["current"] = 0
+        how = "automatic at 20th level" if lvl >= 20 else f"rolled {roll} against your cleric level {lvl}"
+        return _result(True, f"Divine Intervention: {how} -- "
+                             + ("your deity intervenes (describe the help; the DM picks the miracle). Not again for "
+                                "7 days" if ok else "no answer this time. You can try again after a long rest"),
+                       slot=bucket, refresh=True)
+    # Portent: one of the foretelling rolls takes the place of a d20
+    if key == "portent" and _portent_res(char) is not None:
+        rolls = portent_rolls(char, rng)
+        if not rolls:
+            return _result(False, "Portent: no foretelling rolls left (you roll new ones after a long rest)")
+        options = [str(r) for r in sorted(set(rolls), reverse=True)]
+        if len(options) > 1 and answers.get("portent") not in options:
+            return _result(False, ask={"key": "portent", "title": "Portent: use which roll?", "options": options})
+        pick = int(answers.get("portent") if answers.get("portent") in options else options[0])
+        return _result(True, spend_portent(char, pick), refresh=True)
+    return None
+
+
+# ── Portent ───────────────────────────────────────────────────────────────
+# A Diviner rolls two d20s (three from 14th level) after each long rest and
+# can use one in place of any attack roll, saving throw or ability check
+# made by them or a creature they can see. The rolls are kept on the
+# character ("portent_rolls"); the Portent counter says how many are left.
+def _portent_res(char):
+    return next((r for r in char.get("resources", []) if r.get("key") == "portent"), None)
+
+
+def portent_rolls(char, rng=random) -> list:
+    """The foretelling rolls still unused, kept in step with the Portent
+    counter: a roll is made for each use the counter has and the list
+    doesn't (a new character, or a use put back by hand), and the last
+    ones go when the counter has fewer (a roll spent at the table)."""
+    res = _portent_res(char)
+    if res is None:
+        return []
+    n = max(0, int(res.get("current", 0) or 0))
+    rolls = [int(r) for r in char.get("portent_rolls") or []][:n]
+    rolls += [rng.randint(1, 20) for _ in range(n - len(rolls))]
+    char["portent_rolls"] = rolls
+    return rolls
+
+
+def spend_portent(char, roll) -> str:
+    """Use the foretelling roll showing this number: it's gone, and the
+    Portent counter goes down one. Returns the message."""
+    rolls = portent_rolls(char)
+    if roll not in rolls:
+        return f"Portent: no {roll} left among your rolls"
+    rolls.remove(roll)
+    res = _portent_res(char)
+    res["current"] = max(0, res.get("current", 0) - 1)
+    left = f"rolls left: {', '.join(map(str, rolls))}" if rolls else "no rolls left until your next long rest"
+    return f"Portent: the d20 roll is a {roll} ({left})"
+
+
+def roll_portent(char, rng=random) -> str:
+    """After a long rest: any unused rolls are lost and new ones are rolled
+    (call it once the counters are back to full). Returns the line for the
+    rest message, "" without Portent."""
+    if _portent_res(char) is None:
+        return ""
+    char["portent_rolls"] = []
+    return "Portent rolls: " + ", ".join(map(str, portent_rolls(char, rng)))
 
 
 # ── Costs ─────────────────────────────────────────────────────────────────
@@ -793,11 +1788,15 @@ _FEATURE_USE_CACHE = {}
 def feature_use_resources(char, existing):
     """Resources for the per-rest uses in RULES that the character's
     actions have and nothing else tracks yet. Called by update_all."""
-    from dnd_app.core.character import class_levels
+    import json
+    # everything that changes which cards there are: classes, race, feats,
+    # and every pick (runes, maneuvers, invocations, optional features...)
     sig = (tuple(sorted((c.get("class"), c.get("level"), c.get("subclass", "")) for c in char.get("classes", []))),
            char.get("race"), char.get("subrace"), tuple(sorted(char.get("feats", []))),
            tuple(sorted(_mods(char).items())), _pb(char),
-           tuple(sorted((char.get("_choices", {}).get("optional_features") or {}).items())))
+           json.dumps(char.get("_choices", {}), sort_keys=True, default=str),
+           tuple(char.get("eldritch_invocations", []) or []), tuple(char.get("battle_master_maneuvers", []) or []),
+           tuple(sorted((char.get("optional_rules") or {}).items())))
     cached = _FEATURE_USE_CACHE.get(sig)
     if cached is None:
         from dnd_app.core.actions import build_action_abilities
@@ -813,14 +1812,28 @@ def feature_use_resources(char, existing):
                 if len(e) > 3 and e[3] is not None:
                     continue
                 display, desc = e[0], e[1]
-                spec = RULES.get(normalize(display))
+                spec = rule_for(display)
                 if not spec or not spec.get("uses"):
                     continue
                 name = display.split("(")[0].strip()
+                if spec.get("each"):
+                    # one counter per option (Lunar Phenomenon's phases)
+                    for opt in spec["each"]:
+                        oname = f"{name} ({opt})"
+                        okey = _use_key(oname)
+                        if okey in seen or _own_resource({"resources": existing}, oname):
+                            continue
+                        seen.add(okey)
+                        mx, reset = _uses_max(char, spec["uses"])
+                        cached.append({"name": oname, "key": okey, "reset": reset, "current_max": mx,
+                                       "track": "uses", "note": _summary(desc, 200),
+                                       "source_class": "", "subclass": ""})
+                    continue
                 key = _use_key(spec.get("share") or name)
                 if key in seen:
                     continue
-                if _own_resource({"resources": existing}, name):
+                if _own_resource({"resources": existing}, name) or \
+                        (spec.get("share") and _own_resource({"resources": existing}, spec["share"])):
                     continue
                 seen.add(key)
                 mx, reset = _uses_max(char, spec["uses"])
@@ -855,7 +1868,7 @@ def use_action(char, bucket, display, desc="", answers=None, rng=random):
         return stop
 
     # 2. hand-written
-    out = _special(char, key, display, slot, answers, rng)
+    out = _special(char, key, display, slot, answers, rng, desc)
     if out is not None:
         return out
 
@@ -873,14 +1886,19 @@ def use_action(char, bucket, display, desc="", answers=None, rng=random):
     if res is not None:
         return _use_resource(char, display, desc, res, slot)
 
-    # 5. just the turn
+    # 5. a cost its own text names ("Spend 2 ki to cast..." -- the Four
+    #    Elements disciplines), then the turn
+    m = re.search(r"\bspend (\d+) (ki|sorcery points?)\b", desc or "", re.I)
+    if m:
+        pool = "ki" if m.group(2).lower() == "ki" else "sp"
+        return _use_rule(char, display, desc, {"cost": (pool, int(m.group(1)))}, slot, answers, rng)
     return _result(True, f"{display}: {_lower_first(_summary(desc)) or 'used'}", slot=slot)
 
 
 # ── Magic items ───────────────────────────────────────────────────────────
 # Item effects switched on and off from the item's action card
 ITEM_TOGGLES = {"Flame Tongue": "Flame Tongue"}
-_DAILY_RE = re.compile(r"1/day|once (?:per|a) (?:day|dawn)|until the next dawn|\(1/day", re.I)
+_DAILY_RE = re.compile(r"(\d+)/day|once (?:per|a) (?:day|dawn)|until the next dawn", re.I)
 _CHARGE_RE = re.compile(r"(\d+)\s*(?:ch\b|charges?\b)", re.I)
 
 
@@ -895,12 +1913,19 @@ def _item_for(char, display):
     for ia in char.get("item_actions", []):
         if ia.get("name") == display and ia.get("source") in names:
             return ia["source"]
-    m = re.search(r"\(([^()]+)\)\s*$", display or "")
-    if m and m.group(1) in names:
-        return m.group(1)
+    # "Invisibility (Jewel of Three Prayers (Awakened))": the item's own
+    # name can have brackets in it, so it's matched whole at the end
+    for n in sorted(names, key=len, reverse=True):
+        if (display or "").endswith(f"({n})"):
+            return n
     base = (display or "").split("(")[0].strip().lower()
     for n in names:
         if base and base == n.lower():
+            return n
+    # a card named for the item without its state ("Verminshroud (3/day)"
+    # for the Verminshroud (Dormant))
+    for n in names:
+        if base and n.lower().startswith(base + " ("):
             return n
     return ""
 
@@ -955,11 +1980,17 @@ def _use_item(char, item, display, desc, slot, answers):
         if n:
             tail = f" ({n} charge{'s' if n != 1 else ''} spent, {charges['current']}/{charges['max']} left)"
     elif _DAILY_RE.search(text):
-        uses = char.setdefault("item_uses", {}).setdefault(display, {"current": 1, "max": 1, "recharge": "dawn"})
+        # once a day, or N times a day ("Verminshroud (3/day)")
+        m = _DAILY_RE.search(text)
+        per_day = int(m.group(1)) if m.group(1) else 1
+        uses = char.setdefault("item_uses", {}).setdefault(display, {"current": per_day, "max": per_day,
+                                                                     "recharge": "dawn"})
+        uses["max"] = per_day
         if uses.get("current", 0) <= 0:
             return _result(False, f"{display}: already used today (back at dawn)")
         uses["current"] -= 1
-        tail = " (used for today, back at dawn)"
+        tail = (" (used for today, back at dawn)" if per_day == 1 else
+                f" ({uses['current']} of {per_day} left today, back at dawn)")
     card = next((d for d in char.get("item_granted_spell_details", [])
                  if f"{d.get('spell')} ({item})" == display), None)
     if card:
@@ -999,13 +2030,57 @@ def _use_resource(char, display, desc, res, slot):
         note = on_effect_started(char, display) or ""
     what = _lower_first(_toggle_say(char, display) if toggle else (_summary(desc) or "used"))
     msg = f"{display}{' on' if toggle else ''}: {what} ({_left(res)})" + (f". {note}" if note else "")
+    if display == "Rage":
+        from dnd_app.core.character import subclasses
+        if "wild magic" in subclasses(char).get("Barbarian", "").lower():
+            # Wild Surge: entering the rage rolls on the Wild Magic table
+            _, rolled = _table_roll(char, ("1d8", WILD_MAGIC_BARBARIAN_TABLE), random)
+            msg += f". Wild Surge: {rolled}"
     if res.get("key") == "action_surge" or display.startswith("Action Surge"):
         char["_action_surge_used_this_turn"] = True
         slot = None
     return _result(True, msg, slot=slot, refresh=True)
 
 
+def _aasimar_say(char, name):
+    """An aasimar's transformation, with this character's numbers: the extra
+    damage is your level (VGM) or your proficiency bonus (MPMM)."""
+    import math
+    mpmm, pb, cha = _mpmm(char), _pb(char), _mods(char)["CHA"]
+    n = pb if mpmm else _level(char)
+    hit = f"once on each of your turns, +{n} {'necrotic' if name == 'Necrotic Shroud' else 'radiant'} damage to " \
+          f"one target of your attack or spell"
+    if name == "Necrotic Shroud":
+        return (f"for 1 minute: creatures other than your allies within 10 ft that can see you make a DC "
+                f"{8 + pb + cha} CHA save or are frightened of you until the end of your next turn; {hit}")
+    if name == "Radiant Consumption":
+        aura = (f"each creature within 10 ft takes {pb} radiant damage" if mpmm else
+                f"you and each creature within 10 ft take {math.ceil(_level(char) / 2)} radiant damage")
+        return f"for 1 minute: bright light 10 ft; at the end of each of your turns {aura}; {hit}"
+    fly = "a flying speed equal to your walking speed" if mpmm else "a flying speed of 30 ft"
+    return f"for 1 minute: {fly}; {hit}"
+
+
+def _shifting_say(char):
+    """What shifting gives this shifter, by kind (the temporary hit points
+    are in on_effect_started's note)."""
+    sub = (char.get("subrace") or "").lower()
+    kinds = {"beasthide": "+1 AC while shifted",
+             "longtooth": "your fangs: a bonus action attack (its row is on the Combat page)",
+             "swiftstride": "+10 ft walking speed, and your reaction can move you 10 ft when a creature ends its "
+                            "turn within 5 ft (the Swiftstride Step card)",
+             "wildhunt": "advantage on WIS checks, and no creature within 30 ft can make an attack roll with "
+                         "advantage against you unless you're incapacitated"}
+    what = next((v for k, v in kinds.items() if k in sub), "your shifter kind's benefit")
+    return f"for 1 minute (end it with a bonus action): {what}"
+
+
 def _toggle_say(char, name):
+    if name == "Shifting":
+        return _shifting_say(char)
+    if name in ("Radiant Soul (Aasimar)", "Necrotic Shroud", "Radiant Consumption") \
+            and "aasimar" in (char.get("species") or char.get("race", "") or "").lower():
+        return _aasimar_say(char, name)
     if name == "Rage":
         from dnd_app.core.calculator import get_rage_damage
         return (f"resistance to bludgeoning, piercing and slashing damage, {get_rage_damage(char)} damage "
@@ -1020,12 +2095,74 @@ def _toggle_say(char, name):
     return _summary(FEATURE_DESCS.get(name, ""), 160) or "on"
 
 
+def _tokens(char, text):
+    """The numbers a card's text needs, worked out for this character:
+    {PB}; {STR}..{CHA} (the modifier, at least 1); {DC_STR}..{DC_CHA}
+    (8 + PB + that modifier); {SPELL_DC}; {LEVEL}; {LVL:Monk} (a class's
+    level); {HALF:Wizard} (half of it, rounded down)."""
+    if "{" not in (text or ""):
+        return text or ""
+    mods, pb = _mods(char), _pb(char)
+    for ab, m in mods.items():
+        text = text.replace("{" + ab + "}", str(max(1, m))).replace("{DC_" + ab + "}", str(8 + pb + m))
+    text = text.replace("{PB}", str(pb))
+    # a Battle Master's maneuver save DC: 8 + PB + STR or DEX, the higher
+    text = text.replace("{DC_MAN}", str(8 + pb + max(mods["STR"], mods["DEX"])))
+    if "{SPELL_DC}" in text:
+        from dnd_app.core.calculator import get_spell_save_dc
+        text = text.replace("{SPELL_DC}", str(get_spell_save_dc(char)))
+    if "{SPELL_ATK}" in text:
+        from dnd_app.core.calculator import get_spell_attack_bonus
+        b = get_spell_attack_bonus(char)
+        text = text.replace("{SPELL_ATK}", f"+{b}" if b >= 0 else str(b))
+    if "{LEVEL}" in text:
+        from dnd_app.core.character import total_level
+        text = text.replace("{LEVEL}", str(total_level(char)))
+    text = re.sub(r"\{LVL:([A-Za-z ]+)\}", lambda m: str(_lvl(char, m.group(1).lower())), text)
+    text = re.sub(r"\{HALF:([A-Za-z ]+)\}", lambda m: str(max(1, _lvl(char, m.group(1).lower()) // 2)), text)
+    return text
+
+
+def _table_roll(char, table, rng, name=""):
+    """Roll on a table: (die, entries) with entries [(low, high, text)] or
+    [(n, text)] -> "rolled 6: ..."."""
+    die, entries = table
+    die = _special_die(char, die, name) if not re.fullmatch(r"\d+d\d+", die) else die
+    n, s = map(int, die.split("d"))
+    roll = sum(rng.randint(1, s) for _ in range(n))
+    for e in entries:
+        lo, hi, text = (e[0], e[0], e[1]) if len(e) == 2 else e
+        if lo <= roll <= hi:
+            return roll, f"rolled {roll}: {_lower_first(_tokens(char, text)).rstrip('.')}"
+    return roll, f"rolled {roll}"
+
+
 def _use_rule(char, display, desc, spec, slot, answers, rng):
     from dnd_app.core.effects import EFFECT_TABLE
     fx = char.setdefault("active_effects", [])
     name = display.split("(")[0].strip()
+    # a card with options (Bolstering Magic, Spirit Totem, Storm Aura...):
+    # which one, then that option's own rules on top
+    if spec.get("choose"):
+        opts = spec["choose"](char) if callable(spec["choose"]) else spec["choose"]
+        opts = [o for o in opts if o]
+        labels = [o["label"] for o in opts]
+        if len(labels) == 1:
+            answers.setdefault("choice", labels[0])
+        if answers.get("choice") not in labels:
+            if not labels:
+                return _result(False, f"{name}: nothing to choose from yet")
+            return _result(False, ask={"key": "choice", "title": spec.get("ask", f"{name}: which one?"),
+                                       "options": labels})
+        opt = next(o for o in opts if o["label"] == answers["choice"])
+        spec = {**{k: v for k, v in spec.items() if k not in ("choose", "ask")},
+                **{k: v for k, v in opt.items() if k != "label"}}
+        if spec.get("as"):
+            name = spec["as"]
     if spec.get("slot") is False:
         slot = None
+    elif spec.get("slot") in ("Action", "Bonus Action", "Reaction"):
+        slot = spec["slot"]
     # requirements
     if spec.get("needs"):
         why = _need_problem(char, spec["needs"])
@@ -1034,6 +2171,12 @@ def _use_rule(char, display, desc, spec, slot, answers, rng):
     turn = char.setdefault("_turn_uses", [])
     if spec.get("once") and name in turn:
         return _result(False, f"{name}: already used this turn")
+    # once per rage (Fanatical Focus): back when a new rage starts
+    per = None
+    if spec.get("once_per"):
+        per = char.setdefault("_once_per", {}).setdefault(spec["once_per"], [])
+        if name in per:
+            return _result(False, f"{name}: already used this {spec['once_per'].lower()}")
     # an effect that's on goes off again (Agile Parry, Kensei's Shot...);
     # one that cost something stays until it ends (Sharpen the Blade can
     # be used again to change its bonus)
@@ -1108,6 +2251,8 @@ def _use_rule(char, display, desc, spec, slot, answers, rng):
             return _result(False, ask={"key": "type", "title": "Which damage type?",
                                        "options": list(spec["pick_type"])})
         picked["type"] = answers["type"].lower()
+    if spec.get("remember") and answers.get("choice"):
+        picked["choice"] = answers["choice"]
 
     problem, ask, _, _ = _pay(char, name, costs, answers, check_only=True)
     if ask:
@@ -1143,14 +2288,26 @@ def _use_rule(char, display, desc, spec, slot, answers, rng):
         spent.append(f"{left} of {uses['current_max']} use{'s' if uses['current_max'] != 1 else ''} left")
     if spec.get("once"):
         turn.append(name)
+    if per is not None:
+        per.append(name)
 
     lines, refresh = [], bool(spent)
     say = spec.get("say", "")
     say = say.replace("KI-1", str(max(1, chosen - 1))).replace("+KI", f"+{chosen}").replace("KI d8s", f"{chosen}d8s")
+    say = say.replace("{KI2}", str(2 * chosen))
     say = say.replace("WEAPON", sharpened.lower())
-    say = say.replace("{PB}", str(_pb(char))).replace("{CHA}", str(max(1, _mods(char)["CHA"]))).replace("{INT}", str(max(1, _mods(char)["INT"])))
+    say = _tokens(char, say)
     # rolls
     say = _breath_tokens(char, say)
+    if spec.get("table"):
+        # a roll on its table (Wild Magic, Spirit Tales, an elixir...)
+        _, rolled = _table_roll(char, spec["table"], rng, name=display)
+        lines.append(rolled)
+    if spec.get("exhaust"):
+        # it costs a level of exhaustion (Convergent Future)
+        char["exhaustion"] = min(6, char.get("exhaustion", 0) + spec["exhaust"])
+        lines.append(f"you gain a level of exhaustion (now {char['exhaustion']})")
+        refresh = True
     if spec.get("roll") and spec.get("damage"):
         lines.append(say.replace("{roll}", formula(char, spec["roll"], chosen=chosen, name=display)))
         say = ""
@@ -1212,6 +2369,34 @@ def _use_rule(char, display, desc, spec, slot, answers, rng):
     if spec.get("pact_back"):
         char["pact_slots_used"] = 0
         refresh = True
+    if spec.get("spell"):
+        # a spell cast through the feature: no other spell from the attack
+        # dialog this turn
+        note_spell_cast(char, name)
+    if spec.get("regain_pool"):
+        pool_code, n = spec["regain_pool"]
+        res = _find_pool(char, pool_code)
+        if res is not None and not _unlimited(res):
+            res["current"] = min(res.get("current_max", 0), res.get("current", 0) + n)
+            lines.append(f"regained {n} {_noun(pool_code, n)} ({res['current']}/{res['current_max']})")
+            refresh = True
+    if spec.get("regain_slot"):
+        lvl = spec["regain_slot"]
+        used = char.setdefault("spell_slots_used", [0] * 9)
+        if used[lvl - 1] > 0:
+            used[lvl - 1] -= 1
+            lines.append(f"regained a {_ordinal(lvl)}-level spell slot")
+            refresh = True
+    if spec.get("end_fx") and spec["end_fx"] in fx:
+        end_effects(char, [spec["end_fx"]])
+        refresh = True
+    if spec.get("end_condition"):
+        conds = char.get("conditions", [])
+        gone = next((c for c in spec["end_condition"] if c in conds), None)
+        if gone:
+            conds.remove(gone)
+            lines.append(f"you're no longer {gone.lower()}")
+            refresh = True
     if spec.get("surge"):
         char["_action_surge_used_this_turn"] = True
     if effect:
@@ -1225,12 +2410,14 @@ def _use_rule(char, display, desc, spec, slot, answers, rng):
             say = ""
         if rite:
             note = ""
-        if picked:
+        if picked.get("weapon") or picked.get("type"):
             where = f" on your {picked['weapon']}" if picked.get("weapon") else ""
             if effect == "Elemental Cleaver":
                 note = f"+{_cleaver_dice(char)} {picked.get('type', '')} damage{where} while you rage"
             else:
                 note = f"+1d4 {picked.get('type', '')} damage{where} for 1 minute"
+        elif picked.get("choice") and say:
+            note = ""              # the option picked says what it does (a Starry Form constellation)
         lines.insert(0, _lower_first(note.rstrip(".")) if note else "")
         name = f"{name} on"
         refresh = True

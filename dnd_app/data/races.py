@@ -9,6 +9,8 @@ source.
 Author: Ethan O'Brien
 Date: 2026-08-20
 """
+import re
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def race(name, speed=30, size="Medium", asi=None, asi_flex=0, traits=None,
@@ -30,14 +32,14 @@ ALL_RACES = [
          languages=["Common", "Draconic"],
          subraces=[
              "Standard (+STR 2, +CHA 1; choose one draconic ancestry — Black, Blue, Brass, Bronze, Copper, Gold, Green, Red, Silver, or White — which sets your breath weapon's shape and damage type and your resistance to that damage type)",
-             "Chromatic (+STR 2, +CHA 1; choose Black, Blue, Green, or Red ancestry; Draconic Cry: as a bonus action, roar to frighten enemies within 10 feet for 1 round (WIS save negates); usable a number of times equal to your proficiency bonus, regained after a long rest)",
-             "Metallic (+STR 2, +CHA 1; choose Brass, Bronze, Copper, Gold, or Silver ancestry; gain an alternate breath weapon option — Paralyzing Breath (CON save or paralyzed) or Repulsion Breath (STR save or pushed away and knocked prone) — usable once per long rest in place of your normal breath)",
-             "Gem (+2 to one ability score and +1 to another, your choice; choose Amethyst, Crystal, Emerald, Sapphire, or Topaz ancestry; Psionic Mind: learn Guidance and Minor Illusion, cast Sending once per long rest; Gem Flight: starting at level 5, gain a flying speed equal to your walking speed for 1 minute once per long rest)",
-             "Draconblood (+INT 2, +CHA 1; Darkvision 60 ft; Forceful Presence: advantage on one Intimidation or Persuasion check per long rest)",
-             "Ravenite (+STR 2, +CON 1; Darkvision 60 ft; Vengeful Assault: when an ally within 5 feet is hit by an attack, use your reaction to make one melee attack against the attacker if it's within your reach)"]
+             "Chromatic (+2 to one ability score and +1 to another, or +1 to three different ones, your choice; choose Black, Blue, Green, Red, or White ancestry; Breath Weapon in place of one attack: a 30-ft line, 1d10 that grows at 5th, 11th and 17th level, DEX save, proficiency bonus uses per long rest; Chromatic Warding: from 5th level, as an action, immunity to your ancestry's damage type for 1 minute, once per long rest)",
+             "Metallic (+2 to one ability score and +1 to another, or +1 to three different ones, your choice; choose Brass, Bronze, Copper, Gold, or Silver ancestry; Breath Weapon in place of one attack: a 15-ft cone, 1d10 that grows at 5th, 11th and 17th level, DEX save, proficiency bonus uses per long rest; Metallic Breath Weapon: from 5th level, once per long rest, in place of one attack, Enervating Breath - CON save or incapacitated until the start of your next turn - or Repulsion Breath - STR save or pushed 20 ft and knocked prone)",
+             "Gem (+2 to one ability score and +1 to another, or +1 to three different ones, your choice; choose Amethyst, Crystal, Emerald, Sapphire, or Topaz ancestry; Breath Weapon in place of one attack: a 15-ft cone, 1d10 that grows at 5th, 11th and 17th level, DEX save, proficiency bonus uses per long rest; Psionic Mind: send telepathic messages to a creature you can see within 30 ft; Gem Flight: from 5th level, as a bonus action, a flying speed equal to your walking speed for 1 minute and you can hover, once per long rest)",
+             "Draconblood (+INT 2, +CHA 1; Darkvision 60 ft; Forceful Presence: advantage on one Intimidation or Persuasion check, once per short or long rest)",
+             "Ravenite (+STR 2, +CON 1; Darkvision 60 ft; Vengeful Assault: when a creature within reach of your weapon damages you, your reaction makes one attack with that weapon against it, once per short or long rest)"]
          ),
 
-    race("Dwarf", asi={"CON": 2},
+    race("Dwarf", speed=25, asi={"CON": 2},
          traits=["Darkvision 60 ft", 'Dwarven Resilience – you have advantage on saving throws against poison, and you have resistance to poison damage',
                  'Dwarven Combat Training – you have proficiency with the battleaxe, handaxe, light hammer, and warhammer',
                  'Stonecunning – whenever you make an Intelligence (History) check related to the origin of stonework, you are proficient in the History skill and add double your proficiency bonus to the check',
@@ -46,8 +48,8 @@ ALL_RACES = [
          languages=["Common", "Dwarvish"],
          subraces=["Hill (+CON 2, +WIS 1; Dwarven Toughness: your hit point maximum increases by 1, and increases by 1 again every time you gain a level)",
                    "Mountain (+STR 2, +CON 2; Dwarven Armor Training: proficiency with light and medium armor)",
-                   "Duergar (+STR 2, +CON 1; Darkvision 120 ft; Duergar Resilience: advantage on saves against illusions and against being charmed or paralyzed; Duergar Magic: cast Enlarge/Reduce (self only) at 3rd level and Invisibility (self only) at 5th level, once each per long rest; Sunlight Sensitivity: disadvantage on attack rolls and Perception checks that rely on sight while you or the target is in direct sunlight)",
-             "Mark of Warding (+INT 2, +CON 1; cast Alarm, Arcane Lock, and Detect Magic each once per long rest without a spell slot, using INT as your spellcasting ability; gain proficiency with one type of artisan's tools)"]),
+                   "Duergar (+CON 2, +STR 1; Darkvision 120 ft; Duergar Resilience: advantage on saves against illusions and against being charmed or paralyzed; Duergar Magic: cast Enlarge/Reduce (self only) at 3rd level and Invisibility (self only) at 5th level, once each per long rest; Sunlight Sensitivity: disadvantage on attack rolls and Perception checks that rely on sight while you or the target is in direct sunlight)",
+             "Mark of Warding (+CON 2, +INT 1; Warder's Intuition: add a d4 to Investigation checks and ability checks using thieves' tools; Wards and Seals: cast Alarm and Mage Armor, and Arcane Lock from 3rd level, each once per long rest without material components, using INT as your spellcasting ability; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Warding spells are added to your class's spell list)"]),
 
     race("Elf",
          traits=["Darkvision 60 ft", 'Keen Senses – you have proficiency in the Perception skill',
@@ -60,18 +62,18 @@ ALL_RACES = [
                    "Eladrin (+DEX 2, +CHA 1; Fey Step: teleport up to 30 feet to an unoccupied space you can see, as a bonus action, once per short or long rest, with an additional effect based on the season you've chosen — Autumn charms one creature within 5 feet of your destination, Winter frightens one creature within 5 feet, Spring lets a willing creature within 5 feet teleport with you, Summer deals 2d6 fire damage to each creature within 5 feet of your origin point; you can change your chosen season after a long rest)",
                    "Eladrin - DMG'14 (+DEX 2, +INT 1; Fey Step: cast Misty Step using this trait once per short or long rest)",
                    "Sea (+DEX 2, +CON 1; Sea Elf Training: proficiency with the spear, trident, light crossbow, and net; swimming speed of 30 feet; Amphibious: you can breathe air and water; Friend of the Sea: you can communicate simple ideas with beasts that have a swimming speed)",
-                   "Shadar-kai (+DEX 2, +CON 1; resistance to necrotic damage; Blessing of the Raven Queen: as a bonus action, teleport up to 30 feet to an unoccupied space you can see and gain resistance to all damage until the start of your next turn, usable a number of times equal to your proficiency bonus, regained after a long rest)",
+                   "Shadar-kai (+DEX 2, +CON 1; resistance to necrotic damage; Blessing of the Raven Queen: as a bonus action, teleport up to 30 feet to an unoccupied space you can see, once per long rest; from 3rd level you also have resistance to all damage until the start of your next turn)",
                    "Pallid (– +DEX 2, +WIS 1; Incisive Sense: advantage on Insight checks to determine if a creature is lying; Moonweaver Magic: cast Silent Image once per long rest, using WIS as your spellcasting ability)",
-             "Mark of Shadow (+DEX 2, +CHA 1; cast Dancing Lights, Disguise Self, and Darkness each once per long rest without a spell slot, using CHA as your spellcasting ability; gain proficiency in the Stealth skill)"]),
+             "Mark of Shadow (+DEX 2, +CHA 1; Cunning Intuition: add a d4 to Performance and Stealth checks; Shape Shadows: you know the Minor Illusion cantrip, and from 3rd level cast Invisibility once per long rest, using CHA as your spellcasting ability; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Shadow spells are added to your class's spell list)"]),
 
     race("Gnome", speed=25,
          traits=["Darkvision 60 ft",
                  'Gnome Cunning – you have advantage on all Intelligence, Wisdom, and Charisma saving throws against magic'],
          languages=["Common", "Gnomish"],
          subraces=["Forest (+INT 2, +DEX 1; learn the Minor Illusion cantrip, using INT as your spellcasting ability; Speak with Small Beasts: you can communicate simple ideas with Small or smaller beasts)",
-                   "Rock (+INT 2, +CON 1; Artificer's Lore: add double your proficiency bonus, instead of your normal bonus, to Intelligence (History) checks related to magic items, alchemical objects, or technological devices; Tinker: using tinker's tools, spend 1 hour and 10 gp of materials to construct a Tiny clockwork device — a clockwork toy, fire starter, or music box — with a simple programmed action)",
+                   "Rock (+INT 2, +CON 1; Artificer's Lore: add double your proficiency bonus, instead of your normal bonus, to Intelligence (History) checks related to magic items, alchemical objects, or technological devices; Tinker: proficiency with tinker's tools; using them, spend 1 hour and 10 gp of materials to construct a Tiny clockwork device — a clockwork toy, fire starter, or music box — with a simple programmed action)",
                    "Deep Gnome / Svirfneblin (– +INT 2, +DEX 1; Darkvision 120 ft; Stone Camouflage: advantage on Stealth checks made to hide in rocky terrain)",
-             "Mark of Scribing (+INT 2, +CHA 1; cast Comprehend Languages, Illusory Script, and Sending each once per long rest without a spell slot, using INT as your spellcasting ability; gain proficiency with calligrapher's supplies)"]),
+             "Mark of Scribing (+INT 2, +CHA 1; Gifted Scribe: add a d4 to History checks and ability checks using calligrapher's supplies; Scribe's Insight: you know the Message cantrip, cast Comprehend Languages once per short or long rest, and from 3rd level Magic Mouth once per long rest, using INT as your spellcasting ability; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Scribing spells are added to your class's spell list)"]),
 
     race("Half-Elf", asi={"CHA": 2}, asi_flex=2, asi_flex_style="each",
          traits=["Darkvision 60 ft", "Fey Ancestry",
@@ -80,19 +82,19 @@ ALL_RACES = [
          languages=["Common", "Elvish", "one of your choice"],
          subraces=[
              "Standard (+CHA 2, +1 to two ability scores of your choice; gain two skill proficiencies of your choice)",
-             "Aquatic (+CHA 2; swimming speed of 30 feet; Amphibious: you can breathe air and water)",
-             "Drow Descent (+CHA 2, +DEX 1; Darkvision 60 ft; learn the Dancing Lights cantrip, using CHA as your spellcasting ability)",
-             "High Descent (+CHA 2, +INT 1; learn one cantrip from the wizard spell list, using INT as your spellcasting ability)",
-             "Wood Descent (+CHA 2, +WIS 1; base walking speed increases to 35 feet; gain proficiency with the longsword, shortsword, shortbow, and longbow)",
-             "Mark of Detection (+CHA 2, +WIS 1; cast Detect Magic and Detect Poison and Disease each once per long rest, and True Seeing once without a spell slot at 9th level, using WIS as your spellcasting ability; gain proficiency in the Investigation skill)",
-             "Mark of Storm (+CHA 2, +DEX 1; cast Fog Cloud and Gust of Wind each once per long rest, and Fly once without a spell slot at 9th level, using DEX as your spellcasting ability; gain proficiency with water vehicles)"]),
+             "Aquatic (+CHA 2, and +1 to two other ability scores of your choice; one variant feature: Skill Versatility, or Swim — a swimming speed of 30 feet)",
+             "Drow Descent (+CHA 2, and +1 to two other ability scores of your choice; one variant feature: Skill Versatility, or Drow Magic — the Dancing Lights cantrip, Faerie Fire from 3rd level and Darkness from 5th, each once per long rest, using CHA as your spellcasting ability)",
+             "High Descent (+CHA 2, and +1 to two other ability scores of your choice; one variant feature: Skill Versatility, Elf Weapon Training — longsword, shortsword, shortbow and longbow — or a Cantrip from the wizard spell list, using INT as your spellcasting ability)",
+             "Wood Descent (+CHA 2, and +1 to two other ability scores of your choice; one variant feature: Skill Versatility, Elf Weapon Training — longsword, shortsword, shortbow and longbow — Fleet of Foot — base walking speed 35 feet — or Mask of the Wild — you can try to hide when only lightly obscured by foliage, heavy rain, falling snow, mist and other natural phenomena)",
+             "Mark of Detection (+WIS 2, and +1 to one other ability of your choice; Deductive Intuition: add a d4 to Investigation and Insight checks; Magical Detection: cast Detect Magic and Detect Poison and Disease, and See Invisibility from 3rd level, each once per long rest without material components, using WIS as your spellcasting ability; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Detection spells are added to your class's spell list)",
+             "Mark of Storm (+CHA 2, +DEX 1; Windwright's Intuition: add a d4 to Acrobatics checks and ability checks using navigator's tools; Storm's Boon: resistance to lightning damage; Headwinds: you know the Gust cantrip, and from 3rd level cast Gust of Wind once per long rest, using CHA as your spellcasting ability; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Storm spells are added to your class's spell list)"]),
 
     race("Half-Orc", asi={"STR": 2, "CON": 1},
          traits=["Darkvision 60 ft", 'Menacing – you gain proficiency in the Intimidation skill',
                  'Relentless Endurance – when you are reduced to 0 hit points but not killed outright, you can drop to 1 hit point instead. Once per long rest',
                  "Savage Attacks – when you score a critical hit with a melee weapon attack, you can roll one of the weapon's damage dice one additional time and add it to the extra damage of the critical hit"],
          subraces=[
-             "Mark of Finding (+WIS 2, +CON 1; cast Detect Magic, Hunter's Mark, and Locate Object each once per long rest without a spell slot, using WIS as your spellcasting ability; gain proficiency in the Survival skill)",
+             "Mark of Finding (+WIS 2, +CON 1; Hunter's Intuition: add a d4 to Perception and Survival checks; Finder's Magic: cast Hunter's Mark, and Locate Object from 3rd level, each once per long rest, using WIS as your spellcasting ability; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Finding spells are added to your class's spell list)",
          ],
          languages=["Common", "Orc"]),
 
@@ -105,8 +107,8 @@ ALL_RACES = [
                    "Stout (+DEX 2, +CON 1; Stout Resilience: advantage on saving throws against poison, and resistance to poison damage)",
                    "Lotusden (– +DEX 2, +WIS 1; Child of the Wood: learn the Druidcraft cantrip; at 3rd level cast Entangle, and at 5th level cast Spike Growth, each once per long rest, using WIS as your spellcasting ability; Timberwalk: moving through nonmagical difficult terrain made of plants costs no extra movement, and you have advantage on saves against being afflicted with disease)",
              "Ghostwise (+DEX 2, +WIS 1; Silent Speech: telepathically communicate simple messages with any creature within 30 feet that understands at least one language)",
-             "Mark of Healing (+DEX 2, +WIS 1; cast Cure Wounds and Lesser Restoration each once per long rest, and Mass Cure Wounds once without a spell slot at 9th level, using WIS as your spellcasting ability; gain proficiency with the herbalism kit)",
-             "Mark of Hospitality (+DEX 2, +CHA 1; cast Prestidigitation at will, and Purify Food and Drink and Unseen Servant each once per long rest without a spell slot, using CHA as your spellcasting ability; gain proficiency in the Persuasion skill)"]),
+             "Mark of Healing (+DEX 2, +WIS 1; Medical Intuition: add a d4 to Medicine checks and ability checks using an herbalism kit; Healing Touch: cast Cure Wounds, and Lesser Restoration from 3rd level, each once per long rest, using WIS as your spellcasting ability; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Healing spells are added to your class's spell list)",
+             "Mark of Hospitality (+DEX 2, +CHA 1; Ever Hospitable: add a d4 to Persuasion checks and ability checks using brewer's supplies or cook's utensils; Innkeeper's Magic: you know the Prestidigitation cantrip, and cast Purify Food and Drink and Unseen Servant each once per long rest, using CHA as your spellcasting ability; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Hospitality spells are added to your class's spell list)"]),
 
     race("Human", asi={"STR": 1, "DEX": 1, "CON": 1, "INT": 1, "WIS": 1, "CHA": 1},
          traits=["+1 to all six ability scores", "Extra Language"],
@@ -114,11 +116,11 @@ ALL_RACES = [
          subraces=[
              "Standard (+1 to all six ability scores)",
              "Variant (+1 to two ability scores of your choice; gain one skill proficiency of your choice; gain one feat of your choice, subject to its prerequisites)",
-             "Mark of Finding (+WIS 2, +CON 1; cast Detect Magic, Hunter's Mark, and Locate Object each once per long rest without a spell slot, using WIS as your spellcasting ability; gain proficiency in the Survival skill)",
-             "Mark of Handling (+WIS 2; cast Animal Friendship and Speak with Animals each once per long rest, and Beast Bond once without a spell slot at 9th level, using WIS as your spellcasting ability; gain proficiency in the Animal Handling skill)",
-             "Mark of Making (+INT 2; cast Magic Weapon and Unseen Servant each once per long rest, and Fabricate once without a spell slot at 9th level, using INT as your spellcasting ability; gain proficiency with one type of artisan's tools)",
-             "Mark of Passage (+DEX 2; cast Expeditious Retreat and Misty Step each once per long rest, and Teleportation Circle once without a spell slot at 9th level, using DEX as your spellcasting ability; base walking speed increases by 5 feet)",
-             "Mark of Sentinel (+WIS 2, +CON 1; cast Compelled Duel and Shield of Faith each once per long rest, and Death Ward once without a spell slot at 9th level, using WIS as your spellcasting ability; gain proficiency in the Perception skill)",
+             "Mark of Finding (+WIS 2, +CON 1; Hunter's Intuition: add a d4 to Perception and Survival checks; Finder's Magic: cast Hunter's Mark, and Locate Object from 3rd level, each once per long rest, using WIS as your spellcasting ability; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Finding spells are added to your class's spell list)",
+             "Mark of Handling (+WIS 2, and +1 to one other ability of your choice; Wild Intuition: add a d4 to Animal Handling and Nature checks; Primal Connection: cast Animal Friendship and Speak with Animals each once per short or long rest without material components, using WIS as your spellcasting ability; The Bigger They Are: from 3rd level, either spell can target a beast or monstrosity with an Intelligence of 3 or lower; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Handling spells are added to your class's spell list)",
+             "Mark of Making (+INT 2, and +1 to one other ability of your choice; Artisan's Intuition: add a d4 to Arcana checks and ability checks using artisan's tools; Maker's Gift: proficiency with one type of artisan's tools of your choice; Spellsmith: you know the Mending cantrip, and cast Magic Weapon once per long rest, lasting 1 hour without concentration, using INT as your spellcasting ability; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Making spells are added to your class's spell list)",
+             "Mark of Passage (+DEX 2, and +1 to one other ability of your choice; Courier's Speed: your base walking speed is 35 feet; Intuitive Motion: add a d4 to Acrobatics checks and ability checks to operate or maintain a land vehicle; Magical Passage: cast Misty Step once per long rest, using DEX as your spellcasting ability; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Passage spells are added to your class's spell list)",
+             "Mark of Sentinel (+CON 2, +WIS 1; Sentinel's Intuition: add a d4 to Insight and Perception checks; Guardian's Shield: cast Shield once per long rest, using WIS as your spellcasting ability; Vigilant Guardian: when a creature you can see within 5 ft is hit by an attack roll, your reaction swaps places with it and the attack hits you instead, once per long rest; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Sentinel spells are added to your class's spell list)",
          ]),
 
     race("Tiefling", asi={"INT": 1, "CHA": 2},
@@ -129,14 +131,14 @@ ALL_RACES = [
          subraces=[
              "Asmodeus (PHB, default – +CHA 2, +INT 1; resistance to fire damage; Infernal Legacy: learn the Thaumaturgy cantrip; cast Hellish Rebuke once per long rest at 3rd level and Darkness once per long rest at 5th level, using CHA as your spellcasting ability)",
              "Baalzebul (+CHA 2, +INT 1; resistance to fire damage; learn Thaumaturgy; cast Ray of Sickness once per long rest at 3rd level and Crown of Madness once per long rest at 5th level, using CHA)",
-             "Dispater (+CHA 2, +INT 1; resistance to fire damage; learn Thaumaturgy; cast Disguise Self once per long rest at 3rd level and Detect Thoughts once per long rest at 5th level, using CHA)",
+             "Dispater (+CHA 2, +DEX 1; resistance to fire damage; learn Thaumaturgy; cast Disguise Self once per long rest at 3rd level and Detect Thoughts once per long rest at 5th level, using CHA)",
              "Fierna (+CHA 2, +WIS 1; resistance to fire damage; learn Friends; cast Charm Person once per long rest at 3rd level and Suggestion once per long rest at 5th level, using CHA)",
-             "Glasya (+CHA 2, +INT 1; resistance to fire damage; learn Minor Illusion; cast Disguise Self once per long rest at 3rd level and Invisibility once per long rest at 5th level, using CHA)",
+             "Glasya (+CHA 2, +DEX 1; resistance to fire damage; learn Minor Illusion; cast Disguise Self once per long rest at 3rd level and Invisibility once per long rest at 5th level, using CHA)",
              "Levistus (+CHA 2, +CON 1; resistance to cold damage; learn Ray of Frost; cast Armor of Agathys once per long rest at 3rd level and Darkness once per long rest at 5th level, using CHA)",
              "Mammon (+CHA 2, +INT 1; resistance to fire damage; learn Mage Hand; cast Tenser's Floating Disk once per long rest at 3rd level and Arcane Lock once per long rest at 5th level, using CHA)",
              "Mephistopheles (+CHA 2, +INT 1; resistance to fire damage; learn Mage Hand; cast Burning Hands once per long rest at 3rd level and Flame Blade once per long rest at 5th level, using CHA)",
              "Zariel (+CHA 2, +STR 1; resistance to fire damage; learn Thaumaturgy; cast Searing Smite once per long rest at 3rd level and Branding Smite once per long rest at 5th level, using CHA)",
-             "Feral (+CHA 2, +DEX 2 in place of the usual +CHA 2/+INT 1 array; gain Darkvision 60 ft; resistance to fire damage retained from your fiendish heritage)",
+             "Feral (+DEX 2, +INT 1, in place of the usual Charisma and Intelligence increases; gain Darkvision 60 ft; resistance to fire damage retained from your fiendish heritage)",
              "Devil's Tongue (replaces your Infernal Legacy spells: learn Vicious Mockery instead of Thaumaturgy, and cast Charm Person and Enthrall in place of your normal 3rd- and 5th-level spells, using CHA)",
              "Hellfire (replaces the Hellish Rebuke granted by Infernal Legacy with Burning Hands, cast once per long rest at 3rd level using CHA)",
              "Winged (replaces your Infernal Legacy spells entirely with a flying speed of 30 feet, gained at 3rd level)"]
@@ -160,9 +162,9 @@ ALL_RACES = [
                  'Healing Hands – as an action, you can touch a creature and cause it to regain hit points equal to your level. Once per long rest',
                  'Light Bearer – you know the Light cantrip. Charisma is your spellcasting ability for it'],
          languages=["Common", "Celestial"],
-         subraces=["Protector (+WIS 1; Radiant Soul: starting at 3rd level, as an action for 1 minute you gain a pair of spectral wings granting a flying speed of 30 feet, and once per turn you can deal extra radiant damage equal to your level on a hit; usable once per long rest)",
-                   "Scourge (+CON 1; Radiant Consumption: starting at 3rd level, as an action for 1 minute you glow with a 10-foot radiant aura that deals radiant damage equal to half your level to each creature within it (including you) at the end of your turn, and once per turn you deal extra radiant damage equal to your level on a hit; usable once per long rest)",
-                   "Fallen (+STR 1; Necrotic Shroud: starting at 3rd level, as an action for 1 minute you sprout ghostly wings granting a flying speed of 30 feet and radiate a 10-foot frightening aura (CHA save or frightened until the end of your next turn), and once per turn you deal extra necrotic damage equal to your level on a hit; usable once per long rest)"]),
+         subraces=["Protector (+CHA 2, +WIS 1; Radiant Soul: starting at 3rd level, as an action for 1 minute you gain a pair of spectral wings granting a flying speed of 30 feet, and once per turn you can deal extra radiant damage equal to your level on a hit; usable once per long rest)",
+                   "Scourge (+CHA 2, +CON 1; Radiant Consumption: starting at 3rd level, as an action for 1 minute you glow with a 10-foot radiant aura that deals radiant damage equal to half your level to each creature within it (including you) at the end of your turn, and once per turn you deal extra radiant damage equal to your level on a hit; usable once per long rest)",
+                   "Fallen (+CHA 2, +STR 1; Necrotic Shroud: starting at 3rd level, as an action for 1 minute you sprout ghostly wings granting a flying speed of 30 feet and radiate a 10-foot frightening aura (CHA save or frightened until the end of your next turn), and once per turn you deal extra necrotic damage equal to your level on a hit; usable once per long rest)"]),
 
     race("Aasimar (MPMM)", asi_flex=2, source="MPMM",
          traits=["Darkvision 60 ft", "Celestial Resistance – resistance to necrotic and radiant damage",
@@ -239,10 +241,10 @@ ALL_RACES = [
 
     race("Genasi", asi={"CON": 2}, source="EEPC",
          traits=["Constitution +2 (all subraces)"],
-         subraces=["Air (+DEX 1; Unending Breath: you can hold your breath indefinitely while not incapacitated; at 3rd level, cast Levitate on yourself once per long rest, using CON as your spellcasting ability)",
-                   "Earth (+STR 1; Earth Walk: you can move across difficult terrain made of earth or stone without extra movement cost; at 3rd level, cast Pass without Trace once per long rest, using CON as your spellcasting ability)",
-                   "Fire (+INT 1; Darkvision 60 ft; resistance to fire damage; learn the Produce Flame cantrip; at 3rd level, cast Burning Hands once per long rest, using CON as your spellcasting ability)",
-                   "Water (+WIS 1; Amphibious: you can breathe air and water; swimming speed of 30 feet; resistance to acid damage; learn the Shape Water cantrip; at 3rd level, cast Create or Destroy Water once per long rest, using CON as your spellcasting ability)"]),
+         subraces=["Air (+CON 2, +DEX 1; Unending Breath: you can hold your breath indefinitely while not incapacitated; at 3rd level, cast Levitate on yourself once per long rest, using CON as your spellcasting ability)",
+                   "Earth (+CON 2, +STR 1; Earth Walk: you can move across difficult terrain made of earth or stone without extra movement cost; at 3rd level, cast Pass without Trace once per long rest, using CON as your spellcasting ability)",
+                   "Fire (+CON 2, +INT 1; Darkvision 60 ft; resistance to fire damage; learn the Produce Flame cantrip; at 3rd level, cast Burning Hands once per long rest, using CON as your spellcasting ability)",
+                   "Water (+CON 2, +WIS 1; Amphibious: you can breathe air and water; swimming speed of 30 feet; resistance to acid damage; learn the Shape Water cantrip; at 3rd level, cast Create or Destroy Water once per long rest, using CON as your spellcasting ability)"]),
 
     race("Genasi (MPMM)", asi_flex=2, source="MPMM",
          traits=["Size – Medium or Small, your choice", "Darkvision 60 ft"],
@@ -369,7 +371,7 @@ ALL_RACES = [
          languages=["Common", "one other of your choice"],
          notes="A newer, mechanically revised printing of Kenku (Monsters of the Multiverse) — kept separate from the original VGM version above. You can also choose Small size instead of Medium when selecting this race."),
 
-    race("Kobold", size="Small", asi={"DEX": 2, "INT": 1}, source="VGM",
+    race("Kobold", size="Small", asi={"DEX": 2}, source="VGM",
          traits=["Darkvision 60 ft",
                  'Grovel, Cower, and Beg – as an action, you can cower pathetically to distract nearby foes. Until the end of your next turn, your allies gain advantage on attack rolls against enemies within 10 feet of you that can see you. Once per short or long rest',
                  "Pack Tactics – you have advantage on an attack roll against a creature if at least one of your allies is within 5 feet of the creature and the ally isn't incapacitated",
@@ -414,6 +416,7 @@ ALL_RACES = [
              "Leviathan Will – advantage on saves vs. frightened, paralyzed, petrified, poisoned, stunned, unconscious",
              "Limited Amphibiousness – breathe air and water; max 4 hours out of water",
              "Swim Speed 30 ft",
+             "Observant & Athletic – you have proficiency in the Athletics and Perception skills",
          ],
          languages=["Common", "Aquan"], speed=30),
 
@@ -450,7 +453,7 @@ ALL_RACES = [
     race("Orc (VGM/MTF)", asi={"STR": 2, "CON": 1}, source="VGM/MTF",
          traits=["Darkvision 60 ft",
                  "Aggressive – as a bonus action, you can move up to your speed toward a hostile creature you can see or hear. You must end this move closer to the enemy than you started",
-                 "Primal Intuition – proficiency in two of the following skills of your choice: Animal Handling, Insight, Intimidation, Medicine, Perception, and Survival",
+                 "Primal Intuition – proficiency in two of the following skills of your choice: Animal Handling, Insight, Intimidation, Medicine, Nature, Perception, and Survival",
                  "Powerful Build"],
          languages=["Common", "Orc"]),
 
@@ -476,7 +479,7 @@ ALL_RACES = [
                  'Ram – unarmed 1d6+STR bludgeoning. If you move 10+ ft in a straight line before hitting, target must make STR save (DC 8+STR+proficiency) or be pushed 5 ft',
                  "Magic Resistance – advantage on saving throws vs. spells",
                  'Mirthful Leaps – whenever you make a long jump or a high jump, you can roll a d8 and add the number rolled to the number of feet you cover, even when making a standing jump. This extra distance costs movement as normal',
-                 "Reveler – Persuasion + Performance proficiency; musical instrument"],
+                 "Reveler – proficiency in Performance and Persuasion, and with one musical instrument of your choice"],
          languages=["Common", "Sylvan"]),
 
     race("Satyr (MPMM)", speed=35, asi_flex=2, source="MPMM",
@@ -598,19 +601,23 @@ ALL_RACES = [
          languages=["Common", "Quori", "one of your choice"]),
 
     race("Shifter", source="ERLW",
-         traits=["Darkvision 60 ft", 'Keen Senses – you have proficiency in the Perception skill',
-                 'Shifting – as a bonus action, you can assume a more bestial appearance. This transformation lasts for 1 minute, until you die, or until you revert as a bonus action. When you shift, you gain temporary hit points equal to your proficiency bonus + your Constitution modifier (minimum 1). Your subrace determines additional benefits while shifted. Once per short or long rest'],
-         subraces=["Beasthide (+CON 2, +STR 1; while Shifting, gain +1 AC and temporary HP equal to your CON modifier + your level, and you can take the Dodge action as a bonus action each turn while shifted)",
-                   "Longtooth (+STR 2, +CON 1; while Shifting, grow fangs you can use as a natural weapon dealing 1d6 + STR piercing damage, and attack with them as a bonus action)",
-                   "Swiftstride (+DEX 2, +CHA 1; base walking speed increases to 35 feet; while Shifting, gain +10 ft speed, and once per turn when a creature hits you with an attack you can use your reaction to move up to half your speed without provoking opportunity attacks)",
-                   "Wildhunt (+WIS 2, +DEX 1; you can't be surprised while conscious; while Shifting, gain advantage on WIS checks, and you know the location of any hostile creature within 10 feet even if it's hidden or invisible, provided it isn't behind total cover)"]),
+         traits=["Darkvision 60 ft",
+                 'Shifting – as a bonus action, you can assume a more bestial appearance. This transformation lasts for 1 minute, until you die, or until you revert as a bonus action. When you shift, you gain temporary hit points equal to your level + your Constitution modifier (minimum 1). Your subrace determines additional benefits while shifted. Once per short or long rest'],
+         subraces=["Beasthide (+CON 2, +STR 1; Natural Athlete – proficiency in the Athletics skill; whenever you shift, you gain 1d6 additional temporary hit points, and while shifted you have a +1 bonus to your Armor Class)",
+                   "Longtooth (+STR 2, +DEX 1; Fierce – proficiency in the Intimidation skill; while shifted, you can use your elongated fangs to make an unarmed strike as a bonus action, dealing 1d6 + STR piercing damage on a hit)",
+                   "Swiftstride (+DEX 2, +CHA 1; Graceful – proficiency in the Acrobatics skill; while shifted, your walking speed increases by 10 feet, and you can move up to 10 feet as a reaction when a creature ends its turn within 5 feet of you, without provoking opportunity attacks)",
+                   "Wildhunt (+WIS 2, +DEX 1; Natural Tracker – proficiency in the Survival skill; while shifted, you have advantage on Wisdom checks, and no creature within 30 feet of you can make an attack roll with advantage against you unless you're incapacitated)"]),
 
     race("Shifter (MPMM)", asi_flex=2, source="MPMM",
          traits=["Bestial Instincts – proficiency in one of: Acrobatics, Athletics, Intimidation, or Survival",
                  "Darkvision 60 ft",
-                 "Shifting – bonus action: assume a more bestial appearance for 1 minute (until you die or revert as a bonus action), gaining temp HP equal to 2 × your proficiency bonus. Uses = proficiency bonus, all regained on a long rest. Choose one benefit when you select this race, active only while shifted: Beasthide (+1d6 more temp HP when you shift; +1 AC), Longtooth (bonus action: fangs deal 1d6 + STR piercing as an unarmed strike), Swiftstride (+10 ft speed; reaction to move up to 10 ft, no opportunity attacks, when a creature ends its turn within 5 ft of you), or Wildhunt (advantage on WIS checks; no creature within 30 ft can attack you with advantage unless you're incapacitated)"],
+                 "Shifting – bonus action: assume a more bestial appearance for 1 minute (until you die or revert as a bonus action), gaining temp HP equal to 2 × your proficiency bonus. Uses = proficiency bonus, all regained on a long rest. Whenever you shift, you also gain the benefit of the kind of shifter you chose when you selected this race"],
+         subraces=["Beasthide (when you shift, you gain 1d6 additional temporary hit points; while shifted, you have a +1 bonus to your Armor Class)",
+                   "Longtooth (when you shift, and as a bonus action on your other turns while shifted, you can make an unarmed strike with your fangs, dealing 1d6 + STR piercing damage on a hit)",
+                   "Swiftstride (while shifted, your walking speed increases by 10 feet, and you can move up to 10 feet as a reaction when a creature ends its turn within 5 feet of you, without provoking opportunity attacks)",
+                   "Wildhunt (while shifted, you have advantage on Wisdom checks, and no creature within 30 feet of you can make an attack roll with advantage against you unless you're incapacitated)"],
          languages=["Common", "one other of your choice"],
-         notes="A newer, mechanically revised printing of Shifter (Monsters of the Multiverse) — kept separate from the original ERLW version above. Merges the old 4 fixed-ASI subraces into a single flexible-ASI race with one Shifting-benefit choice made at character creation; Shifting's temp HP and uses now scale with proficiency bonus and reset only on a long rest, instead of the old flat, short-or-long-rest version, and several of the per-benefit mechanics changed (e.g. Beasthide grants flat temp HP + AC rather than CON-mod-plus-level HP and a bonus Dodge action)."),
+         notes="A newer, mechanically revised printing of Shifter (Monsters of the Multiverse) — kept separate from the original ERLW version above. A single flexible-ASI race: the kind of shifter (Beasthide, Longtooth, Swiftstride or Wildhunt) is still picked, but with no ability scores or skill of its own (Bestial Instincts gives one of the four skills). Shifting's temporary hit points are twice your proficiency bonus instead of your level + CON modifier, and it can be used a number of times equal to your proficiency bonus per long rest, instead of once per short or long rest."),
 
     race("Warforged", asi={"CON": 2}, asi_flex=1, source="ERLW",
          traits=["Constructed Resilience – you were created to have remarkable fortitude, represented by the following benefits: you have advantage on saving throws against being poisoned, you have resistance to poison damage, you are immune to disease, you don't need to eat, drink, or breathe, and you don't need to sleep. Magic can't put you to sleep",
@@ -772,7 +779,6 @@ RACE_WEAPON_PROFS = {
     ("Elf", "Wood"): _ELF_WEAPONS,
     ("Elf", "Drow"): ["Rapier", "Shortsword", "Hand Crossbow"],       # Drow Weapon Training
     ("Elf", "Sea"): ["Spear", "Trident", "Light Crossbow", "Net"],    # Sea Elf Training
-    ("Half-Elf", "Wood Descent"): _ELF_WEAPONS,
     "Githyanki": ["Shortsword", "Longsword", "Greatsword"],            # Martial Prodigy
     "Giff": ["Firearms"],                                             # Firearms Mastery
     "Khenra": ["Khopesh", "Spear", "Javelin"],                        # Khenra Weapon Training
@@ -800,6 +806,23 @@ def flex_asi_desc(flex: int, style: str) -> str:
     return "+2 to one ability and +1 to a different ability, OR +1 to three different abilities (your choice)"
 
 
+# Subraces whose ability scores are yours to choose (Fizban's dragonborn):
+# +2 to one and +1 to another, or +1 to three -- asked for on the Choices
+# tab (core/choices.py), so the race's own fixed increase doesn't apply
+FLEX_ASI_SUBRACES = {("Dragonborn", "Chromatic"), ("Dragonborn", "Metallic"), ("Dragonborn", "Gem")}
+
+
+def race_flex(race_name: str, subrace: str = "") -> tuple:
+    """(how many flexible +1s, style) the creation wizards ask for: the
+    race's own (a half-elf's two +1s), or none for a dragonmark, whose
+    mark sets its ability scores (core/choices.py asks for a mark's
+    "+1 to one other")."""
+    rdata = RACE_DICT.get(race_name, {})
+    if (subrace or "").startswith("Mark of"):
+        return 0, rdata.get("asi_flex_style", "distribute")
+    return rdata.get("asi_flex", 0), rdata.get("asi_flex_style", "distribute")
+
+
 def combined_racial_asi(char: dict) -> dict:
     """Return the character's effective fixed racial ASI dict from its
     race+subrace. Subrace strings encode the TOTAL bonus (not an addend),
@@ -810,6 +833,8 @@ def combined_racial_asi(char: dict) -> dict:
     rdata = RACE_DICT.get(race_name, {})
     base = dict(rdata.get("asi", {}))
     subrace = char.get("subrace", "")
+    if (race_name, subrace) == ("Human", "Variant") or (race_name, subrace) in FLEX_ASI_SUBRACES:
+        return {}   # yours to choose, on the Choices tab
     if subrace:
         for sub_str in rdata.get("subraces", []):
             if sub_str.split("(")[0].strip() == subrace:
@@ -821,6 +846,142 @@ def combined_racial_asi(char: dict) -> dict:
                     return sub_asi   # subrace encodes the total — replace, not add
                 break
     return base
+
+# ── Dragonmarks ──────────────────────────────────────────────────────────────
+# Each mark's d4 intuition and the skill checks it adds to (the tool checks
+# it also covers aren't rolled on the sheet): a reminder with the roll
+# (core/calculator.py roll_reminder), never added on its own.
+DRAGONMARK_INTUITION = {
+    "Mark of Warding": ("Warder's Intuition", ["Investigation"]),
+    "Mark of Shadow": ("Cunning Intuition", ["Performance", "Stealth"]),
+    "Mark of Scribing": ("Gifted Scribe", ["History"]),
+    "Mark of Detection": ("Deductive Intuition", ["Investigation", "Insight"]),
+    "Mark of Storm": ("Windwright's Intuition", ["Acrobatics"]),
+    "Mark of Finding": ("Hunter's Intuition", ["Perception", "Survival"]),
+    "Mark of Healing": ("Medical Intuition", ["Medicine"]),
+    "Mark of Hospitality": ("Ever Hospitable", ["Persuasion"]),
+    "Mark of Handling": ("Wild Intuition", ["Animal Handling", "Nature"]),
+    "Mark of Making": ("Artisan's Intuition", ["Arcana"]),
+    "Mark of Passage": ("Intuitive Motion", ["Acrobatics"]),
+    "Mark of Sentinel": ("Sentinel's Intuition", ["Insight", "Perception"]),
+}
+
+# A subrace whose languages replace the race's (Mark of Finding: Common and Goblin)
+SUBRACE_LANGUAGES = {("Half-Orc", "Mark of Finding"): ["Common", "Goblin"],
+                     ("Human", "Mark of Finding"): ["Common", "Goblin"]}
+
+# A dragonmark that replaces the race's own traits, not just its ability
+# scores (ERLW: a half-orc with the Mark of Finding has no Menacing,
+# Relentless Endurance or Savage Attacks)
+MARK_REPLACES_TRAITS = {("Half-Orc", "Mark of Finding")}
+
+
+def race_languages(race_name: str, subrace: str = "") -> list:
+    """The languages a race (or subrace) simply knows -- not the ones of
+    your choice, which are race choices."""
+    langs = SUBRACE_LANGUAGES.get((race_name, subrace)) or RACE_DICT.get(race_name, {}).get("languages", [])
+    return [lang for lang in langs if "choice" not in lang.lower() and " or " not in lang]
+
+
+# What a dragonmark replaces of its race's own traits, by the rules as
+# written: a human's ability score increase (and with the Mark of Finding
+# its extra language: Common and Goblin); a half-elf's increase and Skill
+# Versatility; all of a half-orc's but the darkvision the mark restates.
+# A dwarf's, elf's, gnome's or halfling's mark takes the place of a subrace
+# and keeps the race's own traits.
+MARK_REPLACED_TRAITS = {
+    "Human": ("+1 to all six",),
+    "Half-Elf": ("Skill Versatility",),
+    "Half-Orc": ("Menacing", "Relentless Endurance", "Savage Attacks"),
+}
+
+
+def race_traits_for(char: dict) -> list:
+    """The race's own traits this character has: all of them, but not what
+    their dragonmark replaces, nor an ability score line their subrace's
+    own increase replaces (a Mark of Sentinel human's "+1 to all six")."""
+    race = char.get("species") or char.get("race", "")
+    sub = char.get("subrace") or ""
+    traits = list(RACE_DICT.get(race, {}).get("traits", []))
+    gone = MARK_REPLACED_TRAITS.get(race, ()) if sub.startswith("Mark of") else ()
+    if (race, sub) in SUBRACE_LANGUAGES:
+        gone = gone + ("Extra Language",)
+    traits = [t for t in traits if not t.startswith(gone)] if gone else traits
+    sub_str = next((s for s in RACE_DICT.get(race, {}).get("subraces", []) if s.split("(")[0].strip() == sub), "")
+    if re.search(r"[+][A-Z]{3}\s+\d", sub_str.split(";")[0]):
+        traits = [t for t in traits if not re.match(r"^\s*\+\d.*\b(ability scores?|STR|DEX|CON|INT|WIS|CHA)\b",
+                                                      t, re.IGNORECASE)]
+    return traits
+
+
+def race_language_picks(race_name: str, subrace: str = "") -> tuple:
+    """How many languages of your choice a race gives, and from which ([] =
+    any): (1, []) for "Common and one other of your choice", (1, ["Elvish",
+    "Vedalken"]) for "Elvish or Vedalken"."""
+    langs = SUBRACE_LANGUAGES.get((race_name, subrace)) or RACE_DICT.get(race_name, {}).get("languages", [])
+    n, pool = 0, []
+    for lang in langs:
+        if " or " in lang:
+            n, pool = n + 1, [p.strip() for p in lang.split(" or ")]
+        elif "choice" in lang.lower():
+            n += 2 if lang.lower().startswith(("2", "two")) else 1
+    return n, pool
+
+
+def keeps_race_traits(char: dict) -> bool:
+    """False for a subrace whose mark replaces the race's own traits."""
+    race = char.get("species") or char.get("race", "")
+    return (race, char.get("subrace") or "") not in MARK_REPLACES_TRAITS
+
+
+# A kobold's (MPMM) Kobold Legacy: one of three, chosen with the race
+KOBOLD_LEGACIES = ["Craftiness – proficiency in one of Arcana, Investigation, Medicine, Sleight of Hand or Survival",
+                   "Defiance – advantage on saving throws to avoid or end the frightened condition",
+                   "Draconic Sorcery – one sorcerer cantrip, using INT, WIS or CHA"]
+
+
+def kobold_legacy(char: dict) -> str:
+    """The Kobold Legacy picked ("Defiance"), or ""."""
+    picked = ((char.get("_choices") or {}).get("kobold_legacy") or [""])[0]
+    return picked.split(" –")[0].strip()
+
+
+# A half-elf of elven descent (SCAG) takes one variant feature in place of
+# Skill Versatility (core/choices.py asks; builder, calculator and spells
+# read the pick through half_elf_variant)
+HALF_ELF_VARIANTS = {
+    "Aquatic": ["Skill Versatility – proficiency in two skills of your choice",
+                "Swim – a swimming speed of 30 ft"],
+    "Drow Descent": ["Skill Versatility – proficiency in two skills of your choice",
+                     "Drow Magic – Dancing Lights; Faerie Fire from 3rd level and Darkness from 5th, once a long rest each"],
+    "High Descent": ["Skill Versatility – proficiency in two skills of your choice",
+                     "Elf Weapon Training – longsword, shortsword, shortbow and longbow",
+                     "Cantrip – one wizard cantrip, using INT"],
+    "Wood Descent": ["Skill Versatility – proficiency in two skills of your choice",
+                     "Elf Weapon Training – longsword, shortsword, shortbow and longbow",
+                     "Fleet of Foot – base walking speed 35 ft",
+                     "Mask of the Wild – hide when only lightly obscured by natural phenomena"],
+}
+
+
+def half_elf_variant(char: dict) -> str:
+    """The variant feature a half-elf took ("Fleet of Foot"): "Skill
+    Versatility" for a plain half-elf, "" for one of elven descent who
+    hasn't picked yet or one with a dragonmark (which has neither)."""
+    if (char.get("species") or char.get("race", "")) != "Half-Elf":
+        return ""
+    sub = char.get("subrace") or ""
+    if sub in ("", "Standard"):
+        return "Skill Versatility"
+    picked = ((char.get("_choices") or {}).get("half_elf_variant") or [""])[0]
+    return picked.split(" –")[0].strip() if sub in HALF_ELF_VARIANTS else ""
+
+
+# Marks whose second increase is "+1 to one other ability of your choice":
+# the ability with the +2, which the +1 can't go to (core/choices.py asks)
+DRAGONMARK_FLEX_ASI = {"Mark of Detection": "WIS", "Mark of Handling": "WIS",
+                       "Mark of Making": "INT", "Mark of Passage": "DEX"}
+
 
 # ── Dragonborn Draconic Ancestry choices ────────────────────────────────────
 # Merged in from the former draconic_ancestry.py — small (40-line), single-

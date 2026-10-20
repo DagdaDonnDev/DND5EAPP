@@ -59,6 +59,7 @@ SUBRACE_RESISTANCES = {
     ("Halfling", "stout"):  [{"kind": "resistance", "target": "poison", "source": "Stout Resilience"}],
     ("Elf", "shadar-kai"):  [{"kind": "resistance", "target": "necrotic", "source": "Shadar-kai"}],
     ("Genasi", "fire"):     [{"kind": "resistance", "target": "fire", "source": "Fire Genasi"}],
+    ("Half-Elf", "mark of storm"): [{"kind": "resistance", "target": "lightning", "source": "Storm's Boon"}],
     ("Genasi", "water"):    [{"kind": "resistance", "target": "acid", "source": "Water Genasi"}],
     ("Yuan-ti Pureblood", "mpmm"): [{"kind": "resistance", "target": "poison", "source": "Poison Resilience"}],
     ("Yuan-ti Pureblood", "vgm"):  [{"kind": "immunity", "target": "poison", "source": "Poison Immunity"},

@@ -266,6 +266,16 @@ def get_warlock_slots(warlock_levels: int) -> dict:
     }
 
 
+def PROFANE_SOUL_PACT_SLOTS(blood_hunter_level: int) -> tuple:
+    """(slots, slot level) for an Order of the Profane Soul blood hunter's
+    Pact Magic: one 1st-level slot at 3rd level, 2nd-level slots from 7th,
+    a second slot at 11th, 3rd-level from 13th and 4th-level from 19th."""
+    lv = blood_hunter_level
+    count = 2 if lv >= 11 else 1
+    level = 4 if lv >= 19 else 3 if lv >= 13 else 2 if lv >= 7 else 1
+    return count, level
+
+
 def compute_all_spell_slots(class_levels: dict, subclasses: dict = None) -> dict:
     """
     Full spell slot computation for a multiclassed character.
@@ -306,6 +316,13 @@ def compute_all_spell_slots(class_levels: dict, subclasses: dict = None) -> dict
     # Determine if any Spellcasting feature exists (for Warlock interop)
     has_spellcasting = combined_caster_level > 0
     has_pact_magic = warlock_lvl > 0
+    # Order of the Profane Soul (Blood Hunter): Pact Magic of its own,
+    # when there are no Warlock levels to give it
+    bh_lvl = class_levels.get("Blood Hunter", 0)
+    if not has_pact_magic and bh_lvl >= 3 and "profane soul" in (subclasses.get("Blood Hunter") or "").lower():
+        count, level = PROFANE_SOUL_PACT_SLOTS(bh_lvl)
+        warlock_info = {"count": count, "level": level, "reset": "SR/LR"}
+        has_pact_magic = True
 
     note = ""
     if has_spellcasting and has_pact_magic:
@@ -770,14 +787,12 @@ def _add_subclass_resources(resources: list, class_levels: dict,
              "Animate a Large or smaller nonmagical item as a temporary ally for 1 hour; "
              "can reuse before a long rest by spending a spell slot of 3rd level or higher",
              "Bard", "College of Creation")
-    if bard_lvl > 0 and _has("Bard", "spirits"):
-        # College of Spirits: Spirit Session — uses = proficiency bonus per
-        # long rest, die scales from d6 up to d12 at 14th (Awakened Spirit).
-        # Verified not already covered by classes.py's resource_pools data
-        # (unlike Bardic Inspiration, which already was).
-        spirit_die = 12 if bard_lvl >= 14 else 10 if bard_lvl >= 10 else 8 if bard_lvl >= 6 else 6
-        _add("Spirit Session", "spirit_session", "LR", pb, "uses",
-             f"Commune with spirits for a d{spirit_die} Spirit Tale Die (heal/damage/status, story-dependent)",
+    if bard_lvl >= 6 and _has("Bard", "spirits"):
+        # College of Spirits: Spirit Session -- an hour-long ritual, once per
+        # long rest (Tales from Beyond spends Bardic Inspiration instead)
+        _add("Spirit Session", "spirit_session", "LR", 1, "uses",
+             "An hour-long ritual with up to your proficiency bonus willing creatures: learn one divination "
+             "or necromancy spell until your next long rest",
              "Bard", "College of Spirits")
 
     # ── Cleric ────────────────────────────────────────────────────────────────
