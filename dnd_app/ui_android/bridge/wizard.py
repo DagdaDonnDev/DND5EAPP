@@ -900,14 +900,9 @@ class ClassWizardBridge(QObject):
         bg = self._bg_data()
         if not bg:
             return ""
-        parts = []
-        skills = bg.get("skills") or []
-        tools = bg.get("tools") or []
-        if skills:
-            parts.append(f"Skills: {', '.join(skills)}")
-        if tools:
-            parts.append(f"Tools: {', '.join(tools)}")
-        return "  ·  ".join(parts)
+        # with the ones to choose (the same text as desktop's)
+        from dnd_app.data.backgrounds import background_proficiency_text
+        return background_proficiency_text(bg)
 
     @Property(str, notify=backgroundChanged)
     def backgroundDetailText(self):

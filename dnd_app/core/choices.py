@@ -1234,13 +1234,26 @@ def _get_feat_choices(char):
                                    if sp.get("level") == 1 and sp.get("school") in schools),
                     "label": label, "already_chosen": already,
                 })
+    # Magic Initiate and Spell Sniper: the class whose list the spells come
+    # from (it decides their spellcasting ability), unless a background's
+    # "Magic Initiate (Cleric)" names it; then the spells, from that list
+    from dnd_app.data.spells import (feat_spell_class, feat_spell_class_options,
+                                     ATTACK_ROLL_CANTRIPS, feat_slug, get_spell)
+    for feat in ("Magic Initiate", "Spell Sniper"):
+        if feat not in all_feats:
+            continue
+        cls = feat_spell_class(char, feat)
+        key = f"feat_{feat_slug(feat)}_class"
+        if not cls and not made.get(key):
+            choices.append({
+                "id": key, "source": "feat", "source_name": feat,
+                "type": "fighting_style", "count": 1,
+                "pool": feat_spell_class_options(char, feat) or ["Bard", "Cleric", "Druid", "Sorcerer", "Warlock", "Wizard"],
+                "label": f"{feat}: choose the class it takes its spells from",
+                "already_chosen": made.get(key, []),
+            })
     if "Magic Initiate" in all_feats:
-        # the class comes from the feat's name when a background gave it
-        # ("Magic Initiate (Cleric)"); otherwise any of the six lists
-        mi_cls = ""
-        for full in [char.get("origin_feat") or ""] + list(all_feats):
-            if full.startswith("Magic Initiate (") and full.endswith(")"):
-                mi_cls = full[len("Magic Initiate ("):-1]
+        mi_cls = feat_spell_class(char, "Magic Initiate")
         mi_classes = [mi_cls] if mi_cls else ["Bard", "Cleric", "Druid", "Sorcerer", "Warlock", "Wizard"]
         for key, lvl, count, what in [("feat_magic_initiate_cantrips", 0, 2, "2 cantrips"),
                                       ("feat_magic_initiate_spell", 1, 1, "1 1st-level spell (free once per long rest)")]:
@@ -1254,6 +1267,36 @@ def _get_feat_choices(char):
                     "label": f"Choose {what} from the {' / '.join(mi_classes)} list",
                     "already_chosen": already,
                 })
+    if "Spell Sniper" in all_feats:
+        ss_cls = feat_spell_class(char, "Spell Sniper")
+        ss_classes = [ss_cls] if ss_cls else feat_spell_class_options(char, "Spell Sniper")
+        key = "feat_spell_sniper_cantrip"
+        already = made.get(key, [])
+        if not already:
+            choices.append({
+                "id": key, "source": "feat", "source_name": "Spell Sniper",
+                "type": "magical_secrets", "count": 1,
+                "pool": sorted(sp for sp in ATTACK_ROLL_CANTRIPS if any(
+                    c in ((get_spell(sp) or {}).get("classes", [])) for c in ss_classes)),
+                "label": f"Choose a cantrip that makes an attack roll, from the {' / '.join(ss_classes)} list",
+                "already_chosen": already,
+            })
+
+    # Feats whose spells use Intelligence, Wisdom or Charisma, picked when
+    # you take the feat (Strixhaven Initiate, Scion of the Outer Planes...)
+    from dnd_app.data.spells import FEAT_SPELL_ABILITY
+    for feat in sorted(all_feats):
+        if FEAT_SPELL_ABILITY.get(feat) != "choice":
+            continue
+        key = f"feat_spell_ability_{feat_slug(feat)}"
+        if not made.get(key):
+            choices.append({
+                "id": key, "source": "feat", "source_name": feat,
+                "type": "fighting_style", "count": 1,
+                "pool": ["Intelligence", "Wisdom", "Charisma"],
+                "label": f"Choose the spellcasting ability for {feat}",
+                "already_chosen": made.get(key, []),
+            })
 
     if "Linguist" in all_feats:
         key = "feat_linguist_languages"
@@ -1803,19 +1846,11 @@ def _get_race_choices(char):
 
     # Racial spellcasting ability — several races with innate spellcasting
     # let the player choose which of INT/WIS/CHA powers it, rather than
-    # fixing one. A real choice, not something with a sensible default, so
-    # it's asked for explicitly rather than silently assumed.
-    RACES_WITH_ABILITY_CHOICE = {
-        "Firbolg": "Firbolg Magic", "Fairy": "Fairy Magic",
-        "Astral Elf": "Astral Fire", "Hexblood": "Hex Magic",
-    }
-    ability_source = RACES_WITH_ABILITY_CHOICE.get(race)
-    if not ability_source and race == "Yuan-ti Pureblood" and "mpmm" in subrace.lower():
-        ability_source = "Innate Spellcasting"
-    if not ability_source and race == "Kobold (MPMM)":
-        from dnd_app.data.races import kobold_legacy
-        if kobold_legacy(char) == "Draconic Sorcery":
-            ability_source = "Draconic Sorcery"
+    # fixing one (data/spells.py RACIAL_SPELL_ABILITY). A real choice, not
+    # something with a sensible default, so it's asked for explicitly.
+    from dnd_app.data.spells import racial_spell_ability_entry
+    entry = racial_spell_ability_entry(char)
+    ability_source = entry[1] if isinstance(entry, tuple) else None
     if ability_source:
         key = "racial_spell_ability"
         already = made.get(key, [])

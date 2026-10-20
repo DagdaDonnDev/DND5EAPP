@@ -344,10 +344,9 @@ class ChoicesMixin:
         xp_add_row.addWidget(_lbl("Add XP:", TEXT2, FS_SMALL))
         self._xp_add_spin = QSpinBox()
         self._xp_add_spin.setRange(0, 999999); self._xp_add_spin.setSingleStep(50)
-        self._xp_add_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
         self._xp_add_spin.setStyleSheet(
             f"QSpinBox{{background:{SURF2};border:1px solid {BORDER};border-radius:5px;"
-            f"color:{TEXT};padding:2px 6px;min-width:70px;}}")
+            f"color:{TEXT};padding:2px 6px;min-width:70px;}}" + SPIN_NO_BUTTONS)
         xp_add_row.addWidget(self._xp_add_spin)
         xp_add_btn = _btn("+ Add", GOLD, variant="chip", text_color=GOLD2,
                            hover_bg_alpha=0x44, padding="3px 12px")

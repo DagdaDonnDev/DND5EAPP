@@ -2239,6 +2239,8 @@ def build_action_abilities(char):
             "the vehicle's AC and saving throws.")],
         "Vehicles (air)": [("Vehicle Handling", "While piloting, add your proficiency bonus to "
             "the vehicle's AC and saving throws.")],
+        "Vehicles (space)": [("Vehicle Handling", "While piloting, add your proficiency bonus to "
+            "the vehicle's AC and saving throws.")],
         "Leatherworker's tools": [("Identify Hides", "Determine a hide/leather item's source and "
             "any treatment techniques used.")],
         "Mason's tools": [("Demolition", "Spot weak points in brick walls, dealing double weapon "

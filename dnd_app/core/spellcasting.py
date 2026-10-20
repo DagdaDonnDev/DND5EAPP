@@ -1,6 +1,8 @@
 """Spellcasting rules both apps share, one section each:
   * Component restrictions (optional rule) -- what stops a spell being cast
   * Free casts -- racial and feat spells cast without a slot, once per rest
+  * Spellcasting abilities -- each class's, race's and feat's save DC and
+    attack bonus
   * Spell scrolls -- reading one, and binding a spell to a blank scroll
   * Immersive Spells (optional rule) -- flavour titles for the spell list
   * Spell limits -- how many spells each class knows or prepares, per class
@@ -106,9 +108,31 @@ _NOT_DAILY = {
     ("Yuan-ti", "Animal Friendship"),   # at will, on snakes only
 }
 
-# Extra wording for a free cast that isn't quite the plain spell.
+# Extra wording for a free cast that isn't quite the plain spell, keyed
+# (race, spell); the longest race name the species starts with wins, so
+# "Genasi (MPMM)" can differ from the original "Genasi".
 _CAST_NOTES = {
     ("Tiefling", "Hellish Rebuke"): "cast as a 2nd-level spell",
+    ("Tiefling", "Ray of Sickness"): "cast as a 2nd-level spell",
+    ("Tiefling", "Charm Person"): "cast as a 2nd-level spell",
+    ("Tiefling", "Armor of Agathys"): "cast as a 2nd-level spell",
+    ("Tiefling", "Burning Hands"): "cast as a 2nd-level spell",
+    ("Tiefling", "Searing Smite"): "cast as a 2nd-level spell",
+    ("Tiefling", "Arcane Lock"): "no material component",
+    ("Dwarf", "Enlarge/Reduce"): ("on yourself, enlarge only, no material components, "
+                                  "and not while you're in direct sunlight"),
+    ("Dwarf", "Invisibility"): "on yourself, no material components, and not while you're in direct sunlight",
+    ("Elf", "Sleep"): "no material components",
+    ("Halfling", "Entangle"): "no material components",
+    ("Halfling", "Spike Growth"): "no material components",
+    ("Genasi", "Levitate"): "no material components",
+    ("Genasi", "Pass without Trace"): "no material components",
+    ("Genasi", "Create or Destroy Water"): "cast as a 2nd-level spell",
+    ("Genasi (MPMM)", "Create or Destroy Water"): "",
+    ("Genasi (MPMM)", "Feather Fall"): "no material components",
+    ("Genasi (MPMM)", "Flame Blade"): "no material components",
+    ("Genasi (MPMM)", "Water Walk"): "no material components",
+    ("Aarakocra (MPMM)", "Gust of Wind"): "no material components",
     # dragonmarks (only that mark's race gets each of these spells)
     ("Dwarf", "Alarm"): "no material components",
     ("Dwarf", "Mage Armor"): "no material components",
@@ -121,13 +145,40 @@ _CAST_NOTES = {
     ("Human", "Magic Weapon"): "it lasts 1 hour and doesn't need concentration",
 }
 
+# The same for one subrace's spell, where another subrace of the race
+# casts it plainly: {(subrace, spell): note}
+_SUBRACE_CAST_NOTES = {
+    ("Pallid", "Invisibility"): "on yourself only, no material components",
+}
+
 # Free racial casts that come back on a short rest too (the rest are once
 # per long rest): Mark of Scribing's Comprehend Languages, Mark of
-# Handling's two spells
+# Handling's two spells, a Mammon tiefling's Tenser's Floating Disk
 _SHORT_REST_CASTS = {
     ("Gnome", "Comprehend Languages"),
     ("Human", "Animal Friendship"), ("Human", "Speak with Animals"),
+    ("Tiefling", "Tenser's Floating Disk"),
 }
+
+
+def _race_entry(keys, species: str, spell: str):
+    """The (race, spell) key of `keys` for this species and spell, the
+    most specific race name winning -- or None."""
+    from dnd_app.data.spells import race_table_key
+    race = race_table_key(species, {r for (r, s) in keys if s == spell})
+    return (race, spell) if race else None
+
+
+def racial_spell_source(char: dict) -> str:
+    """What a racial spell is "from" in its counter and in the spellcasting
+    table: the dragonmark ("Mark of Shadow"), or the race without a
+    printing tag ("Genasi", not "Genasi (MPMM)")."""
+    subrace = char.get("subrace") or ""
+    if subrace.startswith("Mark of"):
+        return subrace.split(" (")[0]
+    species = char.get("species") or char.get("race", "")
+    return re.sub(r"\s*\([^)]*\)$", "", species) or "Racial"
+
 
 # Resources whose spell is the player's pick: {resource key: _choices key}
 _CHOSEN_SPELL_RESOURCES = {
@@ -234,14 +285,16 @@ def innate_free_cast_resources(char: dict, existing: list) -> list[dict]:
         })
 
     # a dragonmark's spells are named for the mark ("Shield (Mark of Sentinel)")
+    source = racial_spell_source(char)
     subrace = char.get("subrace") or ""
-    source = subrace if subrace.startswith("Mark of") else (species or "racial")
     for spell in racial_innate_spells(char):
-        race_prefix = next((r for (r, s) in _NOT_DAILY if species.startswith(r) and s == spell), None)
-        if race_prefix:
+        if _race_entry(_NOT_DAILY, species, spell):
             continue
-        extra = next((n for (r, s), n in _CAST_NOTES.items() if species.startswith(r) and s == spell), "")
-        short = any(species.startswith(r) and s == spell for (r, s) in _SHORT_REST_CASTS)
+        note_key = _race_entry(_CAST_NOTES, species, spell)
+        extra = next((n for (sr, sp), n in _SUBRACE_CAST_NOTES.items()
+                      if sp == spell and subrace.startswith(sr)),
+                     _CAST_NOTES[note_key] if note_key else "")
+        short = _race_entry(_SHORT_REST_CASTS, species, spell)
         _add(spell, source, "free_racial", extra, "SR/LR" if short else "LR")
 
     choices = char.get("_choices", {})
@@ -254,6 +307,82 @@ def innate_free_cast_resources(char: dict, existing: list) -> list[dict]:
         for spell in spells:
             _add(spell, feat, f"free_{_slug(feat)}")
     return out
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Spellcasting abilities
+# ═══════════════════════════════════════════════════════════════════════════
+# A spell's save DC and attack bonus use the ability of whatever gave it to
+# you: each class its own (PHB p.164), and each race and feat the one its
+# text names -- a tiefling wizard's Hellish Rebuke uses CHA, their
+# Fireball INT.
+
+def class_spell_ability(class_entry: dict) -> tuple[str, str]:
+    """(label, ability) for one of a character's classes: ("Wizard",
+    "INT"), ("Fighter (EK)", "INT"), or (name, "") for a class that
+    doesn't cast."""
+    from dnd_app.data.classes import CLASS_DICT
+    cname = class_entry.get("class", "")
+    sub = (class_entry.get("subclass") or "").lower()
+    if cname == "Fighter" and "eldritch knight" in sub:
+        return "Fighter (EK)", "INT"
+    if cname == "Rogue" and "arcane trickster" in sub:
+        return "Rogue (AT)", "INT"
+    return cname, CLASS_DICT.get(cname, {}).get("spell_ability") or ""
+
+
+def spellcasting_rows(char: dict) -> list[dict]:
+    """One row per source of spells, for both apps' spellcasting tables:
+    each casting class, then the race, then each feat that casts.
+        source   "Wizard", "Tiefling", "Mark of Shadow", "Fey Touched"
+        kind     "class", "race" or "feat"
+        ability  "INT" -- or "" while it still has to be picked
+        dc, attack   the save DC and attack bonus, None without an ability
+        spells   the spells it gives (race and feat rows)
+        note     what's missing, when the ability is "" """
+    from dnd_app.core.calculator import get_prof_bonus, ability_mod
+    from dnd_app.data.spells import (racial_spell_ability_entry, racial_spells,
+                                     FEAT_SPELL_ABILITY, feat_spells, feat_spell_ability,
+                                     _ABILITY_ABBR)
+    pb = get_prof_bonus(char)
+    dc_bonus = char.get("spell_dc_bonus", 0) or 0
+    atk_bonus = char.get("spell_attack_bonus", 0) or 0
+
+    def row(source, kind, ability, spells=(), note=""):
+        known = bool(ability)
+        mod = ability_mod(char, ability) if known else 0
+        return {"source": source, "kind": kind, "ability": ability or "",
+                "dc": 8 + pb + mod + dc_bonus if known else None,
+                "attack": pb + mod + atk_bonus if known else None,
+                "spells": list(spells), "note": "" if known else note}
+
+    rows = []
+    for c in char.get("classes", []):
+        label, ability = class_spell_ability(c)
+        if ability:
+            rows.append(row(label, "class", ability))
+
+    spells = racial_spells(char)
+    entry = racial_spell_ability_entry(char)
+    if spells and entry:
+        if isinstance(entry, tuple):
+            pick = char.get("_choices", {}).get("racial_spell_ability", [])
+            ability = _ABILITY_ABBR.get(pick[0], "") if pick else ""
+        else:
+            ability = entry
+        rows.append(row(racial_spell_source(char), "race", ability, spells,
+                        "Choose its ability on the Choices tab"))
+
+    for feat in dict.fromkeys(char.get("feats", [])):
+        rule = FEAT_SPELL_ABILITY.get(feat)
+        if not rule:
+            continue
+        note = ("The ability its +1 went to" if rule == "increased"
+                else "Choose its class on the Choices tab" if rule == "class"
+                else "Choose its ability on the Choices tab")
+        rows.append(row(feat, "feat", feat_spell_ability(char, feat) or "",
+                        feat_spells(char, feat), note))
+    return rows
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -503,14 +632,17 @@ def use_spell_scroll(char: dict, eq_name: str, rng=random) -> dict:
 # Each entry: (keywords to substring-match against the beast name,
 # lowercased; base sound; index of the character within that base
 # sound to repeat when stretching to a longer word). Checked in order,
-# first match wins -- more specific keywords (e.g. "sea horse", which
-# would otherwise collide with the "horse" family) are listed earlier.
+# first match wins -- more specific keywords are listed earlier: "sea
+# horse" before the horses, spiders before the wolves (Giant Wolf
+# Spider), crabs before the fish (Giant Crayfish).
 _BEAST_SOUND_FAMILIES = [
     (("sea horse", "seahorse"),                                   "blub",    2),
-    (("octopus", "squid", "rocktopus"),                           "squelch", 3),
+    (("spider", "scorpion", "steeder"),                           "tsss",    1),
+    (("crab", "crayfish", "prawn"),                               "click",   2),
+    (("octopus", "squid", "rocktopus", "tentacle", "snail"),      "squelch", 3),
     (("dolphin", "killer whale", "whale"),                        "eee",     1),
     (("fish", "eel", "shark", "guppy", "quipper", "trout",
-      "prawn", "koi"),                                            "blub",    2),
+      "koi"),                                                     "blub",    2),
     (("bear",),                                                   "rawr",    1),
     (("cat", "tiger", "panther", "leopard", "lion"),               "meow",    1),
     (("hyena",),                                                  "haha",    3),
@@ -518,13 +650,13 @@ _BEAST_SOUND_FAMILIES = [
     (("wolf", "dog", "jackal", "mastiff"),                        "ruff",    1),
     (("owl",),                                                    "hoot",    2),
     (("eagle", "hawk", "falcon", "vulture", "raven", "crow",
-      "peacock", "rooster", "swan", "canary", "diatryma"),        "caw",     1),
+      "peacock", "rooster", "swan", "canary", "diatryma",
+      "axe beak", "mollymawk"),                                   "caw",     1),
     (("saurus", "raptor", "lizard", "crocodile", "plesiosaur",
       "dimetrodon", "pteranodon", "quetzalcoatlus", "triceratops",
-      "deinonychus"),                                             "RAAAWR",  2),
+      "deinonychus", "clawfoot", "fastieth"),                     "RAAAWR",  2),
     (("elephant", "mammoth", "rhinoceros", "titanothere"),        "toot",    1),
-    (("spider", "scorpion", "steeder"),                           "tsss",    1),
-    (("rat", "hamster", "weasel", "hare", "mouse"),                "squeak",  4),
+    (("rat", "hamster", "weasel", "hare", "mouse", "almiraj"),     "squeak",  4),
     (("bat",),                                                    "eek",     1),
     (("frog", "toad"),                                            "ribbit",  2),
     (("snake", "amphisbaena", "jaculi"),                          "hiss",    2),
@@ -532,24 +664,152 @@ _BEAST_SOUND_FAMILIES = [
     (("sheep", "goat"),                                           "baa",     1),
     (("pig", "boar", "swine"),                                    "oink",    1),
     (("horse", "pony", "mule", "camel", "zebra", "steed"),        "neigh",   1),
-    (("crab", "snail", "crayfish"),                               "click",   2),
     (("wasp", "beetle", "dragonfly", "centipede", "stirge"),      "bzzt",    1),
     (("baboon", "ape", "monkey"),                                 "ook",     1),
     (("turtle", "tortoise"),                                      "blip",    2),
     (("deer", "elk", "stag", "reindeer"),                         "gronk",   2),
+    (("seal",),                                                   "arf",     1),
+    (("walrus",),                                                 "hrnk",    1),
+    (("badger",),                                                 "snarl",   2),
+    (("sloth",),                                                  "huff",    1),
+    (("bulette",),                                                "chomp",   2),
+    (("whirlwyrm",),                                              "skree",   3),
+    (("moorbounder",),                                            "grrr",    2),
     (("air elemental",),                                          "whoosh",  2),
     (("water elemental",),                                        "splash",  3),
     (("earth elemental",),                                        "rumble",  1),
     (("fire elemental",),                                         "crackle", 2),
 ]
 
-# Fallback for anything not covered above (fantastical creatures like
-# Almiraj, Clawfoot, Moorbounder, Whirlwyrm, etc. don't have a
-# real-world sound to draw on) -- a generic beast noise.
+# Every Wild Shape form's own noise (data/statblocks.py WILDSHAPE_BEASTS):
+# {(sound, index of the letter that stretches): forms that make it}. The
+# families above are only for a beast not named here (a Totem Warrior's
+# bear, eagle or wolf).
+_FORM_SOUNDS = {
+    # dinosaurs and other prehistoric beasts
+    ("RAAAWR", 2):   ("Allosaurus",),
+    ("skraw", 3):    ("Deinonychus", "Velociraptor", "Clawfoot"),
+    ("hooom", 2):    ("Brontosaurus",),
+    ("bwoom", 2):    ("Hadrosaurus",),
+    ("thwack", 3):   ("Ankylosaurus",),
+    ("hrooo", 3):    ("Stegosaurus",),
+    ("snort", 2):    ("Triceratops", "Rhinoceros", "Titanothere"),
+    ("hrrk", 1):     ("Dimetrodon",),
+    ("gurgle", 1):   ("Plesiosaurus",),
+    ("skree", 3):    ("Pteranodon", "Whirlwyrm"),
+    ("kraa", 2):     ("Quetzalcoatlus",),
+    # cats
+    ("roar", 1):     ("Lion", "Spotted Lion"),
+    ("grawr", 2):    ("Tiger", "Saber-Toothed Tiger", "Armored Saber-Toothed Tiger"),
+    ("snarl", 2):    ("Panther",),
+    ("chuff", 2):    ("Snow Leopard",),
+    ("meow", 1):     ("Cat", "Chimeric Cat"),
+    # bears
+    ("rawr", 1):     ("Black Bear", "Brown Bear", "Cave Bear", "Polar Bear", "Huge Polar Bear"),
+    # dogs and their kin
+    ("awoo", 2):     ("Wolf", "Dire Wolf", "Young Winter Wolf"),
+    ("woof", 1):     ("Mastiff", "Sled Dog"),
+    ("bark", 1):     ("Wild Dog",),
+    ("yip", 1):      ("Jackal",),
+    ("ring", 1):     ("Fox", "Chimeric Fox"),
+    ("haha", 3):     ("Hyena", "Giant Hyena"),
+    ("grrr", 2):     ("Moorbounder", "Bristled Moorbounder"),
+    # birds
+    ("caw", 1):      ("Crow",),
+    ("nevermore", 1): ("Raven", "Giant Raven"),
+    ("screech", 4):  ("Eagle", "Giant Eagle"),
+    ("keeer", 1):    ("Hawk", "Blood Hawk"),
+    ("kak", 1):      ("Falcon",),
+    ("kraw", 2):     ("Vulture", "Giant Vulture"),
+    ("mayaw", 3):    ("Peacock",),
+    ("cockadoodledoo", 13): ("Rooster",),
+    ("honk", 1):     ("Giant Swan",),
+    ("tweet", 2):    ("Giant Canary",),
+    ("hoot", 2):     ("Owl", "Giant Owl"),
+    ("gwaak", 2):    ("Diatryma",),
+    ("bawk", 1):     ("Axe Beak",),
+    ("squawk", 3):   ("Space Mollymawk",),
+    ("eek", 1):      ("Bat", "Giant Bat"),
+    # fish and the sea
+    ("blub", 2):     ("Fish", "Knucklehead Trout", "Space Guppy"),
+    ("nom", 1):      ("Quipper",),
+    ("chomp", 2):    ("Reef Shark", "Hunter Shark", "Giant Shark", "Moonshark"),
+    ("glub", 2):     ("Giant Sea Eel", "Giant White Moray Eel"),
+    ("zap", 1):      ("Giant Lightning Eel",),
+    ("bloop", 2):    ("Space Eel",),
+    ("pop", 1):      ("Sea Horse", "Giant Sea Horse"),
+    ("eee", 1):      ("Dolphin",),
+    ("eeoo", 3):     ("Killer Whale",),
+    ("arf", 1):      ("Seal",),
+    ("hrmph", 1):    ("Walrus", "Giant Walrus"),
+    ("squelch", 3):  ("Octopus", "Giant Octopus", "Giant Rocktopus", "Enormous Tentacle"),
+    ("snip", 2):     ("Crab", "Giant Crab", "Hulking Crab"),
+    ("clack", 2):    ("Giant Crayfish",),
+    ("click", 2):    ("Koi Prawn", "Giant Fire Beetle"),
+    ("snap", 2):     ("Giant Snapping Turtle",),
+    ("thud", 2):     ("Young Horizonback Tortoise",),
+    ("slorp", 2):    ("Giant Snail",),
+    # frogs and reptiles
+    ("ribbit", 2):   ("Frog", "Giant Frog"),
+    ("croak", 3):    ("Giant Toad",),
+    ("hrrr", 1):     ("Crocodile", "Giant Crocodile"),
+    ("hiss", 2):     ("Constrictor Snake", "Giant Constrictor Snake", "Giant Coral Snake",
+                      "Giant Poisonous Snake", "Poisonous Snake", "Flying Snake", "Amphisbaena"),
+    ("fwip", 2):     ("Jaculi",),
+    ("blep", 2):     ("Lizard", "Giant Lizard", "Giant Riding Lizard", "Giant Subterranean Lizard",
+                      "Elder Giant Lizard"),
+    ("chirp", 2):    ("Fastieth",),
+    # small furry things
+    ("squeak", 4):   ("Rat", "Giant Rat", "Chimeric Rat", "Cranium Rat"),
+    ("squee", 4):    ("Space Hamster", "Giant Space Hamster"),
+    ("dook", 2):     ("Weasel", "Giant Weasel", "Chimeric Weasel"),
+    ("thump", 2):    ("Hare", "Chimeric Hare", "Almiraj"),
+    ("churr", 3):    ("Badger", "Cave Badger", "Giant Badger"),
+    ("huff", 1):     ("Relic Sloth",),
+    ("crunch", 2):   ("Young Bulette",),
+    # apes and monkeys
+    ("ook", 1):      ("Ape",),
+    ("wahoo", 3):    ("Baboon", "Chimeric Baboon"),
+    ("ooee", 3):     ("Flying Monkey",),
+    # hoofed beasts
+    ("neigh", 1):    ("Draft Horse", "Riding Horse", "Warhorse", "Pony"),
+    ("kwaha", 2):    ("Zebra",),
+    ("heehaw", 2):   ("Mule",),
+    ("hrrgh", 2):    ("Camel",),
+    ("moo", 1):      ("Cow", "Ox", "Rothé", "Deep Rothé", "Stench Kow"),
+    ("hruff", 2):    ("Aurochs",),
+    ("grunt", 2):    ("Yak", "Boar", "Giant Boar"),
+    ("meh", 1):      ("Goat", "Giant Goat", "Mountain Goat"),
+    ("baa", 1):      ("Sheep",),
+    ("oink", 1):     ("Pig", "Space Swine"),
+    ("bleat", 2):    ("Deer", "Reindeer"),
+    ("hwee", 2):     ("Elk", "Giant Elk"),
+    ("bellow", 1):   ("Golden Stag",),
+    ("prawoo", 4):   ("Elephant", "Mammoth"),
+    # crawling and flying bugs
+    ("tsss", 1):     ("Spider", "Giant Spider", "Giant Wolf Spider", "Fiendish Giant Spider",
+                      "Giant Flying Spider", "Ice Spider", "Ice Spider Queen",
+                      "Female Steeder", "Male Steeder"),
+    ("tsk", 1):      ("Scorpion", "Giant Scorpion"),
+    ("bzzz", 2):     ("Giant Wasp", "Hellwasp Grub"),
+    ("whirr", 3):    ("Giant Dragonfly",),
+    ("skrrt", 3):    ("Giant Centipede",),
+    ("slurp", 2):    ("Stirge",),
+    # Circle of the Moon's elementals
+    ("whoosh", 2):   ("Air Elemental",),
+    ("splash", 3):   ("Water Elemental",),
+    ("rumble", 1):   ("Earth Elemental",),
+    ("crackle", 2):  ("Fire Elemental",),
+}
+_SOUND_OF_FORM = {form: sound for sound, forms in _FORM_SOUNDS.items() for form in forms}
+
+# Fallback for a beast neither table names: a generic beast noise.
 _DEFAULT_SOUND = ("grrr", 2)
 
 
 def _get_beast_sound_profile(beast_name: str) -> tuple[str, int]:
+    if beast_name in _SOUND_OF_FORM:
+        return _SOUND_OF_FORM[beast_name]
     name = (beast_name or "").lower()
     for keywords, sound, idx in _BEAST_SOUND_FAMILIES:
         if any(kw in name for kw in keywords):

@@ -38,6 +38,7 @@ from dnd_app.core.spellcasting import (
     spell_progression_tables, char_spell_classes, max_castable_spell_level,
     all_caster_classes, known_spell_classes, attribute_known_spells,
     prepared_caster_caps, attribute_prepared_spells, spell_limits,
+    spellcasting_rows,
 )
 from dnd_app.core.controller import CharacterController
 from dnd_app.core.magic_items import concentration_save, start_concentration, drop_concentration
@@ -270,10 +271,9 @@ class SpellsMixin:
         dc_card = _card(PURPLE+"55"); dccl = QVBoxLayout(dc_card); dccl.setContentsMargins(14,12,14,14)
         dccl.addWidget(_lbl("SPELLCASTING", PURP2, FS_SMALL, bold=True))
         self._dc_table_lay = QGridLayout(); self._dc_table_lay.setSpacing(6)
-        self._dc_table_lay.addWidget(_lbl("Class", TEXT3, FS_SMALL, bold=True), 0, 0)
-        self._dc_table_lay.addWidget(_lbl("Ability", TEXT3, FS_SMALL, bold=True), 0, 1)
-        self._dc_table_lay.addWidget(_lbl("Save DC", TEXT3, FS_SMALL, bold=True), 0, 2)
-        self._dc_table_lay.addWidget(_lbl("Atk Bonus", TEXT3, FS_SMALL, bold=True), 0, 3)
+        for col, head in enumerate(("From", "Ability", "Save DC", "Attack")):
+            self._dc_table_lay.addWidget(_lbl(head, TEXT3, FS_SMALL, bold=True, wrap=False), 0, col)
+        self._dc_table_lay.setColumnStretch(0, 1)
         dccl.addLayout(self._dc_table_lay); ll.addWidget(dc_card)
 
         # Spell count summary card
@@ -671,22 +671,16 @@ class SpellsMixin:
 
 
     def _refresh_spellcasting_table(self):
-        """Populate the 'Class | Ability | Save DC | Atk Bonus' table.
+        """Fill the 'From | Ability | Save DC | Attack' table: one row per
+        source of spells -- each casting class, the race, each feat that
+        casts -- from core/spellcasting.py spellcasting_rows(), the same
+        rows Android's Spells screen shows.
 
-        This table's HEADER existed but nothing ever populated a data row —
-        spell save DC and attack bonus were completely invisible in the UI
-        for every character, single-class or multiclass.
-
-        5e multiclass spellcasting (PHB p.164): a spell's save DC and attack
-        bonus use the spellcasting ability of the class it was learned
-        from — a Sorcerer/Wizard doesn't have one shared DC, it has a
-        separate DC for its Sorcerer spells (CHA) and its Wizard spells
-        (INT). So this is genuinely one row per casting class, not one
-        pooled row for the whole character.
+        A spell's save DC and attack bonus use the ability of whatever gave
+        it (PHB p.164): a Sorcerer/Wizard has a CHA DC and an INT DC, and a
+        tiefling wizard's Hellish Rebuke is CHA while their Fireball is INT.
         """
         if not hasattr(self, "_dc_table_lay"): return
-        from dnd_app.core.calculator import get_prof_bonus, ability_mod as _am
-        from dnd_app.data.classes import CLASS_DICT
 
         # Clear any existing data rows. QGridLayout has no removeRow(), so
         # track our own row widgets instead — rebuilt fresh on every refresh.
@@ -701,47 +695,40 @@ class SpellsMixin:
             lay.removeWidget(w); w.setParent(None); w.deleteLater()
         self._dc_row_widgets = []
 
-        pb = get_prof_bonus(self.char)
+        rows = spellcasting_rows(self.char)
         row_i = 1
-        for c in self.char.get("classes", []):
-            cname, lvl = c.get("class",""), c.get("level",0)
-            sub = c.get("subclass","").lower()
-            ability = CLASS_DICT.get(cname, {}).get("spell_ability")
-            display_name = cname
-            if cname == "Fighter" and "eldritch knight" in sub:
-                ability, display_name = "INT", "Fighter (EK)"
-            elif cname == "Rogue" and "arcane trickster" in sub:
-                ability, display_name = "INT", "Rogue (AT)"
-            if not ability:
-                continue   # non-casting class (or subclass without spells yet)
-            mod = _am(self.char, ability)
-            dc = 8 + pb + mod
-            atk = pb + mod
-            atk_str = f"+{atk}" if atk >= 0 else str(atk)
-            dc_lbl  = _lbl(str(dc), GOLD2, FS_SMALL, bold=True, wrap=False)
-            atk_lbl = _lbl(atk_str, TEAL2, FS_SMALL, bold=True, wrap=False)
-            dc_lbl.setToolTip("Right-click for a breakdown")
-            atk_lbl.setToolTip("Right-click for a breakdown")
-            dc_lbl.contextMenuEvent = (lambda e, _a=ability, _dc=dc:
-                self._show_breakdown_popup(f"{_a} Save DC",
-                    get_save_dc_breakdown(self.char, _a), str(_dc), e.globalPos()))
-            atk_lbl.contextMenuEvent = (lambda e, _a=ability, _atk=atk_str:
-                self._show_breakdown_popup(f"{_a} Spell Attack Bonus",
-                    get_spell_attack_breakdown(self.char, _a), _atk, e.globalPos()))
-            cells = [
-                _lbl(display_name, TEXT, FS_SMALL, bold=True, wrap=False),
-                _lbl(ability, TEXT2, FS_SMALL, wrap=False),
-                dc_lbl,
-                atk_lbl,
-            ]
-            for col, w in enumerate(cells):
-                lay.addWidget(w, row_i, col)
-                self._dc_row_widgets.append(w)
+        for r in rows:
+            src_lbl = _lbl(r["source"], TEXT, FS_SMALL, bold=True)
+            lay.addWidget(src_lbl, row_i, 0)
+            self._dc_row_widgets.append(src_lbl)
+            ability = r["ability"]
+            if ability:
+                atk_str = f"+{r['attack']}" if r["attack"] >= 0 else str(r["attack"])
+                dc_lbl = _lbl(str(r["dc"]), TEXT, FS_SMALL, bold=True, wrap=False)
+                atk_lbl = _lbl(atk_str, TEXT, FS_SMALL, bold=True, wrap=False)
+                dc_lbl.setToolTip("Right-click for a breakdown")
+                atk_lbl.setToolTip("Right-click for a breakdown")
+                dc_lbl.contextMenuEvent = (lambda e, _a=ability, _dc=r["dc"]:
+                    self._show_breakdown_popup(f"{_a} Save DC",
+                        get_save_dc_breakdown(self.char, _a), str(_dc), e.globalPos()))
+                atk_lbl.contextMenuEvent = (lambda e, _a=ability, _atk=atk_str:
+                    self._show_breakdown_popup(f"{_a} Spell Attack Bonus",
+                        get_spell_attack_breakdown(self.char, _a), _atk, e.globalPos()))
+                for col, w in enumerate([_lbl(ability, TEXT2, FS_SMALL, wrap=False), dc_lbl, atk_lbl], start=1):
+                    lay.addWidget(w, row_i, col)
+                    self._dc_row_widgets.append(w)
             row_i += 1
+            # under a race's or feat's row: which spells use it, and what's
+            # still to pick
+            for extra in ([", ".join(r["spells"])] if r["spells"] else []) + ([r["note"]] if r["note"] else []):
+                sub = _lbl(extra, TEXT3, FS_SMALL)
+                lay.addWidget(sub, row_i, 0, 1, 4)
+                self._dc_row_widgets.append(sub)
+                row_i += 1
 
-        if row_i == 1:
-            hint = _lbl("No spellcasting classes.", TEXT3, FS_SMALL, wrap=False)
-            lay.addWidget(hint, row_i, 0, 1, 4)
+        if not rows:
+            hint = _lbl("No spellcasting yet.", TEXT3, FS_SMALL, wrap=False)
+            lay.addWidget(hint, 1, 0, 1, 4)
             self._dc_row_widgets.append(hint)
 
 

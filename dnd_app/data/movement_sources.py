@@ -31,7 +31,7 @@ SUBRACE_MOVEMENT = {
     ("Elf", "sea"):        [{"kind": "swim", "speed": 30, "source": "Sea Elf"}],
     ("Half-Elf", "aquatic"): [{"kind": "swim", "speed": 30, "source": "Aquatic Half-Elf"}],
     ("Genasi", "water"):  [{"kind": "swim", "speed": 30, "source": "Water Genasi"}],
-    ("Tiefling", "winged"): [{"kind": "fly", "speed": 30, "source": "Winged Tiefling", "min_char_level": 3}],
+    ("Tiefling", "winged"): [{"kind": "fly", "speed": 30, "source": "Winged Tiefling", "no_heavy_armor": True}],
 }
 
 # Always active once the (class, subclass, level) matches — no toggle.

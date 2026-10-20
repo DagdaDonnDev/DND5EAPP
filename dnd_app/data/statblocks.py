@@ -2190,7 +2190,7 @@ WILDSHAPE_BEASTS = {
         "skills": [],
         "senses": 'darkvision 60 ft., passive Perception 10',
         "traits": [('Keen Smell', 'The rat has advantage on Wisdom (Perception) checks that rely on smell.'), ('Pack Tactics', "The rat has advantage on an attack roll against a creature if at least one of the rat's allies is within 5 feet of the creature and the ally isn't incapacitated.")],
-        "actions": [('Bite', 'Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 4 (1d4 + 2) piercing damage.'), ('Bite', "Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 4 (1d4 + 2) piercing damage. If the target is a creature, it must succeed on a DC 10 Constitution saving throw or contract a disease. Until the disease is cured, the target can't regain hit points except by magical means, and the target's hit point maximum decreases by 3 (1d6) every 24 hours. If the target's hit point maximum drops to 0 as a result of this disease, the target dies.")],
+        "actions": [('Bite', 'Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 4 (1d4 + 2) piercing damage.'), ('Diseased Bite', "Some giant rats carry vile diseases. Melee Weapon Attack: +4 to hit, reach 5 ft., one target. Hit: 4 (1d4 + 2) piercing damage. If the target is a creature, it must succeed on a DC 10 Constitution saving throw or contract a disease. Until the disease is cured, the target can't regain hit points except by magical means, and the target's hit point maximum decreases by 3 (1d6) every 24 hours. If the target's hit point maximum drops to 0 as a result of this disease, the target dies.")],
     },
     'Giant Raven': {
         "cr": 1.0, "cr_label": '1', "size": 'Large',
@@ -3188,8 +3188,8 @@ WILDSHAPE_BEASTS = {
         "traits": [("Keen Smell", "Advantage on WIS (Perception) checks that rely on smell.")],
         "actions": [
             ("Multiattack", "The bear makes two attacks: one bite and one claw."),
-            ("Bite", "Melee Weapon Attack: +8 to hit, reach 5 ft., one target. Hit: 1d8+5 piercing damage."),
-            ("Claws", "Melee Weapon Attack: +8 to hit, reach 5 ft., one target. Hit: 2d6+5 slashing damage."),
+            ("Bite", "Melee Weapon Attack: +7 to hit, reach 5 ft., one target. Hit: 1d8+5 piercing damage."),
+            ("Claws", "Melee Weapon Attack: +7 to hit, reach 5 ft., one target. Hit: 2d6+5 slashing damage."),
         ],
     },
     "Giant Constrictor Snake": {
@@ -3237,8 +3237,8 @@ WILDSHAPE_BEASTS = {
         "ac": 13, "ac_note": "natural armor", "hp": 126, "hit_dice": "11d12+55",
         "speed": "0 ft., swim 50 ft.", "flies": False, "swims": True,
         "abilities": {"STR": 23, "DEX": 11, "CON": 21, "INT": 1, "WIS": 10, "CHA": 5},
-        "skills": [("Perception", "+4")],
-        "senses": "blindsight 60 ft., passive Perception 14",
+        "skills": [("Perception", "+3")],
+        "senses": "blindsight 60 ft., passive Perception 13",
         "traits": [
             ("Blood Frenzy", "The shark has advantage on melee attack rolls against any creature that doesn't have all its HP."),
             ("Water Breathing", "The shark can breathe only underwater."),

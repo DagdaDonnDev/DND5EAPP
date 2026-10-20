@@ -8,6 +8,8 @@ input elsewhere (Backstory tab), not background-specific roll tables.
 Author: Ethan O'Brien
 Date: 2026-08-20
 """
+import re
+
 
 def bg(name, skills, tools=None, languages=0, feature="", feature_desc="",
        source="PHB 2014", origin_feat=None, equipment="", notes="",
@@ -192,7 +194,8 @@ ALL_BACKGROUNDS = [
        equipment="A set of artisan's tools (your choice), maker's mark chisel, traveler's clothes, letter of introduction from your clan, 5 gp"),
 
     bg("Cloistered Scholar", source="SCAG",
-       skills=["History", "one of: Arcana, Nature, Religion"],
+       skills=["History"],
+       skill_choices={"count": 1, "pool": ["Arcana", "Nature", "Religion"]},
        languages=2,
        feature="Library Access",
        feature_desc='Though others must often endure extensive negotiations and research to gain access to libraries and other collections of lore, you have free access to the collection of a specific library you have chosen. Other scholars of the Sword Coast will speak with you as a peer, and you are welcome at most academic institutions. You might need to negotiate access to a particularly restricted section — a rare room, a restricted archive, or a dangerous specimen — but common academic resources are open to you freely.',
@@ -215,7 +218,6 @@ ALL_BACKGROUNDS = [
 
     bg("Fisher", source="GoS",
        skills=["History", "Survival"],
-       tools=["Vehicles (water)"],
        languages=1,
        feature="Harvest the Water",
        feature_desc="You gain advantage on ability checks made using fishing tackle. If you have "
@@ -244,14 +246,8 @@ ALL_BACKGROUNDS = [
 
     bg("House Agent", source="ERLW",
        skills=["Investigation", "Persuasion"],
-       # Real tool grant depends on which Dragonmarked House the
-       # character belongs to (see `notes`) — a two-tier choice (house,
-       # then that house's own fixed 2-tool list) this app has no
-       # concept of "House" to hang a chooser off of, unlike the flat
-       # skill_choices/tool_choices mechanism used elsewhere in this
-       # file. Left empty rather than applying the placeholder text as
-       # a literal (bogus) tool proficiency name — no grant is better
-       # than a wrong one; a real chooser needs a House field first.
+       # the two tools are your house's (HOUSE_AGENT_TOOLS below), with
+       # the house picked on the Choices tab
        tools=[],
        feature="House Connections",
        feature_desc="You can always get food and lodging for yourself and your friends at a house "
@@ -370,7 +366,8 @@ ALL_BACKGROUNDS = [
        skills=[],
        skill_choices={"count": 2, "pool": ["Deception", "Insight", "Persuasion", "Stealth"]},
        tools=[],
-       tool_choices={"count": 2, "pool": ["Gaming set", "Musical instrument", "Thieves' tools"]},
+       tool_choices={"count": 2, "pool": ["Gaming set", "Musical instrument", "Thieves' tools"],
+                     "what": "two of a gaming set, a musical instrument and thieves' tools"},
        feature="Ear to the Ground",
        feature_desc="Your work as a bounty hunter in urban environments has left you with an extensive network of contacts in cities — informants, fixers, and people who owe you favors. Through this network you can get in touch with someone in any city you spend at least a day in who knows something about any major criminal or wanted individual you're pursuing. The quality and completeness of information depends on how much coin you're willing to spend.",
        equipment="Clothes appropriate to duties, 20 gp"),
@@ -730,7 +727,12 @@ ALL_BACKGROUNDS = [
 
     # ── Sword Coast Adventurer's Guide ────────────────────────────────────────
     bg("Faction Agent",
-       skills=["Insight", "one from: Arcana, Deception, History, Intimidation, Investigation, Medicine, Nature, Perception, Performance, Persuasion, Religion, Survival"],
+       skills=["Insight"],
+       skill_choices={"count": 1, "what": "one Intelligence, Wisdom or Charisma skill, as suits your faction",
+                      "pool": ["Animal Handling", "Arcana", "Deception", "History",
+                               "Intimidation", "Investigation", "Medicine", "Nature",
+                               "Perception", "Performance", "Persuasion", "Religion",
+                               "Survival"]},
        tools=[],
        languages=2,
        feature="Safe Haven",
@@ -744,7 +746,8 @@ ALL_BACKGROUNDS = [
        source="SCAG"),
 
     bg("Inheritor",
-       skills=["Survival", "one from: Arcana, History, Religion"],
+       skills=["Survival"],
+       skill_choices={"count": 1, "pool": ["Arcana", "History", "Religion"]},
        tools=["Gaming set or Musical instrument"],
        languages=1,
        feature="Inheritance",
@@ -753,7 +756,8 @@ ALL_BACKGROUNDS = [
        source="SCAG"),
 
     bg("Knight of the Order",
-       skills=["Persuasion", "one from: Arcana, History, Nature, Religion"],
+       skills=["Persuasion"],
+       skill_choices={"count": 1, "pool": ["Arcana", "History", "Nature", "Religion"]},
        tools=["Gaming set or Musical instrument"],
        languages=1,
        feature="Knightly Regard",
@@ -1211,7 +1215,13 @@ ALL_BACKGROUNDS = [
        equipment="Crowbar, dark common clothes with hood, 15 gp"),
 
     bg("Planar Philosopher", source="PSK",
-       skills=["Arcana", "one matching your Sigil faction, or of your choice"],
+       skills=["Arcana"],
+       skill_choices={"count": 1, "what": "your Sigil faction's skill, or any one",
+                      "pool": ["Acrobatics", "Animal Handling", "Athletics", "Deception",
+                               "History", "Insight", "Intimidation", "Investigation",
+                               "Medicine", "Nature", "Perception", "Performance",
+                               "Persuasion", "Religion", "Sleight of Hand", "Stealth",
+                               "Survival"]},
        languages=2,
        feature="Conviction",
        feature_desc="You gain the Scion of the Outer Planes feat. Members of your organization "
@@ -1252,7 +1262,134 @@ ALL_BACKGROUNDS = [
 
 ]
 
+
+
+def _tool_kind_pool(text: str) -> list:
+    """The tools a background's "Gaming set", "Musical instrument" or
+    "Cartographer's tools or Navigator's tools" lets you pick from (a
+    gaming set is one set of your choice, not every set)."""
+    from dnd_app.data.items import ALL_TOOLS, ARTISAN_TOOLS, GAMING_SETS, INSTRUMENT_TOOLS
+    pool = []
+    for part in re.split(r",?\s+or\s+", text, flags=re.I):
+        p = re.sub(r"^(one type of|one|an?)\s+", "", part.strip().lower())
+        if "gaming set" in p:
+            pool += GAMING_SETS
+        elif "instrument" in p:
+            pool += INSTRUMENT_TOOLS
+        elif "artisan" in p:
+            pool += ARTISAN_TOOLS
+        else:
+            pool += [t for t in ALL_TOOLS if t.lower() == p]
+    return list(dict.fromkeys(pool))
+
+
+def _ask_for_tool_kinds(b: dict) -> None:
+    """A background's tool written as a kind ("Gaming set", "One type of
+    artisan's tools", "Musical instrument or gaming set") becomes a pick of
+    one -- its tool_choices -- and only real tools stay in `tools`."""
+    from dnd_app.data.items import ALL_TOOLS
+    tc = b.get("tool_choices")
+    if tc and any(t not in ALL_TOOLS for t in tc["pool"]):
+        tc["pool"] = _tool_kind_pool(" or ".join(tc["pool"]))   # Urban Bounty Hunter's kinds
+    kinds = [t for t in b["tools"] if t not in ALL_TOOLS]
+    if not kinds or tc:
+        return
+    pool = _tool_kind_pool(kinds[0])
+    if pool:
+        b["tools"] = [t for t in b["tools"] if t in ALL_TOOLS]
+        what = kinds[0].lower().replace(" (specialty)", "")
+        what = re.sub(r"^(one type of|one)\s+", "", what)
+        what = what.replace(", or an additional language", "")
+        what = re.sub(r",?\s+or\s+(one\s+)?", " or ", what)
+        b["tool_choices"] = {"count": 1, "pool": pool, "what": what}
+
+
+for _b in ALL_BACKGROUNDS:
+    _ask_for_tool_kinds(_b)
+
 BACKGROUND_NAMES = [b["name"] for b in ALL_BACKGROUNDS]
+
+# House Agent: the two tool proficiencies of each Dragonmarked house (ERLW);
+# "gaming set" and "musical instrument" are one of your choice
+HOUSE_AGENT_TOOLS = {
+    "Cannith": ["Alchemist's supplies", "Tinker's tools"],
+    "Deneith": ["gaming set", "Vehicles (land)"],
+    "Ghallanda": ["Brewer's supplies", "Cook's utensils"],
+    "Jorasco": ["Alchemist's supplies", "Herbalism kit"],
+    "Kundarak": ["Thieves' tools", "Tinker's tools"],
+    "Lyrandar": ["Navigator's tools", "Vehicles (water)", "Vehicles (air)"],
+    "Medani": ["Disguise kit", "Thieves' tools"],
+    "Orien": ["gaming set", "Vehicles (land)"],
+    "Phiarlan": ["Disguise kit", "musical instrument"],
+    "Sivis": ["Calligrapher's supplies", "Forgery kit"],
+    "Tharashk": ["gaming set", "Thieves' tools"],
+    "Thuranni": ["musical instrument", "Poisoner's kit"],
+    "Vadalis": ["Herbalism kit", "Vehicles (land)"],
+}
+
+
+def _house(choices: dict) -> str:
+    """The house a House Agent picked ("Cannith – alchemist's supplies and
+    tinker's tools" -> "Cannith")."""
+    pick = (choices or {}).get("bg_house_agent_house") or []
+    return pick[0].split(" – ")[0].strip() if pick else ""
+
+
+def house_agent_options() -> list:
+    """The house choice's options: "Deneith – a gaming set and Vehicles (land)"."""
+    def said(t):
+        return f"a {t}" if t in ("gaming set", "musical instrument") else t
+    return [f"{h} – {' and '.join(said(t) for t in tools)}" for h, tools in HOUSE_AGENT_TOOLS.items()]
+
+
+def background_tools(b: dict, choices: dict = None) -> list:
+    """The tools a background gives outright -- for a House Agent, its
+    house's."""
+    if b.get("name") == "House Agent":
+        from dnd_app.data.items import ALL_TOOLS
+        return [t for t in HOUSE_AGENT_TOOLS.get(_house(choices), []) if t in ALL_TOOLS]
+    return list(b.get("tools") or [])
+
+
+def background_tool_choice(b: dict, choices: dict = None):
+    """The tools a background lets you pick ({"count", "pool", "what"}), or
+    None -- for a House Agent, the gaming set or instrument in its house's
+    row."""
+    if b.get("name") == "House Agent":
+        from dnd_app.data.items import ALL_TOOLS
+        kinds = [t for t in HOUSE_AGENT_TOOLS.get(_house(choices), []) if t not in ALL_TOOLS]
+        return {"count": 1, "pool": _tool_kind_pool(kinds[0]), "what": kinds[0]} if kinds else None
+    return b.get("tool_choices")
+
+
+def _either(names: list) -> str:
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " or " + names[-1]
+
+
+def background_proficiency_text(b: dict) -> str:
+    """What a background's skills and tools are, for both creation wizards:
+    "Skills: Survival, one of Arcana, History or Religion  ·  Tools: gaming
+    set or musical instrument (your choice)"."""
+    parts = []
+    skills = list(b.get("skills") or [])
+    sc = b.get("skill_choices")
+    if sc:
+        n = sc.get("count", 1)
+        skills.append(sc.get("what") or
+                      f"{'one' if n == 1 else 'two' if n == 2 else n} of {_either(sc.get('pool', []))}")
+    tools = list(b.get("tools") or [])
+    if b.get("name") == "House Agent":
+        tools.append("your dragonmarked house's two")
+    tc = b.get("tool_choices")
+    if tc:
+        n = tc.get("count", 1)
+        tools.append(f"{tc['what']} (your choice)" if tc.get("what") else
+                     f"{'one' if n == 1 else 'two' if n == 2 else n} of {_either(tc.get('pool', []))}")
+    if skills:
+        parts.append(f"Skills: {', '.join(skills)}")
+    if tools:
+        parts.append(f"Tools: {', '.join(tools)}")
+    return "  ·  ".join(parts)
 
 def get_background(name: str) -> dict:
     for b in ALL_BACKGROUNDS:

@@ -648,9 +648,9 @@ class Step2Abilities(QWidget):
             col = QVBoxLayout(); col.setSpacing(3)
             col.addWidget(_lbl(ab, TEXT3, FS_SMALL, bold=True, align=Qt.AlignCenter))
             sp = QSpinBox(); sp.setRange(0, 4); sp.setValue(0); sp.setFixedWidth(52)
-            sp.setButtonSymbols(QAbstractSpinBox.NoButtons)
             sp.setStyleSheet(f"QSpinBox{{color:{GOLD2};font-weight:700;font-size:{FS_BODY}px;"
-                             f"border:2px solid {qa(GOLD,0x55)};border-radius:6px;background:{SURF2};padding:2px;}}")
+                             f"border:2px solid {qa(GOLD,0x55)};border-radius:6px;background:{SURF2};padding:2px;}}"
+                             + SPIN_NO_BUTTONS)
             sp.valueChanged.connect(self._on_tashas_spin)
             mod_lbl = QLabel("0"); mod_lbl.setAlignment(Qt.AlignCenter)
             mod_lbl.setStyleSheet(f"color:{TEXT3};font-size:{FS_SMALL}px;background:transparent;border:none;")
@@ -1084,13 +1084,9 @@ class Step3Class(QWidget):
         from dnd_app.data.backgrounds import get_background
         bg = get_background(text) or {}
         feat_choices = bg.get("feat_choices") or []
-        # Skills row
-        skills = bg.get("skill_proficiencies") or bg.get("skills") or []
-        tools  = bg.get("tools") or bg.get("tool_proficiencies") or []
-        parts  = []
-        if skills: parts.append(f"Skills: {', '.join(skills)}")
-        if tools:  parts.append(f"Tools: {', '.join(tools)}")
-        self._bg_skills_lbl.setText("  ·  ".join(parts))
+        # Skills row, with the ones to choose (the same text as Android's)
+        from dnd_app.data.backgrounds import background_proficiency_text
+        self._bg_skills_lbl.setText(background_proficiency_text(bg))
         # Full detail box: feature description, equipment, languages, origin
         # feat, and source — all untruncated, since this is meant to be the
         # actual reference a player reads before committing to a choice.

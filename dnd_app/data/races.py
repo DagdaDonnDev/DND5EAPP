@@ -48,7 +48,7 @@ ALL_RACES = [
          languages=["Common", "Dwarvish"],
          subraces=["Hill (+CON 2, +WIS 1; Dwarven Toughness: your hit point maximum increases by 1, and increases by 1 again every time you gain a level)",
                    "Mountain (+STR 2, +CON 2; Dwarven Armor Training: proficiency with light and medium armor)",
-                   "Duergar (+CON 2, +STR 1; Darkvision 120 ft; Duergar Resilience: advantage on saves against illusions and against being charmed or paralyzed; Duergar Magic: cast Enlarge/Reduce (self only) at 3rd level and Invisibility (self only) at 5th level, once each per long rest; Sunlight Sensitivity: disadvantage on attack rolls and Perception checks that rely on sight while you or the target is in direct sunlight)",
+                   "Duergar (+CON 2, +STR 1; Darkvision 120 ft; Duergar Resilience: advantage on saves against illusions and against being charmed or paralyzed; Duergar Magic: cast Enlarge/Reduce (self only, enlarge only) at 3rd level and Invisibility (self only) at 5th level, once each per long rest, without material components and not in direct sunlight, using INT as your spellcasting ability; Sunlight Sensitivity: disadvantage on attack rolls and Perception checks that rely on sight while you or the target is in direct sunlight)",
              "Mark of Warding (+CON 2, +INT 1; Warder's Intuition: add a d4 to Investigation checks and ability checks using thieves' tools; Wards and Seals: cast Alarm and Mage Armor, and Arcane Lock from 3rd level, each once per long rest without material components, using INT as your spellcasting ability; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Warding spells are added to your class's spell list)"]),
 
     race("Elf",
@@ -63,7 +63,7 @@ ALL_RACES = [
                    "Eladrin - DMG'14 (+DEX 2, +INT 1; Fey Step: cast Misty Step using this trait once per short or long rest)",
                    "Sea (+DEX 2, +CON 1; Sea Elf Training: proficiency with the spear, trident, light crossbow, and net; swimming speed of 30 feet; Amphibious: you can breathe air and water; Friend of the Sea: you can communicate simple ideas with beasts that have a swimming speed)",
                    "Shadar-kai (+DEX 2, +CON 1; resistance to necrotic damage; Blessing of the Raven Queen: as a bonus action, teleport up to 30 feet to an unoccupied space you can see, once per long rest; from 3rd level you also have resistance to all damage until the start of your next turn)",
-                   "Pallid (– +DEX 2, +WIS 1; Incisive Sense: advantage on Insight checks to determine if a creature is lying; Moonweaver Magic: cast Silent Image once per long rest, using WIS as your spellcasting ability)",
+                   "Pallid (– +DEX 2, +WIS 1; Incisive Sense: advantage on Investigation and Insight checks; Blessing of the Moon Weaver: you know the Light cantrip, and cast Sleep from 3rd level and Invisibility on yourself from 5th, each once per long rest without material components, using WIS as your spellcasting ability)",
              "Mark of Shadow (+DEX 2, +CHA 1; Cunning Intuition: add a d4 to Performance and Stealth checks; Shape Shadows: you know the Minor Illusion cantrip, and from 3rd level cast Invisibility once per long rest, using CHA as your spellcasting ability; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Shadow spells are added to your class's spell list)"]),
 
     race("Gnome", speed=25,
@@ -105,7 +105,7 @@ ALL_RACES = [
          languages=["Common", "Halfling"],
          subraces=["Lightfoot (+DEX 2, +CHA 1; Naturally Stealthy: you can attempt to hide even when obscured only by a creature at least one size larger than you)",
                    "Stout (+DEX 2, +CON 1; Stout Resilience: advantage on saving throws against poison, and resistance to poison damage)",
-                   "Lotusden (– +DEX 2, +WIS 1; Child of the Wood: learn the Druidcraft cantrip; at 3rd level cast Entangle, and at 5th level cast Spike Growth, each once per long rest, using WIS as your spellcasting ability; Timberwalk: moving through nonmagical difficult terrain made of plants costs no extra movement, and you have advantage on saves against being afflicted with disease)",
+                   "Lotusden (– +DEX 2, +WIS 1; Child of the Wood: learn the Druidcraft cantrip; at 3rd level cast Entangle, and at 5th level cast Spike Growth, each once per long rest without material components, using WIS as your spellcasting ability; Timberwalk: moving through nonmagical difficult terrain made of plants costs no extra movement, and you have advantage on saves against being afflicted with disease)",
              "Ghostwise (+DEX 2, +WIS 1; Silent Speech: telepathically communicate simple messages with any creature within 30 feet that understands at least one language)",
              "Mark of Healing (+DEX 2, +WIS 1; Medical Intuition: add a d4 to Medicine checks and ability checks using an herbalism kit; Healing Touch: cast Cure Wounds, and Lesser Restoration from 3rd level, each once per long rest, using WIS as your spellcasting ability; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Healing spells are added to your class's spell list)",
              "Mark of Hospitality (+DEX 2, +CHA 1; Ever Hospitable: add a d4 to Persuasion checks and ability checks using brewer's supplies or cook's utensils; Innkeeper's Magic: you know the Prestidigitation cantrip, and cast Purify Food and Drink and Unseen Servant each once per long rest, using CHA as your spellcasting ability; Spells of the Mark: with the Spellcasting or Pact Magic class feature, the Mark of Hospitality spells are added to your class's spell list)"]),
@@ -138,10 +138,10 @@ ALL_RACES = [
              "Mammon (+CHA 2, +INT 1; resistance to fire damage; learn Mage Hand; cast Tenser's Floating Disk once per long rest at 3rd level and Arcane Lock once per long rest at 5th level, using CHA)",
              "Mephistopheles (+CHA 2, +INT 1; resistance to fire damage; learn Mage Hand; cast Burning Hands once per long rest at 3rd level and Flame Blade once per long rest at 5th level, using CHA)",
              "Zariel (+CHA 2, +STR 1; resistance to fire damage; learn Thaumaturgy; cast Searing Smite once per long rest at 3rd level and Branding Smite once per long rest at 5th level, using CHA)",
-             "Feral (+DEX 2, +INT 1, in place of the usual Charisma and Intelligence increases; gain Darkvision 60 ft; resistance to fire damage retained from your fiendish heritage)",
+             "Feral (+DEX 2, +INT 1, in place of the usual Charisma and Intelligence increases; Infernal Legacy and fire resistance as usual)",
              "Devil's Tongue (replaces your Infernal Legacy spells: learn Vicious Mockery instead of Thaumaturgy, and cast Charm Person and Enthrall in place of your normal 3rd- and 5th-level spells, using CHA)",
              "Hellfire (replaces the Hellish Rebuke granted by Infernal Legacy with Burning Hands, cast once per long rest at 3rd level using CHA)",
-             "Winged (replaces your Infernal Legacy spells entirely with a flying speed of 30 feet, gained at 3rd level)"]
+             "Winged (replaces Infernal Legacy: bat-like wings give you a flying speed of 30 feet while you aren't wearing heavy armour)"]
          ),
 
     # ── Exotic & Published (A–Z) ────────────────────────────────────────────
@@ -241,10 +241,10 @@ ALL_RACES = [
 
     race("Genasi", asi={"CON": 2}, source="EEPC",
          traits=["Constitution +2 (all subraces)"],
-         subraces=["Air (+CON 2, +DEX 1; Unending Breath: you can hold your breath indefinitely while not incapacitated; at 3rd level, cast Levitate on yourself once per long rest, using CON as your spellcasting ability)",
-                   "Earth (+CON 2, +STR 1; Earth Walk: you can move across difficult terrain made of earth or stone without extra movement cost; at 3rd level, cast Pass without Trace once per long rest, using CON as your spellcasting ability)",
+         subraces=["Air (+CON 2, +DEX 1; Unending Breath: you can hold your breath indefinitely while not incapacitated; Mingle with the Wind: cast Levitate once per long rest without material components, using CON as your spellcasting ability)",
+                   "Earth (+CON 2, +STR 1; Earth Walk: you can move across difficult terrain made of earth or stone without extra movement cost; Merge with Stone: cast Pass without Trace once per long rest without material components, using CON as your spellcasting ability)",
                    "Fire (+CON 2, +INT 1; Darkvision 60 ft; resistance to fire damage; learn the Produce Flame cantrip; at 3rd level, cast Burning Hands once per long rest, using CON as your spellcasting ability)",
-                   "Water (+CON 2, +WIS 1; Amphibious: you can breathe air and water; swimming speed of 30 feet; resistance to acid damage; learn the Shape Water cantrip; at 3rd level, cast Create or Destroy Water once per long rest, using CON as your spellcasting ability)"]),
+                   "Water (+CON 2, +WIS 1; Amphibious: you can breathe air and water; swimming speed of 30 feet; resistance to acid damage; learn the Shape Water cantrip; at 3rd level, cast Create or Destroy Water as a 2nd-level spell once per long rest, using CON as your spellcasting ability)"]),
 
     race("Genasi (MPMM)", asi_flex=2, source="MPMM",
          traits=["Size – Medium or Small, your choice", "Darkvision 60 ft"],

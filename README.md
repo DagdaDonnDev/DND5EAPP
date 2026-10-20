@@ -21,7 +21,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/desktop-combat.png" width="72%" alt="The desktop app: a level 5 Warlock's Combat tab">
+  <img src="docs/images/desktop-combat.png" width="72%" alt="The desktop app: a level 5 Sorcerer's Combat tab">
   <img src="docs/images/android-combat.png" width="22%" alt="The Android app: the same character's combat screen">
 </p>
 
@@ -35,26 +35,26 @@
 </p>
 <!-- /github-only -->
 
-MIMIC brings everything a player needs into one place: races, classes,
+MIMIC puts everything a player needs in one place: races, classes,
 subclasses, spells, feats, backgrounds, magic items, companions, Wild Shape
-and combat. Build a character, level it up, and play it at the table — on
-your computer, or on your phone with the same character file.
+and combat. Build a character, level it up and play it at the table, on
+your computer or on your phone, with the same character file.
 
 <!-- github-only -->
 
-| 85 | 14 | 127 | 511 | 138 | 99 | 1,283 |
-|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| races | classes | subclasses | spells | feats | backgrounds | magic items |
+| 84 | 14 | 127 | 532 | 138 | 99 | 1,283 | 185 |
+|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| races | classes | subclasses | spells | feats | backgrounds | magic items | Wild Shape forms |
 
 <!-- /github-only -->
 
-- **Rules that actually run** — magic items, invocations, maneuvers, infusions, conditions and rage carry their real mechanics, not just their text
-- **One character, both apps** — the desktop and Android apps share one rules engine and one file format
+- **Rules that run** — magic items, invocations, maneuvers, infusions, conditions and rage do what they say, not just show their text
+- **One character, both apps** — desktop and Android share one rules engine and one file format
 - **Changes clean up after themselves** — level down, swap race or drop a feat, and everything that came with it goes too
-- **Dying, resting and casting by the book** — massive damage, death saves, stabilising, rests, spell slots, concentration
+- **Dying, resting and casting by the book** — massive damage, death saves, rests, spell slots and concentration
 - **Bring your old sheets** — a filled-in official 5e PDF character sheet becomes a full character
-- **The sheet feels it too** — colour drains from the page as HP drops, and the screen's edges close in with exhaustion (both optional)
-- **Yours, offline** — no account, no internet needed, free
+- **The sheet feels it too** — colour drains as HP drops, and the screen's edges close in with exhaustion (both optional)
+- **Yours, offline** — no account, no internet, free
 
 ---
 
@@ -63,129 +63,121 @@ your computer, or on your phone with the same character file.
 <details open>
 <summary><b>Game content</b> — races, classes, spells, items and more</summary>
 
-- **85 races** with subraces from every official sourcebook, including modern (MPMM) revisions kept alongside their original printings where the two differ mechanically
-- **14 classes**, Blood Hunter included, with **127 subclasses** (2014 rules) — audited line by line against the source text, not filled in from memory
-- **511 spells** across all 9 levels, with per-class spell lists
-- **138 feats** from PHB (2014 & 2024), XGE, TCE, FTD and more
-- **99 backgrounds** from PHB (2014), plus adventure-specific backgrounds — 2024 Origin Feat backgrounds are left out, since the app follows the 2014 rules
-- **1,283 magic items**, with real mechanical effects (ability score overrides, resistances, weapon bonuses, resource pools and more) wired for over 99% of the catalog
-- **All standard weapons and armor** with computed attack bonuses and damage, plus browsable Silvered and Adamantine variants of every weapon (Adamantine for melee weapons only, per the real rule) with the right cost and rules text
-- **A 185-form Wild Shape catalog**, CR 0 to CR 6 (the four elementals included), filtered by your druid level and any beast restrictions
-- **Full companion stat blocks** for the Steel Defender, Wildfire Spirit, Drake Companion, Dancing Item, Primal Companions (Beast of the Land/Sea/Sky) and Eldritch Cannon
-- **11 races with real natural weapons** (Aarakocra Talons, Tabaxi Claws, Lizardfolk Bite, Minotaur Horns, Satyr Ram, Longtooth Shifter's Fangs and more) as weapon rows with computed attack and damage, in both original and MPMM printings
+- **84 races** with their subraces, plus a custom race. Where a race was reprinted with different rules (Mordenkainen Presents: Monsters of the Multiverse), both versions are there
+- **14 classes**, Blood Hunter included, with **127 subclasses**, checked line by line against the source text
+- **532 spells** across all nine levels, each on its classes' lists, checked against the reference for level, school, concentration and ritual
+- **138 feats** and **99 backgrounds**. The app follows the 2014 rules, so the 2024 origin-feat backgrounds are left out
+- **1,283 magic items**, with their mechanics working for over 99% of them
+- **Every standard weapon and armour**, with silvered and adamantine versions of each weapon (adamantine for melee weapons only)
+- **185 Wild Shape forms**: all 181 beasts from the reference, CR 0 to CR 6, each with its full stat block, plus the four elementals for a Circle of the Moon druid. The list only offers what your druid level and circle allow
+- **Companion stat blocks** for the Steel Defender, Wildfire Spirit, Drake Companion, Dancing Item, the Primal Companions and the Eldritch Cannon
+- **Natural weapons** for the 11 races that have them (talons, claws, bite, horns, hooves, a Longtooth shifter's fangs), as weapon rows with their attack and damage
 
 </details>
 
 <details>
-<summary><b>Character builder</b> — creation wizard, level-ups, multiclassing</summary>
+<summary><b>Building a character</b> — creation, level-ups, multiclassing</summary>
 
-- **A full creation wizard** — race, ability scores, background and class, spells, equipment
-- **Point Buy, Standard Array or Manual Entry** for ability scores
-- **Live race details** — picking a subrace updates the shown ASI and traits straight away
-- **Full background details** — feature descriptions, bonus languages and starting equipment, shown in full
-- **A starting equipment picker** with class-appropriate options — every chosen item lands in your inventory, alongside your background's own equipment and starting gold
-- **A level-up wizard** that walks through each level's choices, nested sub-choices included
-- **Multiclassing** with the full rules for combining classes
-- **Level changes stay consistent** — Level Up stops at 20; a class that drops below its subclass level sets the subclass aside, and it comes back when the class gets there again; Level Up, Level Down and Remove Class grey out (saying why) when they can't apply
-- **Skills follow your character** — expertise and skill picks from a level you no longer have (or a removed class) go with it, while your own edits on the Skills tab stay until you reset them
-- **Changes leave nothing behind** — level down, remove a class, or change race, subrace, background or a feat, and what came with it goes too: invocations, maneuvers, infusions, fighting styles, Magical Secrets, a race's cantrip, and any pick those opened up (Pact of the Tome's cantrips). Level back up and you're asked again
-- **Checks add what they should** — a plain ability check gets Jack of All Trades, and a Fey Wanderer's Otherworldly Glamour gives a skill of your choice plus its Wisdom bonus on every Charisma check
-- **Racial skills count** — the fixed ones are added (a Tabaxi's Perception and Stealth, a Bugbear's Stealth, a Goliath's Athletics, a Locathah's Athletics and Perception, a shifter subrace's skill...) and the ones you choose are asked for (Changeling Instincts, Primal Intuition, Hunter's Lore, a Variant Human's skill...)
-- **Racial tools count** — a rock gnome's tinker's tools and a Water Creed merfolk's navigator's tools are added; a dwarf's artisan's tools, a satyr's instrument, a Mark of Making human's tools and an autognome's two are asked for
-- **Variant Human** — +1 to two ability scores of your choice and a feat, asked for on the Choices tab; change race or subrace and they go, the feat with them
-- **Your race's walking speed** — 25 ft for a dwarf, gnome or halfling, 35 for a leonin or satyr, 40 for a centaur (every character was getting 30); heavy armor you aren't strong enough for costs 10 ft, unless you're a dwarf, and the speed breakdown says so
-- **Half-elf variants as written** — a half-elf of elven descent takes one variant feature in place of Skill Versatility (Wood: Elf Weapon Training, Fleet of Foot or Mask of the Wild; Drow Magic with Faerie Fire and Darkness; Swim; a wizard cantrip), and a dragonmarked half-elf has neither
-- **Racial ability scores checked against the books** — every race and subrace: a VGM aasimar or EEPC genasi subrace keeps the race's +2, a duergar is CON +2 and STR +1, MTF Dispater and Glasya tieflings get DEX +1, half-elf descents keep the half-elf's two +1s of your choice, and Fizban's dragonborn ask for +2/+1 or three +1s
-- **A dragonmark replaces what it should** — as written: a human's ability score increase, a half-elf's increase and Skill Versatility, and everything of a half-orc's but its darkvision (a Mark of Finding half-orc has no Menacing, Relentless Endurance or Savage Attacks, and speaks Common and Goblin); the sheet's trait list on both apps leaves out what's replaced
-- **Your race's languages** — the ones it simply knows (Dwarvish, Elvish...) are always there (a rebuild used to drop them), and the ones of your choice are asked for on the Choices tab, a picked language now reaching the sheet on Android too
-- **Kobold Legacy** — an MPMM kobold picks Craftiness (then its skill), Defiance (advantage against being frightened) or Draconic Sorcery (then its sorcerer cantrip and ability); a VGM kobold's Pack Tactics and Sunlight Sensitivity, and a drow's or duergar's, are reminders on its rolls
-- **Dragonmarks by the book** — each mark's ability scores (Detection, Handling, Making and Passage ask for their "+1 to one other"), its own spells at the right levels with their recharge (Mark of Scribing's Comprehend Languages and Mark of Handling's spells come back on a short rest), its Spells of the Mark added to your class's list, Storm's Boon, a Courier's 35 ft speed, and its d4 intuition as a reminder on the checks it adds to ("you can add a d4 from Deductive Intuition"). Aberrant Dragonmark can't be taken with one
-- **A feat taken at a choice keeps its +1** — Actor's, Fey Touched's (asking which ability), Resilient's with its saving throw, and Elemental Adept asks its damage type, the same on both apps. Lose the feat (a level down, a race change) and what it decided goes too
-- **Racial weapon and armour training counts** — Dwarven Combat Training, Elf Weapon Training (High and Wood elves; Drow and Sea Elves have their own), a Mountain Dwarf's armour, Martial Prodigy, Firearms Mastery and more add proficiency to attacks, and a Hobgoblin picks their two martial weapons
-- **DM-granted proficiencies** — add any weapon, armour, tool or language your DM gives you, from the list or typed in; it counts like any other proficiency, for attack rolls, Dedicated Weapon and feat prerequisites
+- **A creation wizard** — race, ability scores (point buy, standard array or manual), background, class, spells and equipment
+- **Details as you pick** — a subrace updates the ability scores and traits straight away, and a background shows its feature, languages and equipment in full
+- **Backgrounds as printed** — what a background lets you choose is asked for on the Choices tab: an Inheritor's second skill, a criminal's gaming set, an entertainer's instrument, a House Agent's house and the two tools it gives
+- **Starting equipment** from your class's options and your background, with its gold, straight into your inventory
+- **A level-up wizard** for each level's choices, including the ones a choice opens up
+- **Multiclassing** with its full rules
+- **Level changes stay consistent** — Level Up stops at 20. A class that drops below its subclass level sets the subclass aside, and gets it back when it returns. Buttons that can't apply are greyed out and say why
+- **Nothing is left behind** — level down, remove a class, or change race, subrace, background or a feat, and what came with it goes: invocations, maneuvers, infusions, fighting styles, Magical Secrets, a race's cantrip, and any pick those opened up. Level back up and you're asked again
+- **Skills follow your character** — expertise and skill picks from a level you no longer have go with it. Your own edits on the Skills tab stay until you reset them
+- **Checks add what they should** — Jack of All Trades on plain ability checks, and a Fey Wanderer's skill and Wisdom bonus on Charisma checks
+- **DM-granted proficiencies** — any weapon, armour, tool or language your DM gives you, picked from the list or typed in. It counts like any other proficiency
 
 </details>
 
 <details>
-<summary><b>Spells</b> — known and prepared, slots, concentration, scrolls</summary>
+<summary><b>Races</b> — traits, skills, languages, dragonmarks</summary>
 
-- **Prepared and known spells**, with **spell slots by level** calculated and tracked
-- **Your limits, per class** — each casting class shows spells known or prepared against its cap, plus cantrips (e.g. "Cleric Lv5: 3 / 8 prepared (WIS+lvl) · Cantrips 3 / 4"); multiclass casters are counted per class, never pooled
-- **Concentration tracking**, with save prompts when you take damage
-- **Only ready spells cast** — an unprepared spell can't be cast until you prepare it, and rituals follow each class's own rule (a Wizard's from the spellbook, a Cleric's or Druid's only once prepared)
-- **Granted spells stay put** — domain, oath, patron, racial and feat spells are always prepared and can't be removed
-- **Auto-prepared spells** for domains, oaths, circles, patrons and sorcerer origins (Aberrant Mind, Clockwork Soul, Lunar Sorcery), each from a verified spell list
-- **Spells follow your classes** — removing a class takes the spells only it could cast; spells on a class list you still have, and anything from your race, a feat or a subclass, stay. A Cleric, Druid, Paladin or Artificer that levels down loses the list spells beyond its new level (they return on level up); spells you picked yourself are never touched
-- **Free daily casts** — spells from your race or a feat (a Tiefling's Hellish Rebuke and Darkness, Fey Touched's Misty Step, Firbolg Magic, Telepathic's Detect Thoughts...) each get a once-per-rest counter, and Cast uses it before a spell slot — so a Fighter can still throw their Hellish Rebuke
-- **Spell scrolls carry their spell** — **Use** casts it with no slot and no material components, at the scroll's own save DC and attack bonus. Following the DMG, a spell not on your class list can't be read, and one above the level you can cast needs a spellcasting check (DC 10 + its level) or the scroll is lost
-- **A searchable spell browser** — the search box gets the whole row; class and level filters sit behind a funnel button
-- **Ritual and quick-cast markers**, and spell descriptions on hover
+- **Ability scores as printed** for every race and subrace. Fizban's dragonborn ask for +2/+1 or three +1s
+- **Speed as printed** — 25 ft for a dwarf, gnome or halfling, 35 ft for a leonin or satyr, 40 ft for a centaur. Heavy armour you aren't strong enough for costs 10 ft, unless you're a dwarf, and the speed breakdown says so
+- **Skills and tools** — the fixed ones are added (a tabaxi's Perception and Stealth, a rock gnome's tinker's tools) and the ones you choose are asked for (Changeling Instincts, Hunter's Lore, a dwarf's artisan's tools, a satyr's instrument)
+- **Languages** — the ones your race knows are always there, and the ones of your choice are asked for
+- **Variant Human** — +1 to two ability scores of your choice and a feat. Change race and they go, the feat with them
+- **Half-elf variants** — a half-elf of elven descent takes one variant feature in place of Skill Versatility; a dragonmarked half-elf has neither
+- **Dragonmarks as written** — each mark's ability scores, its spells at the right levels and recharge, its Spells of the Mark added to your class's list, and its d4 intuition as a reminder on the checks it adds to. A mark replaces what its book says (a Mark of Finding half-orc keeps only its darkvision), and the trait list leaves out what's replaced
+- **Racial spells as printed** — each race's spells at the right levels, and how its book casts them: a tiefling's 2nd-level Hellish Rebuke, a duergar's enlarge-only Enlarge/Reduce, never in direct sunlight
+- **Kobold Legacy** — an MPMM kobold picks Craftiness, Defiance or Draconic Sorcery
+- **Weapon and armour training** — Dwarven Combat Training, Elf Weapon Training, a mountain dwarf's armour, Martial Prodigy and more count for your attacks, and a hobgoblin picks its two martial weapons
+- **Shifting gives its numbers** — temporary hit points by printing, a Beasthide's +1 AC and extra temporary hit points, a Swiftstride's +10 ft speed, a Longtooth's fangs. The MPMM shifter picks its kind like a subrace
 
 </details>
 
 <details>
-<summary><b>Combat</b> — HP, turns, actions, dying, conditions, ammunition</summary>
+<summary><b>Spells</b> — slots, limits, concentration, free casts, scrolls</summary>
 
-- **Full HP tracking** — max, current and temporary HP, with one-click damage and healing
+- **Spell slots by level**, worked out and tracked, with Pact Magic on its own
+- **Your limits, per class** — each casting class shows spells known or prepared against its cap, plus cantrips (e.g. "Cleric Lv5: 3 / 8 prepared (WIS+lvl) · Cantrips 3 / 4"). A multiclass caster is counted per class, never pooled
+- **Concentration**, with a save prompt when you take damage
+- **Only ready spells cast** — an unprepared spell must be prepared first, and rituals follow each class's own rule (a wizard's from the spellbook, a cleric's or druid's once prepared)
+- **Granted spells stay put** — domain, oath, circle, patron, origin, racial and feat spells are always prepared and can't be removed
+- **Spells follow your classes** — removing a class or levelling down takes away only what it alone gave. Spells you picked yourself are never touched
+- **Every source's own save DC** — the Spellcasting table lists each class, your race and each feat that gives spells, with its ability, save DC and attack bonus, and which spells use it. A tiefling wizard's Hellish Rebuke is CHA, their Fireball INT. Where the book lets you choose the ability (most MPMM races, Strixhaven Initiate) or the class (Magic Initiate, Spell Sniper), it's asked for
+- **Free casts** — a racial or feat spell you can cast without a slot (a tiefling's Hellish Rebuke, Fey Touched's Misty Step, Firbolg Magic) has its own counter, back on the right rest, and Cast uses it before a slot. A fighter can still throw their Hellish Rebuke
+- **Spell scrolls** — Use casts the scroll's spell with no slot or material components, at the scroll's own save DC and attack bonus. As in the DMG, a spell not on your class list can't be read, and one above the level you can cast needs a check (DC 10 + its level) or the scroll is lost
+- **A searchable spell browser** with class and level filters, ritual and concentration markers, and each spell's description on hover
+
+</details>
+
+<details>
+<summary><b>Combat</b> — HP, turns, actions, attacks, dying, conditions</summary>
+
+- **HP tracking** — max, current and temporary HP, with one-click damage and healing
 - **A turn tracker** — Action, Bonus Action and Reaction, with a one-click New Turn
-- **Every real action you have**, filterable by category and spell level, each on the tab its rules say — its own action, bonus action or reaction, or none at all (Indomitable, Stroke of Luck, a maneuver on a hit) — and the "one leveled spell per turn" rule enforced, with Haste's extra action recognised
-- **Every class, race and feat action checked against the books** — each card spends what the rules say (Hour of Reaping costs no ki, Vow of Enmity spends Channel Divinity), gives its numbers (save DCs, dice, temporary hit points) and lists once; race traits count their uses the way their book does (once a rest, or proficiency bonus times a long rest for MPMM races), and a Fizban's dragonborn breathes a d10 with a DEX save
-- **Casting a buff applies it** — a spell that matches an existing buff or condition switches it on, asking what only you know: who it's on, which weapon (Magic Weapon, Elemental Weapon, Holy Weapon), which damage type. A smite, Hex or Hunter's Mark is always yours, so it never asks, and ending concentration takes the effect off
-- **Use does what the action does**, the same on both apps — it spends the right thing (ki for Flurry of Blows, Channel Divinity for Turn Undead, a Bardic Inspiration die for Cutting Words, a spell slot, a Psionic Energy die), switches on its effect (Patient Defense's Dodge, Agile Parry's +2 AC), heals or adds temporary hit points, and rolls its luck and healing dice. It asks when there's a choice (how many ki, which slot, who's healed), and the message at the top says what it did and what's left
-- **Damage is your roll** — Deflect Missiles, Divine Smite, Radiance of the Dawn, a Breath Weapon and every other damage ability say what to roll and its damage type ("roll 1d10 + 8 and take that much off the damage", "add 3d8 radiant damage to the hit"). Damage you take for a feature (Crimson Rite) asks what you rolled
-- **Every weapon shows what's on now**, by damage type — a line under each attack lists only what's active (Divine Favor's +1d4 radiant, Hunter's Mark, a smite at the level you cast it, Kensei's Shot, Symbiotic Entity, a Crimson Rite on that weapon, Flame Tongue alight, Improved Divine Smite). Flat bonuses (Magic Weapon, Bracers of Archery) go straight into the numbers
-- **Attack, then choose what to add** — Hit (Roll to Hit on Android) rolls, then shows the total and what it hits ("Hits AC 18 or lower"), what to roll if it hits — the weapon's damage and each extra that's on, with where it's from and what else it does (Searing Smite: the target catches fire) — and what you can add with its cost: Sneak Attack (once a turn), Divine Smite (one row per spell slot level you have, plus +1d8 if the target is undead or a fiend), a maneuver (a superiority die; the one you pick says its die and save), Stunning Strike or Quivering Palm (ki), Deft Strike or Hand of Harm (1 ki), Psychic Blades (Bardic Inspiration), Wails from the Grave or Rend Mind (with Sneak Attack), Infectious Fury, Death Strike, an Arcane Shot, a Giant Strike, lighting a Flame Tongue, a Fire Rune (once a rest)... then what your bonus action can do (the off-hand attack, Flurry of Blows, a butt-end attack, a second psychic blade, Sudden Strike, a Great Weapon Master attack). Only what you can pay for right now is offered, and a spell you could add (the 2024 Divine Smite) isn't once you've cast a spell this turn. **It hit** spends what's ticked and the toast says what to roll; **Missed** only takes the bonus action ones. On a critical hit the dice shown are already doubled
-- **Smite spells go off on the hit** — Searing Smite, Wrathful Smite, Branding Smite and the rest add their damage to your next hit; once it lands the extra damage is gone from the weapon, and what's left stays while you concentrate (the target burns, is frightened...) — the Active Effects list says so. Thunderous Smite, Hail of Thorns and Absorb Elements end with the hit. Once-a-turn extras (Divine Fury, Genie's Wrath, Favored Foe, Giant's Might) are done for the turn after a hit and come back on New Turn
-- **Advantage and disadvantage are a reminder, never applied** — attacks, checks, saves, initiative and concentration saves roll one d20, and the roll lists what the sheet knows (exhaustion, Poisoned, Prone, Reckless Attack, Steady Aim, Danger Sense, War Caster...), since cover, the target and your DM can change it. A failed concentration save with a source of advantage leaves the spell up for you to decide. Precise Strike spends its use only if the attack hits
-- **Attack spells say what their hit adds** — casting Eldritch Blast (or any attack spell) says what Genie's Wrath, Hex or Hexblade's Curse add, and so does the spell's card
-- **Two weapons in hand** show the off-hand attack's damage (a light weapon, or any with Dual Wielder): no ability modifier unless you have Two-Weapon Fighting
-- **Green-Flame Blade and Booming Blade** ask which melee weapon you swing, then show its damage plus the spell's, with every type and the second creature's fire
-- **Magic weapons are real weapons** — a Mace of Disruption is a mace and a Sun Blade a radiant, finesse longsword, and you pick which weapon an "any sword" item is (a Greatsword Flame Tongue), each with its own extra damage (vs undead, on a 20, once lit); an item's actions spend its charges (asking how many when it can take more, like a Wand of Fireballs; an item whose charges are only in its text, like a Cube of Force, counts them too), once- or three-times-a-day ones are counted, and a long rest's dawn brings charges back the way each item says
-- **Attacks that aren't a weapon in hand** — Martial Arts (and the Arms of the Astral Self), natural weapons, the unarmed strike, Psychic Blades, Shadow Blade, a polearm's butt end, Form of the Beast, armor spikes, an Armorer's armor, a Wild Shape beast's attacks, and spell attacks of a class's own (Radiant Sun Bolt, the Archer's Luminous Arrow, Tentacle of the Deeps) — on both apps, with their riders
-- **Per-rest uses are counted** — Wholeness of Body, Warding Flare, Arcane Shot and every other "once per rest" action has its own counter under Resources & Charges
-- **Effects end when they should** — turn-long ones (Dodge, Reckless Attack, Kensei's Shot) at New Turn; minute-long ones on a rest, and when you open a saved character with any still on, it asks whether they've ended
-- **Wild Shape from its card** — Use asks which form (strongest first) and transforms: an action, a bonus action with Combat Wild Shape, two uses for an elemental
-- **Wild Shape keeps what the beast can do** — no spellcasting, but anything needing hands, a held weapon or an unarmed strike asks first, since your DM decides whether your form can manage it
-- **Shifting gives its numbers** — its temporary hit points by printing (your level + CON, or twice your proficiency bonus with MPMM), and while shifted a Beasthide's +1 AC and 1d6 more temporary hit points, a Swiftstride's +10 ft speed, a Longtooth's fangs. The MPMM shifter picks its kind like a subrace
-- **Strike of the Giants** asks which giant's strike you learn when you take the feat, and a hit offers that one
-- **Class resources** — Rage, Ki, Sorcery Points, Superiority Dice, Channel Divinity and every other one, reset by short and long rests
-- **Dying by the book** — temp HP soak damage first; massive damage (enough left over after hitting 0 HP to equal your maximum) kills outright; at 0 HP you're unconscious and a hit is a failed death save; three successes leave you stable, still out cold at 0 HP until healed (or 1 HP after 1d4 hours); the dead can't be healed until revived, and the death screen says what killed you
-- **Conditions and exhaustion with real effects** — automatic failures (a paralyzed creature's STR and DEX saves), speed and movement, and their advantage and disadvantage as reminders on every roll — Surprised included (no moving, acting or reacting until your first turn ends)
-- **Rage that plays by the rules** — no casting while raging, and starting a Rage ends concentration; no raging in heavy armor; Relentless Rage rolls its CON save for you
-- **Armor Class you can check** — the AC breakdown is the AC: armor, DEX cap, shield, items, spells and features add up to the number shown
-- **Rests and slots stay honest** — a long rest needs at least 1 HP to start, and used slots or resource uses never exceed what you have after a level change
-- **Ammunition from your inventory** — a bow, crossbow, sling, blowgun or firearm shows the shots your inventory holds (a bundle of 20 arrows counts as 20); each attack uses one, opening a bundle into loose pieces so the Gear tab stays right. Click the counter to set how many you have, and Gear tab changes show on it straight away
-- **Weapon and armor equipping** with computed attack bonuses and damage, and what each hit can add listed under it by type
+- **Every action you have**, on the tab its rules say (an action, a bonus action, a reaction, or none: Indomitable, Stroke of Luck), filterable by kind and spell level. One leveled spell per turn is enforced, and Haste's extra action counts
+- **Checked against the books** — every class, race and feat action spends what its rules say and shows its numbers: save DCs, dice, temporary hit points, uses
+- **Use does what the action does**, the same on both apps — it spends the right thing (ki, Channel Divinity, a Bardic Inspiration die, a spell slot), turns on its effect, heals, and rolls its dice. It asks when there's a choice, and says what it did and what's left
+- **Damage is your roll** — every damage ability says what to roll and its damage type ("add 3d8 radiant damage to the hit"). Damage you take for a feature asks what you rolled
+- **Attack, then choose what to add** — Hit rolls and shows what it hits ("Hits AC 18 or lower"), what to roll if it hits, and what you can add with its cost: Sneak Attack, Divine Smite, a maneuver, Stunning Strike, an Arcane Shot and more, then what your bonus action can do. Only what you can pay for right now is offered, and on a critical hit the dice shown are already doubled
+- **What's on, under each weapon** — by damage type: Hunter's Mark, Divine Favor, a smite, a Crimson Rite, a lit Flame Tongue. Flat bonuses go straight into the numbers
+- **Casting a buff turns it on** — asking only what you know (who it's on, which weapon, which damage type). Smites go off on your next hit, ending concentration takes the effect off, and once-a-turn extras come back on New Turn
+- **Advantage and disadvantage are reminders** — every roll is one d20 and lists what the sheet knows (exhaustion, Poisoned, Reckless Attack, Steady Aim, Danger Sense, War Caster), since cover, the target and your DM can change it
+- **Two-weapon fighting, Green-Flame Blade and Booming Blade** — with the weapon you pick and every damage type
+- **Magic weapons are real weapons** — a Sun Blade is a radiant, finesse longsword, an "any sword" item asks which sword it is, and each has its own extra damage, charges and recharge
+- **Attacks that aren't a weapon in hand** — Martial Arts, natural weapons, the unarmed strike, Psychic Blades, Shadow Blade, a polearm's butt end, Form of the Beast, armour spikes, an Armorer's armour, a Wild Shape beast's attacks, and a class's own spell attacks
+- **Wild Shape from its card** — pick the form (strongest first). It takes an action, or a bonus action with Combat Wild Shape, and an elemental takes two uses. In beast form you can't cast spells until Beast Spells at 18th level, and anything needing hands asks first, since your DM decides
+- **Resources and per-rest uses** — Rage, Ki, Sorcery Points, Superiority Dice, Channel Divinity and every "once per rest" action, counted and reset by the right rest
+- **Effects end when they should** — turn-long ones at New Turn, minute-long ones on a rest, and opening a saved character with one still on asks whether it has ended
+- **Dying by the book** — temporary HP soak damage first, massive damage kills outright, a hit at 0 HP is a failed death save, three successes leave you stable, and the death screen says what killed you
+- **Conditions and exhaustion** with their real effects — automatic failures, speed, and their advantage and disadvantage as reminders. Surprised included
+- **Rage by the rules** — no casting, it ends concentration, no raging in heavy armour, and Relentless Rage rolls its save
+- **AC you can check** — the breakdown adds up to the number shown
+- **Honest rests** — a long rest needs at least 1 HP to start, and nothing is left above its maximum after a level change
+- **Ammunition from your inventory** — each shot uses one, and a bundle of 20 arrows opens into loose ones so the Gear tab stays right
 
 </details>
 
 <details>
 <summary><b>Class features</b> — invocations, maneuvers, metamagic, infusions</summary>
 
-- **Eldritch Invocations** — all 54 real options, each wired with its real mechanics and gated by level, Pact Boon and spell prerequisites
-- **Battle Master Maneuvers, Metamagic, Fighting Styles and Artificer Infusions** — every real option audited and wired
-- **Elemental Disciplines, Arcane Shot and Rune Knight Runes** as real, usable entries
-- **Eldritch Adept, Metamagic Adept and Martial Adept** grant a real choice of invocation, metamagic or maneuver
+- **Eldritch Invocations** — all 54, each with its mechanics, gated by level, Pact Boon and spell prerequisites
+- **Maneuvers, Metamagic, Fighting Styles and Infusions** — every option working
+- **Elemental Disciplines, Arcane Shots and Rune Knight runes** as usable entries. Each rune is one card: what invoking it does and what having it carved gives you
+- **Eldritch Adept, Metamagic Adept and Martial Adept** give their real choice of invocation, metamagic or maneuver
 - **Eldritch Versatility** — swap a cantrip, your Pact Boon or a Mystic Arcanum spell at the right levels
-- **Monk weapons follow Martial Arts** — DEX and the Martial Arts die when they're better, with no armour or shield. Kensei weapons and Tasha's Dedicated Weapon can be any simple or martial weapon without heavy or special — guns included; a Kensei is proficient with theirs, which count as magical from 6th level, and the Dedicated Weapon is picked from the inventory
-- **Kensei features work** — Kensei's Shot adds 1d4 to ranged kensei attacks this turn, Agile Parry gives +2 AC, Sharpen the Blade adds its bonus to the weapon in hand, and Deft Strike adds your Martial Arts die once per turn
-- **Rune Knight runes** are one card each — what invoking it does (once a rest, twice from 15th level) and what having it carved gives you — and the Fire Rune's 2d6 fire is offered when you hit
-- **Blood Hunter rites** — Crimson Rite asks which rite and which weapon (or your hybrid form's claws), takes the necrotic you rolled, and the rite's element shows on that weapon until your next rest
-- **Profane Soul pact magic** — an Order of the Profane Soul Blood Hunter has its own Pact Magic slots from 3rd level (one 1st-level slot, up to two 4th-level slots at 19th), back on a short rest; Revealed Arcana spends one
-- **Portent keeps its rolls** — a long rest rolls a Diviner's two d20s (three from 14th level) and says what they are. They sit with your other resources (Resources & Charges on the combat page, Resources on Android's Actions screen), where clicking a roll uses it; the Portent card's Use asks which one
+- **Monk weapons follow Martial Arts** — DEX and the Martial Arts die when they're better, with no armour or shield. Kensei weapons and Dedicated Weapon follow their own rules, and Kensei's Shot, Agile Parry, Sharpen the Blade and Deft Strike all work
+- **Blood Hunter** — Crimson Rite asks which rite and which weapon and takes the necrotic you rolled. An Order of the Profane Soul hunter has its own Pact Magic slots
+- **Portent keeps its rolls** — a long rest rolls a Diviner's d20s and shows them with your other resources, where clicking one uses it
+- **Strike of the Giants** asks which giant's strike you learn, and a hit offers it
 
 </details>
 
 <details>
-<summary><b>Magic items</b> — 1,283 items, attunement, effects, rarity</summary>
+<summary><b>Magic items</b> — attunement, effects, rarity</summary>
 
-- **1,283 magic items** with full descriptions, and **mechanical effects wired for over 99% of them** — resistances, immunities, ability score overrides, AC and save bonuses, weapon and damage bonuses, resource pools, and reminders for effects too situational to automate
-- **Attunement tracking** — at most 3 attuned items (4 for Artificers at 10th level), never two copies of the same item
-- **Colour means rarity** — grey Common, green Uncommon, blue Rare, purple Very Rare, amber Legendary, crimson Artifact, the same on both apps, shown as a bar beside the item (or the card's border on Android), never as coloured text
+- **1,283 magic items** with full descriptions, and their mechanics working for over 99% of them: resistances, immunities, ability score overrides, AC and save bonuses, weapon and damage bonuses, charges, and reminders for effects too situational to automate
+- **Attunement** — at most 3 items (4 for an artificer from 10th level), never two copies of the same item
+- **Colour means rarity** — grey Common, green Uncommon, blue Rare, purple Very Rare, amber Legendary, crimson Artifact, shown as a bar beside the item (the card's border on Android)
 - **Sorted by rarity, then name**, in the browser and in your own list
 - **Every copy is its own item** — two Manuals of Bodily Health are two books; only magic ammunition stacks
-- **Manuals and tomes work once** — studying one raises the score by 2 *and its maximum* by 2, and marks that book "Studied"
-- **Player-chosen resistance items** (Ring and Armor of Resistance, Absorbing Tattoo, Orb of Shielding, Wyrmreaver Gauntlets) let you pick which damage type your copy protects against
+- **Manuals and tomes work once** — studying one raises the score and its maximum by 2, and marks the book "Studied"
+- **You pick the damage type** of a Ring or Armor of Resistance, an Absorbing Tattoo and the like
 
 </details>
 
@@ -193,21 +185,21 @@ your computer, or on your phone with the same character file.
 <summary><b>Gear & inventory</b> — equipment, coins, quantities</summary>
 
 - **An equipment browser** with search and category filters
-- **Coins** — platinum, gold, electrum, silver and copper, the same on both apps
-- **Inventory grouped by kind** — weapons, armor, magic items, consumables, tools and gear — in name order, so equipping something never moves it; a stack with one in hand says "1 of 3 equipped"
-- **Row buttons say what they do** — a magnifying glass for details, a trash can to remove; quantities use − value + boxes on both apps (hold to go in 5s; 0 removes the item)
-- **Items you use get their own icon** — tool kits, musical instruments, tinderboxes and torches, lanterns, thrown flasks, healer's kits
-- **Real tooltips on every item**, in the reference browser and in your own inventory
+- **Coins** — platinum, gold, electrum, silver and copper
+- **Inventory grouped by kind** — weapons, armour, magic items, consumables, tools and gear, in name order, so equipping something never moves it. A stack with one in hand says "1 of 3 equipped"
+- **Clear row buttons** — a magnifying glass for details, a bin to remove, and − value + for quantities (hold to go in 5s; 0 removes the item)
+- **Tooltips on every item**, in the browser and in your inventory
 
 </details>
 
 <details>
 <summary><b>Feats</b> — prerequisites, spells, DM rewards</summary>
 
-- **138 feats** from every official source, with **prerequisites checked automatically**
-- **Feats that grant spells are wired** — Fey Touched, Shadow Touched and Magic Initiate ask which spell you want, every feat's spells join your spell list, and the feat's card casts its spell with the free use
-- **Every feat's action, bonus action and reaction** has its card, checked against the book — Lucky's luck points, the giant feats (Searing Ignition, Frigid Retaliation, Stone Throw, Maelstrom Aura...), the Knights of Solamnia, the dragon gifts' Protective Wings and Reactive Resistance, Chef's treats and more
-- **One-line summaries** in the Features tab, with the full rules text on hover or Show Details
+- **138 feats**, with their prerequisites checked
+- **A feat keeps its +1** — taken at a level-up or by a Variant Human, it asks which ability when it can be more than one (Fey Touched, Resilient with its saving throw), and Elemental Adept asks its damage type. Lose the feat and what it decided goes too
+- **Feats that grant spells** — Fey Touched, Shadow Touched and Magic Initiate ask which spell you want, and every feat's spells join your spell list
+- **Every feat's action, bonus action and reaction** has its card: Lucky's luck points, the giant feats, the Knights of Solamnia, the dragon gifts and more
+- **One-line summaries** on the Features tab, with the full rules on hover or Show Details
 - **A DM-granted feats browser** for feats gained outside normal progression
 
 </details>
@@ -215,34 +207,34 @@ your computer, or on your phone with the same character file.
 <details>
 <summary><b>Resistances, immunities & movement</b></summary>
 
-- **Resistances and immunities worked out for you** from racial traits, subraces, feats, subclass features and attuned magic items
-- **Immunity beats resistance** to the same damage type, and "resistance to all damage" or "all except X" expand into every individual type
-- **Full movement** — climbing, swimming and flying speeds from racial traits and class features
+- **Resistances and immunities worked out for you** from racial traits, feats, subclass features and attuned magic items
+- **Immunity beats resistance** to the same damage type, and "resistance to all damage" or "all except X" expand into every type
+- **Every movement speed** — climbing, swimming and flying from racial traits, class features and items
 
 </details>
 
 <details>
 <summary><b>Save & share</b> — saves, auto-save, PDF import and export</summary>
 
-- **Saves in `Documents/MIMIC Characters`** on both desktop and Android (change it in Settings); each character's exported sheets go in its own folder there
+- **Saves in `Documents/MIMIC Characters`** on both desktop and Android (change it in Settings), with each character's exported sheets in its own folder
 - **Auto-save** when you create a character, level up or down, or confirm a choice
-- **One file format on both apps** — a character saved on your phone opens on your computer, and vice versa
-- **Import a PDF character sheet** — a character typed into the official 5e sheet (fillable, or flattened) becomes a full character: ability scores, proficiencies and expertise, HP, spells, gear, magic items and money. Anything it can't match is kept word for word on an "Imported from PDF" notes page. Both apps say up front what it can read: the official sheet only, typed rather than scanned or handwritten
-- **Export a copy** — a character file to share or back up, a plain-text summary, or a filled-in official PDF character sheet
+- **One file format** — a character saved on your phone opens on your computer, and back again
+- **Import a PDF character sheet** — a character typed into the official 5e sheet (fillable or flattened) becomes a full character: ability scores, proficiencies, HP, spells, gear, magic items and money. Anything it can't match is kept word for word on an "Imported from PDF" notes page
+- **Export a copy** — the character file, a plain-text summary, or a filled-in official PDF character sheet
 
 </details>
 
 <details>
 <summary><b>Look & feel</b> — 26 themes, a custom icon set, tidy layouts</summary>
 
-- **Immersive Health and Immersive Exhaustion** — colour drains from the sheet as hit points drop and comes back as you heal, and a dark frame closes in from the edges of the screen with each level of exhaustion. Each is a setting (Full, Reduced or Off; Reduced keeps the frame clear of all text), and the numbers never change
+- **Immersive Health and Immersive Exhaustion** — colour drains from the sheet as hit points drop and comes back as you heal, and a dark frame closes in from the screen's edges with each level of exhaustion. Each is a setting (Full, Reduced or Off), and the numbers never change
 - **26 themes** (16 dark, 10 light), every text colour readable on every background — Obsidian, Dragon's Hoard, Shadowfell, Feywild, Blood Moon, Frostspire, Cinderveil, Tavern Hearth, Mossgrove, Gearworks, Hallowed Stone, Underdark, Astral Sea, Nine Hells, Kraken's Depth, Storm Giant's Eye, Arcane Scroll, Moonlit Vellum, Sunlit Meadow, Elven Grove, Coastal Tide, Rose Chantry, Desert Oasis, Frostlight, Harvest Gold and Sky Citadel
-- **75 hand-built line icons** in place of emoji — tabs, actions, items, rests, conditions — drawn in your theme's accent and shared by both apps (a few condition icons are nods to famous memes, for anyone who spots them)
-- **The MIMIC icon** — the d20 in golden amber, with a proper adaptive icon on Android
-- **Tabs that fit** — the tab row never spills off the edge: in a narrower window the names shorten, with the full name on hover
-- **Search everywhere, filters out of the way** — every browser is a full-width search box plus a funnel button that opens the filters in a side panel and shows how many are set
-- **The Choices tab as one scrolling page** — class and level, identity, what was auto-applied, features by level and every pending choice
-- **Right-click any feature or trait** for its full details, and a resizable window with draggable splitters
+- **75 hand-drawn line icons** for tabs, actions, items, rests and conditions, in your theme's accent and shared by both apps (a few condition icons are nods to famous memes, for anyone who spots them)
+- **DM Secrets** — purely cosmetic surprises in Settings, off by default. Try them and see
+- **Tabs that fit** — in a narrow window the tab names shorten, with the full name on hover
+- **Search first, filters out of the way** — every browser is a full-width search box plus a funnel button that opens its filters in a side panel
+- **The Choices tab as one page** — class and level, identity, what was applied for you, features by level and every pending choice
+- **Right-click any feature or trait** for its full details, in a resizable window with draggable splitters
 
 </details>
 
@@ -258,15 +250,15 @@ your computer, or on your phone with the same character file.
 <details>
 <summary><b>The Android app</b> — the whole sheet, made for touch</summary>
 
-The Android app runs on the same rules engine and data as the desktop app, so a character builds, levels and saves identically on both.
+The Android app runs on the same rules engine and data as the desktop app, so a character builds, levels and saves the same on both.
 
-- **The full creation wizard** — race, ability scores, background and class, starting equipment
+- **The creation wizard** — race, ability scores, background, class and starting equipment
 - **The whole character sheet** — abilities, proficiencies, combat, actions, spells, equipment, features, companions, infusions and notes
-- **A combat screen** — HP and temp HP, death saves, every attack you have (weapons, Martial Arts, natural weapons...) with what its hits can add, attack rolls with ammunition, favourite spells to cast, conditions, hit dice and Wild Shape
-- **A working turn tracker**, used by the Use and Cast buttons as you play
+- **A combat screen** — HP and temp HP, death saves, every attack you have with what its hits can add, ammunition, favourite spells to cast, conditions, hit dice and Wild Shape
+- **A turn tracker** that the Use and Cast buttons follow as you play
 - **Level-up and Choices**, with the Choices tab pulsing while you still have picks to make
 - **Rests, a dice roller, the same 26 themes, and Save & Export**
-- **Touch-first controls** — a button for what you do often (Cast, Equip, Drink, Use), a magnifying glass for details, press-and-hold for the rarer actions, and dark-backed dialogs throughout
+- **Made for touch** — a button for what you do often (Cast, Equip, Drink, Use), a magnifying glass for details, and press-and-hold for the rarer actions
 
 </details>
 
@@ -275,14 +267,14 @@ The Android app runs on the same rules engine and data as the desktop app, so a 
 
 <p align="center">
   <img src="docs/images/desktop-abilities.png" width="49%" alt="Desktop: abilities and saving throws">
-  <img src="docs/images/desktop-spells.png" width="49%" alt="Desktop: spells, pact magic and spell limits">
+  <img src="docs/images/desktop-spells.png" width="49%" alt="Desktop: spellcasting, spell slots and metamagic">
 </p>
 <p align="center">
   <img src="docs/images/desktop-gear.png" width="49%" alt="Desktop: gear, coins and the equipment browser">
   <img src="docs/images/android-spells.png" width="24%" alt="Android: spells">
   <img src="docs/images/android-equipment.png" width="24%" alt="Android: equipment">
 </p>
-<p align="center"><sub>Vexa Emberheart, a level 5 Tiefling Warlock (The Fiend), on desktop and Android.</sub></p>
+<p align="center"><sub>Mat Cauthon, a level 5 Half-Elf Sorcerer (Wild Magic), on desktop and Android.</sub></p>
 <!-- /github-only -->
 
 ---
@@ -298,7 +290,7 @@ pip install -r requirements.txt
 python run_dnd_creator.py
 ```
 
-A splash screen appears straight away and animates while the app loads, so startup never looks frozen.
+A splash screen shows straight away and animates while the app loads.
 
 ### Build it yourself
 
@@ -306,13 +298,13 @@ A splash screen appears straight away and animates while the app loads, so start
 - **macOS / Linux** — `./packaging/windows/build_exe.sh` makes `dist/MIMIC`
 - **Android** — `packaging\android\clean_build_android.bat` makes `dist\MIMIC.apk`, ready to copy to your phone
 
-The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Android](packaging/android/README.md) — cover first-time setup. The version, **0.3.0**, is set in one place (`dnd_app/ui_android/buildozer.spec`); the APK and the Windows EXE's details (right-click → Properties → Details) both carry it.
+The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Android](packaging/android/README.md) — cover first-time setup. The version, **0.3.0**, is set in one place (`dnd_app/ui_android/buildozer.spec`), and both the APK and the Windows EXE (right-click → Properties → Details) carry it.
 
 ### Troubleshooting
 
 - **"No module named 'PySide6'"** — run `pip install -r requirements.txt`.
-- **The built program starts and closes straight away** — run it from a terminal to see the error, delete the `build/` and `dist/` folders and rebuild, and check `dnd_app/ui_desktop/splash/` and `dnd_app/ui_desktop/icon.ico` exist.
-- **The splash screen looks frozen** — make sure you're on current source: the heavy startup work runs on a background thread so the splash keeps animating.
+- **The built program starts and closes straight away** — run it from a terminal to see the error, delete the `build/` and `dist/` folders and rebuild, and check that `dnd_app/ui_desktop/splash/` and `dnd_app/ui_desktop/icon.ico` exist.
+- **The splash screen looks frozen** — update to the current source: the startup work runs in the background so the splash keeps moving.
 
 ---
 
@@ -323,22 +315,27 @@ The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Androi
 dnd_app/
   core/              The rules engine both apps share
     character.py       the character itself, and rests
-    builder.py         what race, class and background grant
-    calculator.py      AC, saves, skills, HP, slots... (update_all)
+    builder.py         what race, class, background and feats grant
+    calculator.py      AC, saves, skills, HP, slots, speed... (update_all)
     choices.py         what's left to pick, and the clean-up after a change
-    spellcasting.py    spell limits, components, free casts, scrolls
     actions.py         every action, bonus action and reaction a character has
+    action_use.py      what pressing Use on one does
+    attacks.py         every attack, its roll and what a hit can add
+    riders.py          the extra damage on a weapon hit, by damage type
+    spellcasting.py    spell limits, components, free casts, scrolls
+    spell_effects.py   what casting a spell does to your own sheet
     effects.py         buffs, conditions and other active effects
     magic_items.py     item effects, attunement, owned copies
     dying.py, ammo.py  damage and death saves; ammunition
     save_load.py       save files, the save folder, old-save upgrades
     pdf_sheet.py       the official 5e PDF sheet, both ways
-  data/              Game data: races, classes, spells, feats, items...
+    readme.py          this file, as both apps' Credits screens show it
+  data/              Game data: races, classes, spells, feats, items, stat blocks...
     phb2024/           the 2024 rules' data, for later
     themes.py, icon_data.py, flavor_text.py   shared by both apps' looks
   ui_desktop/        The desktop app (Qt Widgets): pages/, dialogs/, style/
   ui_android/        The Android app (Qt Quick/QML): bridge/, qml/
-docs/                The source lists the game data was checked against
+docs/                The reference lists the game data is checked against
 packaging/
   windows/           build_exe.bat / .sh and MIMIC.spec
   android/           the clean build, its one-time setup, p4a_hook.py, icons
@@ -353,12 +350,13 @@ main.py              Android entry point
 
 | Category | Sources |
 |----------|---------|
-| **Core rules** | PHB (2014 & 2024), DMG |
-| **Expansions** | XGE, TCE, SCAG, EEPC |
-| **Settings** | ERLW, GGR, EGW, MOT, WBW, AAG, VRGtR, FTD, DLSotDQ, BPGotG, SCC, SCOC, AI, SAiS |
-| **Adventures** | Curse of Strahd, Ghosts of Saltmarsh, Tomb of Annihilation, Baldur's Gate: Descent into Avernus |
-| **Community content** | One Grung Above (Grung), Locathah Rising (Locathah), The Tortle Package (Tortle) |
-| **Unofficial** | Plane Shift: Amonkhet (Ambition/Solidarity/Strength/Zeal Domains), clearly marked as such in-app |
+| **Core rules** | PHB and DMG (2014) |
+| **Supplements** | XGE, TCE, VGM, MTF, MPMM, SCAG, EEPC, FTD, BGG, SatO, BMT, AAG, SAiS |
+| **Settings** | ERLW, GGR, EGW, MOT, VRGtR, SCC, DSotDQ, AI |
+| **Adventures** | Curse of Strahd, Ghosts of Saltmarsh, Tomb of Annihilation, Baldur's Gate: Descent into Avernus, Icewind Dale: Rime of the Frostmaiden, The Wild Beyond the Witchlight |
+| **Smaller releases** | One Grung Above (grung), Locathah Rising (locathah), The Tortle Package (tortle) |
+| **Plane Shift** (unofficial) | Amonkhet, Ixalan, Zendikar and Kaladesh races, two Kaladesh backgrounds, and the Amonkhet domains (Ambition, Solidarity, Strength, Zeal) |
+| **Others** | A few feats from other publishers: the Tenders' Flamewoken, Forest Sage and Plantmender, and crafting and harvesting feats such as Adroit Crafter and Expert Harvester |
 
 ---
 

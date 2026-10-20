@@ -92,12 +92,14 @@ def get_background_skills(bg_name: str) -> list:
         return []
     return list(bg.get("skills", []))
 
-def get_background_tools(bg_name: str) -> list:
-    from dnd_app.data.backgrounds import get_background
+def get_background_tools(bg_name: str, choices: dict = None) -> list:
+    """The tools a background gives outright (a House Agent's from the
+    house picked in `choices`)."""
+    from dnd_app.data.backgrounds import get_background, background_tools
     bg = get_background(bg_name)
     if not bg:
         return []
-    return list(bg.get("tools", []))
+    return background_tools(bg, choices)
 
 def get_class_save_profs(class_name: str, edition: str = "2014") -> list:
     """Return the two saving throw proficiencies for a class."""
@@ -353,7 +355,7 @@ def rebuild(char: dict) -> None:
             if skill not in grants["skill_prof_set"]:
                 grants["skill_profs"].append(skill)
                 grants["skill_prof_set"].add(skill)
-        for tool in get_background_tools(bg_name):
+        for tool in get_background_tools(bg_name, char.get("_choices", {})):
             grants["tool_profs"].append(tool)
 
     # ── Class grants ──────────────────────────────────────────────────────────
@@ -926,7 +928,8 @@ def feat_choice_picks(char: dict, feat_name: str, answers: dict = None) -> dict:
 def _forget_feat_picks(char: dict, feat: str, picks: list) -> None:
     """What a dropped feat's pick decided goes with it: Resilient's saving
     throw (the ability its +1 went to), Forest Sage's ability, Elemental
-    Adept's damage type, the ability a "+1 to one of" feat keyed off."""
+    Adept's damage type, the ability a "+1 to one of" feat keyed off, and
+    the class or ability its spells are cast with."""
     store = char.get("_choices", {})
     if feat == "Resilient":
         gone = {p.split(":")[1] for p in picks if isinstance(p, str) and p.startswith("asi:")}
@@ -937,6 +940,8 @@ def _forget_feat_picks(char: dict, feat: str, picks: list) -> None:
     if feat == "Elemental Adept":
         store.pop("elemental_adept_type", None)
     store.pop(f"feat_ability_{feat.lower().replace(' ', '_')}", None)
+    store.pop(f"feat_spell_ability_{feat.lower().replace(' ', '_')}", None)
+    store.pop(f"feat_{feat.lower().replace(' ', '_')}_class", None)
 
 
 def _drop_any_list_spells(char: dict, spells: list, granted_by: str) -> None:
@@ -1160,10 +1165,22 @@ def get_choices_needed(char: dict) -> list:
                         "source": "background", "source_name": bg_name,
                         "type": "skill_prof", "count": sk_choice.get("count", 1),
                         "pool": sk_choice.get("pool"),
-                        "label": f"Choose {sk_choice.get('count', 1)} skill proficiencies ({bg_name})",
+                        "label": (f"Choose {sk_choice['what']} ({bg_name})" if sk_choice.get("what") else
+                                  f"Choose {'a skill' if sk_choice.get('count', 1) == 1 else str(sk_choice.get('count')) + ' skills'} ({bg_name})"),
                         "already_chosen": already,
                     })
-            tl_choice = bg.get("tool_choices")
+            if bg_name == "House Agent" and not choices_made.get("bg_house_agent_house"):
+                from dnd_app.data.backgrounds import house_agent_options
+                needed.append({
+                    "id": "bg_house_agent_house",
+                    "source": "background", "source_name": bg_name,
+                    "type": "fighting_style", "count": 1,
+                    "pool": house_agent_options(),
+                    "label": "Choose your dragonmarked house (House Agent): it gives you its two tools",
+                    "already_chosen": [],
+                })
+            from dnd_app.data.backgrounds import background_tool_choice
+            tl_choice = background_tool_choice(bg, choices_made)
             if tl_choice:
                 already = choices_made.get("bg_tool_profs", [])
                 if len(already) < tl_choice.get("count", 1):
@@ -1172,7 +1189,9 @@ def get_choices_needed(char: dict) -> list:
                         "source": "background", "source_name": bg_name,
                         "type": "tool_prof", "count": tl_choice.get("count", 1),
                         "pool": tl_choice.get("pool"),
-                        "label": f"Choose {tl_choice.get('count', 1)} tool proficiencies ({bg_name})",
+                        "label": (f"Choose {'your ' if tl_choice.get('count', 1) == 1 else ''}{tl_choice['what']} ({bg_name})"
+                                  if tl_choice.get("what") else
+                                  f"Choose {tl_choice.get('count', 1)} tools ({bg_name})"),
                         "already_chosen": already,
                     })
 

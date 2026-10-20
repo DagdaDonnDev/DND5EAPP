@@ -516,10 +516,9 @@ class CombatMixin:
             else:
                 col.addWidget(_lbl(label, TEXT2, FS_TINY, bold=True, align=Qt.AlignCenter))
             sp = QSpinBox(); sp.setRange(0,999); sp.setAlignment(Qt.AlignCenter)
-            sp.setButtonSymbols(QAbstractSpinBox.NoButtons)
             sp.setStyleSheet(f"QSpinBox{{font-size:{FS_TITLE}px;font-weight:700;color:{color};"
                              f"border:2px solid {qa(color,0x55)};border-radius:8px;"
-                             f"background:{SURF2};padding:2px;min-width:64px;}}")
+                             f"background:{SURF2};padding:2px;min-width:64px;}}" + SPIN_NO_BUTTONS)
             col.addWidget(sp); hp_row.addLayout(col, 1)
             setattr(self, f"_hp_{key}", sp)
         hpcl.addLayout(hp_row)

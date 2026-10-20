@@ -481,7 +481,7 @@ def weapon_category_pool(category_text: str) -> list:
         names.extend(w[0] for w in p)
     return names
 
-VEHICLE_PROFS = ["Vehicles (land)", "Vehicles (water)", "Vehicles (air)"]
+VEHICLE_PROFS = ["Vehicles (land)", "Vehicles (water)", "Vehicles (air)", "Vehicles (space)"]
 
 ALL_TOOLS = (ARTISAN_TOOLS + GAMING_SETS + INSTRUMENT_TOOLS +
              OTHER_TOOLS + VEHICLE_PROFS)

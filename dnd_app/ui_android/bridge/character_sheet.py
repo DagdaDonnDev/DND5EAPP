@@ -69,6 +69,7 @@ from dnd_app.core.spellcasting import (
     spell_progression_tables, char_spell_classes, max_castable_spell_level,
     all_caster_classes, known_spell_classes, attribute_known_spells,
     prepared_caster_caps, attribute_prepared_spells, spell_limits,
+    spellcasting_rows,
 )
 from dnd_app.core.actions import build_action_abilities
 from dnd_app.core.action_use import portent_rolls, spend_portent
@@ -2249,6 +2250,24 @@ class CharacterSheetBridge(QObject):
             return []
         return [{"label": r["label"], "kind": r["kind"], "current": r["current"], "max": r["max"],
                  "ability": r["ability"], "cantrips": r["cantrips"], "cantripMax": r["cantrip_max"]}
+                for r in rows]
+
+    @Property(list, notify=statsChanged)
+    def spellcastingRows(self):
+        """One row per source of spells -- each casting class, the race,
+        each feat that casts -- with its ability, save DC and attack bonus:
+        the same rows as desktop's Spellcasting table
+        (core/spellcasting.py spellcasting_rows). source, kind, ability
+        ("" while it's still to be picked), dc, attack ("+7"), spells
+        ("Thaumaturgy, Hellish Rebuke"), note."""
+        try:
+            rows = spellcasting_rows(self.char)
+        except Exception:
+            return []
+        return [{"source": r["source"], "kind": r["kind"], "ability": r["ability"],
+                 "dc": r["dc"] if r["dc"] is not None else 0,
+                 "attack": "" if r["attack"] is None else (f"+{r['attack']}" if r["attack"] >= 0 else str(r["attack"])),
+                 "spells": ", ".join(r["spells"]), "note": r["note"]}
                 for r in rows]
 
     @Property(list, notify=statsChanged)

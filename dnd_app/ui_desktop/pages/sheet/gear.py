@@ -83,8 +83,8 @@ class GearMixin:
             sp.setValue(self.char.get("currency",{}).get(coin,0))
             sp.setAlignment(Qt.AlignCenter)
             sp.setStyleSheet(f"QSpinBox{{font-size:{FS_BODY}px;font-weight:700;color:{color};"
-                             f"border:2px solid {qa(color,0x66)};border-radius:6px;background:{SURF2};padding:2px;}}")
-            sp.setButtonSymbols(QAbstractSpinBox.NoButtons)
+                             f"border:2px solid {qa(color,0x66)};border-radius:6px;background:{SURF2};padding:2px;}}"
+                             + SPIN_NO_BUTTONS)
             sp.valueChanged.connect(lambda v,k=coin: self._on_currency_change(k,v))
             col.addWidget(sp); mcl.addLayout(col)
             self._currency_spins[coin] = sp

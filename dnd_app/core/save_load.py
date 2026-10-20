@@ -670,6 +670,21 @@ def _migrate(data: dict) -> dict:
     if not isinstance(data.get("equipped_weapons"), list):
         data["equipped_weapons"] = []
 
+    # A spell the catalog no longer lists twice ("Tiny Hut" beside
+    # "Leomund's Tiny Hut"): a save that stored the other name gets the one
+    # the catalog keeps, everywhere a spell name is kept
+    from dnd_app.data.spells import SPELL_ALIASES, SPELL_DICT
+    renames = {old: new for old, new in SPELL_ALIASES.items() if old not in SPELL_DICT}
+
+    def _renamed(names):
+        return [renames.get(n, n) if isinstance(n, str) else n for n in names]
+    for key in ("spells_known", "spells_prepared", "quick_spells", "magical_secrets_spells", "bonus_spells"):
+        if isinstance(data.get(key), list):
+            data[key] = _renamed(data[key])
+    for key, picks in list(data["_choices"].items()):
+        if isinstance(picks, list):
+            data["_choices"][key] = _renamed(picks)
+
     # 2024 edition is not shipped yet — coerce any saved 2024 chars to 2014
     # so incomplete data paths are never exercised at runtime.
     if data.get("edition") == "2024":

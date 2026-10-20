@@ -140,7 +140,7 @@ spell("Shield",            1, ABJ, [SOR,WIZ],          desc="Reaction: +5 AC unt
 spell("Shield of Faith",   1, ABJ, [CLE,PAL],          concentration=True, desc="+2 AC bonus.", cast_time="Bonus action", duration="10 min"),
 spell("Silent Image",      1, ILL, [BAR,SOR,WIZ],      concentration=True, desc="Create silent visual illusion in 15-ft cube."),
 spell("Sleep",             1, ENC, [BAR,SOR,WIZ],      desc="5d8 HP worth of creatures fall unconscious.", duration="1 min", range_="90 ft"),
-spell("Snare",             1, ABJ, [ART,DRU,RAN,WIZ], ritual=True, desc="Set a 5-ft-radius magical trap on ground: DEX save or restrained.", cast_time="1 min", source="XGE", range_="Touch"),
+spell("Snare",             1, ABJ, [ART,DRU,RAN,WIZ], desc="Set a 5-ft-radius magical trap on ground: DEX save or restrained.", cast_time="1 min", source="XGE", range_="Touch"),
 spell("Speak with Animals", 1, DIV, [BAR,DRU,RAN],    ritual=True, desc="Understand and communicate with beasts.", duration="10 min", range_="Self"),
 spell("Tasha's Hideous Laughter", 1, ENC, [BAR,WIZ],  concentration=True, desc="WIS save or fall prone with laughter.", duration="1 min", range_="30 ft"),
 spell("Thunderwave",       1, EVO, [BAR,CLE,DRU,SOR,WIZ], desc="15-ft cube: CON save or 2d8 thunder + pushed 10 ft. Scales.", range_="Self (15-foot cube)"),
@@ -154,7 +154,7 @@ spell("Zephyr Strike",     1, TRN, [RAN],              concentration=True, desc=
     spell("Chaos Bolt",         1, EVO, [SOR],              desc="Ranged spell attack: 2d8 + 1d6 damage (choose type from d8 results — fire, cold, lightning, etc.). On doubles, chain to another creature.", source="XGE"),
     spell("Distort Value",      1, ILL, [BAR,WIZ],          desc="You distort an item's perceived value. Creatures that examine it believe its value is 10× or 1/10× the actual value for 8 hours.", source="AI"),
     spell("Gift of Alacrity",   1, DIV, [WIZ],              concentration=False, desc="A willing creature adds 1d8 to their initiative rolls for 8 hours.", source="EGW"),
-    spell("Magnify Gravity",    1, TRN, [SOR,WIZ],          concentration=True, desc="Point in space: all creatures within 10 ft sphere must save CON or take 2d8 force damage and have speed halved. Persistent pull each turn.", source="EGW"),
+    spell("Magnify Gravity",    1, TRN, [SOR,WIZ], desc="Point in space: all creatures within 10 ft sphere must save CON or take 2d8 force damage and have speed halved. Persistent pull each turn.", source="EGW"),
     spell("Searing Smite",      1, EVO, [PAL],              concentration=True, cast_time="Bonus action", desc="Next hit deals +1d6 fire damage and sets target ablaze: 1d6 fire at start of each turn (CON save ends). Target or ally can extinguish with action.", source="PHB"),
     spell("Silvery Barbs",      1, ENC, [BAR,SOR,WIZ],     cast_time="Reaction", desc="When a creature succeeds on an attack/ability check/save, force a reroll (take lower) and grant a different creature advantage on its next d20 roll.", source="SCC"),
     spell("Tasha's Caustic Brew",1,EVO,[ART,SOR,WIZ],      concentration=True, desc="Line 30 ft long 5 ft wide: creatures take 2d4 acid damage (DEX save); coated creatures take 2d4 acid each turn until removed.", source="TCE"),
@@ -168,7 +168,7 @@ spell("Zephyr Strike",     1, TRN, [RAN],              concentration=True, desc=
     spell("Wild Cunning",       1, TRN, [DRU,RAN],            desc="Ask nature a question about the surrounding area. You gain an answer about terrain, water, food, predators, or settlements within 1 mile.", source="EEPC"),
     spell("Healing Elixir",     1, CON, [ART,WIZ],            desc="Create a magical elixir. A creature who drinks it regains 2d4+2 HP. The elixir retains potency for 24 hours, then becomes inert.", source="EGW"),
 
-    spell("Jim's Glowing Coin", 1, ENC, [BAR,WIZ],             desc="Flip a coin that glows for 1 minute. One creature within 30 ft: WIS save or mesmerized until spell ends.", source="AI"),
+    spell("Jim's Glowing Coin", 2, ENC, [BAR,WIZ],             desc="Flip a coin that glows for 1 minute. One creature within 30 ft: WIS save or mesmerized until spell ends.", source="AI"),
     spell("Puppet",             1, ENC, [BAR],                  desc="One humanoid within 120 ft: CHA save or puppet: move up to its speed toward you, or perform a brief action you specify.", source="EEPC"),
 
     spell("Auditory Hallucination",1,ILL,[BAR,WIZ],  concentration=True, desc="Create an auditory illusion within 300 ft (no larger than 10-ft cube). Lasts 10 minutes. Creatures that investigate make INT save.", source="EEPC"),
@@ -176,7 +176,6 @@ spell("Zephyr Strike",     1, TRN, [RAN],              concentration=True, desc=
 
 
 # ── 2nd Level ─────────────────────────────────────────────────────────────────
-spell("Acid Arrow",        2, EVO, [WIZ],              desc="Ranged attack: 4d4 acid + 2d4 end of next turn. Scales.", range_="90 ft"),
 spell("Aid",               2, ABJ, [ART,CLE,PAL],     desc="Up to 3 creatures: +5 max and current HP. Scales +5/slot.", range_="30 ft"),
 spell("Alter Self",        2, TRN, [ART,SOR,WIZ],     concentration=True, desc="Aquatic Adaptation, Change Appearance, or Natural Weapons.", duration="1 hour", range_="Self"),
 spell("Animal Messenger",  2, ENC, [BAR,DRU,RAN],     ritual=True, desc="Send a Tiny beast to deliver a message.", cast_time="1 action", duration="24 hours", range_="30 ft"),
@@ -241,16 +240,16 @@ spell("Tasha's Mind Whip",  2, ENC, [SOR,WIZ,BAR,WAR],          desc="INT save o
 spell("Vortex Warp",       2, CON, [ART,SOR,WIZ],     desc="CON save or teleport willing/unwilling creature up to 90 ft.", source="SCC", range_="90 ft"),
 spell("Warding Bond",       2, ABJ, [CLE,PAL],              desc="Bonded creature: +1 AC/saves, resistance all dmg. You take same damage.", duration="1 hour", range_="Touch"),
 spell("Web",               2, CON, [ART,SOR,WIZ],     concentration=True, desc="20-ft cube: difficult terrain; DEX save or restrained. Flammable.", duration="1 hour"),
-spell("Wristpocket",       2, CON, [SOR,WAR,WIZ],     concentration=True, desc="Store one item in extradimensional pocket.", source="EEPC", range_="Self"),
+spell("Wristpocket",       2, CON, [SOR,WAR,WIZ], ritual=True,     concentration=True, desc="Store one item in extradimensional pocket.", source="EEPC", range_="Self"),
 spell("Zone of Truth",     2, ENC, [BAR,CLE,PAL],     desc="15-ft sphere: CHA save or can't lie.", duration="10 min"),
 
-    spell("Aganazzar's Scorcher",2,EVO,[SOR,WIZ],          concentration=True, desc="30-ft line: 3d8 fire (DEX save). Adjacent creatures: 2d8. Creatures that enter at start of their turn take 3d8.", source="XGE"),
+    spell("Aganazzar's Scorcher",2,EVO,[SOR,WIZ], desc="30-ft line: 3d8 fire (DEX save). Adjacent creatures: 2d8. Creatures that enter at start of their turn take 3d8.", source="XGE"),
     spell("Beast Sense",        2, DIV, [DRU,RAN],          ritual=True, concentration=True, desc="Touch a willing beast and sense through its senses until the spell ends or you use your own.", source="PHB"),
     spell("Borrowed Knowledge", 2, DIV, [BAR,WAR,WIZ],     desc="You gain proficiency in one skill of your choice for 1 hour.", source="SCC"),
     spell("Continual Flame",    2, EVO, [CLE,WIZ],          desc="A flame equivalent to a torch springs from an object. Creates no heat, uses no oxygen. Can be covered but not smothered.", source="PHB"),
-    spell("Fortune's Favor",    2, DIV, [WIZ],               concentration=True, desc="Up to 2 willing creatures. Once before the spell ends, each target can reroll one attack, save, or ability check. Take the better roll.", source="EGW"),
+    spell("Fortune's Favor",    2, DIV, [WIZ], desc="Up to 2 willing creatures. Once before the spell ends, each target can reroll one attack, save, or ability check. Take the better roll.", source="EGW"),
     spell("Gift of Gab",        2, ENC, [BAR],               cast_time="Reaction", desc="When you inadvertently reveal a secret, you can make two creatures within 5 ft forget what you said (WIS save).", source="AI"),
-    spell("Jim's Magic Missile",2, EVO, [WIZ],               desc="Like Magic Missile, but costs 1 gp material component. Each dart deals 2d4+2 force. Alternatively, all five darts target one creature.", source="AI"),
+    spell("Jim's Magic Missile",1, EVO, [WIZ],               desc="Like Magic Missile, but costs 1 gp material component. Each dart deals 2d4+2 force. Alternatively, all five darts target one creature.", source="AI"),
     spell("Kinetic Jaunt",      2, TRN, [ART,BAR,SOR,WIZ], concentration=True, cast_time="Bonus action", desc="Speed +10 ft. You can move through other creatures' spaces (not difficult terrain). No OA. 1 minute.", source="SCC"),
     spell("Nystul's Magic Aura",2, ILL, [WIZ],              desc="Change what spells such as Detect Magic reveal about a target. Up to 30 days. Mask a magic item as nonmagical or vice versa.", source="PHB"),
     spell("Phantasmal Force",   2, ILL, [BAR,SOR,WAR,WIZ], concentration=True, desc="One creature: INT save or believe in an illusion you describe (max 10-ft cube). Creature takes 1d6 psychic each turn it interacts with it.", source="PHB"),
@@ -312,11 +311,10 @@ spell("Summon Shadowspawn", 3, CON, [WAR,WIZ],         concentration=True, desc=
 spell("Summon Undead",     3, NEC, [WAR,WIZ],          concentration=True, desc="Summon undead spirit (Skeletal/Putrid/Ghostly). Scales.", source="TCE", range_="90 ft"),
 spell("Thunder Step",      3, CON, [SOR,WAR,WIZ],     desc="Teleport up to 90 ft; 3d10 thunder burst at origin (CON save). Scales.", source="XGE", range_="90 ft"),
 spell("Tidal Wave",        3, CON, [DRU,SOR,WIZ],     desc="30×10×10-ft wave: DEX save or 4d8 bludgeoning + prone.", source="EEPC", range_="120 ft"),
-spell("Tiny Hut",          3, EVO, [BAR,WIZ],          ritual=True, desc="Dome 10 ft radius: blocks weather/elements/creatures.", cast_time="1 min", duration="8 hours", range_="Self (10-foot-radius hemisphere)"),
 spell("Tongues",           3, DIV, [BAR,CLE,SOR,WAR,WIZ], desc="Touch; creature understands and speaks any language.", duration="1 hour", range_="Touch"),
 spell("Vampiric Touch",    3, NEC, [WAR,WIZ],          concentration=True, desc="Melee spell attack: 3d6 necrotic; heal half. Scales.", duration="1 min", range_="Self"),
 spell("Wall of Sand",      3, EVO, [WIZ],              concentration=True, desc="Wall of swirling sand blocks visibility; STR/DEX check to pass.", source="EEPC", range_="90 ft"),
-spell("Wall of Water",     3, CON, [DRU,SOR,WIZ],     concentration=True, desc="Wall of water (30-ft long, 10-ft high, 1-ft thick, or a 20-ft-diameter ring) impedes and provides cover.", source="EEPC"),
+spell("Wall of Water",     3, EVO, [DRU,SOR,WIZ],     concentration=True, desc="Wall of water (30-ft long, 10-ft high, 1-ft thick, or a 20-ft-diameter ring) impedes and provides cover.", source="EEPC"),
 spell("Water Breathing",   3, TRN, [ART,DRU,RAN,SOR,WIZ], ritual=True, desc="Up to 10 creatures breathe underwater.", duration="24 hours", range_="30 ft"),
 spell("Water Walk",        3, TRN, [CLE,DRU,RAN,SOR], ritual=True, desc="Up to 10 creatures walk on liquid surfaces.", duration="1 hour", range_="30 ft"),
 spell("Wind Wall",         3, EVO, [DRU,RAN],          concentration=True, desc="Wall of wind: 1d8 bludgeoning; deflects gas/arrows.", duration="1 min", range_="120 ft"),
@@ -327,9 +325,9 @@ spell("Wind Wall",         3, EVO, [DRU,RAN],          concentration=True, desc=
     spell("Flame Arrows",       3, TRN, [DRU,RAN,SOR,WIZ], concentration=True, desc="Up to 12 arrows/bolts become magical; each deals +1d6 fire damage. Lasts until used or 1 hour.", source="XGE"),
     spell("Hunger of Hadar",    3, CON, [WAR],              concentration=True, desc="20-ft sphere of tentacles: deafened, cold damage on enter and end of turn; blinded inside.", source="PHB"),
     spell("Leomund's Tiny Hut", 3, EVO, [BAR,WIZ],          ritual=True, desc="Dome 10-ft radius: movement blocked, mundane weather blocked, inside is comfortable temperature. Holds 9 Medium or smaller creatures. 8 hours.", source="PHB"),
-    spell("Maelstrom",          3, EVO, [DRU],              concentration=True, desc="30-ft radius circle of churning water. Moving through it costs 2 extra ft per ft. Creatures start turn: STR save or pulled 10 ft toward center + 6d6 bludgeoning.", source="XGE"),
+    spell("Maelstrom",          5, EVO, [DRU],              concentration=True, desc="30-ft radius circle of churning water. Moving through it costs 2 extra ft per ft. Creatures start turn: STR save or pulled 10 ft toward center + 6d6 bludgeoning.", source="XGE"),
     spell("Melf's Minute Meteors",3,EVO,[SOR,WIZ],          concentration=True, desc="Six meteors orbit you. Bonus action to send 1-2: each +2 attack to hit, 2d6 fire, 5-ft radius splash DEX save.", source="XGE"),
-    spell("Pulse Wave",         3, TRN, [SOR,WIZ],          desc="30-ft cone: push (CON save) or pull, 6d6 force damage. Unshielded flames extinguished.", source="EGW"),
+    spell("Pulse Wave",         3, EVO, [SOR,WIZ],          desc="30-ft cone: push (CON save) or pull, 6d6 force damage. Unshielded flames extinguished.", source="EGW"),
     spell("Tiny Servant",       3, TRN, [ART,WIZ],          desc="Animate a Tiny object for 8 hours. AC 10, 10 HP, STR 4, DEX 16. Speed 30 (climb 30). Can attack (1d4+3). One free, up to 4 with higher spell slots.", source="XGE"),
 
 # ── 4th Level ─────────────────────────────────────────────────────────────────
@@ -376,25 +374,24 @@ spell("Vitriolic Sphere",  4, EVO, [SOR,WIZ],          desc="20-ft sphere: DEX s
 spell("Wall of Fire",      4, EVO, [DRU,SOR,WIZ],     concentration=True, desc="60 ft wall: 5d8 fire to one side (DEX save). Scales.", duration="1 min", range_="120 ft"),
 spell("Watery Sphere",     4, CON, [DRU,SOR,WIZ],     concentration=True, desc="Engulf creatures in 5-ft sphere; STR save or restrained.", source="EEPC", range_="90 ft"),
 
-    spell("Charm Monster",      4, ENC, [BAR,DRU,SOR,WAR,WIZ], concentration=True,
+    spell("Charm Monster",      4, ENC, [BAR,DRU,SOR,WAR,WIZ],
           desc="One creature: WIS save or charmed for 1 hour regardless of creature type.", source="XGE"),
     spell("Elemental Bane",     4, TRN, [ART,DRU,SOR,WAR,WIZ], concentration=True,
           desc="One creature: CON save or suffer vulnerability to chosen damage type and can't be immune/resistant to it for 1 min.", source="XGE"),
     spell("Find Greater Steed", 4, CON, [PAL],
           desc="Summon a Pegasus, Peryton, Dire Wolf, Rhinoceros, Saber-toothed Tiger, or Giant Owl as a steed.", source="XGE"),
-    spell("Gravity Sinkhole",   4, EVO, [SOR,WIZ],  concentration=True,
+    spell("Gravity Sinkhole",   4, EVO, [SOR,WIZ],
           desc="20-ft radius sphere: STR save or 5d10 force + pulled 5 ft toward center each turn. Difficult terrain.", source="EGW"),
     spell("Raulothim's Psychic Lance",4,ENC,[SOR,WAR,WIZ],
           desc="Unique creature name or see it: INT save or 7d6 psychic + incapacitated until end of next turn. No save if you know its name.", source="FTD"),
     spell("Summon Greater Demon",4, CON, [WAR,WIZ], concentration=True,
           desc="Summon a demon with CR 5 or lower. Demon makes CHA saves (DC = spell save) each turn or goes berserk.", source="XGE"),
-    spell("Temporal Shunt",     4, TRN, [SOR,WIZ],  cast_time="Reaction",
+    spell("Temporal Shunt",     5, TRN, [SOR,WIZ],  cast_time="Reaction",
           desc="When a creature makes an attack or casts a spell, send it to the future: vanishes until start of its next turn, losing that attack.", source="EGW"),
 
 # ── 5th Level ─────────────────────────────────────────────────────────────────
 spell("Animate Objects",   5, TRN, [ART,BAR,SOR,WIZ], concentration=True, desc="Animate up to 10 Small/Tiny or fewer Larger objects. Scales.", duration="1 min", range_="120 ft"),
 spell("Antilife Shell",    5, ABJ, [DRU],              concentration=True, desc="10-ft shell: living creatures can't pass.", duration="1 hour", range_="Self (10-foot radius)"),
-spell("Arcane Hand",       5, EVO, [ART,WIZ],          concentration=True, desc="Large hand: Clenched Fist (4d8 force), Forceful Hand (push), Grasping Hand (grapple), Interposing Hand (cover). Scales.", duration="1 min", range_="120 ft"),
 spell("Awaken",            5, TRN, [BAR,DRU],          desc="Touch; beast or plant gains sentience (INT 10, speaks 1 language).", cast_time="8 hours", range_="Touch"),
 spell("Banishing Smite",   5, ABJ, [PAL],              concentration=True, desc="Next hit: extra 5d10 force; if 50 HP remain, banish.", cast_time="Bonus action", source="PHB", range_="Self"),
 spell("Bigby's Hand",      5, EVO, [ART,WIZ],          concentration=True, desc="Arcane Hand variant (official name).", range_="120 ft"),
@@ -482,8 +479,7 @@ spell("Investiture of Flame", 6, TRN, [DRU,SOR,WAR,WIZ], concentration=True, des
 spell("Investiture of Ice", 6, TRN, [DRU,SOR,WAR,WIZ], concentration=True, desc="Cold/ice cloak; walk on ice; immunity cold; 4d6 cold burst.", duration="10 min", source="EEPC", range_="Self"),
 spell("Investiture of Stone", 6, TRN, [DRU,SOR,WAR,WIZ], concentration=True, desc="Stone skin; move through stone; immunity B/P/S from nonmagical.", duration="10 min", source="EEPC", range_="Self"),
 spell("Investiture of Wind", 6, TRN, [DRU,SOR,WAR,WIZ], concentration=True, desc="Wind cloak; fly 60 ft; redirect ranged attacks.", duration="10 min", source="EEPC", range_="Self"),
-spell("Irresistible Dance", 6, ENC, [BAR,WIZ],         concentration=True, desc="WIS save or dance (−4 AC, no reactions, disadv attacks/DEX saves).", duration="1 min", range_="30 ft"),
-spell("Magic Jar",         6, NEC, [WIZ],              concentration=True, desc="Project soul into container; possess creatures.", duration="Until dispelled", range_="Self"),
+spell("Magic Jar",         6, NEC, [WIZ], desc="Project soul into container; possess creatures.", duration="Until dispelled", range_="Self"),
 spell("Mass Suggestion",   6, ENC, [BAR,SOR,WAR,WIZ], desc="WIS save or up to 12 creatures follow reasonable suggestion.", duration="24 hours"),
 spell("Move Earth",        6, TRN, [DRU,SOR,WIZ],     concentration=True, desc="Slowly reshape terrain in 40-ft cube.", duration="2 hours", range_="120 ft"),
 spell("Otiluke's Freezing Sphere", 6, EVO, [WIZ],      desc="60-ft sphere: CON save or 10d6 cold + restrained; detonates or is saved.", range_="300 ft"),
@@ -545,7 +541,7 @@ spell("Whirlwind",         7, EVO, [DRU,SOR,WIZ],     concentration=True, desc="
           desc="Up to 8 willing creatures travel to another world/setting. They wake at a random location there. Lasts until the caster dismisses it.", source="TCE"),
     spell("Power Word Pain",       7, ENC, [SOR,WAR,WIZ],
           desc="One creature ≤100 HP: CON save or wracked with pain; speed halved, -4 to attack rolls and saves, can't concentrate. Can re-save at end of each turn.", source="XGE"),
-    spell("Tether Essence",        7, NEC, [SOR,WAR,WIZ],
+    spell("Tether Essence",        7, NEC, [SOR,WAR,WIZ], concentration=True,
           desc="Two creatures: damage dealt to one is also dealt to the other. Each creature also takes 1d12 force when the tether is severed. CON save to resist.", source="SCC"),
 
 # ── 8th Level ─────────────────────────────────────────────────────────────────
@@ -599,6 +595,34 @@ spell("True Polymorph",    9, TRN, [BAR,WAR,WIZ],     concentration=True, desc="
 spell("True Resurrection", 9, NEC, [CLE,DRU],          desc="Restore creature dead ≤ 200 years in perfect body. No component cost.", cast_time="1 hour", range_="Touch"),
 spell("Weird",             9, ILL, [WIZ],              concentration=True, desc="30-ft sphere: WIS save or Frightened + 4d10 psychic/turn.", duration="1 min", range_="120 ft"),
 spell("Wish",              9, CON, [SOR,WIZ],          desc="Duplicate any spell ≤8th level, or attempt to alter reality. Stress risk on non-duplication use.", range_="Self"),
+
+# ── Spells the reference has that the catalog didn't (docs/reference/spells-sublist.md;
+#    class lists from it, or from the spell's own book where it gives none) ──
+spell("Frost Fingers",     1, EVO, [WIZ],               desc="15-ft cone: CON save or 2d8 cold, half on a save; unworn nonmagical liquids in it freeze. Higher levels: +1d8 per slot level above 1st.", source="IDRotF", range_="Self (15-foot cone)"),
+spell("Air Bubble",        2, CON, [ART,DRU,RAN,SOR,WIZ], desc="A globe of fresh air around the head of a willing creature you can see: it can breathe for the duration. Higher levels: two more globes per slot level above 2nd.", source="AAG", duration="24 hours", components="S"),
+spell("Cordon of Arrows",  2, TRN, [RAN],               desc="Plant four arrows or bolts: a creature other than you (and those you exclude) that comes within 30 ft of them for the first time on a turn or ends its turn there is struck by one, DEX save or 1d6 piercing. Ends when none are left. Higher levels: two more pieces per slot level above 2nd.", duration="8 hours", range_="5 ft", components="V, S, M (four or more arrows or bolts)"),
+spell("Healing Spirit",    2, CON, [DRU,RAN],           concentration=True, desc="A spirit in a 5-ft cube: a creature you can see that moves into it for the first time on a turn or starts its turn there can regain 1d6 HP (no action). It heals 1 + your spellcasting modifier times (at least twice); a bonus action moves it 30 ft. Higher levels: +1d6 per slot level above 2nd.", source="XGE", cast_time="1 bonus action", duration="Concentration, up to 1 minute"),
+spell("Immovable Object",  2, TRN, [ART,WIZ],           desc="Fix an object of 10 lb or less in place (you and those you designate can move it; a password suppresses it for 1 minute). In the air it holds up to 4,000 lb; otherwise a STR check against your spell save DC moves it 10 ft. Higher levels: a stronger hold for longer at 4th level and up.", source="", duration="1 hour", range_="Touch", components="V, S, M (gold dust worth at least 25 gp, which the spell consumes)"),
+spell("Rime's Binding Ice", 2, EVO, [SOR,WIZ],          desc="30-ft cone: CON save or 3d8 cold and speed 0 for 1 minute (until it or a creature within reach uses an action to break the ice); half damage and no ice on a save. Higher levels: +1d8 per slot level above 2nd.", source="FTD", range_="Self (30-foot cone)", components="S, M (a vial of meltwater)"),
+spell("Spray of Cards",    2, CON, [BAR,SOR,WAR,WIZ],   desc="15-ft cone: DEX save or 2d10 force and blinded until the end of its next turn; half damage only on a save. Higher levels: +1d10 per slot level above 2nd.", source="BOMT", range_="Self (15-foot cone)", components="V, S, M (a deck of cards)"),
+spell("Warp Sense",        2, DIV, [SOR,WAR,WIZ],       concentration=True, desc="Sense portals, even inactive ones, within 30 ft; an action and a DC 15 spellcasting check on one reveals its destination plane and portal key (a failure: not that portal again this casting).", source="SatO", duration="Concentration, up to 1 minute", range_="Self", components="V, S, M (a razorvine leaf)"),
+spell("Antagonize",        3, ENC, [BAR,SOR,WAR,WIZ],   desc="One creature: WIS save or 4d4 psychic and it must use its reaction to make a melee attack against another creature of your choice you can see (if it can't, disadvantage on its next attack roll before your next turn); half damage only on a save. Higher levels: +1d4 per slot level above 3rd.", source="BOMT", range_="30 ft", components="V, S, M (a playing card depicting a rogue)"),
+spell("Ashardalon's Stride", 3, TRN, [ART,RAN,SOR,WIZ], concentration=True, desc="Your speed increases by 20 ft and moving doesn't provoke opportunity attacks; a creature or unworn object you move within 5 ft of takes 1d6 fire, once a turn each. Higher levels: +5 ft speed and +1d6 fire per slot level above 3rd.", source="FTD", cast_time="1 bonus action", duration="Concentration, up to 1 minute", range_="Self"),
+spell("Blinding Smite",    3, EVO, [PAL],               concentration=True, desc="Your next melee weapon hit deals an extra 3d8 radiant, and the target makes a CON save or is blinded until the spell ends (it repeats the save at the end of each of its turns).", cast_time="1 bonus action", duration="Concentration, up to 1 minute", range_="Self", components="V"),
+spell("Incite Greed",      3, ENC, [CLE,WAR,WIZ],       concentration=True, desc="Any number of creatures within range that can see you: WIS save or charmed, using their movement only to approach you safely and staring at the gem once within 5 ft; harming them ends it, and each repeats the save at the end of its turns.", source="AI", duration="Concentration, up to 1 minute", range_="30 ft", components="V, S, M (a gem worth at least 50 gp)"),
+spell("Motivational Speech", 3, ENC, [BAR,CLE],         desc="Up to five creatures that can hear you: 5 temporary HP and advantage on WIS saves; when one is hit by an attack, it has advantage on its next attack roll. Ends for a creature once its temporary HP are gone. Higher levels: +5 temporary HP per slot level above 3rd.", source="AI", cast_time="1 minute", duration="1 hour", components="V"),
+spell("Gate Seal",         4, ABJ, [SOR,WAR,WIZ],       desc="In a 30-ft cube you can see, portals close and can't open, and planar travel into or out of it (gate, plane shift) fails.", source="SatO", cast_time="1 minute", duration="24 hours", components="V, S, M (a broken portal key, which the spell consumes)"),
+spell("Guardian of Nature", 4, TRN, [DRU,RAN],          concentration=True, desc="Become a guardian. Primal Beast: +10 ft speed, darkvision 120 ft, advantage on STR attack rolls, melee weapon attacks deal +1d6 force. Great Tree: 10 temporary HP, advantage on CON saves and on DEX and WIS attack rolls, the ground within 15 ft is difficult terrain for enemies.", source="XGE", cast_time="1 bonus action", duration="Concentration, up to 1 minute", range_="Self", components="V"),
+spell("Mordenkainen's Faithful Hound", 4, CON, [ART,WIZ], desc="An invisible phantom watchdog that barks when a Small or larger creature comes within 30 ft without the password; it sees invisible creatures and ignores illusions. At the start of each of your turns it bites a hostile creature within 5 ft: your spellcasting modifier + proficiency bonus to hit, 4d8 piercing.", duration="8 hours", range_="30 ft", components="V, S, M (a tiny silver whistle, a piece of bone, and a thread)"),
+spell("Mordenkainen's Private Sanctum", 4, ABJ, [ART,WIZ], desc="Secure a cube 5 to 100 ft on a side, with any of: sound can't pass, vision through it blocked, no divination sensors, creatures inside can't be targeted by divination, no teleporting in or out, no planar travel. Cast on the same spot daily for a year to make it permanent.", cast_time="10 minutes", duration="24 hours", range_="120 ft", components="V, S, M (a thin sheet of lead, a piece of opaque glass, a wad of cotton or cloth, and powdered chrysolite)"),
+spell("Conjure Volley",    5, CON, [RAN],               desc="Fire ammunition or throw a weapon at a point: each creature in a 40-ft-radius, 20-ft-high cylinder makes a DEX save, 8d8 damage of the weapon's type, half on a save.", range_="150 ft", components="V, S, M (one piece of ammunition or one thrown weapon)"),
+spell("Create Spelljamming Helm", 5, TRN, [ART,WIZ],    desc="Touch an unoccupied Large or smaller chair: it becomes a spelljamming helm.", source="AAG", range_="Touch", components="V, S, M (a crystal rod worth at least 5,000 gp, which the spell consumes)"),
+spell("Fizban's Platinum Shield", 6, ABJ, [SOR,WIZ],    concentration=True, desc="A field of silvery light around a creature of your choice (you can choose yourself): half cover, resistance to acid, cold, fire, lightning and poison, and Evasion. A bonus action moves it to another creature within 60 ft of the field.", source="FTD", cast_time="1 bonus action", duration="Concentration, up to 1 minute", components="V, S, M (a platinum-plated dragon scale, worth at least 500 gp)"),
+spell("Gravity Fissure",   6, EVO, [WIZ],               desc="A 100-ft line, 5 ft wide: CON save, 8d8 force, half on a save; each creature within 10 ft of the line makes a CON save or takes 8d8 force and is pulled into it. Higher levels: +1d8 per slot level above 6th.", source="EGW", range_="Self (100-foot line)", components="V, S, M (a fistful of iron filings)"),
+spell("Summon Fiend",      6, CON, [WAR,WIZ],           concentration=True, desc="Call a fiendish spirit (Demon, Devil or Yugoloth) that uses the Fiendish Spirit stat block; it acts right after you and obeys your commands. Higher levels: use the slot level in its stat block.", source="TCE", duration="Concentration, up to 1 hour", range_="90 ft", components="V, S, M (humanoid blood inside a ruby vial worth at least 600 gp)"),
+spell("Tenser's Transformation", 6, TRN, [WIZ],         concentration=True, desc="You can't cast spells, and gain: 50 temporary HP, advantage on simple and martial weapon attack rolls, +2d12 force on weapon hits, proficiency with all armor, shields and simple and martial weapons, proficiency in STR and CON saves, and two attacks with the Attack action (unless you already have Extra Attack). When it ends: DC 15 CON save or one level of exhaustion.", source="XGE", duration="Concentration, up to 10 minutes", range_="Self", components="V, S, M (a few hairs from a bull)"),
+spell("Create Magen",      7, TRN, [WIZ],               desc="Over an hour, turn a life-sized doll into a magen of your choice that obeys you; your hit point maximum drops by its challenge rating (minimum 1) until a wish undoes it.", source="IDRotF", cast_time="1 hour", range_="Touch", components="V, S, M (a vial of quicksilver worth 500 gp and a life-sized human doll, both consumed, and an intricate crystal rod worth at least 1,500 gp)"),
+spell("Reality Break",     8, CON, [WIZ],               concentration=True, desc="One creature: WIS save or it can't take reactions, and at the start of each of its turns rolls a d10: 1-2, 6d12 psychic and stunned until the end of the turn; 3-5, DEX save or 8d12 force (half on a save); 6-8, teleported up to 30 ft, 10d12 force and prone; 9-10, 10d12 cold and blinded until the end of the turn. It repeats the save at the end of each of its turns.", source="EGW", duration="Concentration, up to 1 minute", components="V, S, M (a crystal prism)"),
 ]
 
 # Build lookup structures
@@ -617,7 +641,17 @@ SPELLS_BY_LEVEL = {}
 for s in ALL_SPELLS:
     SPELLS_BY_LEVEL.setdefault(s["level"], []).append(s)
 
-def get_spell(name): return SPELL_DICT.get(name)
+# Other names a spell goes by: the full name the books use for one the
+# catalog keeps under its SRD name, and the SRD name of one it keeps under
+# the full name (older saves stored those)
+SPELL_ALIASES = {
+    "Otiluke's Resilient Sphere": "Resilient Sphere", "Rary's Telepathic Bond": "Telepathic Bond",
+    "Tiny Hut": "Leomund's Tiny Hut", "Arcane Hand": "Bigby's Hand",
+    "Irresistible Dance": "Otto's Irresistible Dance", "Acid Arrow": "Melf's Acid Arrow",
+}
+
+
+def get_spell(name): return SPELL_DICT.get(name) or SPELL_DICT.get(SPELL_ALIASES.get(name, ""))
 def spells_for_class(cls_name): return CLASS_SPELLS.get(cls_name, [])
 def spells_for_class_at_level(cls_name, spell_level):
     return [s for s in CLASS_SPELLS.get(cls_name,[]) if s["level"] == spell_level]
@@ -1126,11 +1160,12 @@ RACIAL_BONUS_SPELLS = {
     ("Tiefling", "Mephistopheles"): {1: ["Mage Hand"], 3: ["Burning Hands"], 5: ["Flame Blade"]},
     ("Tiefling", "Zariel"): {1: ["Thaumaturgy"], 3: ["Searing Smite"], 5: ["Branding Smite"]},
     ("Tiefling", "Devil's Tongue"): {1: ["Vicious Mockery"], 3: ["Charm Person"], 5: ["Enthrall"]},
-    # Feral/Hellfire/Winged replace or drop spells rather than adding a
-    # distinct set — Feral has no Infernal Legacy at all, Hellfire only
-    # swaps the 3rd-level spell (Burning Hands instead of Hellish Rebuke,
-    # otherwise identical to Asmodeus), Winged drops spellcasting entirely.
+    # Hellfire only swaps the 3rd-level spell (Burning Hands instead of
+    # Hellish Rebuke, otherwise identical to Asmodeus); Winged drops
+    # spellcasting entirely.
     ("Tiefling", "Hellfire"): {1: ["Thaumaturgy"], 3: ["Burning Hands"], 5: ["Darkness"]},
+    # Feral only changes the ability scores; Infernal Legacy stays
+    ("Tiefling", "Feral"): {1: ["Thaumaturgy"], 3: ["Hellish Rebuke"], 5: ["Darkness"]},
 
     # ── Elf subraces ─────────────────────────────────────────────────────
     ("Elf", "Drow"): {1: ["Dancing Lights"], 3: ["Faerie Fire"], 5: ["Darkness"]},
@@ -1145,14 +1180,21 @@ RACIAL_BONUS_SPELLS = {
 
     # ── Gnome ────────────────────────────────────────────────────────────
     ("Gnome", "Forest"): {1: ["Minor Illusion"]},
-    ("Gnome", "Deep Gnome"): {3: ["Disguise Self"], 5: ["Nondetection"]},
-    ("Gnome", "Svirfneblin"): {3: ["Disguise Self"], 5: ["Nondetection"]},
+    # (a deep gnome's spells come from the Svirfneblin Magic feat)
+
+    # ── Dwarf, Halfling ──────────────────────────────────────────────────
+    ("Dwarf", "Duergar"): {3: ["Enlarge/Reduce"], 5: ["Invisibility"]},
+    ("Halfling", "Lotusden"): {1: ["Druidcraft"], 3: ["Entangle"], 5: ["Spike Growth"]},
 
     # ── Genasi ────────────────────────────────────────────────────────
-    ("Genasi", "Air"): {1: ["Shocking Grasp"], 3: ["Feather Fall"], 5: ["Levitate"]},
-    ("Genasi", "Earth"): {1: ["Blade Ward"], 5: ["Pass without Trace"]},
-    ("Genasi", "Fire"): {1: ["Produce Flame"], 3: ["Burning Hands"], 5: ["Flame Blade"]},
-    ("Genasi", "Water"): {1: ["Acid Splash"], 3: ["Create or Destroy Water"], 5: ["Water Walk"]},
+    ("Genasi", "Air"): {1: ["Levitate"]},
+    ("Genasi", "Earth"): {1: ["Pass without Trace"]},
+    ("Genasi", "Fire"): {1: ["Produce Flame"], 3: ["Burning Hands"]},
+    ("Genasi", "Water"): {1: ["Shape Water"], 3: ["Create or Destroy Water"]},
+    ("Genasi (MPMM)", "Air"): {1: ["Shocking Grasp"], 3: ["Feather Fall"], 5: ["Levitate"]},
+    ("Genasi (MPMM)", "Earth"): {1: ["Blade Ward"], 5: ["Pass without Trace"]},
+    ("Genasi (MPMM)", "Fire"): {1: ["Produce Flame"], 3: ["Burning Hands"], 5: ["Flame Blade"]},
+    ("Genasi (MPMM)", "Water"): {1: ["Acid Splash"], 3: ["Create or Destroy Water"], 5: ["Water Walk"]},
 
     # ── Other races with fixed (non-choice) innate spells ──────────────
     ("Aasimar", None): {1: ["Light"]},
@@ -1162,7 +1204,10 @@ RACIAL_BONUS_SPELLS = {
     ("Yuan-ti Pureblood", None): {1: ["Poison Spray", "Animal Friendship"], 3: ["Suggestion"]},
     ("Githyanki", None): {1: ["Mage Hand"], 3: ["Jump"], 5: ["Misty Step"]},
     ("Githzerai", None): {1: ["Mage Hand"], 3: ["Shield"], 5: ["Detect Thoughts"]},
-    ("Triton", None): {1: ["Fog Cloud"], 3: ["Gust of Wind"], 5: ["Water Walk"]},
+    ("Triton", None): {1: ["Fog Cloud"], 3: ["Gust of Wind"], 5: ["Wall of Water"]},
+    ("Triton (MPMM)", None): {1: ["Fog Cloud"], 3: ["Gust of Wind"], 5: ["Water Walk"]},
+    ("Aarakocra (MPMM)", None): {3: ["Gust of Wind"]},
+    ("Siren", None): {1: ["Friends"]},
     # ── The other dragonmarks' own spells (docs/reference/races-sublist.md)
     ("Dwarf", "Mark of Warding"): {1: ["Alarm", "Mage Armor"], 3: ["Arcane Lock"]},
     ("Gnome", "Mark of Scribing"): {1: ["Message", "Comprehend Languages"], 3: ["Magic Mouth"]},
@@ -1178,6 +1223,17 @@ RACIAL_BONUS_SPELLS = {
 }
 
 
+def race_table_key(species: str, race_keys) -> str | None:
+    """Which of a table's race keys a species uses: the longest one the
+    species starts with, so "Genasi (MPMM)" takes its own entries over the
+    original "Genasi" ones, and "Firbolg (MPMM)" falls back to "Firbolg"
+    when the two share their spells. A prefix, never containment -- "Elf"
+    is inside "Half-Elf" too."""
+    sp = (species or "").lower()
+    keys = [k for k in race_keys if sp.startswith(k.lower())]
+    return max(keys, key=len) if keys else None
+
+
 def racial_innate_spells(char: dict) -> list[str]:
     """The fixed spells the character's race gives them at their current
     level (RACIAL_BONUS_SPELLS) -- e.g. a 5th-level Tiefling's Thaumaturgy,
@@ -1189,13 +1245,9 @@ def racial_innate_spells(char: dict) -> list[str]:
     if species.strip().lower() == "tiefling" and not char_subrace.strip():
         char_subrace = "Asmodeus"  # PHB default bloodline per the race data
     char_lvl = total_level(char)
+    race_key_used = race_table_key(species, {r for (r, _s) in RACIAL_BONUS_SPELLS})
     for (race_key, subrace_key), by_level in RACIAL_BONUS_SPELLS.items():
-        # Prefix check, not containment -- "Elf" is a literal substring of
-        # "Half-Elf", and "Drow" of "Drow Descent", so containment would
-        # match a Half-Elf/Drow Descent character against Elf/Drow's
-        # entry too and grant its Faerie Fire/Darkness on top of their
-        # own correct Half-Elf spells.
-        if not species.lower().startswith(race_key.lower()):
+        if race_key != race_key_used:
             continue
         if subrace_key is not None and not char_subrace.lower().startswith(subrace_key.lower()):
             continue
@@ -1209,6 +1261,83 @@ def racial_innate_spells(char: dict) -> list[str]:
     return out
 
 
+# The ability a race casts its spells with (docs/reference/races-sublist.md),
+# keyed like RACIAL_BONUS_SPELLS. "choice": INT, WIS or CHA, picked with
+# the race (_choices["racial_spell_ability"]); the value is the trait the
+# choice card names.
+RACIAL_SPELL_ABILITY = {
+    ("Tiefling", None): "CHA",
+    ("Elf", "High"): "INT", ("Elf", "Drow"): "CHA", ("Elf", "Pallid"): "WIS",
+    ("Elf", "Mark of Shadow"): "CHA",
+    ("Half-Elf", "Drow Descent"): "CHA", ("Half-Elf", "High Descent"): "INT",
+    ("Half-Elf", "Mark of Detection"): "WIS", ("Half-Elf", "Mark of Storm"): "CHA",
+    ("Gnome", "Forest"): "INT", ("Gnome", "Mark of Scribing"): "INT",
+    ("Dwarf", "Duergar"): "INT", ("Dwarf", "Mark of Warding"): "INT",
+    ("Halfling", "Lotusden"): "WIS", ("Halfling", "Mark of Healing"): "WIS",
+    ("Halfling", "Mark of Hospitality"): "CHA",
+    ("Half-Orc", "Mark of Finding"): "WIS",
+    ("Human", "Mark of Finding"): "WIS", ("Human", "Mark of Handling"): "WIS",
+    ("Human", "Mark of Making"): "INT", ("Human", "Mark of Passage"): "DEX",
+    ("Human", "Mark of Sentinel"): "WIS",
+    ("Merfolk", "Green"): "WIS", ("Merfolk", "Blue"): "INT", ("Merfolk", "Emeria"): "WIS",
+    ("Merfolk", "Ula"): "INT", ("Merfolk", "Cosi"): "CHA",
+    ("Aasimar", None): "CHA",
+    ("Firbolg", None): "WIS",
+    ("Genasi", None): "CON",
+    ("Githyanki", None): "INT",
+    ("Githzerai", None): "WIS",
+    ("Triton", None): "CHA",
+    ("Yuan-ti Pureblood", "Pureblood VGM"): "CHA",
+    ("Firbolg (MPMM)", None): ("choice", "Firbolg Magic"),
+    ("Genasi (MPMM)", "Air"): ("choice", "Mingle with the Wind"),
+    ("Genasi (MPMM)", "Earth"): ("choice", "Merge with Stone"),
+    ("Genasi (MPMM)", "Fire"): ("choice", "Reach to the Blaze"),
+    ("Genasi (MPMM)", "Water"): ("choice", "Call to the Wave"),
+    ("Githyanki (MPMM)", None): ("choice", "Githyanki Psionics"),
+    ("Githzerai (MPMM)", None): ("choice", "Githzerai Psionics"),
+    ("Triton (MPMM)", None): ("choice", "Control Air and Water"),
+    ("Aarakocra (MPMM)", None): ("choice", "Wind Caller"),
+    ("Yuan-ti Pureblood", None): ("choice", "Innate Spellcasting"),
+    ("Fairy", None): ("choice", "Fairy Magic"),
+    ("Hexblood", None): ("choice", "Hex Magic"),
+    ("Astral Elf", None): ("choice", "Astral Fire"),
+    ("Kobold (MPMM)", None): ("choice", "Draconic Sorcery"),
+}
+
+# _choices keys holding a racial spell the player picked
+RACIAL_SPELL_PICK_KEYS = ("race_wizard_cantrip", "race_merfolk_cantrip",
+                          "astral_elf_cantrip", "race_sorcerer_cantrip")
+
+
+def racial_spell_ability_entry(char: dict):
+    """The RACIAL_SPELL_ABILITY entry for the character's race and subrace:
+    "CHA", ("choice", trait) or None. A subrace's own entry wins over the
+    race's (a VGM yuan-ti's CHA over the MPMM choice)."""
+    species = char.get("species") or char.get("race", "")
+    subrace = (char.get("subrace") or "").lower()
+    key = race_table_key(species, {r for (r, _s) in RACIAL_SPELL_ABILITY})
+    if not key:
+        return None
+    if key == "Kobold (MPMM)":
+        from dnd_app.data.races import kobold_legacy
+        if kobold_legacy(char) != "Draconic Sorcery":
+            return None
+    for (r, sub), val in RACIAL_SPELL_ABILITY.items():
+        if r == key and sub and subrace.startswith(sub.lower()):
+            return val
+    return RACIAL_SPELL_ABILITY.get((key, None))
+
+
+def racial_spells(char: dict) -> list[str]:
+    """Every spell the character's race gives them: the fixed ones and the
+    cantrip they picked (a High Elf's wizard cantrip...)."""
+    out = list(racial_innate_spells(char))
+    choices = char.get("_choices", {})
+    for key in RACIAL_SPELL_PICK_KEYS:
+        out.extend(sp for sp in choices.get(key, []) if sp not in out)
+    return out
+
+
 # Spells a feat gives you outright: {feat: [fixed spells]}, plus the
 # _choices keys holding the ones you pick (filled in by the level-up
 # panel's feat choosers). Each leveled one can be cast once per long
@@ -1217,30 +1346,152 @@ FEAT_FIXED_SPELLS = {
     "Fey Touched": ["Misty Step"],
     "Shadow Touched": ["Invisibility"],
     "Telepathic": ["Detect Thoughts"],
+    "Telekinetic": ["Mage Hand"],
     "Fey Teleportation": ["Misty Step"],
     "Outlands Envoy": ["Misty Step", "Tongues"],
     "Mystic Conflux": ["Identify"],
     "Field Medic": ["Cure Wounds"],
     "Wood Elf Magic": ["Longstrider", "Pass without Trace"],
-    "Drow High Magic": ["Levitate", "Dispel Magic"],
+    "Drow High Magic": ["Detect Magic", "Levitate", "Dispel Magic"],
+    "Svirfneblin Magic": ["Nondetection", "Blindness/Deafness", "Blur", "Disguise Self"],
+    "Flamewoken": ["Produce Flame"],
+    "Plantmender": ["Shillelagh", "Barkskin", "Spike Growth"],
+    "Gift of the Metallic Dragon": ["Cure Wounds"],
+    "Divinely Favored": ["Augury"],
 }
 FEAT_CHOSEN_SPELL_KEYS = {
     "Fey Touched": ["feat_fey_touched_spell"],
     "Shadow Touched": ["feat_shadow_touched_spell"],
     "Magic Initiate": ["feat_magic_initiate_cantrips", "feat_magic_initiate_spell"],
+    "Spell Sniper": ["feat_spell_sniper_cantrip"],
 }
+
+# The ability a feat casts its spells with (docs/reference/feats-sublist.md):
+#   an ability           "WIS"
+#   "increased"          the one the feat's +1 went to (Fey Touched)
+#   "class"              that of the class whose list the spells came from
+#   "choice"             INT, WIS or CHA, picked with the feat
+#                        (_choices["feat_spell_ability_<feat>"])
+#   another feat         that feat's (the Adept robes use Initiate of High
+#                        Sorcery's)
+FEAT_SPELL_ABILITY = {
+    "Aberrant Dragonmark": "CON", "Artificer Initiate": "INT",
+    "Drow High Magic": "CHA", "Fey Teleportation": "INT", "Field Medic": "WIS",
+    "Flamewoken": "CHA", "Plantmender": "WIS", "Svirfneblin Magic": "INT",
+    "Wood Elf Magic": "WIS",
+    "Fey Touched": "increased", "Shadow Touched": "increased",
+    "Telekinetic": "increased", "Telepathic": "increased",
+    "Keenness of the Stone Giant": "increased",
+    "Magic Initiate": "class", "Spell Sniper": "class",
+    "Divinely Favored": "choice", "Gift of the Metallic Dragon": "choice",
+    "Initiate of High Sorcery": "choice", "Rune Shaper": "choice",
+    "Scion of the Outer Planes": "choice", "Strixhaven Initiate": "choice",
+    "Adept of the Black Robes": "Initiate of High Sorcery",
+    "Adept of the Red Robes": "Initiate of High Sorcery",
+    "Adept of the White Robes": "Initiate of High Sorcery",
+    "Outlands Envoy": "Scion of the Outer Planes",
+    "Agent of Order": "Scion of the Outer Planes",
+}
+
+# Magic Initiate and Spell Sniper: the spell lists to choose from, the
+# ability each one casts with, and the _choices key of the class picked
+SPELL_LIST_ABILITY = {"Bard": "CHA", "Cleric": "WIS", "Druid": "WIS",
+                      "Sorcerer": "CHA", "Warlock": "CHA", "Wizard": "INT"}
+FEAT_SPELL_CLASS_KEYS = {"Magic Initiate": "feat_magic_initiate_class",
+                         "Spell Sniper": "feat_spell_sniper_class"}
+
+# Cantrips that make a spell attack roll (Spell Sniper's to choose from)
+ATTACK_ROLL_CANTRIPS = ("Chill Touch", "Eldritch Blast", "Fire Bolt", "Magic Stone",
+                        "Primal Savagery", "Produce Flame", "Ray of Frost",
+                        "Shocking Grasp", "Thorn Whip")
+
+_ABILITY_ABBR = {"Strength": "STR", "Dexterity": "DEX", "Constitution": "CON",
+                 "Intelligence": "INT", "Wisdom": "WIS", "Charisma": "CHA"}
+
+
+def feat_slug(feat: str) -> str:
+    """"Fey Touched" -> "fey_touched", as the feat's _choices keys use it."""
+    return feat.lower().replace(" ", "_")
+
+
+def feat_spells(char: dict, feat: str) -> list[str]:
+    """The spells `feat` gives the character: its fixed ones and the ones
+    picked for it."""
+    choices = char.get("_choices", {})
+    out = list(FEAT_FIXED_SPELLS.get(feat, []))
+    for key in FEAT_CHOSEN_SPELL_KEYS.get(feat, []):
+        out.extend(sp for sp in choices.get(key, []) if sp not in out)
+    return out
+
+
+def feat_spell_class(char: dict, feat: str):
+    """The class whose list Magic Initiate or Spell Sniper drew from: named
+    in the feat ("Magic Initiate (Cleric)", from a background), picked for
+    it, or the one list every spell picked with it is on -- else None."""
+    for full in [char.get("origin_feat") or ""] + list(char.get("feats", [])):
+        if full.startswith(feat + " (") and full.endswith(")"):
+            cls = full[len(feat) + 2:-1]
+            if cls in SPELL_LIST_ABILITY:
+                return cls
+    choices = char.get("_choices", {})
+    pick = choices.get(FEAT_SPELL_CLASS_KEYS.get(feat, ""), [])
+    if pick and pick[0] in SPELL_LIST_ABILITY:
+        return pick[0]
+    lists = feat_spell_class_options(char, feat)
+    picked = [sp for key in FEAT_CHOSEN_SPELL_KEYS.get(feat, []) for sp in choices.get(key, [])]
+    return lists[0] if picked and len(lists) == 1 else None
+
+
+def feat_spell_class_options(char: dict, feat: str) -> list[str]:
+    """The classes `feat`'s spells can still be from: those whose list
+    holds every spell picked for it so far."""
+    choices = char.get("_choices", {})
+    options = list(SPELL_LIST_ABILITY)
+    if feat == "Spell Sniper":
+        options = [c for c in options if any(
+            c in (get_spell(sp) or {}).get("classes", []) for sp in ATTACK_ROLL_CANTRIPS)]
+    for key in FEAT_CHOSEN_SPELL_KEYS.get(feat, []):
+        for sp in choices.get(key, []):
+            on = set((get_spell(sp) or {}).get("classes", []))
+            options = [c for c in options if c in on]
+    return options
+
+
+def feat_spell_ability(char: dict, feat: str):
+    """The ability `feat`'s spells are cast with ("WIS"), or None while it
+    still has to be picked (FEAT_SPELL_ABILITY)."""
+    rule = FEAT_SPELL_ABILITY.get(feat)
+    choices = char.get("_choices", {})
+    if rule == "increased":
+        chosen = choices.get(f"feat_ability_{feat_slug(feat)}")
+        if isinstance(chosen, list):
+            chosen = chosen[0] if chosen else None
+        if chosen:
+            return chosen
+        # a feat taken before its ability was stored: the "asi:WIS:1"
+        # kept with its pick
+        for picks in choices.values():
+            if isinstance(picks, list) and f"feat:{feat}" in picks:
+                for p in picks:
+                    if isinstance(p, str) and p.startswith("asi:"):
+                        return p.split(":")[1]
+        return None
+    if rule == "class":
+        return SPELL_LIST_ABILITY.get(feat_spell_class(char, feat) or "")
+    if rule == "choice":
+        pick = choices.get(f"feat_spell_ability_{feat_slug(feat)}", [])
+        return _ABILITY_ABBR.get(pick[0]) if pick else None
+    if rule in FEAT_SPELL_ABILITY:
+        return feat_spell_ability(char, rule)
+    return rule
 
 
 def feat_granted_spells(char: dict) -> list[str]:
     """Every spell the character's feats give them -- the fixed ones and
     whatever they picked for the feats that let them choose."""
-    feats = set(char.get("feats", []))
-    choices = char.get("_choices", {})
     out = []
-    for feat in feats:
-        out.extend(FEAT_FIXED_SPELLS.get(feat, []))
-        for key in FEAT_CHOSEN_SPELL_KEYS.get(feat, []):
-            out.extend(choices.get(key, []))
+    for feat in set(char.get("feats", [])):
+        out.extend(feat_spells(char, feat))
     return out
 
 

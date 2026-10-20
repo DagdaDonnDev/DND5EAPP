@@ -47,6 +47,14 @@ def write_diagnostic_log(filename: str, text: str, mode: str = "w") -> str | Non
             continue
     return None
 
+# Appended to a styled spin box's sheet in place of setButtonSymbols(NoButtons):
+# the buttons stay but take no room. Qt 6.12 lays the number out 1 px wide
+# (so it can't be seen) in a spin box with a border or padding of its own
+# once its buttons are switched off.
+SPIN_NO_BUTTONS = ("QSpinBox::up-button,QSpinBox::down-button{width:0px;border:none;}"
+                   "QSpinBox::up-arrow,QSpinBox::down-arrow{image:none;width:0px;height:0px;}")
+
+
 def h(text, color=None, size=FS_BODY, bold=False, align=Qt.AlignLeft, wrap=True):
     """Quick label factory."""
     w = QLabel(text)

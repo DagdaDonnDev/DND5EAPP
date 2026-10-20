@@ -1647,6 +1647,8 @@ def get_innate_movement_grants(char: dict) -> dict:
     for (r, sub_substr), grants in SUBRACE_MOVEMENT.items():
         if r == race and sub_substr in subrace.lower():
             for grant in grants:
+                if grant.get("no_heavy_armor") and armor_type_worn(char) == "heavy":
+                    continue
                 if grant.get("min_char_level", 0) <= total_level:
                     _consider(grant["kind"], grant["speed"])
 
@@ -2670,6 +2672,16 @@ def update_all(char: dict) -> dict:
             if sk not in adv2:
                 adv2.append(sk)
             src3.setdefault(sk, []).append("Spirit Medium (spirits/the afterlife)")
+
+    # Pallid elf: Incisive Sense, advantage on Investigation and Insight checks.
+    if ((char.get("species") or char.get("race", "")) == "Elf"
+            and (char.get("subrace") or "").startswith("Pallid")):
+        adv4 = char.setdefault("skill_advantages", [])
+        src4 = char.setdefault("_skill_advantage_sources", {})
+        for sk in ("Investigation", "Insight"):
+            if sk not in adv4:
+                adv4.append(sk)
+            src4.setdefault(sk, []).append("Incisive Sense")
 
     # ── Active-effect / racial / feat / subclass-passive resistances ──────────
     # apply_all_magic_item_effects() just reset damage_resistances to only

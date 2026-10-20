@@ -149,6 +149,85 @@ Page {
                 }
             }
 
+            // ── Spellcasting: the ability, save DC and attack bonus of each
+            // class, race and feat that gives spells (desktop's Spellcasting
+            // table) -- a tiefling wizard's Hellish Rebuke is CHA, their
+            // Fireball INT
+            MCard {
+                objectName: "spellcastingCard"
+                visible: sheetBridge.spellcastingRows.length > 0
+                title: "Spellcasting"
+                iconName: "orb"
+                bodySpacing: 8
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Label { text: "From"; Layout.fillWidth: true; color: Theme.text3; font.pixelSize: Theme.fsSmall; font.bold: true }
+                    Label { text: "Ability"; Layout.preferredWidth: 52; color: Theme.text3; font.pixelSize: Theme.fsSmall; font.bold: true }
+                    Label { text: "Save DC"; Layout.preferredWidth: 60; color: Theme.text3; font.pixelSize: Theme.fsSmall; font.bold: true }
+                    Label { text: "Attack"; Layout.preferredWidth: 50; color: Theme.text3; font.pixelSize: Theme.fsSmall; font.bold: true }
+                }
+                Repeater {
+                    model: sheetBridge.spellcastingRows
+                    delegate: ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Label {
+                                text: modelData.source
+                                Layout.fillWidth: true
+                                color: Theme.text
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                                elide: Text.ElideRight
+                            }
+                            Label {
+                                visible: modelData.ability !== ""
+                                text: modelData.ability
+                                Layout.preferredWidth: 52
+                                color: Theme.text2
+                                font.pixelSize: Theme.fsSmall
+                            }
+                            Label {
+                                visible: modelData.ability !== ""
+                                text: modelData.dc
+                                Layout.preferredWidth: 60
+                                color: Theme.text
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                            }
+                            Label {
+                                visible: modelData.ability !== ""
+                                text: modelData.attack
+                                Layout.preferredWidth: 50
+                                color: Theme.text
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                            }
+                        }
+                        // which spells use it (a race's or feat's)
+                        Label {
+                            visible: modelData.spells.length > 0
+                            text: modelData.spells
+                            Layout.fillWidth: true
+                            color: Theme.text3
+                            font.pixelSize: Theme.fsSmall
+                            wrapMode: Text.WordWrap
+                        }
+                        Label {
+                            visible: modelData.note.length > 0
+                            text: modelData.note
+                            Layout.fillWidth: true
+                            color: Theme.text3
+                            font.pixelSize: Theme.fsSmall
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+            }
+
             // ── Spells known / prepared: each casting class's limits ──
             // (the same numbers as desktop's Spells Known / Prepared card)
             Rectangle {
