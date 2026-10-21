@@ -671,6 +671,10 @@ class CharacterSheetBridge(QObject):
     # the same as desktop's Hit button)
     @Slot(str)
     def rollWeaponAttack(self, name: str):
+        self._attack_action_slot = None        # a Hit button, not the Attack action
+        self._roll_weapon_attack(name)
+
+    def _roll_weapon_attack(self, name: str):
         from dnd_app.core.attacks import roll_attack, attack_report
         _ = self.weapons                       # the rows as they are now
         row = getattr(self, "_attack_rows", {}).get(name)
@@ -710,6 +714,10 @@ class CharacterSheetBridge(QObject):
         def done(res):
             for slot in res.get("slots", []):
                 self._mark_turn_used(slot)
+            # made with the Attack action: that's the action spent
+            if getattr(self, "_attack_action_slot", None):
+                self._mark_turn_used(self._attack_action_slot)
+                self._attack_action_slot = None
             if res.get("toast"):
                 self.toastRequested.emit(res["toast"])
             if res.get("refresh"):
@@ -2419,79 +2427,11 @@ class CharacterSheetBridge(QObject):
 
     @Slot(str, result="QVariant")
     def getItemDetail(self, name: str):
-        """Details for any item -- magic item, weapon, armor, gear or tool
-        -- for the browsers' View button / press-and-hold. Returns
-        {name, subtitle, facts: [str], desc} (+ rarity for magic items)."""
-        from dnd_app.data.magic_items import get_magic_item
-        from dnd_app.data.items import (WEAPON_DICT as _W, ARMOR_DICT as _A,
-                                                   ADVENTURING_GEAR as _G, ALL_TOOLS as _T)
-        gp = lambda c: (f"{c:g} gp" if c >= 1 else f"{round(c * 100):g} cp" if c else "")
-        scroll = parse_spell_scroll(name)
-        if scroll and scroll[1] and get_spell(scroll[1]):
-            # a bound scroll: its spell, the scroll's own DC/attack, and
-            # whether this character can read it
-            from dnd_app.core.spellcasting import scroll_reading, scroll_base_name
-            sp = get_spell(scroll[1])
-            info = scroll_reading(self.char, scroll[1])
-            lvl_txt = "Cantrip" if sp["level"] == 0 else f"Level {sp['level']}"
-            facts = [f"{lvl_txt} {sp.get('school', '')}".strip(),
-                     f"Casting time: {sp.get('cast_time', '1 action')}", f"Range: {sp.get('range', '')}",
-                     f"Duration: {sp.get('duration', '')}" + ("  (concentration)" if sp.get("concentration") else ""),
-                     f"Scroll save DC {info['save_dc']}, spell attack +{info['attack']}",
-                     ("You can't read this scroll -- the spell isn't on your class's list." if not info["readable"]
-                      else f"Above your casting level: {info['check']['ability']} check, DC {info['check']['dc']}, to cast it."
-                      if info["check"] else "You can cast this from the scroll.")]
-            base = get_magic_item(scroll_base_name(scroll[0])) or {}
-            return {"name": name, "subtitle": f"Spell scroll: {scroll[1]}", "facts": facts,
-                    "desc": sp.get("desc", ""), "rarity": base.get("rarity", "")}
-        mi = get_magic_item(name)
-        if mi:
-            # rarity goes in the dialog's subtitle (in its colour), not here
-            facts = [f for f in (mi.get("type", ""),
-                                 "Requires attunement" if str(mi.get("attunement")) == "True" else "",
-                                 f"Source: {mi.get('source')}" if mi.get("source") else "") if f]
-            return {"name": name, "subtitle": "Magic item", "facts": facts, "desc": mi.get("desc", ""),
-                    "rarity": mi.get("rarity", "")}
-        unprefixed, material = parse_material_prefix(name)
-        base, _ = parse_magic_suffix(unprefixed)
-        w = _W.get(base)
-        if w:
-            facts = [w.get("category", ""), f"{w.get('damage', '')} {w.get('dmg_type', '')}".strip()]
-            if w.get("properties"):
-                facts.append(", ".join(w["properties"]))
-            facts += [f"{w.get('weight', 0):g} lb" if w.get("weight") else "", gp(w.get("cost", 0))]
-            desc = {
-                "Silvered": "Silvered: gets past a creature's resistance or immunity to nonmagical "
-                            "attacks that aren't silvered, such as a lycanthrope's.",
-                "Adamantine": "Adamantine: any hit against an object is a critical hit.",
-            }.get(material, "")
-            return {"name": name, "subtitle": f"{material} weapon".strip().capitalize(),
-                    "facts": [f for f in facts if f], "desc": desc}
-        a = _A.get(name)
-        if a:
-            kind = (a.get("type") or "").title()
-            ac = f"+{a.get('ac')} AC" if a.get("type") == "shield" else f"AC {a.get('ac')}" + (
-                "" if a.get("dex_cap") == 0 else " + DEX" + (f" (max {a['dex_cap']})" if a.get("dex_cap") else ""))
-            facts = [f"{kind} armor" if kind and kind != "Shield" else kind, ac,
-                     f"Needs STR {a['str_req']}" if a.get("str_req") else "",
-                     "Disadvantage on Stealth" if a.get("stealth") else "",
-                     f"{a.get('weight', 0):g} lb" if a.get("weight") else "", gp(a.get("cost", 0))]
-            return {"name": name, "subtitle": "Armor", "facts": [f for f in facts if f], "desc": ""}
-        # Background kits word some gear the other way round
-        # ("common clothes" for "Clothes, Common").
-        words = name.lower().split()
-        flipped = f"{words[-1]}, {' '.join(words[:-1])}" if len(words) > 1 else ""
-        for row in _G:
-            if row[0].lower() in (name.lower(), flipped):
-                facts = [f"{row[1]:g} lb" if row[1] else "", gp(row[2]) if len(row) > 2 else ""]
-                return {"name": row[0], "subtitle": "Adventuring gear", "facts": [f for f in facts if f],
-                        "desc": row[3] if len(row) > 3 else ""}
-        tool = next((t for t in _T if t.lower() == name.lower()), None)
-        if tool:
-            return {"name": tool, "subtitle": "Tool", "facts": [],
-                    "desc": "Lets you add your proficiency bonus to ability checks made with it, if you're proficient."}
-        return {"name": name, "subtitle": "Item", "facts": [],
-                "desc": "No rules entry for this item -- it's a flavour or custom item."}
+        """Details for any item -- magic item, weapon, armor, gear, tool or
+        mount -- for the browsers' View button / press-and-hold: the same
+        page desktop's magnifying glasses open (core/item_details.py)."""
+        from dnd_app.core.item_details import item_detail
+        return item_detail(self.char, name)
 
     @Slot(str)
     def addKnownSpell(self, name: str):
@@ -2719,6 +2659,12 @@ class CharacterSheetBridge(QObject):
         if res.get("cast"):
             # a feat's or trait's spell: the spell's own cast spends its free use
             self.castSpell(res["cast"])
+            return
+        if res.get("attack"):
+            # the Attack action: the attack picked is rolled the way its Roll
+            # to Hit button does, and the action is spent once it's made
+            self._attack_action_slot = res.get("attack_slot")
+            self._roll_weapon_attack(res["attack"])
             return
         if res.get("toast"):
             self.toastRequested.emit(res["toast"])

@@ -672,13 +672,17 @@ def _migrate(data: dict) -> dict:
 
     # A spell the catalog no longer lists twice ("Tiny Hut" beside
     # "Leomund's Tiny Hut"): a save that stored the other name gets the one
-    # the catalog keeps, everywhere a spell name is kept
-    from dnd_app.data.spells import SPELL_ALIASES, SPELL_DICT
+    # the catalog keeps, everywhere a spell name is kept. And the Unearthed
+    # Arcana spells it no longer has at all go, rather than sit unseen in a
+    # spell list taking up a slot.
+    from dnd_app.data.spells import SPELL_ALIASES, SPELL_DICT, REMOVED_SPELLS
     renames = {old: new for old, new in SPELL_ALIASES.items() if old not in SPELL_DICT}
 
     def _renamed(names):
-        return [renames.get(n, n) if isinstance(n, str) else n for n in names]
-    for key in ("spells_known", "spells_prepared", "quick_spells", "magical_secrets_spells", "bonus_spells"):
+        return [renames.get(n, n) if isinstance(n, str) else n
+                for n in names if not (isinstance(n, str) and n in REMOVED_SPELLS)]
+    for key in ("spells_known", "spells_prepared", "quick_spells", "magical_secrets_spells", "bonus_spells",
+                "spells_from_full_list", "cantrips"):
         if isinstance(data.get(key), list):
             data[key] = _renamed(data[key])
     for key, picks in list(data["_choices"].items()):

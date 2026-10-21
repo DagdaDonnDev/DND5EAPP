@@ -57,6 +57,33 @@ from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
 
 
+
+# One height for every control in an Other-tab resource row (the -/+
+# buttons, the counter, a toggle, Spend), so they line up on the row. Set in
+# their style sheets too: the theme's QPushButton min-height (36px) would
+# otherwise win over a fixed size, and a min-height of 0 lets the row
+# squash them.
+_ROW_CONTROL_H = 28
+_ROW_BTN_QSS = f"QPushButton{{min-height:{_ROW_CONTROL_H - 2}px;max-height:{_ROW_CONTROL_H - 2}px;}}"
+
+
+def _resource_row_qss(row, color) -> str:
+    """A resource row's tinted box. Named, so it styles the row alone: a
+    bare QWidget{...} rule would give every button and box inside it the
+    row's border and margin too, knocking them off its centre line."""
+    row.setObjectName("resourceRow")
+    return (f"QWidget#resourceRow{{background:{qa(color,0x14)};border:1px solid {qa(color,0x44)};"
+            f"border-radius:6px;margin:1px;}}")
+
+
+def _center_row(layout) -> None:
+    """Every control in a resource row on the row's centre line (a layout
+    item with no alignment of its own sits at the top of its cell)."""
+    for i in range(layout.count()):
+        w = layout.itemAt(i).widget()
+        if w is not None:
+            layout.setAlignment(w, Qt.AlignVCenter)
+
 class ActionTabsMixin:
     def _build_resource_rows(self, bl):
         """
@@ -78,9 +105,7 @@ class ActionTabsMixin:
             if pct > 0.5: bar_color = TEAL2
             elif pct > 0: bar_color = AMBER
             else: bar_color = CRIM2
-            row.setStyleSheet(
-                f"QWidget{{background:{qa(bar_color,0x14)};border:1px solid {qa(bar_color,0x44)};"
-                f"border-radius:6px;margin:1px;}}")
+            row.setStyleSheet(_resource_row_qss(row, bar_color))
             rl = QHBoxLayout(row); rl.setContentsMargins(8,5,8,5); rl.setSpacing(6)
 
             name_l = _lbl(name, TEXT, FS_TINY, bold=True, wrap=False)
@@ -91,12 +116,13 @@ class ActionTabsMixin:
 
             # Spinbox for current value — editable in-place
             sp = QSpinBox(); sp.setRange(0, maximum); sp.setValue(current)
-            sp.setFixedWidth(72); sp.setAlignment(Qt.AlignCenter)   # "-  n  +"
+            sp.setFixedSize(72, _ROW_CONTROL_H); sp.setAlignment(Qt.AlignCenter)   # "-  n  +"
             sp.setToolTip(f"Current uses of {name}")
             sp.setStyleSheet(
                 f"QSpinBox{{background:{SURF2};border:1px solid {qa(bar_color,0x66)};"
                 f"border-radius:4px;color:{bar_color};font-size:{FS_TINY}px;"
-                f"font-weight:700;padding:1px;}}"
+                f"font-weight:700;padding:1px;min-height:{_ROW_CONTROL_H - 4}px;"
+                f"max-height:{_ROW_CONTROL_H - 4}px;}}"
                 f"QSpinBox::up-button,QSpinBox::down-button{{width:17px;background:{BORDER};}}")
             max_l = _lbl(f"/{maximum}", TEXT3, FS_TINY, wrap=False)
 
@@ -113,12 +139,12 @@ class ActionTabsMixin:
             self._resource_widgets.append(row)
 
             # −/+ buttons for quick spend/restore
-            minus = QPushButton("−"); minus.setFixedSize(30,30)
-            plus  = QPushButton("+"); plus.setFixedSize(30,30)
+            minus = QPushButton("−"); minus.setFixedSize(_ROW_CONTROL_H, _ROW_CONTROL_H)
+            plus  = QPushButton("+"); plus.setFixedSize(_ROW_CONTROL_H, _ROW_CONTROL_H)
             btn_ss = _btn("", bar_color, variant="danger", radius=5, border_width=1,
                           bg_alpha=0x22, border_alpha=0x55, hover_text="white",
                           font_size=16, padding="0px").styleSheet()
-            minus.setStyleSheet(btn_ss); plus.setStyleSheet(btn_ss)
+            minus.setStyleSheet(btn_ss + _ROW_BTN_QSS); plus.setStyleSheet(btn_ss + _ROW_BTN_QSS)
             def _on_minus_click(checked=False, _key=res_key):
                 # Earth Genasi Blade Ward needs the same gate as real
                 # spell-casting — even though Blade Ward is a cantrip,
@@ -169,16 +195,16 @@ class ActionTabsMixin:
                     if active:
                         return (f"QPushButton{{background:{CRIM2};color:{BG};"
                                 f"border:1px solid {CRIM2};border-radius:6px;"
-                                f"font-size:{FS_TINY}px;font-weight:700;}}")
+                                f"font-size:{FS_TINY}px;font-weight:700;padding:0px;}}" + _ROW_BTN_QSS)
                     return (f"QPushButton{{background:{SURF2};color:{TEXT3};"
                             f"border:1px solid {BORDER};border-radius:6px;"
-                            f"font-size:{FS_TINY}px;font-weight:700;}}")
+                            f"font-size:{FS_TINY}px;font-weight:700;padding:0px;}}" + _ROW_BTN_QSS)
                 tgl = QPushButton("Active" if is_active else "Inactive")
                 tgl.setCheckable(True)
                 tgl.setChecked(is_active)
                 # Fixed size (fits "Inactive", the longer of the two
                 # labels) so the button never resizes as it toggles.
-                tgl.setFixedSize(76, 24)
+                tgl.setFixedSize(76, _ROW_CONTROL_H)
                 tgl.setStyleSheet(_toggle_style(is_active))
                 tgl.setToolTip(f"Toggle {name} on/off — applies its AC bonus, "
                                f"damage resistance/immunity, and any other real "
@@ -218,6 +244,7 @@ class ActionTabsMixin:
                 rl.addWidget(tgl)
             rl.addWidget(minus); rl.addWidget(sp); rl.addWidget(max_l); rl.addWidget(plus)
             rl.addWidget(reset_l)
+            _center_row(rl)
             bl.insertWidget(bl.count()-1, row)
 
         def _portent_row(res, reset_label):
@@ -229,9 +256,7 @@ class ActionTabsMixin:
             pct = (len(rolls) / maximum) if maximum else 0
             bar_color = TEAL2 if pct > 0.5 else (AMBER if pct > 0 else CRIM2)
             row = QWidget()
-            row.setStyleSheet(
-                f"QWidget{{background:{qa(bar_color,0x14)};border:1px solid {qa(bar_color,0x44)};"
-                f"border-radius:6px;margin:1px;}}")
+            row.setStyleSheet(_resource_row_qss(row, bar_color))
             rl = QHBoxLayout(row); rl.setContentsMargins(8,5,8,5); rl.setSpacing(6)
             name_l = _lbl(res.get("name", "Portent"), TEXT, FS_TINY, bold=True, wrap=False)
             tip = ("Your foretelling rolls. Click one to use it in place of an attack roll, saving throw "
@@ -241,10 +266,11 @@ class ActionTabsMixin:
             if not rolls:
                 rl.addWidget(_lbl("none left", TEXT3, FS_TINY, wrap=False))
             for value in rolls:
-                b = QPushButton(str(value)); b.setFixedSize(36, 26)
+                b = QPushButton(str(value)); b.setFixedSize(36, _ROW_CONTROL_H)
                 b.setToolTip(f"Use {value} as the d20 roll")
                 b.setStyleSheet(_btn("", bar_color, variant="chip", radius=5, text_color=TEXT,
-                                     hover_text=TEXT, font_size=FS_TINY, padding="0px").styleSheet())
+                                     hover_text=TEXT, font_size=FS_TINY, padding="0px").styleSheet()
+                                + _ROW_BTN_QSS)
                 def _use(checked=False, _v=value):
                     self._toast(spend_portent(self.char, _v))
                     self._mark_dirty()
@@ -255,6 +281,7 @@ class ActionTabsMixin:
             reset_l = _lbl(reset_label, TEXT3, FS_TINY-1, wrap=False)
             reset_l.setFixedWidth(70)
             rl.addWidget(reset_l)
+            _center_row(rl)
             self._resource_widgets.append(row)
             bl.insertWidget(bl.count()-1, row)
 
@@ -353,23 +380,23 @@ class ActionTabsMixin:
                 pct = remaining/total if total else 0
                 bar_color = GREEN2 if pct > 0.5 else (AMBER if pct > 0 else CRIM2)
                 hd_row = QWidget()
-                hd_row.setStyleSheet(f"QWidget{{background:{qa(bar_color,0x14)};border:1px solid "
-                                     f"{qa(bar_color,0x44)};border-radius:6px;margin:1px;}}")
-                hr = QHBoxLayout(hd_row); hr.setContentsMargins(8,4,8,4); hr.setSpacing(8)
+                hd_row.setStyleSheet(_resource_row_qss(hd_row, bar_color))
+                hr = QHBoxLayout(hd_row); hr.setContentsMargins(8,5,8,5); hr.setSpacing(8)
                 hr.addWidget(_lbl(f"Hit Dice ({die_key})", TEXT, FS_TINY, bold=True, wrap=False), 1)
                 hr.addWidget(_lbl(f"{remaining}/{total}", bar_color, FS_TINY, bold=True, wrap=False))
                 spend = QPushButton("Spend")
                 _icons.set_button_icon(spend, "dice", 12)
-                spend.setFixedSize(74, 24)
+                spend.setFixedSize(74, _ROW_CONTROL_H)
                 spend.setEnabled(remaining > 0)
                 spend.setToolTip(f"Roll 1{die_key} + {con_mod} CON and heal that much")
                 spend.setStyleSheet(
                     _btn("", bar_color, variant="danger", radius=4, border_width=1,
                          bg_alpha=0x22, hover_text="white", font_size=FS_TINY,
                          padding="0px").styleSheet()
-                    + f"QPushButton:disabled{{color:{TEXT3};border-color:{BORDER};}}")
+                    + f"QPushButton:disabled{{color:{TEXT3};border-color:{BORDER};}}" + _ROW_BTN_QSS)
                 spend.clicked.connect(lambda checked=False, k=die_key: self._spend_hit_die(k))
                 hr.addWidget(spend)
+                _center_row(hr)
                 bl.insertWidget(bl.count()-1, hd_row)
             has_any = True
 
@@ -416,6 +443,14 @@ class ActionTabsMixin:
             if spell:
                 self._cast_spell(spell)
             return
+        if res.get("attack"):
+            # the Attack action: the attack picked is rolled the way its Hit
+            # button does, and the action is spent once it's made
+            from dnd_app.core.attacks import attack_rows
+            row = next((r for r in attack_rows(self.char) if r["name"] == res["attack"]), None)
+            if row is not None and self._attack(row) and res.get("attack_slot"):
+                self._mark_turn_used(res["attack_slot"])
+            return
         if res.get("toast"):
             self._toast(res["toast"])
         if not res.get("ok"):
@@ -440,6 +475,25 @@ class ActionTabsMixin:
         if not hasattr(self, '_action_bucket_widgets'):
             return
         buckets = build_action_abilities(self.char)
+
+        # The Use button just pressed is about to be rebuilt: take focus off
+        # it first, or Qt hands focus down the list card by card as each one
+        # goes, scrolling the list to the bottom. And each list comes back
+        # where it was scrolled to.
+        from PySide6.QtWidgets import QApplication, QScrollArea
+        fw = QApplication.focusWidget()
+        if fw is not None and any(bw.isAncestorOf(fw) for bw, _bl in self._action_bucket_widgets.values()):
+            fw.clearFocus()
+        scroll_at = {}
+        for bw, _bl in self._action_bucket_widgets.values():
+            area = bw.parentWidget().parentWidget() if bw.parentWidget() else None
+            if isinstance(area, QScrollArea):
+                scroll_at[area] = area.verticalScrollBar().value()
+
+        def _restore_scroll():
+            for area, value in scroll_at.items():
+                area.verticalScrollBar().setValue(value)
+        QTimer.singleShot(0, _restore_scroll)
 
         for bucket_name, (bw, bl) in self._action_bucket_widgets.items():
             # Clear existing rows — items 0 and 1 are the permanent

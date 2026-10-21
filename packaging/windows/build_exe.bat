@@ -14,7 +14,9 @@ echo.
 REM ── Step 1: Dependencies ─────────────────────────────────────────────────
 echo [1/3] Installing dependencies...
 python -m pip install --upgrade pip --quiet
-python -m pip install PySide6 pyinstaller --quiet
+REM PySide6 comes from requirements.txt, which skips the one release that
+REM crashes on Python 3.11 and older
+python -m pip install -r requirements.txt pyinstaller --quiet
 if %errorlevel% neq 0 (
     echo ERROR: pip install failed. Make sure Python is in PATH.
     pause & exit /b 1

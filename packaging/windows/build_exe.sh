@@ -13,7 +13,9 @@ echo
 
 echo "Step 1: Installing dependencies..."
 python3 -m pip install --upgrade pip
-python3 -m pip install PySide6 pyinstaller
+# PySide6 comes from requirements.txt, which skips the one release that
+# crashes on Python 3.11 and older
+python3 -m pip install -r requirements.txt pyinstaller
 
 echo
 echo "Step 2: Verifying PySide6..."

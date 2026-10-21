@@ -1291,10 +1291,28 @@ def _wild_shape_use(char, key, bucket, answers):
 
 
 # ── The hand-written actions ──────────────────────────────────────────────
+def _attack_action(char, answers):
+    """The Attack action: which weapon (or other attack) it's made with.
+    The apps then roll it the way that attack's Hit button does, and the
+    action is spent once the attack is made ("attack_slot")."""
+    from dnd_app.core.attacks import attack_rows
+    names = list(dict.fromkeys(r["name"] for r in attack_rows(char)))
+    if not names:
+        return _result(False, "Attack: nothing to attack with")
+    pick = answers.get("attack")
+    if pick not in names:
+        if len(names) > 1:
+            return _result(False, ask={"key": "attack", "title": "Attack with which?", "options": names})
+        pick = names[0]
+    return _result(True, "", attack=pick, attack_slot="Action")
+
+
 def _special(char, key, display, bucket, answers, rng, desc=""):
     fx = char.setdefault("active_effects", [])
     if key in ("wild shape", "elemental wild shape"):
         return _wild_shape_use(char, key, bucket, answers)
+    if key == "attack" and bucket == "Action":
+        return _attack_action(char, answers)
     more = _more_specials(char, key, display, bucket, answers, rng, desc)
     if more is not None:
         return more

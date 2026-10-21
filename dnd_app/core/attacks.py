@@ -5,6 +5,9 @@ weapons), and what happens when you press its attack button.
     weapon_attack(char, name) -> row     a weapon in your hand
     other_attacks(char) -> [row]         a Monk's unarmed strike, a bite,
                                          armor spikes, a beast's claws...
+    attack_rows(char) -> [row]           every attack you can roll, in the
+                                         Combat screens' order (the Attack
+                                         action's choice)
     roll_attack(char, row) -> roll       the d20, with advantage or
                                          disadvantage from conditions
     attack_report(char, row, roll, free) what to show after the roll: the
@@ -301,6 +304,15 @@ def _owns_as_magic(char, name, base) -> bool:
     if name in names or base in names:
         return True
     return any(e.get("name") in (name, base) and e.get("magic") for e in char.get("equipment", []))
+
+
+def attack_rows(char: dict) -> list:
+    """Every attack the character can roll, in the order both apps' Combat
+    screens list them: what isn't a weapon in hand first (Martial Arts, a
+    bite, the unarmed strike, a beast's claws...), then each weapon in hand."""
+    rows = list(other_attacks(char))
+    rows += [weapon_attack(char, name) for name in dict.fromkeys(char.get("equipped_weapons", []))]
+    return [r for r in rows if r and r.get("atk") is not None]
 
 
 def weapon_attack(char: dict, name: str) -> dict:

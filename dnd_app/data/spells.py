@@ -45,7 +45,7 @@ spell("Frostbite",         0, EVO, [ART,DRU,SOR,WAR,WIZ], desc="CON save or 1d6 
 spell("Green-Flame Blade", 0, EVO, [ART,SOR,WAR,WIZ], desc="Melee attack; fire leaps to adjacent creature for CHA mod fire.", source="SCAG/TCE", components="V, M (a weapon worth at least 1 sp)", range_="Self (5-foot radius)"),
 spell("Guidance",          0, DIV, [ART,CLE,DRU],     desc="Willing creature adds 1d4 to one ability check.", concentration=True, range_="Touch"),
 spell("Gust",              0, TRN, [DRU,SOR,WIZ],     desc="Shove creature 5 ft or move Small object.", source="EEPC", range_="30 ft"),
-spell("Infestation",       0, CON, [DRU,SOR,WAR,WIZ], desc="CON save or 1d6 poison + forced movement 5 ft.", source="EEPC", range_="30 ft"),
+spell("Infestation",       0, CON, [DRU,SOR,WAR,WIZ], desc="CON save or 1d6 poison + forced movement 5 ft.", source="XGE", range_="30 ft"),
 spell("Light",             0, EVO, [ART,BAR,CLE,SOR,WIZ], desc="Object sheds bright 20 ft / dim 20 ft light for 1 hour.", duration="1 hour", range_="Touch"),
 spell("Lightning Lure",    0, EVO, [ART,SOR,WAR,WIZ], desc="Pull creature within 15 ft toward you; 1d8 lightning if moved.", source="SCAG/TCE", range_="Self (15-foot radius)"),
 spell("Mage Hand",         0, CON, [ART,BAR,SOR,WAR,WIZ], desc="Spectral hand can manipulate objects, open doors, retrieve items (up to 10 lb), 30 ft. Can't attack, activate magic items, or carry more than 10 lbs.", range_="30 ft"),
@@ -57,7 +57,7 @@ spell("Minor Illusion",    0, ILL, [BAR,SOR,WAR,WIZ], desc="Create a static soun
 spell("Mold Earth",        0, TRN, [DRU,SOR,WIZ],     desc="Excavate, move, or shape 5-ft cube of earth.", source="EEPC", range_="30 ft"),
 spell("Poison Spray",      0, CON, [ART,DRU,SOR,WAR,WIZ], desc="CON save or 1d12 poison. Scales.", range_="10 ft"),
 spell("Prestidigitation",  0, TRN, [ART,BAR,SOR,WAR,WIZ], desc="Minor magical tricks: sensory effects, clean/soil, chill/warm/flavor, colour mark, small trinket/illusion.", range_="10 ft"),
-spell("Primal Savagery",   0, TRN, [DRU],              desc="Melee spell attack: 1d10 acid. Scales.", source="EEPC", range_="Self"),
+spell("Primal Savagery",   0, TRN, [DRU],              desc="Melee spell attack: 1d10 acid. Scales.", source="XGE", range_="Self"),
 spell("Produce Flame",     0, CON, [DRU],              desc="Flame in hand (light 10 ft bright, 10 ft dim). Can hurl as ranged attack: 1d8 fire. Scales.", range_="Self"),
 spell("Ray of Frost",      0, EVO, [ART,SOR,WIZ],     desc="Ranged attack: 1d8 cold + −10 ft speed. Scales."),
 spell("Resistance",        0, ABJ, [ART,CLE,DRU],     desc="Willing creature adds 1d4 to one saving throw.", concentration=True, range_="Touch"),
@@ -75,11 +75,8 @@ spell("Vicious Mockery",   0, ENC, [BAR],              desc="Target within 60 ft
 spell("Word of Radiance",  0, EVO, [CLE],              desc="CON save or 1d6 radiant (each creature within 5 ft).", source="XGE", range_="5 ft"),
 
     spell("Thorn Whip",         0, TRN, [ART,DRU],         desc="Melee spell attack: 1d6 piercing + pull target 10 ft toward you if Large or smaller. Scales: 2d6 at Lv5, 3d6 at Lv11, 4d6 at Lv17.", source="PHB", range_="30 ft"),
-    spell("Encode Thoughts",    0, ENC, [WIZ],               desc="Extract a memory lasting up to 8 hours and encode it as a Tiny intangible thought strand. Another creature holding it experiences the memory.", source="EGW", range_="Self", components="S"),
+    spell("Encode Thoughts",    0, ENC, [WIZ],               desc="Extract a memory lasting up to 8 hours and encode it as a Tiny intangible thought strand. Another creature holding it experiences the memory.", source="GGR", range_="Self", components="S"),
     spell("Sapping Sting",      0, NEC, [WIZ],               desc="One creature within 30 ft: CON save or take 1d4 necrotic damage and fall prone. Scales at Lv5/11/17.", source="EGW"),
-    spell("Virtue",             0, ABJ, [CLE],               desc="Touch one creature: it gains 1 temporary HP lasting until the start of your next turn.", source="SCAG", range_="Touch"),
-
-    spell("On/Off",             0, TRN, [ART],              desc="Instantly activate or deactivate any nonmagical device within 60 ft that has an on/off switch or valve.", source="TCE"),
 
 # ── 1st Level ────────────────────────────────────────────────────────────────
 spell("Absorb Elements",   1, ABJ, [ART,DRU,RAN,SOR,WIZ], desc="Reaction: resist triggering element; next attack deals extra 1d6 of that type.", cast_time="Reaction", source="EEPC", range_="Self"),
@@ -161,19 +158,7 @@ spell("Zephyr Strike",     1, TRN, [RAN],              concentration=True, desc=
     spell("Tenser's Floating Disk",1,CON,[WIZ],             ritual=True, desc="Creates a disk of force 3 ft in diameter hovering 3 ft off the ground. Holds 500 lbs. Follows within 20 ft. Lasts 1 hour.", source="PHB"),
     spell("Thunderous Smite",   1, EVO, [PAL],              concentration=True, cast_time="Bonus action", desc="Next melee hit: +2d6 thunder damage, audible 300 ft; target STR save or pushed 10 ft and knocked prone.", source="PHB"),
 
-    spell("Sudden Awakening",   1, ENC, [BAR,RAN,SOR,WIZ],  desc="Each sleeping creature you choose within 10 ft wakes up. A sleeping creature who wakes becomes no longer surprised.", source="EEPC"),
-    spell("Unearthly Chorus",   1, ILL, [BAR],               desc="Primal, discordant music fills the air around you in a 30-ft radius. Concentration 1 min: creatures of your choice are frightened (WIS save). You can sustain the effect.", source="EEPC"),
-    spell("Guiding Hand",       1, DIV, [BAR,CLE,DRU,WIZ],  ritual=True, concentration=True, desc="Create a Tiny spectral hand pointing toward a destination or object. It moves toward the goal at your speed.", source="EEPC"),
-    spell("Sense Emotion",      1, DIV, [BAR,WIZ],            concentration=True, desc="You attune to the strongest emotion of each creature in a 30-ft cone. You know if it is angry, frightened, happy, sad, disgusted, or neutral.", source="EEPC"),
-    spell("Wild Cunning",       1, TRN, [DRU,RAN],            desc="Ask nature a question about the surrounding area. You gain an answer about terrain, water, food, predators, or settlements within 1 mile.", source="EEPC"),
-    spell("Healing Elixir",     1, CON, [ART,WIZ],            desc="Create a magical elixir. A creature who drinks it regains 2d4+2 HP. The elixir retains potency for 24 hours, then becomes inert.", source="EGW"),
-
     spell("Jim's Glowing Coin", 2, ENC, [BAR,WIZ],             desc="Flip a coin that glows for 1 minute. One creature within 30 ft: WIS save or mesmerized until spell ends.", source="AI"),
-    spell("Puppet",             1, ENC, [BAR],                  desc="One humanoid within 120 ft: CHA save or puppet: move up to its speed toward you, or perform a brief action you specify.", source="EEPC"),
-
-    spell("Auditory Hallucination",1,ILL,[BAR,WIZ],  concentration=True, desc="Create an auditory illusion within 300 ft (no larger than 10-ft cube). Lasts 10 minutes. Creatures that investigate make INT save.", source="EEPC"),
-    spell("Id Insinuation",    1, ENC, [BAR,WIZ],     concentration=True, desc="Assault a creature's mind: WIS save or incapacitated and takes 1d12 psychic at end of each turn. New save each turn.", source="EEPC"),
-
 
 # ── 2nd Level ─────────────────────────────────────────────────────────────────
 spell("Aid",               2, ABJ, [ART,CLE,PAL],     desc="Up to 3 creatures: +5 max and current HP. Scales +5/slot.", range_="30 ft"),
@@ -240,7 +225,7 @@ spell("Tasha's Mind Whip",  2, ENC, [SOR,WIZ,BAR,WAR],          desc="INT save o
 spell("Vortex Warp",       2, CON, [ART,SOR,WIZ],     desc="CON save or teleport willing/unwilling creature up to 90 ft.", source="SCC", range_="90 ft"),
 spell("Warding Bond",       2, ABJ, [CLE,PAL],              desc="Bonded creature: +1 AC/saves, resistance all dmg. You take same damage.", duration="1 hour", range_="Touch"),
 spell("Web",               2, CON, [ART,SOR,WIZ],     concentration=True, desc="20-ft cube: difficult terrain; DEX save or restrained. Flammable.", duration="1 hour"),
-spell("Wristpocket",       2, CON, [SOR,WAR,WIZ], ritual=True,     concentration=True, desc="Store one item in extradimensional pocket.", source="EEPC", range_="Self"),
+spell("Wristpocket",       2, CON, [SOR,WAR,WIZ], ritual=True,     concentration=True, desc="Store one item in extradimensional pocket.", source="EGW", range_="Self"),
 spell("Zone of Truth",     2, ENC, [BAR,CLE,PAL],     desc="15-ft sphere: CHA save or can't lie.", duration="10 min"),
 
     spell("Aganazzar's Scorcher",2,EVO,[SOR,WIZ], desc="30-ft line: 3d8 fire (DEX save). Adjacent creatures: 2d8. Creatures that enter at start of their turn take 3d8.", source="XGE"),
@@ -260,7 +245,7 @@ spell("Zone of Truth",     2, ENC, [BAR,CLE,PAL],     desc="15-ft sphere: CHA sa
 
 # ── 3rd Level ─────────────────────────────────────────────────────────────────
 spell("Animate Dead",      3, NEC, [CLE,WIZ],          desc="Animate 1 skeleton/zombie from corpse. Scales (+2/slot).", range_="10 ft"),
-spell("Aura of Vitality",   3, EVO, [CLE,DRU,PAL],              concentration=True, desc="30-ft aura; bonus action heal 2d6 once per turn.", cast_time="1 action", duration="1 min", source="XGE", range_="Self (30-foot radius)"),
+spell("Aura of Vitality",   3, EVO, [CLE,DRU,PAL],              concentration=True, desc="30-ft aura; bonus action heal 2d6 once per turn.", cast_time="1 action", duration="1 min", source="PHB", range_="Self (30-foot radius)"),
 spell("Beacon of Hope",    3, ABJ, [CLE],              concentration=True, desc="Adv WIS saves and death saves; max healing.", duration="1 min", range_="30 ft"),
 spell("Bestow Curse",      3, NEC, [BAR,CLE,WIZ],     concentration=True, desc="Touch; WIS save or cursed with chosen effect.", duration="1 min", range_="Touch"),
 spell("Blink",             3, TRN, [ART,SOR,WIZ],     desc="50% chance to vanish to Ethereal each turn. Return start of next.", duration="1 min", range_="Self"),
@@ -542,7 +527,7 @@ spell("Whirlwind",         7, EVO, [DRU,SOR,WIZ],     concentration=True, desc="
     spell("Power Word Pain",       7, ENC, [SOR,WAR,WIZ],
           desc="One creature ≤100 HP: CON save or wracked with pain; speed halved, -4 to attack rolls and saves, can't concentrate. Can re-save at end of each turn.", source="XGE"),
     spell("Tether Essence",        7, NEC, [SOR,WAR,WIZ], concentration=True,
-          desc="Two creatures: damage dealt to one is also dealt to the other. Each creature also takes 1d12 force when the tether is severed. CON save to resist.", source="SCC"),
+          desc="Two creatures: damage dealt to one is also dealt to the other. Each creature also takes 1d12 force when the tether is severed. CON save to resist.", source="EGW"),
 
 # ── 8th Level ─────────────────────────────────────────────────────────────────
 spell("Abi-Dalzim's Horrid Wilting", 8, NEC, [SOR,WIZ], desc="30-ft cube: CON save or 12d8 necrotic. Water/plants auto-fail.", source="EEPC", range_="150 ft"),
@@ -602,7 +587,7 @@ spell("Frost Fingers",     1, EVO, [WIZ],               desc="15-ft cone: CON sa
 spell("Air Bubble",        2, CON, [ART,DRU,RAN,SOR,WIZ], desc="A globe of fresh air around the head of a willing creature you can see: it can breathe for the duration. Higher levels: two more globes per slot level above 2nd.", source="AAG", duration="24 hours", components="S"),
 spell("Cordon of Arrows",  2, TRN, [RAN],               desc="Plant four arrows or bolts: a creature other than you (and those you exclude) that comes within 30 ft of them for the first time on a turn or ends its turn there is struck by one, DEX save or 1d6 piercing. Ends when none are left. Higher levels: two more pieces per slot level above 2nd.", duration="8 hours", range_="5 ft", components="V, S, M (four or more arrows or bolts)"),
 spell("Healing Spirit",    2, CON, [DRU,RAN],           concentration=True, desc="A spirit in a 5-ft cube: a creature you can see that moves into it for the first time on a turn or starts its turn there can regain 1d6 HP (no action). It heals 1 + your spellcasting modifier times (at least twice); a bonus action moves it 30 ft. Higher levels: +1d6 per slot level above 2nd.", source="XGE", cast_time="1 bonus action", duration="Concentration, up to 1 minute"),
-spell("Immovable Object",  2, TRN, [ART,WIZ],           desc="Fix an object of 10 lb or less in place (you and those you designate can move it; a password suppresses it for 1 minute). In the air it holds up to 4,000 lb; otherwise a STR check against your spell save DC moves it 10 ft. Higher levels: a stronger hold for longer at 4th level and up.", source="", duration="1 hour", range_="Touch", components="V, S, M (gold dust worth at least 25 gp, which the spell consumes)"),
+spell("Immovable Object",  2, TRN, [ART,WIZ],           desc="Fix an object of 10 lb or less in place (you and those you designate can move it; a password suppresses it for 1 minute). In the air it holds up to 4,000 lb; otherwise a STR check against your spell save DC moves it 10 ft. Higher levels: a stronger hold for longer at 4th level and up.", source="EGW", duration="1 hour", range_="Touch", components="V, S, M (gold dust worth at least 25 gp, which the spell consumes)"),
 spell("Rime's Binding Ice", 2, EVO, [SOR,WIZ],          desc="30-ft cone: CON save or 3d8 cold and speed 0 for 1 minute (until it or a creature within reach uses an action to break the ice); half damage and no ice on a save. Higher levels: +1d8 per slot level above 2nd.", source="FTD", range_="Self (30-foot cone)", components="S, M (a vial of meltwater)"),
 spell("Spray of Cards",    2, CON, [BAR,SOR,WAR,WIZ],   desc="15-ft cone: DEX save or 2d10 force and blinded until the end of its next turn; half damage only on a save. Higher levels: +1d10 per slot level above 2nd.", source="BOMT", range_="Self (15-foot cone)", components="V, S, M (a deck of cards)"),
 spell("Warp Sense",        2, DIV, [SOR,WAR,WIZ],       concentration=True, desc="Sense portals, even inactive ones, within 30 ft; an action and a DC 15 spellcasting check on one reveals its destination plane and portal key (a failure: not that portal again this casting).", source="SatO", duration="Concentration, up to 1 minute", range_="Self", components="V, S, M (a razorvine leaf)"),
@@ -627,6 +612,13 @@ spell("Reality Break",     8, CON, [WIZ],               concentration=True, desc
 
 # Build lookup structures
 SPELL_DICT = {s["name"]: s for s in ALL_SPELLS}
+
+# Unearthed Arcana playtest spells the catalogue used to carry. They're
+# gone; a save that still lists one drops it when it loads (save_load.py).
+REMOVED_SPELLS = frozenset({
+    "Auditory Hallucination", "Guiding Hand", "Healing Elixir", "Id Insinuation", "On/Off", "Puppet",
+    "Sense Emotion", "Sudden Awakening", "Unearthly Chorus", "Virtue", "Wild Cunning",
+})
 SPELL_NAMES = [s["name"] for s in ALL_SPELLS]
 
 # Class-to-spell map

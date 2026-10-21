@@ -12,7 +12,7 @@ from ...shared import *
 # aliases to h/card/hline, which ARE plain names the wildcard import above
 # already brought in).
 from ...shared import _btn, _pill
-from ...widgets import FlowLayout, FlowContainer, FilterSidebar
+from ...widgets import FlowLayout, FlowContainer, FilterSidebar, InspectButtonDelegate
 from dnd_app.core.actions import _append_cantrip_scaling_note
 from dnd_app.core.character import (
     ability_score, ability_mod, total_level, class_levels, subclasses,
@@ -456,7 +456,7 @@ class SpellsMixin:
         browser_w = QWidget(); brl = QVBoxLayout(browser_w); brl.setContentsMargins(8,8,8,8); brl.setSpacing(6)
         browser_card = _card(); brcl = QVBoxLayout(browser_card); brcl.setContentsMargins(14,12,14,14)
         brcl.addWidget(_lbl("SPELL BROWSER", GOLD, FS_SMALL, bold=True))
-        self._sp_search = QLineEdit(); self._sp_search.setPlaceholderText("Search 435 spells…")
+        self._sp_search = QLineEdit(); self._sp_search.setPlaceholderText("Search spells…")
         self._sp_cls_f  = QComboBox(); self._sp_cls_f.addItem("All Classes")
         for cn in ["Wizard","Cleric","Druid","Bard","Sorcerer","Warlock","Paladin","Ranger","Artificer"]:
             self._sp_cls_f.addItem(cn)
@@ -488,6 +488,8 @@ class SpellsMixin:
         brcl.addWidget(self._sp_homebrew)
         self._sp_browser = QListWidget()  # no height limit — tab gives full space
         self._sp_browser.setStyleSheet(f"QListWidget{{background:{BG};border:1px solid {BORDER};}}QListWidget::item{{padding:6px 10px;border-bottom:1px solid {BORDER};font-size:{FS_BODY}px;}}QListWidget::item:selected{{background:{INDIGO};color:white;}}")
+        # a magnifying glass on every row: the spell's details
+        self._sp_browser.setItemDelegate(InspectButtonDelegate(self._sp_browser, self._show_spell_details))
         self._populate_spell_browser(); brcl.addWidget(self._sp_browser)
         add_btn = pill_btn("+ Add to My Spells", INDIGO); add_btn.clicked.connect(self._add_spell_from_browser)
         brcl.addWidget(add_btn); brl.addWidget(browser_card, 1)
@@ -854,39 +856,25 @@ class SpellsMixin:
         if hasattr(self, '_action_tabs'):
             self._refresh_action_tabs()
 
+    def _show_spell_details(self, spell: dict):
+        """A browser row's magnifying glass, and its right-click Details."""
+        show_details(self, spell["name"], spell_details_markdown(spell))
+
     def _on_spell_browser_ctx(self, pos):
         """Right-click on spell browser — show full details."""
         item = self._sp_browser.itemAt(pos)
         if not item: return
-        spell_name = item.text().strip()
-        from dnd_app.data.spells import get_spell
-        spell = get_spell(spell_name)
+        # the row's text carries its level and school too ("L3  Fireball
+        # [Evo]"), so the spell comes from the row's data, not its text
+        spell = item.data(Qt.UserRole)
         if not spell: return
-        from PySide6.QtWidgets import QMenu, QDialog, QVBoxLayout, QScrollArea, QWidget, QLabel, QDialogButtonBox
+        from PySide6.QtWidgets import QMenu
         menu = QMenu(self)
-        detail_act = menu.addAction(_icons.icon("features"), f"Details: {spell_name}")
+        detail_act = menu.addAction(_icons.icon("features"), f"Details: {spell['name']}")
         add_act    = menu.addAction(f"+ Add to My Spells")
         action = menu.exec(self._sp_browser.viewport().mapToGlobal(pos))
         if action == detail_act:
-            s = spell
-            lvl_txt = "Cantrip" if s.get("level",0)==0 else f"Level {s['level']}"
-            desc = s.get("desc") or s.get("description","")
-            higher = s.get("higher_levels","") or s.get("higher","")
-            detail = (f"<b>{s['name']}</b> [{lvl_txt} {s.get('school','').title()}]<br>"
-                      f"<i>Cast:</i> {s.get('casting_time',s.get('cast_time','—'))} &nbsp;"
-                      f"<i>Range:</i> {s.get('range','—')} &nbsp;"
-                      f"<i>Duration:</i> {s.get('duration','—')}<br>"
-                      f"<i>Components:</i> {s.get('components','—')}<br><br>"
-                      f"{desc}" + (f"<br><br><i>At Higher Levels:</i> {higher}" if higher else ""))
-            dlg = QDialog(self); dlg.setWindowTitle(s['name']); dlg.setMinimumWidth(520)
-            lay = QVBoxLayout(dlg)
-            lbl = QLabel(detail); lbl.setWordWrap(True)
-            lbl.setStyleSheet("font-size:13px;padding:8px;")
-            sa = QScrollArea(); sa.setWidgetResizable(True)
-            inner = QWidget(); il = QVBoxLayout(inner); il.addWidget(lbl)
-            sa.setWidget(inner); lay.addWidget(sa)
-            bb = QDialogButtonBox(QDialogButtonBox.Close)
-            bb.rejected.connect(dlg.reject); lay.addWidget(bb); dlg.exec()
+            self._show_spell_details(spell)
         elif action == add_act:
             self._add_spell_from_browser()
 

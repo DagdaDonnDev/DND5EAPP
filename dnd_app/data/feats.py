@@ -392,7 +392,7 @@ ALL_FEATS = [
                  "range. You also gain a random flaw (Aberrant Dragonmark Flaws table, d8)."),
 
     # ── Astral Adventurer's Guide ─────────────────────────────────────────────
-    feat('Scion of the Outer Planes', 'AAG', prereq='Planescape Campaign',
+    feat('Scion of the Outer Planes', 'SatO', prereq='Planescape Campaign',
          special="Choose a plane type (Chaotic/Evil/Good/Lawful Outer Plane, or the Outlands). "
                  "Gain resistance to a fixed damage type and a fixed cantrip per the Planar "
                  "Infusion table: Chaotic = poison/minor illusion, Evil = necrotic/chill touch, "

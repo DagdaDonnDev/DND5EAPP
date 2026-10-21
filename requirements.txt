@@ -1,2 +1,7 @@
-PySide6>=6.5.0
+# PySide6 6.12.0 on Python 3.11 or older loses a reference to None on every
+# QPainter call, until Python stops with "deallocating None". The app paints
+# its own icons, bars and list rows, so that build crashes after a while.
+# Python 3.12 and newer aren't affected (None can't be freed there).
+PySide6>=6.5.0,!=6.12.0; python_version < "3.12"
+PySide6>=6.5.0; python_version >= "3.12"
 pypdf>=4.0.0

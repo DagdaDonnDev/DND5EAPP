@@ -1180,6 +1180,14 @@ class CombatMixin:
         from dnd_app.core.character import class_levels
         from dnd_app.core.calculator import get_turn_blocks
         blocks = get_turn_blocks(self.char)
+        # Greying out the Use button just pressed (it has the focus) makes Qt
+        # pass the focus to the next one down -- greyed out too -- card by
+        # card to the bottom, the list scrolling after it. So take the focus
+        # off it first.
+        from PySide6.QtWidgets import QApplication
+        fw = QApplication.focusWidget()
+        if fw is not None and any(fw in btns for btns in getattr(self, "_bucket_use_btns", {}).values()):
+            fw.clearFocus()
         for bname, chip in self._turn_chips.items():
             limit = self._turn_limit(bname)
             used  = self._turn_counts.get(bname, 0)
@@ -1714,7 +1722,8 @@ class CombatMixin:
         each one's cost (core/attacks.py) -- only what you can pay for right
         now. "It hit" pays for the ticked ones (a slot, ki, a die, once a
         turn...) and sets off what the hit carries (a smite); "Missed" only
-        takes the bonus action ones. The toast says what to roll."""
+        takes the bonus action ones. The toast says what to roll. True once
+        the attack is made."""
         from dnd_app.core.attacks import roll_attack, attack_report, take_attack_options
         from dnd_app.core.ammo import ammo_label, spend_ammo
         from dnd_app.ui_desktop.dialogs.attack import AttackDialog
@@ -1723,7 +1732,7 @@ class CombatMixin:
             if not spend_ammo(self.char, row["ammo"]):
                 QMessageBox.warning(None, "No Ammo",
                                     f"Out of {label.lower()}!\nClick the {label} counter to add more.")
-                return
+                return False
             self._refresh_gear_equipment()
             self._mark_dirty()
         roll = roll_attack(self.char, row)
@@ -1732,12 +1741,12 @@ class CombatMixin:
         report = attack_report(self.char, row, roll, free)
         dlg = AttackDialog(report, self)
         if dlg.exec() != QDialog.Accepted:
-            return
+            return False
         picked, hit = dlg.ticked(), bool(dlg.hit)
         res = self._ask_through(row["name"], lambda a: take_attack_options(
             self.char, row, picked, a, hit=hit, roll=report["roll"]))
         if not res:
-            return
+            return False
         for slot in res.get("slots", []):
             self._mark_turn_used(slot)
         self._apply_turn_state()          # the Sneak Attack chip follows
@@ -1746,6 +1755,7 @@ class CombatMixin:
         if res.get("refresh"):
             self._mark_dirty()
             QTimer.singleShot(0, self.ctrl.refresh)
+        return True
 
     def _refresh_hit_dice(self):
         """Rebuild hit dice spinboxes. Called only from _do_refresh_combat."""

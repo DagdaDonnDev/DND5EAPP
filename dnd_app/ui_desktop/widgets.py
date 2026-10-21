@@ -2,6 +2,8 @@
 
 - FlowLayout / FlowContainer: wrap chips onto new rows (badge strips).
 - RarityBarDelegate: a magic item's rarity as a coloured bar beside it.
+- InspectButtonDelegate / RarityInspectDelegate: a magnifying glass on
+  each row of a browser list that opens the row's details.
 - FilterSidebar: a browser's filters in a panel that slides in from the
   right, opened by a funnel button at the end of the search row.
 (SkillRow, StatBox, HPTracker and the like are built directly into
@@ -128,24 +130,216 @@ class RarityBarDelegate(QStyledItemDelegate):
     drawn as normal, with the same indent so names line up."""
 
     def paint(self, painter, option, index):
-        from PySide6.QtGui import QColor
-        colour = index.data(RARITY_ROLE)
-        bar = QRect(option.rect.left() + 2, option.rect.top() + 3,
-                    RARITY_BAR_WIDTH, max(4, option.rect.height() - 6))
+        super().paint(painter, self.indented(option), index)
+        self.paint_bar(painter, option, index)
+
+    @staticmethod
+    def indented(option):
+        """The row's option moved right, past the bar."""
         shifted = QStyleOptionViewItem(option)
         shifted.rect = option.rect.adjusted(RARITY_BAR_WIDTH + 6, 0, 0, 0)
-        super().paint(painter, shifted, index)
-        if colour:
-            painter.save()
-            painter.setRenderHint(painter.RenderHint.Antialiasing)
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(QColor(colour))
-            painter.drawRoundedRect(bar, 2, 2)
-            painter.restore()
+        return shifted
+
+    @staticmethod
+    def paint_bar(painter, option, index):
+        from PySide6.QtGui import QColor
+        colour = index.data(RARITY_ROLE)
+        if not colour:
+            return
+        bar = QRect(option.rect.left() + 2, option.rect.top() + 3,
+                    RARITY_BAR_WIDTH, max(4, option.rect.height() - 6))
+        painter.save()
+        painter.setRenderHint(painter.RenderHint.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(colour))
+        painter.drawRoundedRect(bar, 2, 2)
+        painter.restore()
 
     def sizeHint(self, option, index):
         s = super().sizeHint(option, index)
         return QSize(s.width() + RARITY_BAR_WIDTH + 6, s.height())
+
+
+_inspect_pixmaps = {}   # (colour, size, device pixel ratio) -> QPixmap
+
+
+class InspectButtonDelegate(QStyledItemDelegate):
+    """A magnifying glass at the right end of each row of a browser list:
+    the same 28x24 Details button an owned item has in the inventory.
+    Pressing it calls on_inspect with the row's Qt.UserRole data (the
+    spell, the item's name); the rest of the row still selects,
+    double-clicks and right-clicks as before. The button is painted rather
+    than a QPushButton per row, so a list of a thousand magic items still
+    filters quickly.
+
+    column -- in a tree, the narrow column the button goes in (give the
+      delegate to that column alone); the row's data is still read from
+      column 0. A list has just the one.
+    has_details(data) -- whether a row gets a button; by default any row
+      with data, so headings (no data) have none.
+    selected_icon -- the icon's colour on a selected row: the view's own
+      selected-text colour, since the accent can vanish on the highlight."""
+
+    BTN_W, BTN_H, ICON = 28, 24, 18
+    RARITY_BAR = False   # RarityInspectDelegate: RarityBarDelegate's bar on the left too
+
+    def __init__(self, view, on_inspect, selected_icon="white", column=0, has_details=None):
+        from PySide6.QtCore import QPersistentModelIndex
+        super().__init__(view)
+        self._view = view
+        self._on_inspect = on_inspect
+        self._selected_icon = selected_icon
+        self._column = column
+        self._has_details = has_details or (lambda data: data is not None)
+        self._hot = QPersistentModelIndex()       # the button the mouse is over
+        self._pressed = QPersistentModelIndex()   # the button pressed
+        view.setMouseTracking(True)
+        view.viewport().installEventFilter(self)
+
+    def _has_button(self, index) -> bool:
+        return (index.isValid() and index.column() == self._column
+                and self._has_details(index.siblingAtColumn(0).data(Qt.UserRole)))
+
+    def _button_rect(self, rect) -> QRect:
+        # the row's right edge as seen: a row can run past the viewport
+        right = min(rect.right(), self._view.viewport().rect().right())
+        return QRect(right - self.BTN_W - 3, rect.top() + (rect.height() - self.BTN_H) // 2,
+                     self.BTN_W, self.BTN_H)
+
+    def sizeHint(self, option, index):
+        s = super().sizeHint(option, index)
+        return QSize(s.width() + RARITY_BAR_WIDTH + 6, s.height()) if self.RARITY_BAR else s
+
+    def _paint_row(self, painter, option, index, text_end=None):
+        """The row as QStyledItemDelegate.paint draws it (past the rarity
+        bar, and the bar, for RarityInspectDelegate), with its text cut
+        short to end at x = text_end. Done here rather than by overriding
+        initStyleOption, which Qt also calls for every row's size: under
+        PySide6 6.12.0 on Python 3.11 or older (see requirements.txt) each
+        of those calls loses a reference to None, and a thousand-row list
+        used them up within seconds."""
+        opt = RarityBarDelegate.indented(option) if self.RARITY_BAR else QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        if text_end is not None:
+            room = text_end - opt.rect.left() - 10   # 10px: the rows' padding before the text
+            opt.text = opt.fontMetrics.elidedText(opt.text, Qt.ElideRight, room) if room > 0 else ""
+        widget = option.widget
+        (widget.style() if widget else QApplication.style()).drawControl(
+            QStyle.CE_ItemViewItem, opt, painter, widget)
+        if self.RARITY_BAR:
+            RarityBarDelegate.paint_bar(painter, option, index)
+
+    def paint(self, painter, option, index):
+        if not self._has_button(index):
+            self._paint_row(painter, option, index)
+            return
+        from PySide6.QtGui import QColor, QPainter
+        from PySide6.QtCore import QRectF
+        from dnd_app.ui_desktop import icons as _icons
+        from dnd_app.ui_desktop.style import theme as _theme
+        btn = self._button_rect(option.rect)
+        split = btn.left() - 4
+        r = option.rect
+        # The row is drawn whole twice -- the same rounded background,
+        # selection and lines both times, so it stays one piece -- once
+        # left of the button with its text (shortened to end before it),
+        # once under the button with no text.
+        for clip, text_end in ((QRect(r.left(), r.top(), split - r.left(), r.height()), split - 4),
+                               (QRect(split, r.top(), r.right() - split + 1, r.height()), 0)):
+            painter.save()
+            painter.setClipRect(clip, Qt.IntersectClip)
+            self._paint_row(painter, option, index, text_end)
+            painter.restore()
+
+        selected = bool(option.state & QStyle.State_Selected)
+        if self._hot.isValid() and self._hot == index:
+            edge = self._selected_icon if selected else _theme.INDIGO
+            painter.save()
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setPen(QColor(edge))
+            painter.setBrush(QColor(qa(QColor(edge).name(), 0x33)))
+            painter.drawRoundedRect(QRectF(btn).adjusted(0.5, 0.5, -0.5, -0.5), 5, 5)
+            painter.restore()
+        size = _icons.scaled(self.ICON)
+        colour = self._selected_icon if selected else _icons.accent()
+        key = (colour, size, _icons._dpr())
+        pm = _inspect_pixmaps.get(key)
+        if pm is None:
+            pm = _inspect_pixmaps[key] = _icons.pixmap("search", size, colour)
+        painter.drawPixmap(btn.left() + (btn.width() - size) // 2,
+                           btn.top() + (btn.height() - size) // 2, pm)
+
+    def helpEvent(self, event, view, option, index):
+        from PySide6.QtCore import QEvent
+        if (event.type() == QEvent.ToolTip and self._has_button(index)
+                and self._button_rect(option.rect).contains(event.pos())):
+            QToolTip.showText(event.globalPos(), "Details", view)
+            return True
+        return super().helpEvent(event, view, option, index)
+
+    def _button_at(self, pos):
+        """The button cell under pos, or an invalid index."""
+        from PySide6.QtCore import QModelIndex
+        index = self._view.indexAt(pos)
+        cell = index.siblingAtColumn(self._column) if index.isValid() else QModelIndex()
+        if self._has_button(cell) and self._button_rect(self._view.visualRect(cell)).contains(pos):
+            return cell
+        return QModelIndex()
+
+    def _set_hot(self, cell):
+        from PySide6.QtCore import QPersistentModelIndex
+        if self._hot == cell:
+            return
+        for old_or_new in (self._hot, cell):
+            if old_or_new.isValid():
+                self._view.viewport().update(self._view.visualRect(old_or_new))
+        self._hot = QPersistentModelIndex(cell)
+        if cell.isValid():
+            self._view.viewport().setCursor(Qt.PointingHandCursor)
+        else:
+            self._view.viewport().unsetCursor()
+
+    def _refresh_hot(self):
+        from PySide6.QtGui import QCursor
+        from PySide6.QtCore import QModelIndex
+        vp = self._view.viewport()
+        pos = vp.mapFromGlobal(QCursor.pos())
+        self._set_hot(self._button_at(pos) if vp.rect().contains(pos) else QModelIndex())
+
+    def eventFilter(self, obj, ev):
+        from PySide6.QtCore import QEvent, QTimer, QModelIndex, QPersistentModelIndex
+        t = ev.type()
+        if t == QEvent.MouseMove:
+            self._set_hot(self._button_at(ev.position().toPoint()))
+        elif t == QEvent.Leave:
+            self._set_hot(QModelIndex())
+        elif t == QEvent.Wheel:
+            # the rows move under a mouse that stays put
+            QTimer.singleShot(0, self, self._refresh_hot)
+        elif (t in (QEvent.MouseButtonPress, QEvent.MouseButtonDblClick, QEvent.MouseButtonRelease)
+                and ev.button() == Qt.LeftButton):
+            # presses on the button are its own: the row isn't selected, or
+            # added by a double-click
+            cell = self._button_at(ev.position().toPoint())
+            if t == QEvent.MouseButtonRelease:
+                pressed, self._pressed = self._pressed, QPersistentModelIndex()
+                if pressed.isValid() and pressed == cell:
+                    data = cell.siblingAtColumn(0).data(Qt.UserRole)
+                    # once the click is over, not from inside the view's mouse handling
+                    QTimer.singleShot(0, self, lambda: self._on_inspect(data))
+                return pressed.isValid() or cell.isValid()
+            if cell.isValid():
+                # a double-click's second press only swallowed: one window
+                first = t == QEvent.MouseButtonPress and not self._pressed.isValid()
+                self._pressed = QPersistentModelIndex(cell) if first else QPersistentModelIndex()
+                return True
+        return False
+
+
+class RarityInspectDelegate(InspectButtonDelegate):
+    """The magic item browser's rows: the rarity bar on the left and the
+    magnifying glass on the right."""
+    RARITY_BAR = True
 
 
 class FilterSidebar(QFrame):
@@ -251,9 +445,11 @@ class FilterSidebar(QFrame):
         combo.setMinimumContentsLength(8)
         combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         combo.view().setMinimumWidth(combo.view().sizeHintForColumn(0) + 24)
-        combo.setVisible(True)
         rl.addWidget(combo)
         self._body.addWidget(row)
+        # only once it's in the panel: shown while it had no parent, it
+        # would flash up on screen as a little window of its own
+        combo.setVisible(True)
         self._combos.append((row, combo))
         combo.currentIndexChanged.connect(lambda _i: self._update_badge())
         self._update_badge()

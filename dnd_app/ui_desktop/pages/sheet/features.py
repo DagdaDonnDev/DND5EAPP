@@ -912,13 +912,25 @@ class FeaturesMixin:
             # _tip". Fall back to the item's own text so right-click always
             # has something to display, for every feature row without
             # exception, while leaving the hover-tooltip behavior alone.
-            def _show_detail_menu(ev, _item=item, _tip=(tip or item), _raw=raw_no_paren, _row=row):
+            # The details: the name, then what it does -- once. With nothing
+            # looked up, a "Name: what it does" row (a background's feature)
+            # splits at its colon; heading and text both being the whole row
+            # showed it twice.
+            if tip:
+                detail_name, detail_body = raw_no_paren, tip
+            elif before_colon and len(before_colon) <= 60:
+                detail_name, detail_body = before_colon, after_colon
+            elif len(raw_no_paren) <= 60:
+                detail_name, detail_body = raw_no_paren, ""
+            else:
+                detail_name, detail_body = "Details", raw
+            def _show_detail_menu(ev, _name=detail_name, _body=detail_body, _row=row):
                 from PySide6.QtWidgets import QMenu
                 menu = QMenu(_row)
-                act = menu.addAction(_icons.icon("features"), f"Show Details: {_raw[:40]}")
+                act = menu.addAction(_icons.icon("features"), f"Show Details: {_name[:40]}")
                 act.triggered.connect(lambda: QMessageBox.information(
-                    _row, _raw,
-                    f"<b>{_raw}</b><br><br>{_tip}",
+                    _row, _name,
+                    f"<b>{_name}</b>" + (f"<br><br>{_body}" if _body else ""),
                 ))
                 menu.exec(ev.globalPos())
             row.mousePressEvent = lambda ev, f=_show_detail_menu: (

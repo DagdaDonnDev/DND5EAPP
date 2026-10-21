@@ -432,7 +432,7 @@ ALL_BACKGROUNDS = [
        feature="Dual Persona",
        feature_desc='You have a well-established alter ego. While using your persona, you have advantage on Charisma (Deception) checks to conceal your true identity. If your persona is publicly known, you can leverage its reputation in social situations — for good or ill. People who know your true identity can spoil the act.',
        equipment="Disguise kit, costume, 10 gp",
-       source="BG:DiA"),
+       source="BGDiA"),
 
     bg("Marine",
        skills=["Athletics", "Survival"],

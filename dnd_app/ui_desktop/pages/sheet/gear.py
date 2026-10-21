@@ -12,7 +12,8 @@ from ...shared import *
 # aliases to h/card/hline, which ARE plain names the wildcard import above
 # already brought in).
 from ...shared import _btn, _pill
-from ...widgets import FlowLayout, FlowContainer, RarityBarDelegate, RARITY_ROLE, FilterSidebar
+from ...widgets import (FlowLayout, FlowContainer, RarityBarDelegate, InspectButtonDelegate,
+                        RarityInspectDelegate, RARITY_ROLE, FilterSidebar)
 from dnd_app.core.character import (
     ability_score, ability_mod, total_level, class_levels, subclasses,
     long_rest, short_rest, add_class
@@ -225,7 +226,8 @@ class GearMixin:
         mdt.addLayout(self._md_filters.search_row(self._md_search))
 
         self._md_list = QTreeWidget()
-        self._md_list.setHeaderLabels(["Name","Category","Damage / AC","Weight","Cost"])
+        # the last column is the magnifying glass
+        self._md_list.setHeaderLabels(["Name","Category","Damage / AC","Weight","Cost",""])
         self._md_list.setAlternatingRowColors(True)
         self._md_list.setRootIsDecorated(True)
         self._md_list.setStyleSheet(
@@ -241,13 +243,25 @@ class GearMixin:
         for col, w in [(1, 120), (2, 104), (3, 60), (4, 64)]:
             md_hdr.setSectionResizeMode(col, QHeaderView.Interactive)
             self._md_list.setColumnWidth(col, w)
+        md_hdr.setMinimumSectionSize(32)
+        md_hdr.setSectionResizeMode(5, QHeaderView.Fixed)
+        self._md_list.setColumnWidth(5, 32)
         # the list is already grouped under category headings, so a
-        # Category column only took width from the names
+        # Category column only took width from the names; and an item's
+        # weight is on its details (the magnifying glass) and in your
+        # inventory, so the names get that width too
         self._md_list.setColumnHidden(1, True)
+        self._md_list.setColumnHidden(3, True)
         self._md_list.header().setStyleSheet(
             f"QHeaderView::section{{background:{SURF2};color:{GOLD2};font-weight:700;"
             f"font-size:{FS_SMALL}px;padding:6px;border:1px solid {BORDER};}}")
+        # a magnifying glass on each item's row (not the category headings)
+        self._md_list.setItemDelegateForColumn(5, InspectButtonDelegate(
+            self._md_list, self._show_item_details_for, selected_icon="#0a0d12", column=5,
+            has_details=lambda name: bool(name) and name != "__section__"))
         self._md_list.itemDoubleClicked.connect(self._add_mundane_from_browser)
+        self._md_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._md_list.customContextMenuRequested.connect(self._on_mundane_browser_ctx)
         mdt.addWidget(self._md_list,1)
         add_selected = pill_btn("Add Selected to Inventory", TEAL)
         _icons.set_button_icon(add_selected, "arrow_left", 16, color="white")
@@ -292,9 +306,13 @@ class GearMixin:
         self._mi_browser.setAlternatingRowColors(True)
         self._mi_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         # rarity shown as a coloured bar on the left of each row (text stays
-        # the normal text colour -- easier to read)
-        self._mi_browser.setItemDelegate(RarityBarDelegate(self._mi_browser))
+        # the normal text colour -- easier to read), and a magnifying glass
+        # on the right for the item's details
+        self._mi_browser.setItemDelegate(RarityInspectDelegate(
+            self._mi_browser, self._show_item_details_for, selected_icon="#15071f"))
         self._mi_browser.itemDoubleClicked.connect(lambda item: self._add_magic_item_by_name(item.data(Qt.UserRole)))
+        self._mi_browser.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._mi_browser.customContextMenuRequested.connect(self._on_magic_browser_ctx)
         mgt.addWidget(self._mi_browser,1)
 
         mi_add_btn = pill_btn("Add Selected to Inventory", INDIGO)
@@ -443,6 +461,21 @@ class GearMixin:
                 self._md_list.addTopLevelItem(parent)
                 parent.setExpanded(True)
 
+    def _on_mundane_browser_ctx(self, pos):
+        """Right-click on an item in the Equipment browser: its details, or add it."""
+        item = self._md_list.itemAt(pos)
+        name = item.data(0, Qt.UserRole) if item else None
+        if not name or name == "__section__": return
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        detail_act = menu.addAction(_icons.icon("features"), f"Details: {name[:36]}")
+        add_act = menu.addAction(_icons.icon("arrow_left"), "Add to Inventory")
+        action = menu.exec(self._md_list.viewport().mapToGlobal(pos))
+        if action == detail_act:
+            self._show_item_details_for(name)
+        elif action == add_act:
+            self._add_mundane_from_browser(item, 0)
+
     def _add_mundane_from_browser(self, item, col=None):
         if not item: return
         name = item.data(0, Qt.UserRole) if hasattr(item,'data') else item
@@ -580,6 +613,34 @@ class GearMixin:
         name = current.data(Qt.UserRole)
         if not name: return
         self._add_magic_item_by_name(name)
+
+    def _on_magic_browser_ctx(self, pos):
+        """Right-click on a magic item in the browser: its details, or add it."""
+        item = self._mi_browser.itemAt(pos)
+        name = item.data(Qt.UserRole) if item else None
+        if not name: return
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        detail_act = menu.addAction(_icons.icon("features"), f"Details: {name[:36]}")
+        add_act = menu.addAction(_icons.icon("arrow_left"), "Add to Inventory")
+        action = menu.exec(self._mi_browser.viewport().mapToGlobal(pos))
+        if action == detail_act:
+            self._show_item_details_for(name)
+        elif action == add_act:
+            self._add_magic_item_by_name(name)
+
+    def _show_item_details_for(self, name: str, studied: bool = False, tip: str = ""):
+        """An item's magnifying glass (the browsers, the inventory, owned
+        magic items) and its Details: the page Android's View button opens
+        (core/item_details.py). Something with no rules entry -- a custom
+        item, a weapon made +1 here -- shows its row's tooltip instead."""
+        from dnd_app.core.item_details import item_detail
+        detail = item_detail(self.char, name)
+        if detail["subtitle"] == "Item" and tip:
+            self._show_item_details(name, tip)
+            return
+        show_details(self, detail["name"], item_details_markdown(
+            detail, "*Studied -- its magic is spent.*" if studied else ""))
 
     def _open_enchant_dialog(self, kind: str, bonus: int):
         """
@@ -911,7 +972,8 @@ class GearMixin:
 
             # View (magnifying glass) and remove (trash) -- cols 4 and 5
             view = self._row_icon_btn("search", "Details", INDIGO)
-            view.clicked.connect(lambda checked=False, n=name, t=tip: self._show_item_details(n, t))
+            view.clicked.connect(lambda checked=False, n=name, t=tip, s=bool(entry.get("studied")):
+                                 self._show_item_details_for(n, s, t))
             self._magic_items_tree.setItemWidget(item, 4, view)
             rm = self._row_icon_btn("trash", "Remove", CRIMSON)
             rm.clicked.connect(lambda checked=False, u=uid: self._remove_magic_item(u))
@@ -934,7 +996,8 @@ class GearMixin:
             from PySide6.QtWidgets import QMenu
             menu = QMenu(self._magic_items_tree)
             act = menu.addAction(_icons.icon("features"), f"Details: {_name[:36]}")
-            act.triggered.connect(lambda: QMessageBox.information(self, _name, _tip))
+            act.triggered.connect(lambda: self._show_item_details_for(
+                _name, bool(_entry.get("studied")), _tip))
             if can_study_manual(_entry):
                 study_act = menu.addAction(_icons.icon("magic"), f"Study {_name[:36]} (48 hrs over 6 days)")
                 study_act.triggered.connect(lambda checked=False, u=_uid: self._study_manual(u))
@@ -1289,7 +1352,7 @@ class GearMixin:
             # View (magnifying glass) and remove (trash) -- cols 5 and 6
             view = self._row_icon_btn("search", "Details", INDIGO)
             view.clicked.connect(lambda checked=False, n=name, it=item:
-                                 self._show_item_details(n, it.toolTip(0)))
+                                 self._show_item_details_for(n, tip=it.toolTip(0)))
             self._gear_equip_tree.setItemWidget(item, 5, view)
             rm = self._row_icon_btn("trash", "Remove", CRIMSON)
             rm.clicked.connect(lambda checked=False, n=name: self._remove_equipment(n))
@@ -1322,7 +1385,7 @@ class GearMixin:
                 tip = (f"<b>{_name}</b><br><i>{_eq.get('rarity','')} "
                        f"{_eq.get('type','')}</i><br><br>{self._format_multi_para(_eq.get('desc',''))}")
                 act = menu.addAction(_icons.icon("features"), f"Details: {_name[:36]}")
-                act.triggered.connect(lambda: QMessageBox.information(self, _name, tip))
+                act.triggered.connect(lambda: self._show_item_details_for(_name, tip=tip))
             # "Infuse this item" — only for weapons/armor/shields, only
             # if the character actually knows an applicable Artificer
             # infusion and hasn't hit the active-infusion cap. Most

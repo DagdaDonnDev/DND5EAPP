@@ -451,6 +451,99 @@ def _spell_tooltip(spell: dict) -> str:
     return "\n".join(parts)
 
 
+def details_markdown(text: str) -> str:
+    """A description (a spell's, a magic item's) as Markdown for
+    show_details(). Its own line breaks stay -- Markdown runs single lines
+    together, so a list of "• ..." lines would come out as one line -- and
+    a table gets the blank line before it that Markdown needs."""
+    lines = (text or "").replace("\r", "").split("\n")
+    out = []
+    for i, line in enumerate(lines):
+        line = line.rstrip()
+        is_row = line.lstrip("> ").startswith("|")
+        prev = out[-1] if out else ""
+        if is_row and prev.strip(" >") and not prev.lstrip("> ").startswith(("|", "#")):
+            out.append(">" if line.startswith(">") else "")
+        nxt = lines[i + 1].strip() if i + 1 < len(lines) else ""
+        if line and nxt and not is_row and not nxt.lstrip("> ").startswith("|"):
+            line += "  "    # Markdown's line break
+        out.append(line)
+    return "\n".join(out)
+
+
+def spell_details_markdown(spell: dict) -> str:
+    """A spell for show_details(): what kind of spell it is, how it's
+    cast, then what it does."""
+    lvl = spell.get("level", 0)
+    kind = ["Cantrip" if lvl == 0 else f"Level {lvl}", spell.get("school", "").title()]
+    kind += [tag for tag, on in (("Ritual", spell.get("ritual")),
+                                 ("Concentration", spell.get("concentration"))) if on]
+    facts = [("Casting time", spell.get("casting_time", spell.get("cast_time", ""))),
+             ("Range", spell.get("range", "")), ("Duration", spell.get("duration", "")),
+             ("Components", spell.get("components", ""))]
+    parts = [f"### {spell.get('name', 'Spell')}", "*" + " · ".join(k for k in kind if k) + "*",
+             "  \n".join(f"**{k}:** {v}" for k, v in facts if v),
+             details_markdown(spell.get("desc", ""))]
+    higher = spell.get("higher_levels") or spell.get("higher")
+    if higher:
+        parts.append(f"**At higher levels:** {details_markdown(higher)}")
+    if spell.get("source"):
+        parts.append(f"*Source: {spell['source']}*")
+    return "\n\n".join(p for p in parts if p)
+
+
+def item_details_markdown(detail: dict, extra: str = "") -> str:
+    """An item for show_details(), from core/item_details.py item_detail():
+    what kind of item it is, its facts a line each, then its description --
+    the same page Android's View button opens. `extra` goes before the
+    description (an owned manual's "Studied")."""
+    kind = detail.get("subtitle", "")
+    if detail.get("rarity") and kind == "Magic item":
+        kind = f"{detail['rarity']} magic item"
+    parts = [f"### {detail.get('name', '')}", f"*{kind}*" if kind else "",
+             "  \n".join(detail.get("facts") or []), extra,
+             details_markdown(detail.get("desc", ""))]
+    return "\n\n".join(p for p in parts if p)
+
+
+def show_details(parent, title: str, markdown: str):
+    """The window a magnifying glass or a Details menu entry opens: the
+    whole text, its tables, lists and line breaks as written, scrolling
+    when it's long. It belongs to the top-level window rather than the row
+    it was opened from, so that row's own style sheet doesn't reach it."""
+    from PySide6.QtGui import QTextDocument, QTextCursor
+    win = parent.window() if parent is not None else None
+    dlg = QDialog(win)
+    dlg.setWindowTitle(title)
+    lay = QVBoxLayout(dlg)
+    view = QTextBrowser()
+    view.setOpenLinks(False)   # a few item notes carry links; nothing to open here
+    lay.addWidget(view)
+    buttons = QDialogButtonBox(QDialogButtonBox.Close)
+    buttons.rejected.connect(dlg.reject)
+    lay.addWidget(buttons)
+    dlg.ensurePolished(); view.ensurePolished()   # the theme's font, before measuring
+    doc = view.document()
+    doc.setMarkdown(markdown, QTextDocument.MarkdownDialectGitHub | QTextDocument.MarkdownNoHTML)
+    # a little space after each paragraph (Markdown's come out run together),
+    # less between list items; table cells as they are
+    block = doc.begin()
+    while block.isValid():
+        cur = QTextCursor(block)
+        if cur.currentTable() is None:
+            fmt = block.blockFormat()
+            fmt.setBottomMargin(2 if block.textList() else 8)
+            cur.setBlockFormat(fmt)
+        block = block.next()
+    # as tall as the text needs, up to most of the screen
+    width = 580
+    doc.setTextWidth(width - 80)
+    screen = (win.screen() if win is not None else QApplication.primaryScreen()).availableGeometry()
+    height = int(doc.size().height()) + 130
+    dlg.resize(width, max(240, min(height, int(screen.height() * 0.8))))
+    dlg.exec()
+
+
 class SpellRow(QFrame):
     """One row in the spell list."""
     remove           = Signal(object)
@@ -547,6 +640,16 @@ class SpellRow(QFrame):
         self.setToolTip(tip)
         for w in (lvl_pill, self._prep_cb, detail_lbl):
             w.setToolTip(tip)
+
+        # Magnifying glass: the spell's details (right-click has them too)
+        view = QPushButton(); view.setFixedSize(28, 28)
+        view.setToolTip("Details"); view.setAccessibleName(f"Details of {spell.get('name', 'spell')}")
+        _icons.set_button_icon(view, "search", 17)
+        view.setStyleSheet(f"QPushButton{{background:transparent;border:1px solid transparent;border-radius:6px;"
+                           f"min-height:0;padding:0;}}"
+                           f"QPushButton:hover{{background:{qa(INDIGO,0x33)};border-color:{INDIGO};}}")
+        view.clicked.connect(lambda: show_details(self, self.spell["name"], spell_details_markdown(self.spell)))
+        lay.addWidget(view)
 
         # Star: pin to Quick Spells on Combat tab
         self._pinned = False
@@ -645,26 +748,7 @@ class SpellRow(QFrame):
         if action is None:   # dismissed (and skipped entries above are None too)
             return
         if action == detail_act:
-            from PySide6.QtWidgets import QMessageBox, QDialog, QVBoxLayout, QLabel, QScrollArea, QWidget
-            s = self.spell
-            lvl_txt = "Cantrip" if s.get("level",0)==0 else f"Level {s.get('level','?')}"
-            desc = s.get("desc") or s.get("description","")
-            higher = s.get("higher_levels","") or s.get("higher","")
-            detail = (f"<b>{s['name']}</b>  [{lvl_txt} {s.get('school','').title()}]<br>"
-                      f"<i>Casting Time:</i> {s.get('casting_time',s.get('cast_time','—'))}<br>"
-                      f"<i>Range:</i> {s.get('range','—')}  &nbsp; <i>Duration:</i> {s.get('duration','—')}<br>"
-                      f"<i>Components:</i> {s.get('components','—')}<br><br>"
-                      f"{desc}<br><br>" + (f"<i>At Higher Levels:</i> {higher}" if higher else ""))
-            dlg = QDialog(); dlg.setWindowTitle(s['name']); dlg.setMinimumWidth(500)
-            lay = QVBoxLayout(dlg)
-            lbl = QLabel(detail); lbl.setWordWrap(True); lbl.setOpenExternalLinks(False)
-            lbl.setStyleSheet("font-size:13px;padding:8px;")
-            sa = QScrollArea(); sa.setWidgetResizable(True)
-            inner = QWidget(); il = QVBoxLayout(inner); il.addWidget(lbl)
-            sa.setWidget(inner); lay.addWidget(sa)
-            from PySide6.QtWidgets import QDialogButtonBox
-            bb = QDialogButtonBox(QDialogButtonBox.Close); bb.rejected.connect(dlg.reject)
-            lay.addWidget(bb); dlg.exec()
+            show_details(self, self.spell["name"], spell_details_markdown(self.spell))
         elif action == cast_act:  self.cast.emit(self.spell)
         elif ritual_act is not None and action == ritual_act: self.cast_ritual.emit(self.spell)
         elif action == prep_act: self._prep_cb.setChecked(not self._prep_cb.isChecked())
