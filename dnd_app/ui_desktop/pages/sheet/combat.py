@@ -1035,35 +1035,21 @@ class CombatMixin:
             self._concentration_save_prompt(res["concentration_dc"])
 
     def _concentration_save_prompt(self, dc: int):
-        """Took damage while concentrating: enter the d20, the CON save
-        bonus is added, and the spell drops on a miss."""
+        """Took damage while concentrating: the CON save against the DC
+        (core/checks.py, the same on Android) -- with what always applies
+        on it (Bless, War Caster's reminder, Bladesong...), and when it's
+        under the DC, what you can add (Lucky, Flash of Genius...) in the
+        roll dialog. Under the DC after that, the spell drops."""
         conc_spell = self.char.get("concentration", {}).get("spell")
         if not conc_spell:
             return
-        roll, ok = QInputDialog.getInt(
-            self, "Concentration Save",
-            f"Concentrating on {conc_spell} — DC {dc}. Enter your d20 roll "
-            f"(modifier applied automatically):",
-            10, 1, 30,
-        )
-        if not ok:
-            return
         from dnd_app.core.calculator import get_saving_throw_bonus
-        total = roll + get_saving_throw_bonus(self.char, "CON")
-        if total >= dc:
-            QMessageBox.information(
-                self, "Concentration",
-                f"Maintained on {conc_spell}.\n{roll} + modifier = {total} vs DC {dc}",
-            )
-            return
-        drop_concentration(self.char)
-        self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
-        QMessageBox.warning(
-            self, "Concentration Broken",
-            f"Failed ({total} vs DC {dc}). Dropped {conc_spell}.",
-        )
+        self._roll_check({"kind": "concentration", "ability": "CON", "skill": "",
+                          "label": f"Concentration ({conc_spell})", "bonus": get_saving_throw_bonus(self.char, "CON"),
+                          "dc": dc, "spell": conc_spell})
+        if not self.char.get("concentration", {}).get("spell"):
+            self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
         self._refresh_concentration()
-        self._toast("Your focus shatters like cheap glass.")
         self._mark_dirty()
 
     def _roll_initiative(self):
@@ -1283,6 +1269,9 @@ class CombatMixin:
         why = effect_start_problem(self.char, name)   # Rage in heavy armor
         if why:
             self._toast(f"{name}: {why}".replace(" -- ", " — "))
+            return
+        if name in self.char.get("active_effects", []):
+            self._toast(f"{name} is already on you")
             return
         self.char.setdefault("active_effects", []).append(name)
         note = on_effect_started(self.char, name)       # Rage ends concentration
@@ -1717,16 +1706,27 @@ class CombatMixin:
         self._weapon_row_widgets.append(row_f)
 
     def _attack(self, row):
-        """Hit on any attack row: a shot uses one piece of its ammunition,
-        then the roll, what to roll if it hits and what you can add, with
-        each one's cost (core/attacks.py) -- only what you can pay for right
+        """Hit on any attack row: what you'd decide before the d20 asked
+        first (Inspiration, Tides of Chaos, a Portent roll), a shot uses
+        one piece of its ammunition, then the roll, what you can add to it
+        (an Add pays for it and rolls it now: Precision Attack, Lucky...),
+        what to roll if it hits and what you can add to the hit, with each
+        one's cost (core/attacks.py) -- only what you can pay for right
         now. "It hit" pays for the ticked ones (a slot, ki, a die, once a
         turn...) and sets off what the hit carries (a smite); "Missed" only
         takes the bonus action ones. The toast says what to roll. True once
         the attack is made."""
-        from dnd_app.core.attacks import roll_attack, attack_report, take_attack_options
+        from dnd_app.core.attacks import (attack_before, roll_attack, attack_report, add_to_attack,
+                                          take_attack_options)
         from dnd_app.core.ammo import ammo_label, spend_ammo
         from dnd_app.ui_desktop.dialogs.attack import AttackDialog
+
+        def free():
+            return [b for b in ("Action", "Bonus Action", "Reaction")
+                    if self._turn_counts.get(b, 0) < self._turn_limit(b)]
+        pre = self._ask_through(row["name"], lambda a: attack_before(self.char, row, a, free()))
+        if pre is None:
+            return False
         if row.get("ammo"):
             label = ammo_label(row["ammo"])
             if not spend_ammo(self.char, row["ammo"]):
@@ -1735,16 +1735,36 @@ class CombatMixin:
                 return False
             self._refresh_gear_equipment()
             self._mark_dirty()
-        roll = roll_attack(self.char, row)
-        free = [b for b in ("Action", "Bonus Action", "Reaction")
-                if self._turn_counts.get(b, 0) < self._turn_limit(b)]
-        report = attack_report(self.char, row, roll, free)
-        dlg = AttackDialog(report, self)
+        now = {"roll": roll_attack(self.char, row, before=pre.get("before", ""), free=free())}
+        now["added"] = bool(now["roll"]["state"]["spent"])     # Inspiration spent before the roll
+        for slot in now["roll"]["state"]["slots"]:            # Cosmic Omen's reaction
+            self._mark_turn_used(slot)
+        if now["added"]:
+            self._mark_dirty()
+
+        def add(key):
+            # an Add on the roll: paid for and rolled now, the dialog shows it
+            res = self._ask_through(row["name"], lambda a: add_to_attack(self.char, row, now["roll"], key, a,
+                                                                        free()))
+            if not res:
+                return None
+            if not res.get("ok"):
+                if res.get("toast"):
+                    self._toast(res["toast"])
+                return None
+            now["roll"], now["added"] = res["roll"], True
+            for slot in res.get("slots", []):
+                self._mark_turn_used(slot)
+            self._mark_dirty()
+            return attack_report(self.char, row, now["roll"], free())
+        dlg = AttackDialog(attack_report(self.char, row, now["roll"], free()), self, on_add=add)
         if dlg.exec() != QDialog.Accepted:
+            if now["added"]:
+                QTimer.singleShot(0, self.ctrl.refresh)
             return False
         picked, hit = dlg.ticked(), bool(dlg.hit)
         res = self._ask_through(row["name"], lambda a: take_attack_options(
-            self.char, row, picked, a, hit=hit, roll=report["roll"]))
+            self.char, row, picked, a, hit=hit, roll=now["roll"]))
         if not res:
             return False
         for slot in res.get("slots", []):
@@ -1752,7 +1772,7 @@ class CombatMixin:
         self._apply_turn_state()          # the Sneak Attack chip follows
         if res.get("toast"):
             self._toast(res["toast"])
-        if res.get("refresh"):
+        if res.get("refresh") or now["added"]:
             self._mark_dirty()
             QTimer.singleShot(0, self.ctrl.refresh)
         return True

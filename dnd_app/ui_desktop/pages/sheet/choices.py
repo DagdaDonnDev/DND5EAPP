@@ -89,7 +89,8 @@ class ChoicesMixin:
             self._mark_dirty()
 
     def _edit_identity(self, slot: str):
-        """Edit a character identity field (race/subrace/ancestry/background)."""
+        """Edit a character identity field (race/subrace/ancestry/background/
+        alignment)."""
         from dnd_app.core.builder import rebuild
         from dnd_app.core.calculator import update_all
         if slot == "race":
@@ -176,6 +177,21 @@ class ChoicesMixin:
                         if feat_name not in feats:
                             feats.append(feat_name)
                 self._mark_dirty()
+
+        elif slot == "alignment":
+            from .base import ALIGNMENTS
+            cur = self.char.get("alignment", "")
+            name, ok = QInputDialog.getItem(self, "Edit Alignment", "Alignment:", ALIGNMENTS,
+                                            ALIGNMENTS.index(cur) if cur in ALIGNMENTS else 0, False)
+            if ok and name and name != cur:
+                from dnd_app.core.builder import change_alignment
+                msg = change_alignment(self.char, name)   # Divinely Favored's spell follows it
+                self.ctrl.refresh()
+                self._refresh_stat_bar()
+                self._rebuild_features()
+                self._mark_dirty()
+                if msg:
+                    self._toast(msg.replace(" -- ", " — "))
 
     def _populate_subclass_combo(self):
         """Rebuild subclass combo boxes in the choices tab class card."""
@@ -378,6 +394,7 @@ class ChoicesMixin:
             ("Subrace",    "subrace",    TEAL),
             ("Ancestry",   "ancestry",   GOLD),
             ("Background", "background", AMBER),
+            ("Alignment",  "alignment",  INDIGO),
         ]:
             b = _btn(f"✎  {label}", color, variant="chip", height=28, font_size=FS_TINY)
             b.clicked.connect(lambda checked=False, s=slot: self._edit_identity(s))
@@ -550,6 +567,7 @@ class ChoicesMixin:
             "subrace": self.char.get("subrace", ""),
             "ancestry": self.char.get("draconic_ancestry", ""),
             "background": self.char.get("background", ""),
+            "alignment": self.char.get("alignment", ""),
         }
         for slot, label in getattr(self, "_identity_btn_labels", {}).items():
             btn = self._identity_btns.get(slot)

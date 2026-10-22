@@ -8,13 +8,26 @@ weapons), and what happens when you press its attack button.
     attack_rows(char) -> [row]           every attack you can roll, in the
                                          Combat screens' order (the Attack
                                          action's choice)
-    roll_attack(char, row) -> roll       the d20, with advantage or
-                                         disadvantage from conditions
+    attack_before(char, row, answers, free)
+                                         what you'd decide before the d20
+                                         (Inspiration, Tides of Chaos, a
+                                         Portent roll), asked first
+    roll_attack(char, row, rng, before)  the d20 and what always applies
+                                         to it (core/checks.py); advantage
+                                         and disadvantage from conditions
+                                         are a reminder
     attack_report(char, row, roll, free) what to show after the roll: the
-                                         total and what it hits, what to
-                                         roll if it hits with what's on
-                                         now, and what you can add -- only
+                                         total and what it hits, what you
+                                         can add to the roll now (Precision
+                                         Attack, Lucky, Favored by the Gods
+                                         once it misses...), what to roll
+                                         if it hits with what's on now, and
+                                         what you can add to the hit -- only
                                          the ones you can pay for now
+    add_to_attack(char, row, roll, key, answers, free)
+                                         one of the roll's Add buttons:
+                                         paid for and rolled now; the new
+                                         roll
     take_attack_options(char, row, picked, answers, hit, roll)
                                          "It hit": pays for the ones
                                          ticked (a slot, ki, a die, once a
@@ -466,23 +479,81 @@ def crit_range(char: dict) -> int:
     return 20
 
 
-def roll_attack(char: dict, row: dict, rng=None) -> dict:
-    """The d20 for an attack with this row -- always one: advantage and
-    disadvantage are the table's call (cover, the target, your DM), so
-    what the sheet knows of them (Reckless Attack, Steady Aim, Poisoned,
-    exhaustion...) is a reminder in the note. Steady Aim is for one attack
+def _attack_what(char, row) -> dict:
+    """The attack as core/checks.py rolls it."""
+    return {"kind": "attack", "label": row.get("name", ""), "bonus": row.get("atk") or 0,
+            "ability": row.get("stat") or "", "skill": "",
+            "row": {"name": row.get("name", ""), "kind": row.get("kind", ""), "base": row.get("base", ""),
+                    "melee": bool(row.get("melee")), "ranged": bool(row.get("ranged"))},
+            "extra_adv": ["Reckless Attack"] if row.get("reckless") else []}
+
+
+def attack_before(char: dict, row: dict, answers=None, free=("Action", "Bonus Action", "Reaction")) -> dict:
+    """What you'd decide before the d20 -- spend your Inspiration or Tides
+    of Chaos for advantage, use a Portent roll -- asked first, the same
+    question protocol as core/action_use.py. {"ok": True, "before": the
+    answer, for roll_attack} once answered, or when there's nothing to
+    ask."""
+    from dnd_app.core.checks import before_question
+    answers = answers if answers is not None else {}
+    ask = before_question(char, _attack_what(char, row), list(free))
+    if ask and "before" not in answers:
+        return {"ok": False, "ask": ask}
+    return {"ok": True, "before": answers.get("before", "")}
+
+
+def roll_attack(char: dict, row: dict, rng=None, before="", free=("Action", "Bonus Action", "Reaction")) -> dict:
+    """The d20 for an attack with this row -- one d20, or two with
+    advantage you spent something on (attack_before): the advantage and
+    disadvantage the sheet knows of (Reckless Attack, Steady Aim, Poisoned,
+    exhaustion...) are the table's call, so they're a reminder in the note.
+    What always applies is on it (a halfling's 1 rolled again, Trance of
+    Order, Bless and Bane: core/checks.py). Steady Aim is for one attack
     roll, so this roll uses it up.
-    {"d20", "rolls", "mode", "note", "total", "crit", "nat20", "nat1"}"""
-    from dnd_app.core.calculator import roll_d20, roll_reminder
-    reminder = roll_reminder(char, "attack", extra_adv=["Reckless Attack"] if row.get("reckless") else [])
-    r = roll_d20("normal", rng)
+    {"d20", "rolls", "mode", "note", "extra", "line", "total", "crit",
+    "nat20", "nat1", "hits", "state", "what"} -- hits: what made it hit
+    outright (Stroke of Luck), or ""; state and what: for add_to_attack."""
+    from dnd_app.core.checks import attack_state
+    w = _attack_what(char, row)
+    state = attack_state(char, w, before, free, rng)
     fx = char.get("active_effects", [])
     if "Steady Aim" in fx:
         char["active_effects"] = [n for n in fx if n != "Steady Aim"]
-    atk = row.get("atk") or 0
-    return {"d20": r["d20"], "rolls": r["rolls"], "mode": r["mode"], "note": reminder["text"],
-            "total": r["d20"] + atk, "crit": r["d20"] >= crit_range(char), "nat20": r["d20"] == 20,
-            "nat1": r["d20"] == 1}
+    return _roll_result(char, w, state)
+
+
+def _roll_result(char, w, state) -> dict:
+    """The roll as the attack dialog and take_attack_options read it: a
+    critical hit on the natural d20 (Trance of Order's 10 doesn't make a
+    9 one); a natural 1 is a 1 that stayed one."""
+    from dnd_app.core.checks import roll_line
+    natural = 20 if state.get("set20") else state["raw"]
+    d20 = state["d20"]
+    extra = ([(p["source"], p.get("value", 0) * p.get("sign", 1)) for p in state["auto"]]
+             + [(p["source"], p["value"]) for p in state["flat"]])
+    note = "\n".join(x for x in (*state["notes"], state.get("reminder", "")) if x)
+    return {"d20": d20, "rolls": list(state["dice"]),
+            "mode": "advantage" if state.get("adv") and len(state["dice"]) > 1 else "normal",
+            "note": note, "extra": extra, "line": roll_line(w, state), "total": state["total"],
+            "crit": natural >= crit_range(char) and d20 != 1, "nat20": natural == 20, "nat1": d20 == 1,
+            "hits": state.get("succeed") or "", "state": state, "what": w}
+
+
+def add_to_attack(char: dict, row: dict, roll: dict, key: str, answers=None,
+                  free=("Action", "Bonus Action", "Reaction"), rng=None) -> dict:
+    """An Add in the roll's part of the attack dialog: it's paid for (a
+    superiority die, a luck point, your reaction...) and rolled now --
+    asking first if it needs to (how many ki) -- and "roll" is the roll as
+    it stands, for attack_report. {"ok", "roll", "slots", "refresh"}, or
+    {"ask"} / {"ok": False, "toast"}."""
+    import random
+    from dnd_app.core.checks import add_option, copy_state
+    w = dict(roll["what"])
+    state = copy_state(roll["state"])
+    res = add_option(char, w, state, key, answers if answers is not None else {}, list(free), rng or random)
+    if not res.get("ok"):
+        return res
+    return {"ok": True, "roll": _roll_result(char, w, state), "slots": res["slots"], "refresh": True}
 
 
 def _resource(char, key):
@@ -524,6 +595,8 @@ def _can_pay(char, r, free) -> bool:
                 sd = au._find_pool(char, "sd")
                 if sd is None or (not au._unlimited(sd) and sd.get("current", 0) < 1):
                     return False
+                if not au.on_hit_maneuvers(char):
+                    return False                # only ones for the roll or a reaction
                 continue
             if card == "Divine Smite":
                 if not any(s[1] == "slot" and s[2] <= 5 for s in au._slots_free(char)):
@@ -719,13 +792,20 @@ def attack_report(char: dict, row: dict, roll: dict, free=("Action", "Bonus Acti
                   critical hit adds; dice already doubled on a crit
         attacks   "The Attack action gives you 2 attacks.", or ""
         options   [{"key", "title", "dice", "cost", "group", "needs",
-                  "section", "head", "head_note"}] -- section "add": what
-                  you can add to this hit; "also": what your bonus action
-                  can do. Options in a group are one choice (Divine
-                  Smite's slot); "needs" only counts with its group picked
-                  (undead or fiend); "head"/"head_note" start a block
-                  (Divine Smite). Only what you can pay for right now.
-        sections  [{"name", "title"}] -- the ones with options, in order
+                  "section", "head", "head_note", "now"}] -- section
+                  "roll": what you can add to the roll; "miss": what you'd
+                  add once you know it missed (Favored by the Gods); both
+                  "now": its Add pays and rolls it there and then
+                  (add_to_attack), so the total shows what it hits before
+                  you say. Section "add": what you can add to this hit;
+                  "also": what your bonus action can do -- ticked, and
+                  paid for with "It hit". Options in a group are one
+                  choice (Divine Smite's slot); "needs" only counts with
+                  its group picked (undead or fiend); "head"/"head_note"
+                  start a block (Divine Smite). Only what you can pay for
+                  right now.
+        sections  [{"name", "title", "now"}] -- the ones with options, in
+                  order: the roll's own first
         hit_button / miss_button  the two buttons' words ("" = no button):
                   "It hit" and "Missed"; a natural 1 has no "It hit", a
                   critical hit has "Cancel" in place of "Missed"
@@ -735,13 +815,19 @@ def attack_report(char: dict, row: dict, roll: dict, free=("Action", "Bonus Acti
     (char["_turn_spells"])."""
     from dnd_app.core.multiclass import get_extra_attacks
     from dnd_app.core.calculator import class_levels, subclasses
+    from dnd_app.core.checks import roll_options
     atk = row.get("atk") or 0
     nat1 = roll["nat1"]
     crit = bool(roll["crit"]) and not nat1
+    hits = roll.get("hits") or ""
     twice = _double if crit else str
     riders = row.get("riders", [])
     hit = [] if nat1 else _hit_lines(row, crit, roll.get("nat20", False))
     options = []
+    # what you can add to the roll, now: a critical hit needs nothing more
+    if roll.get("state") and not crit and not hits:
+        for o in roll_options(char, roll["what"], roll["state"], free):
+            options.append(dict(o, section="roll" if o["section"] == "add" else "miss", now=True))
     if not nat1:
         # what you can add, with its cost -- only what you can pay for now
         offered = {r.get("group") for r in riders if r.get("use") == "option" and _can_pay(char, r, free)}
@@ -778,15 +864,20 @@ def attack_report(char: dict, row: dict, roll: dict, free=("Action", "Bonus Acti
     for key, title, what, sub, pay, said in _followups(char, row, free):
         options.append({"key": key, "title": title, "dice": what, "cost": sub,
                         "group": "", "needs": "", "section": "also", "head": "", "head_note": ""})
-    sections = [{"name": n, "title": t} for n, t in (("add", "ADD TO THIS HIT"), ("also", "WITH YOUR BONUS ACTION"))
+    sections = [{"name": n, "title": t, "now": n in ("roll", "miss")}
+                for n, t in (("roll", "ADD TO THE ROLL"), ("miss", "IF IT MISSES"), ("add", "ADD TO THIS HIT"),
+                             ("also", "WITH YOUR BONUS ACTION"))
                 if any(o["section"] == n for o in options)]
     n = get_extra_attacks(class_levels(char), subclasses(char), char)
     attacks = f"The Attack action gives you {n} attacks." if n > 1 else ""
     mod = "" if not atk else f" + {atk}" if atk > 0 else f" − {-atk}"
+    mod += "".join(f" {'+' if v >= 0 else '−'} {abs(v)} ({src})" for src, v in roll.get("extra") or [])
     rinfo = {"total": roll["total"], "d20": roll["d20"], "mod": _mod_text(atk), "note": roll.get("note", ""),
-             "crit": crit, "nat1": nat1, "nat20": bool(roll.get("nat20")), "line": f"Rolled {roll['d20']}{mod}",
+             "crit": crit, "nat1": nat1, "nat20": bool(roll.get("nat20")),
+             "line": roll.get("line") or f"Rolled {roll['d20']}{mod}",
              "verdict": ("A natural 1 always misses" if nat1 else
                          "A critical hit: it hits, and the damage dice are doubled" if crit else
+                         f"It hits ({hits})" if hits else
                          f"Hits AC {roll['total']} or lower")}
     # the same, as plain text
     lines = [f"{rinfo['line']} = {roll['total']} to hit. {rinfo['verdict']}."]
@@ -822,6 +913,22 @@ def _spell_goes_off(char, r) -> str:
     return name
 
 
+def _miss_notes(char, row) -> list:
+    """What a miss gives you: Stalker's Flurry's attack (once a turn), the
+    2024 Studied Attacks' advantage."""
+    from dnd_app.core.calculator import class_levels, subclasses
+    cl, subs, two = class_levels(char), subclasses(char), char.get("edition") == "2024"
+    out = []
+    if not two and row.get("kind") != "spell" and cl.get("Ranger", 0) >= 11 \
+            and "gloom stalker" in subs.get("Ranger", "").lower() and "Stalker's Flurry" not in char.get("_turn_uses", []):
+        char.setdefault("_turn_uses", []).append("Stalker's Flurry")
+        out.append("Stalker's Flurry: make another weapon attack as part of the same action")
+    if two and cl.get("Fighter", 0) >= 13:
+        out.append("Studied Attacks: you have advantage on your next attack roll against that creature before the "
+                   "end of your next turn")
+    return out
+
+
 def take_attack_options(char: dict, row: dict, picked, answers: dict, hit: bool = True,
                         roll=None) -> dict:
     """After the attack: "It hit" (hit=True) or "Missed".
@@ -833,10 +940,13 @@ def take_attack_options(char: dict, row: dict, picked, answers: dict, hit: bool 
                else happens.
       Missed   only what you do with your bonus action, and a spell that
                goes off either way (Lightning Arrow).
-    roll: the report's roll ({"crit", "nat20"}): on a critical hit the
-    dice to roll are doubled. Same question protocol as
-    core/action_use.py; `answers` keeps what's been paid between rounds
-    (nothing is paid twice)."""
+    roll: the roll (roll_attack's, or add_to_attack's once something was
+    added to it) or the report's ({"crit", "nat20"}): on a critical hit the
+    dice to roll are doubled; what the roll itself spent is in the toast,
+    and what's paid only if it hits (Homing Strikes) is paid now if it
+    did. A miss says what it gives you (Stalker's Flurry's attack). Same
+    question protocol as core/action_use.py; `answers` keeps what's been
+    paid between rounds (nothing is paid twice)."""
     from dnd_app.core import action_use as au
     picked = list(picked)
     crit, nat20 = bool((roll or {}).get("crit")), bool((roll or {}).get("nat20"))
@@ -846,6 +956,18 @@ def take_attack_options(char: dict, row: dict, picked, answers: dict, hit: bool 
     follow = {f[0]: f for f in _followups(char, row, ("Action", "Bonus Action", "Reaction"))}
     rolls, spent, notes, said, slots = [], [], [], [], []
     refresh = False
+    # 0. what the roll itself spent, and what's paid only if it hit
+    if (roll or {}).get("state") is not None and "_roll:done" not in answers:
+        from dnd_app.core.checks import copy_state, pay_pending
+        st = copy_state(roll["state"])
+        had = bool(st["pending"])
+        pay_pending(char, roll.get("what") or {"kind": "attack"}, st, hit)
+        answers["_roll:done"] = {"spent": list(st["spent"]), "paid": had,
+                                 "notes": [n for n in st["notes"] if n not in roll["state"]["notes"]]}
+    got_roll = answers.get("_roll:done") or {"spent": [], "notes": [], "paid": False}
+    spent.extend(got_roll["spent"])
+    notes.extend(got_roll["notes"])
+    refresh = refresh or bool(got_roll["paid"] or got_roll["spent"])
 
     def result(ask=None):
         return {"ok": ask is None, "toast": "" if ask else _toast(),
@@ -1015,6 +1137,10 @@ def take_attack_options(char: dict, row: dict, picked, answers: dict, hit: bool 
                 # once a turn: done until New Turn
                 char.setdefault("_turn_uses", []).append(r["source"])
                 refresh = True
+        if not hit:
+            missed = _miss_notes(char, row)
+            refresh = refresh or bool(missed)
+            lines += missed
         answers["_hit:done"] = lines
     notes.extend(answers["_hit:done"])
     return result()

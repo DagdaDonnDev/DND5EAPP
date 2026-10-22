@@ -428,6 +428,10 @@ R("Glide", say="glide up to your walking speed horizontally, taking no damage fr
 R("Hadozee Dodge", uses="PB/LR", roll="1d6+PB", damage=True, say="roll {roll} and take that much off the damage")
 R("Relentless Endurance", uses="1/LR", slot=False, needs="down", hp1=True, say="you drop to 1 hit point instead")
 R("Lucky Footwork", roll="1d4", say="add {roll} to the failed DEX save")
+R("Emboldening Bond", uses="PB/LR", fx="Emboldening Bond", say="for 10 minutes the bonded creatures (you can be "
+  "one) can each add a d4 to an attack roll, check or save once a turn, while within 30 ft of another")
+R("Kenku Recall", uses="PB/LR", slot=False, say="advantage on the check (a skill you're proficient in), taken "
+  "before you roll")
 R("Eerie Token", uses="1/LR", say="your token is imbued until your next long rest: within 10 miles of it, your "
   "action can send a 25-word telepathic message to whoever holds it, or let you see and hear through it for up "
   "to 1 minute (then it's destroyed)")
@@ -641,7 +645,7 @@ R("Cloud Rune", uses="RUNE/SR", say="the attack hits a different creature of you
   "instead, with the same roll")
 R("Stone Rune", uses="RUNE/SR", say="the creature makes a DC {DC_CON} WIS save or is charmed for 1 minute: speed 0 "
   "and incapacitated (it saves again at the end of each of its turns)")
-R("Frost Rune", uses="RUNE/SR", say="+2 to STR and CON checks and saves for 10 minutes")
+R("Frost Rune", uses="RUNE/SR", fx="Frost Rune", say="+2 to STR and CON checks and saves for 10 minutes")
 R("Hill Rune", uses="RUNE/SR", say="resistance to bludgeoning, piercing and slashing damage for 1 minute")
 R("Storm Rune", uses="RUNE/SR", say="for 1 minute, your reaction can give advantage or disadvantage to a roll "
   "within 60 ft")
@@ -886,6 +890,18 @@ def _level(char):
 
 def _numeric(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+# The maneuvers used on the hit itself (the attack dialog's Maneuver): a
+# reaction or bonus action one (Riposte, Feinting Attack...) is its own
+# card, and Precision Attack goes on the roll (core/checks.py)
+_ON_HIT_MANEUVERS = ("Disarming Attack", "Distracting Strike", "Goading Attack", "Lunging Attack",
+                     "Maneuvering Attack", "Menacing Attack", "Pushing Attack", "Sweeping Attack", "Trip Attack")
+
+
+def on_hit_maneuvers(char) -> list:
+    known = [m.split(" –")[0].split(" (")[0].strip() for m in char.get("battle_master_maneuvers", []) or []]
+    return [m for m in known if m in _ON_HIT_MANEUVERS]
 
 
 def _find_pool(char, pool):
@@ -1442,11 +1458,12 @@ SLOT_COSTS = {1: 2, 2: 3, 3: 5, 4: 6, 5: 7}     # Flexible Casting: sorcery poin
 
 def _free_cast_spells(char, source):
     """The spells a feat or trait lets you cast for free ("Misty Step"
-    for Fey Touched): its own free-cast counters (core/spellcasting.py),
-    or the counter of the same name that casts them (Draconic Healing's
-    Cure Wounds)."""
-    from dnd_app.core.spellcasting import free_spells_of
-    out = []
+    for Fey Touched): the ones it casts at will (Drow High Magic's Detect
+    Magic), its own free-cast counters (core/spellcasting.py), or the
+    counter of the same name that casts them (Draconic Healing's Cure
+    Wounds)."""
+    from dnd_app.core.spellcasting import free_spells_of, at_will_feat_spells
+    out = at_will_feat_spells(char, source)
     for r in char.get("resources", []):
         name = str(r.get("name", ""))
         m = re.match(r"^(.+) \((.+)\)$", name)
@@ -1486,13 +1503,7 @@ def _more_specials(char, key, display, bucket, answers, rng, desc):
         return use_action(char, bucket, pick, "", rest, rng)
     # a Battle Master maneuver on a hit (the attack dialog's option): which one
     if key == "maneuver":
-        known = [m.split(" –")[0].split(" (")[0].strip() for m in char.get("battle_master_maneuvers", []) or []]
-        # the ones used on the attack itself; a reaction or bonus action
-        # maneuver (Riposte, Feinting Attack...) is its own card
-        on_hit = [m for m in known if m in ("Disarming Attack", "Distracting Strike", "Goading Attack",
-                                            "Lunging Attack", "Maneuvering Attack", "Menacing Attack",
-                                            "Pushing Attack", "Sweeping Attack", "Trip Attack",
-                                            "Precision Attack")]
+        on_hit = on_hit_maneuvers(char)
         if not on_hit:
             return None
         if answers.get("maneuver") not in on_hit:

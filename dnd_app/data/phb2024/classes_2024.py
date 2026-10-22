@@ -704,11 +704,11 @@ ALL_CLASSES_2024 = [
             17: ["Subclass Feature","Cunning Strike: Knock Out (6 dice; Unconscious)","Sneak Attack (9d6)"],
             18: ["Elusive (attackers never gain Adv on you while conscious)","Sneak Attack (9d6)"],
             19: ["Epic Boon Feat","Sneak Attack (10d6)"],
-            20: ["Stroke of Luck (1/LR: fail → success; Sneak Attack (10d6))"],
+            20: ["Stroke of Luck (1/SR: fail → success; Sneak Attack (10d6))"],
         },
         subclasses=['Arcane Trickster', 'Assassin', 'Phantom', 'Scion of the Three', 'Soulknife', 'Thief'],
         resources=[
-            dict(name="Stroke of Luck", key="stroke_luck", formula="1", reset="LR", track="uses",
+            dict(name="Stroke of Luck", key="stroke_luck", formula="1", reset="SR/LR", track="uses",
                  available_at=20),
         ],
         level_choices={

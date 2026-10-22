@@ -950,7 +950,7 @@ ALL_CLASSES = [
             "Thief – Fast Hands; Second-Story Work; Supreme Sneak",
         ],
         resources=[
-            dict(name="Stroke of Luck", key="stroke_luck", formula="1", reset="LR", track="uses",
+            dict(name="Stroke of Luck", key="stroke_luck", formula="1", reset="SR/LR", track="uses",
                  available_at=20),
         ],
         level_choices={

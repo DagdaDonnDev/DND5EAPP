@@ -1331,9 +1331,9 @@ def racial_spells(char: dict) -> list[str]:
 
 
 # Spells a feat gives you outright: {feat: [fixed spells]}, plus the
-# _choices keys holding the ones you pick (filled in by the level-up
-# panel's feat choosers). Each leveled one can be cast once per long
-# rest without a slot -- see core/spellcasting.py.
+# _choices keys holding the ones you pick (core/choices.py asks for them)
+# and the ones a pick decides (FEAT_PICKED_SPELLS). How each can be cast
+# for free is core/spellcasting.py's.
 FEAT_FIXED_SPELLS = {
     "Fey Touched": ["Misty Step"],
     "Shadow Touched": ["Invisibility"],
@@ -1342,7 +1342,10 @@ FEAT_FIXED_SPELLS = {
     "Fey Teleportation": ["Misty Step"],
     "Outlands Envoy": ["Misty Step", "Tongues"],
     "Mystic Conflux": ["Identify"],
-    "Field Medic": ["Cure Wounds"],
+    "Field Medic": ["Cure Wounds", "Spare the Dying"],
+    "Rune Shaper": ["Comprehend Languages"],
+    "Cartomancer": ["Prestidigitation"],
+    "Strixhaven Mascot": ["Find Familiar"],
     "Wood Elf Magic": ["Longstrider", "Pass without Trace"],
     "Drow High Magic": ["Detect Magic", "Levitate", "Dispel Magic"],
     "Svirfneblin Magic": ["Nondetection", "Blindness/Deafness", "Blur", "Disguise Self"],
@@ -1356,7 +1359,64 @@ FEAT_CHOSEN_SPELL_KEYS = {
     "Shadow Touched": ["feat_shadow_touched_spell"],
     "Magic Initiate": ["feat_magic_initiate_cantrips", "feat_magic_initiate_spell"],
     "Spell Sniper": ["feat_spell_sniper_cantrip"],
+    "Artificer Initiate": ["feat_artificer_initiate_cantrip", "feat_artificer_initiate_spell"],
+    "Aberrant Dragonmark": ["feat_aberrant_dragonmark_cantrip", "feat_aberrant_dragonmark_spell"],
+    "Wood Elf Magic": ["feat_wood_elf_magic_cantrip"],
+    "Divinely Favored": ["feat_divinely_favored_cantrip", "feat_divinely_favored_spell"],
+    "Strixhaven Initiate": ["feat_strixhaven_initiate_cantrips", "feat_strixhaven_initiate_spell"],
+    "Initiate of High Sorcery": ["feat_initiate_of_high_sorcery_cantrip",
+                                 "feat_initiate_of_high_sorcery_spells"],
+    "Adept of the Black Robes": ["feat_adept_of_the_black_robes_spell"],
+    "Adept of the Red Robes": ["feat_adept_of_the_red_robes_spell"],
+    "Adept of the White Robes": ["feat_adept_of_the_white_robes_spell"],
+    "Rune Shaper": ["feat_rune_shaper_runes"],
 }
+
+# Spells a feat gives by what you picked for it: {feat: (_choices key,
+# {pick: [spells]})} -- a Scion of the Outer Planes' cantrip is its plane's
+FEAT_PICKED_SPELLS = {
+    "Scion of the Outer Planes": ("feat_scion_plane_type", {
+        "Chaotic Outer Plane": ["Minor Illusion"], "Evil Outer Plane": ["Chill Touch"],
+        "Good Outer Plane": ["Sacred Flame"], "Lawful Outer Plane": ["Guidance"],
+        "The Outlands": ["Mage Hand"]}),
+}
+
+# What the feats that let you choose pick from (docs/reference/feats-sublist.md)
+# Strixhaven Initiate: each college's cantrips (two of them) and the class
+# lists its 1st-level spell can come from
+STRIXHAVEN_COLLEGES = {
+    "Lorehold": (("Light", "Sacred Flame", "Thaumaturgy"), ("Cleric", "Wizard")),
+    "Prismari": (("Fire Bolt", "Prestidigitation", "Ray of Frost"), ("Bard", "Sorcerer")),
+    "Quandrix": (("Druidcraft", "Guidance", "Mage Hand"), ("Druid", "Wizard")),
+    "Silverquill": (("Sacred Flame", "Thaumaturgy", "Vicious Mockery"), ("Bard", "Cleric")),
+    "Witherbloom": (("Chill Touch", "Druidcraft", "Spare the Dying"), ("Druid", "Wizard")),
+}
+# Initiate of High Sorcery: each moon's 1st-level spells (two of them)
+HIGH_SORCERY_MOONS = {
+    "Nuitari": ("Dissonant Whispers", "False Life", "Hex", "Ray of Sickness"),
+    "Lunitari": ("Color Spray", "Disguise Self", "Feather Fall", "Longstrider"),
+    "Solinari": ("Comprehend Languages", "Detect Evil and Good", "Protection from Evil and Good", "Shield"),
+}
+# The Adept of the Robes feats: the schools their 2nd-level spell comes from
+ROBES_SCHOOLS = {
+    "Adept of the Black Robes": ("Enchantment", "Necromancy"),
+    "Adept of the Red Robes": ("Illusion", "Transmutation"),
+    "Adept of the White Robes": ("Abjuration", "Divination"),
+}
+# Rune Shaper: each rune and the spell it gives
+RUNE_SHAPER_RUNES = {
+    "Cloud": "Fog Cloud", "Death": "Inflict Wounds", "Dragon": "Chromatic Orb",
+    "Enemy": "Disguise Self", "Fire": "Burning Hands", "Friend": "Speak with Animals",
+    "Frost": "Armor of Agathys", "Hill": "Goodberry", "Journey": "Longstrider",
+    "King": "Command", "Mountain": "Entangle", "Stone": "Sanctuary", "Storm": "Thunderwave",
+}
+
+
+def divinely_favored_list(char: dict) -> str:
+    """The class list Divinely Favored's 1st-level spell comes from: your
+    alignment's -- warlock if evil, cleric if good, druid if neutral."""
+    alignment = (char.get("alignment") or "").lower()
+    return "Warlock" if "evil" in alignment else "Cleric" if "good" in alignment else "Druid"
 
 # The ability a feat casts its spells with (docs/reference/feats-sublist.md):
 #   an ability           "WIS"
@@ -1413,6 +1473,10 @@ def feat_spells(char: dict, feat: str) -> list[str]:
     out = list(FEAT_FIXED_SPELLS.get(feat, []))
     for key in FEAT_CHOSEN_SPELL_KEYS.get(feat, []):
         out.extend(sp for sp in choices.get(key, []) if sp not in out)
+    if feat in FEAT_PICKED_SPELLS:
+        key, by_pick = FEAT_PICKED_SPELLS[feat]
+        for pick in choices.get(key, []):
+            out.extend(sp for sp in by_pick.get(pick, []) if sp not in out)
     return out
 
 

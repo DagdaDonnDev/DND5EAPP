@@ -198,7 +198,9 @@ def spell_preparing_classes(char: dict, spell: dict) -> list:
     if not mine:
         return []
     sp_classes = set(spell.get("classes", []))
-    if spell.get("name") in get_mark_expanded_spells(char):
+    # a Mark's Spells of the Mark, and Forest Sage's two spells, count as
+    # your own class's
+    if spell.get("name") in get_mark_expanded_spells(char) or spell.get("name") in char.get("forest_sage_spells", []):
         return mine
     return [c for c in mine if c in sp_classes]
 
@@ -252,6 +254,9 @@ def can_ritual_cast(char: dict, spell: dict) -> bool:
         chosen = char.get("_choices", {}).get("feat_ritual_caster_spells", [])
         if name in chosen:
             return True
+    # Strixhaven Mascot: find familiar, as a ritual
+    if name == "Find Familiar" and "Strixhaven Mascot" in char.get("feats", []):
+        return True
     if "Warlock" in my_classes:
         invocations = char.get("eldritch_invocations", [])
         if any("Book of Ancient Secrets" in inv for inv in invocations):
@@ -326,24 +331,54 @@ def get_initiative(char: dict) -> int:
     if has_alert:
         bonus += pb if ed == "2024" else 5
 
-    # Bard Lv2+ Jack of All Trades: add half-pb to initiative (Xanathar's p.6)
-    bard_lvl = class_levels(char).get("Bard", 0)
-    if bard_lvl >= 2:
-        bonus += pb // 2
+    cl, subs = class_levels(char), subclasses(char)
+    pb_in = has_alert and ed == "2024"
 
     # Aura of the Sentinel (Paladin, Oath of the Watchers, 7th level):
     # +proficiency bonus to initiative for yourself (and allies within
     # range, which isn't tracked here — see resistance/movement pattern).
-    pal_lvl = class_levels(char).get("Paladin", 0)
-    if pal_lvl >= 7 and "watchers" in subclasses(char).get("Paladin", "").lower():
+    pal_lvl = cl.get("Paladin", 0)
+    if pal_lvl >= 7 and "watchers" in subs.get("Paladin", "").lower():
         bonus += pb
+        pb_in = True
 
     # Hare-Trigger (Harengon): +proficiency bonus to initiative.
     race_init = char.get("species") or char.get("race", "")
     if race_init == "Harengon":
         bonus += pb
+        pb_in = True
+
+    # Initiative is a DEX check: half your proficiency bonus when nothing
+    # above adds it -- Jack of All Trades (Bard 2, rounded down) or
+    # Remarkable Athlete (Champion 7, rounded up); they don't stack
+    bonus += 0 if pb_in else _half_proficiency(char, "DEX")
+
+    # A bonus you can give yourself (always worth it): Dread Ambusher
+    # (Gloom Stalker 3, WIS), Rakish Audacity (Swashbuckler 3, CHA),
+    # Tactical Wit (War Magic 2, INT), Temporal Awareness (Chronurgy 2, INT)
+    if cl.get("Ranger", 0) >= 3 and "gloom stalker" in subs.get("Ranger", "").lower():
+        bonus += ability_mod(char, "WIS")
+    if cl.get("Rogue", 0) >= 3 and "swashbuckler" in subs.get("Rogue", "").lower():
+        bonus += ability_mod(char, "CHA")
+    if cl.get("Wizard", 0) >= 2 and any(w in subs.get("Wizard", "").lower() for w in ("war magic", "chronurgy")):
+        bonus += ability_mod(char, "INT")
+
+    # what adds to every ability check (Stone of Good Luck)
+    bonus += char.get("magic_check_bonus", 0)
 
     return dex + bonus
+
+
+def _half_proficiency(char: dict, ability: str) -> int:
+    """Half your proficiency bonus on a check that doesn't add it: Jack of
+    All Trades (Bard 2: any check, rounded down), Remarkable Athlete
+    (Champion 7: STR, DEX and CON checks, rounded up). They don't stack."""
+    pb, cl = get_prof_bonus(char), class_levels(char)
+    half = pb // 2 if cl.get("Bard", 0) >= 2 else 0
+    if ability in ("STR", "DEX", "CON") and cl.get("Fighter", 0) >= 7 \
+            and "champion" in subclasses(char).get("Fighter", "").lower():
+        half = max(half, (pb + 1) // 2)
+    return half
 
 
 def get_skill_bonus(char: dict, skill: str) -> int:
@@ -367,19 +402,18 @@ def get_skill_bonus(char: dict, skill: str) -> int:
     if astral_skill and skill == astral_skill[0]:
         prof_level = max(prof_level, 2)
     pb = get_prof_bonus(char)
-    cl = class_levels(char)
-
-    # Jack of All Trades: Bard level 2+ gives half prof to non-proficient checks
-    jack = cl.get("Bard", 0) >= 2
-    # College of Lore: Cutting Words doesn't add to skills, but Eloquence does to Persuasion
-    # We handle Glamour/Eloquence via feature_bonuses below
 
     mod += fey_wanderer_check_bonus(char, ability)
+    # Elegant Courtier (Samurai 7): your Wisdom modifier on Persuasion
+    if skill == "Persuasion" and _elegant_courtier(char):
+        mod += ability_mod(char, "WIS")
+    # an item's bonus to every check (Stone of Good Luck) or to this skill
+    # (Gloves of Thievery)
+    mod += char.get("magic_check_bonus", 0) + (char.get("magic_skill_bonus") or {}).get(skill, 0)
     if prof_level == 0:
-        # Check Jack of All Trades
-        if jack:
-            return mod + pb // 2
-        return mod
+        # Jack of All Trades (Bard 2) or Remarkable Athlete (Champion 7,
+        # STR/DEX/CON): half your proficiency bonus
+        return mod + _half_proficiency(char, ability)
     elif prof_level == 1:
         return mod + pb // 2
     elif prof_level == 2:
@@ -399,14 +433,18 @@ def fey_wanderer_check_bonus(char: dict, ability: str) -> int:
     return max(1, ability_mod(char, "WIS"))
 
 
+def _elegant_courtier(char: dict) -> bool:
+    return class_levels(char).get("Fighter", 0) >= 7 and "samurai" in subclasses(char).get("Fighter", "").lower()
+
+
 def ability_check_bonus(char: dict, ability: str) -> int:
-    """A plain ability check (no skill): the ability modifier, plus Jack
-    of All Trades (Bard 2+: half proficiency, as on an untrained skill)
-    and the Fey Wanderer's Wisdom on Charisma checks."""
-    bonus = ability_mod(char, ability) + fey_wanderer_check_bonus(char, ability)
-    if class_levels(char).get("Bard", 0) >= 2:
-        bonus += get_prof_bonus(char) // 2
-    return bonus
+    """A plain ability check (no skill): the ability modifier, plus half
+    your proficiency bonus from Jack of All Trades (Bard 2) or Remarkable
+    Athlete (Champion 7, STR/DEX/CON), the Fey Wanderer's Wisdom on
+    Charisma checks, and an item's bonus to every check (Stone of Good
+    Luck)."""
+    return (ability_mod(char, ability) + fey_wanderer_check_bonus(char, ability)
+            + _half_proficiency(char, ability) + char.get("magic_check_bonus", 0))
 
 
 def get_saving_throw_bonus(char: dict, ability: str) -> int:
@@ -1401,20 +1439,19 @@ def get_superiority_die(char: dict) -> str:
     """Battle Master's superiority die: d8 at 3rd-9th level, d10 at 10th-17th,
     d12 at 18th-20th (PHB p.73). Requires the Battle Master subclass
     specifically — not just any Fighter level, which this incorrectly
-    granted a die to before. Superior Technique (TCE fighting style,
-    available to Fighter/Paladin/Ranger) grants a flat, non-scaling d8
-    independent of class level or subclass."""
-    if any("superior technique" in fs.lower() for fs in char.get("fighting_styles", [])):
-        return "d8"
-    if "Martial Adept" in char.get("feats", []):
-        return "d6"
+    granted a die to before. Without it, the die Martial Adept or the
+    Superior Technique fighting style (TCE) gives is a d6 -- added to a
+    Battle Master's own dice, which keep their size."""
     from .character import subclasses
     lvl = class_levels(char).get("Fighter", 0)
-    if lvl == 0 or "battle master" not in subclasses(char).get("Fighter", "").lower():
-        return "—"
-    if lvl >= 18: return "d12"
-    if lvl >= 10: return "d10"
-    return "d8"
+    if lvl >= 3 and "battle master" in subclasses(char).get("Fighter", "").lower():
+        if lvl >= 18: return "d12"
+        if lvl >= 10: return "d10"
+        return "d8"
+    if "Martial Adept" in char.get("feats", []) or \
+            any("superior technique" in fs.lower() for fs in char.get("fighting_styles", [])):
+        return "d6"
+    return "—"
 
 
 _COMPANION_SPELL_ABILITY = {
@@ -2996,16 +3033,9 @@ def update_all(char: dict) -> dict:
             "turn or until you attack, deal damage, or force a save."),
         "Second Chance": ("Second Chance", 1, "SR/LR",
             "Reaction when a creature hits you with an attack roll: force it to reroll."),
-        "Svirfneblin Magic": ("Svirfneblin Magic", 3, "LR",
-            "Cast blindness/deafness, blur, or disguise self (once each) without a spell slot. "
-            "Nondetection on yourself is separately at-will, not tracked here."),
         "Cartomancer": ("Hidden Ace", 1, "LR",
             "Imbue a card with a spell you have a slot for (casting time 1 action); bonus action to "
             "flourish and cast it (lasts 8 hours if unused)."),
-        "Rune Shaper": ("Rune Shaper (Invoke)", 1, "LR",
-            "Invoke a rune you have inscribed to cast its spell without a spell slot or components."),
-        "Divinely Favored": ("Divinely Favored", 2, "LR",
-            "Cast your chosen 1st-level spell and augury, each once, without a spell slot."),
         "Aberrant Dragonmark": ("Aberrant Dragonmark", 1, "SR/LR",
             "Cast your chosen 1st-level spell through your mark without a spell slot."),
         "Lucky": ("Luck Points", 3, "LR",
@@ -3017,8 +3047,6 @@ def update_all(char: dict) -> dict:
             "Usable only on Metamagic options; stacks with any sorcery points from another source."),
         "Orcish Fury": ("Orcish Fury", 1, "SR/LR",
             "Reroll one damage die on a hit with a simple/martial weapon, adding it as extra damage."),
-        "Outlands Envoy": ("Crossroads Emissary", 2, "LR",
-            "Cast misty step and tongues, each once, without a spell slot."),
         "Planar Wanderer": ("Portal Sense (detect)", 1, "LR",
             "Action: detect any portals within 30 ft. not behind total cover. (Portal Cracker is "
             "per-portal, not a general use-limit, and isn't tracked here.)"),
@@ -3402,12 +3430,6 @@ def update_all(char: dict) -> dict:
             ("dispel_magic", "Dispel Magic (Drow High Magic)", 1, "LR",
              "Cast dispel magic without a spell slot."),
         ],
-        "Initiate of High Sorcery": [
-            ("spell_1", "1st-Level Spell #1 (Initiate of High Sorcery)", 1, "LR",
-             "Cast the first of your two chosen 1st-level spells without a spell slot."),
-            ("spell_2", "1st-Level Spell #2 (Initiate of High Sorcery)", 1, "LR",
-             "Cast the second of your two chosen 1st-level spells without a spell slot."),
-        ],
         "Plantmender": [
             ("vision", "Plant Vision", max(1, 2 * ability_mod(char, "WIS")), "LR",
              "Action: touch a plant/tree to see visions of what happened to it and its vicinity "
@@ -3584,8 +3606,9 @@ def update_all(char: dict) -> dict:
             })
 
     # Free daily casts nothing above tracks -- each leveled racial
-    # spell, and Fey Touched / Shadow Touched's spells -- one counter per
-    # spell. Cast (both apps) spends these before a slot; see
+    # spell, and the spells of the feats whose spells are each free once a
+    # day (Fey Touched, Initiate of High Sorcery, Rune Shaper...) -- one
+    # counter per spell. Cast (both apps) spends these before a slot; see
     # core/spellcasting.py.
     from dnd_app.core.spellcasting import innate_free_cast_resources
     new_resources.extend(innate_free_cast_resources(char, new_resources))

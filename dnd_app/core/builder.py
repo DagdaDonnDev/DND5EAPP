@@ -208,10 +208,12 @@ def full_list_dumped_spell_names(char: dict) -> dict:
     own known-spell pick just because the name happens to also be on that
     known-caster class's list).
     """
-    from dnd_app.data.spells import spells_for_class
+    from dnd_app.data.spells import spells_for_class, get_mark_expanded_spells, get_spell
     from dnd_app.core.multiclass import (get_multiclass_spell_slots,
                                           FULL_CASTERS, HALF_CASTERS, ARTIFICER_CLASSES)
     FULL_LIST_CLASSES = ("Cleric", "Druid", "Paladin", "Artificer")
+    # a dragonmark's Spells of the Mark are on each casting class's list too
+    mark = {n: (get_spell(n) or {}).get("level", 0) for n in get_mark_expanded_spells(char)}
     cl_now = {c.get("class",""): c.get("level",0) for c in char.get("classes", [])}
     out = {}
     for cname in FULL_LIST_CLASSES:
@@ -231,6 +233,7 @@ def full_list_dumped_spell_names(char: dict) -> dict:
                 max_lvl = i + 1
         out[cname] = {sp["name"] for sp in spells_for_class(cname)
                       if sp.get("level", 0) > 0 and sp["level"] <= max_lvl}
+        out[cname] |= {n for n, lvl in mark.items() if 0 < lvl <= max_lvl}
     return out
 
 
@@ -296,6 +299,21 @@ def rebuild(char: dict) -> None:
     if bg_feat and bg_feat not in feats_list:
         feats_list.append(bg_feat)
     char["_auto_bg_feat"] = bg_feat
+
+    # ── Feats the DM granted (the Features tab) ───────────────────────────────
+    # Each is one of your feats, with all its rules. The picks it keeps
+    # ("feat:Name" and its own "asi:CON:1", read with the rest below) are
+    # _choices["dm_feat_<feat>"]; when it asks which ability gets its +1 (or
+    # Elemental Adept's type), the Choices tab asks (core/choices.py).
+    # revoke_dm_feat() takes one back.
+    for name in char.get("dm_feats", []) or []:
+        if name not in feats_list:
+            feats_list.append(name)
+        key = dm_feat_key(name)
+        if key not in char.setdefault("_choices", {}):
+            res = feat_choice_picks(char, name)
+            if "picks" in res:
+                char["_choices"][key] = res["picks"]
 
     # ── Race grants ───────────────────────────────────────────────────────────
     if race_name:
@@ -597,6 +615,18 @@ def rebuild(char: dict) -> None:
     # ── Class feature mechanics ────────────────────────────────────────────────
     _apply_class_feature_mechanics(char, classes, edition)
 
+    # Divinely Favored: its 1st-level spell is from your alignment's list,
+    # so a change of alignment to another list takes the pick (and its
+    # spell and free cast) away, and the Choices tab asks again
+    from dnd_app.data.spells import divinely_favored_list
+    if "Divinely Favored" in char.get("feats", []):
+        now = divinely_favored_list(char)
+        if char.get("divinely_favored_list") not in (None, now):
+            char.get("_choices", {}).pop("feat_divinely_favored_spell", None)
+        char["divinely_favored_list"] = now
+    else:
+        char.pop("divinely_favored_list", None)
+
     # ── Bonus spells (domain spells, circle spells, etc.) ──────────────────
     # These are always known/prepared once you reach the required
     # level. Tracked separately in char["bonus_spells"] so the UI can
@@ -620,6 +650,26 @@ def rebuild(char: dict) -> None:
             char.setdefault("spells_known", []).append(sp)
         if sp not in char.get("spells_prepared", []):
             char.setdefault("spells_prepared", []).append(sp)
+
+    # Forest Sage: its two spells count as your druid or wizard spells --
+    # added to your spellbook or spells known, prepared the usual way
+    # (calculator spell_preparing_classes). The ones it added
+    # (char["forest_sage_added"]) go when the feat or the pick does; one
+    # you already knew stays.
+    forest = (list(char.get("_choices", {}).get("feat_forest_sage_spells", []))
+              if "Forest Sage" in char.get("feats", []) else [])
+    added = set(char.get("forest_sage_added", []))
+    gone = added - set(forest) - set(bonus)
+    if gone:
+        char["spells_known"] = [s for s in char.get("spells_known", []) if s not in gone]
+        char["spells_prepared"] = [s for s in char.get("spells_prepared", []) if s not in gone]
+    added &= set(forest)
+    for sp in forest:
+        if sp not in char.get("spells_known", []):
+            char.setdefault("spells_known", []).append(sp)
+            added.add(sp)
+    char["forest_sage_spells"] = forest
+    char["forest_sage_added"] = sorted(added)
 
     # ── Full-list prepared casters: Cleric, Druid, Paladin, Artificer ──────
     # These classes don't "learn" a limited set of LEVELED spells at all —
@@ -925,6 +975,60 @@ def feat_choice_picks(char: dict, feat_name: str, answers: dict = None) -> dict:
     return {"picks": picks}
 
 
+def change_alignment(char: dict, alignment: str) -> str:
+    """Set the character's alignment (the Choices tab, both apps). Returns
+    what went with it, for a toast: a Divinely Favored spell from the old
+    alignment's list (the Choices tab asks for one from the new list)."""
+    had = (char.get("_choices", {}).get("feat_divinely_favored_spell") or [None])[0]
+    char["alignment"] = alignment
+    rebuild(char)
+    if had and not char.get("_choices", {}).get("feat_divinely_favored_spell"):
+        from dnd_app.data.spells import divinely_favored_list
+        return (f"Divinely Favored: {had} goes with your old alignment -- choose a 1st-level "
+                f"{divinely_favored_list(char).lower()} spell on the Choices tab")
+    return ""
+
+
+def dm_feat_key(feat: str) -> str:
+    """The _choices key of a feat the DM granted: "dm_feat_fey_touched"."""
+    return "dm_feat_" + feat.lower().replace(" ", "_").replace("'", "")
+
+
+def revoke_dm_feat(char: dict, feat: str) -> None:
+    """Take back a feat the DM granted (the Features tab), with everything
+    it gave -- its +1, its spells and the picks they needed -- unless you
+    have it another way too (taken at a level-up, from your background)."""
+    from .choices import _all_relevant_choice_ids, _prune_stale_choices
+    if feat not in char.get("dm_feats", []):
+        return
+    old_ids = _all_relevant_choice_ids(char)
+    char["dm_feats"] = [f for f in char["dm_feats"] if f != feat]
+    key = dm_feat_key(feat)
+    picks = char.setdefault("_choices", {}).pop(key, None)
+    if not isinstance(picks, list) or f"feat:{feat}" not in picks:
+        picks = [f"feat:{feat}"]
+    if feat not in (char.get("_auto_origin_feat"), char.get("_auto_bg_feat")):
+        forget_choice_picks(char, {key: picks})
+    _prune_stale_choices(char, old_ids - _all_relevant_choice_ids(char))
+    rebuild(char)
+
+
+def answer_dm_feat(char: dict, choice_id: str, answer: str) -> None:
+    """A DM-granted feat's question answered on the Choices tab (which
+    ability gets its +1, Elemental Adept's type): kept the way a level-up
+    keeps it ("feat:Name", "asi:WIS:1"), with what it decides."""
+    feat = next((f for f in char.get("dm_feats", []) if dm_feat_key(f) == choice_id), None)
+    if not feat:
+        return
+    ask = feat_choice_picks(char, feat).get("ask")
+    if not ask:
+        return
+    from dnd_app.data.spells import _ABILITY_ABBR      # "Wisdom" -> "WIS"
+    res = feat_choice_picks(char, feat, {ask["key"]: _ABILITY_ABBR.get(answer, answer)})
+    if "picks" in res:
+        char.setdefault("_choices", {})[choice_id] = res["picks"]
+
+
 def _forget_feat_picks(char: dict, feat: str, picks: list) -> None:
     """What a dropped feat's pick decided goes with it: Resilient's saving
     throw (the ability its +1 went to), Forest Sage's ability, Elemental
@@ -1032,17 +1136,24 @@ def _apply_class_feature_mechanics(char: dict, classes: list, edition: str):
         for skill in ["Nature", "Survival"]:
             char["skills"][skill] = 3  # expertise, unconditionally
 
-    # ── Ranger Gloom Stalker (7+): Iron Mind — WIS save proficiency, UNLESS
-    # already proficient in WIS saves, in which case it becomes a player
-    # choice of INT or CHA instead (handled as a chooser below, not here).
-    ranger_sub = subs.get("Ranger", "")
-    if cl_map.get("Ranger", 0) >= 7 and "gloom stalker" in ranger_sub.lower():
+    # ── Iron Mind (Gloom Stalker 7) and Elegant Courtier (Samurai 7): WIS
+    # save proficiency -- or, when you already have it, INT or CHA, your
+    # pick. char["_save_swaps"] says which need that pick, for choices.py
+    # to ask (it can't tell from the saves, which by then include this WIS).
+    char["_save_swaps"] = []
+    for key, has in (("gloom_stalker_iron_mind",
+                      cl_map.get("Ranger", 0) >= 7 and "gloom stalker" in subs.get("Ranger", "").lower()),
+                     ("samurai_elegant_courtier",
+                      cl_map.get("Fighter", 0) >= 7 and "samurai" in subs.get("Fighter", "").lower())):
+        if not has:
+            continue
         if not char["saving_throws"].get("WIS"):
             char["saving_throws"]["WIS"] = True
-        else:
-            pick = char.get("_choices", {}).get("gloom_stalker_iron_mind", [])
-            if pick:
-                char["saving_throws"][pick[0]] = True
+            continue
+        char["_save_swaps"].append(key)
+        pick = char.get("_choices", {}).get(key, [])
+        if pick:
+            char["saving_throws"][pick[0]] = True
 
     # ── Bard Tool Expertise (Bard 2+, if applicable) / Lore Bonus Magical Secrets ─
     # No numeric bonus - just flagged in features
@@ -1474,6 +1585,9 @@ def apply_choice(char: dict, choice_id: str, selected: list) -> None:
     """Store a player's choice and trigger a rebuild."""
     choices = char.setdefault("_choices", {})
     choices[choice_id] = selected
+    # a DM-granted feat's own question (which ability gets its +1)
+    if choice_id.startswith("dm_feat_") and selected:
+        answer_dm_feat(char, choice_id, str(selected[0]))
     # a half-elf's variant feature taken in place of Skill Versatility:
     # the two skills it would have given go
     if choice_id == "half_elf_variant" and not str((selected or [""])[0]).startswith("Skill Versatility"):

@@ -159,14 +159,21 @@ def feat_prereq_met(char: dict, feat: dict) -> tuple[bool, str]:
         return False, prereq
 
     # Previous-feat chains, e.g. "4th level, Scion of the Outer Planes
-    # (lawful plane)" — check the base feat name is already known
-    # (ignoring the specific sub-choice in parens, since the app doesn't
-    # track that level of detail for these chain feats).
+    # (lawful plane)": the earlier feat must be known -- and where the
+    # moon or plane it picked is named, it must be that one
+    chain_picks = {"Initiate of High Sorcery": "feat_initiate_of_high_sorcery_moon",
+                   "Scion of the Outer Planes": "feat_scion_plane_type"}
     for known_feat in ("Scion of the Outer Planes", "Strike of the Giants", "Squire of Solamnia",
                         "Initiate of High Sorcery", "Strixhaven Initiate"):
         if known_feat in prereq and known_feat != feat.get("name"):
             if known_feat not in char.get("feats", []):
                 return False, prereq
+            named = re.search(re.escape(known_feat) + r" \(([^)]+)\)", prereq)
+            if named and known_feat in chain_picks:
+                want = named.group(1).lower().replace(" plane", "")
+                pick = (char.get("_choices", {}).get(chain_picks[known_feat]) or [""])[0]
+                if not pick.lower().startswith(want):
+                    return False, prereq
 
     # Race-specific — includes subrace parenthetical matching, e.g.
     # "Elf (drow)", "Elf (high)", "Elf (wood)", "Gnome (deep)".
@@ -431,6 +438,17 @@ def _get_subclass_choices(char):
                 })
 
         # Battle Master maneuvers
+        # Samurai Elegant Courtier (7th level): WIS save proficiency, or INT
+        # or CHA when you already have it (builder.py says which: _save_swaps)
+        if cname == "Fighter" and "samurai" in sub and clvl >= 7 \
+                and "samurai_elegant_courtier" in char.get("_save_swaps", []):
+            key = "samurai_elegant_courtier"
+            if key not in made:
+                choices.append({"id": key, "source": "subclass",
+                    "source_name": "Elegant Courtier", "type": "fighting_style",
+                    "count": 1, "pool": ["INT", "CHA"],
+                    "label": "Already proficient in WIS saves — choose INT or CHA instead (Elegant Courtier)",
+                    "already_chosen": made.get(key, [])})
         if cname == "Fighter" and "battle master" in sub:
             maneuver_levels = [(3,3),(7,2),(10,2),(15,2),(18,2)]
             total_needed = sum(n for lvl, n in maneuver_levels if clvl >= lvl)
@@ -582,8 +600,8 @@ def _get_subclass_choices(char):
             # Gloom Stalker Iron Mind (7th level): only a real choice if the
             # character is already proficient in WIS saves from elsewhere
             # (an unusual multiclass edge case) — otherwise Iron Mind just
-            # grants WIS automatically (handled in builder.py, not here).
-            if "gloom" in sub and clvl >= 7 and char.get("saving_throws", {}).get("WIS"):
+            # grants WIS automatically (builder.py says which: _save_swaps).
+            if "gloom" in sub and clvl >= 7 and "gloom_stalker_iron_mind" in char.get("_save_swaps", []):
                 key = "gloom_stalker_iron_mind"
                 if key not in made:
                     choices.append({"id": key, "source": "subclass",
@@ -1131,9 +1149,11 @@ def _get_feat_choices(char):
         if len(already) < 4:
             from dnd_app.data.items import SIMPLE_MELEE, SIMPLE_RANGED, MARTIAL_MELEE, MARTIAL_RANGED
             weapon_pool = [w[0] for w in (SIMPLE_MELEE + SIMPLE_RANGED + MARTIAL_MELEE + MARTIAL_RANGED)]
+            # a pool of names to tick (the desktop's spell chooser lists
+            # only spells)
             choices.append({
                 "id": key, "source": "feat", "source_name": "Weapon Master",
-                "type": "magical_secrets", "count": 4,
+                "type": "weapon_or_tool_prof", "count": 4,
                 "pool": weapon_pool,
                 "label": "Choose 4 weapons (simple or martial) to gain proficiency with",
                 "already_chosen": already,
@@ -1234,6 +1254,98 @@ def _get_feat_choices(char):
                                    if sp.get("level") == 1 and sp.get("school") in schools),
                     "label": label, "already_chosen": already,
                 })
+    # A feat the DM granted (the Features tab): its own question -- which
+    # ability gets its +1, Elemental Adept's type -- is asked here
+    # (core/builder.py answer_dm_feat keeps the answer)
+    from dnd_app.core.builder import feat_choice_picks, dm_feat_key
+    from dnd_app.data.spells import _ABILITY_ABBR
+    full = {abbr: name for name, abbr in _ABILITY_ABBR.items()}
+    for name in char.get("dm_feats", []) or []:
+        key = dm_feat_key(name)
+        if made.get(key):
+            continue
+        ask = feat_choice_picks({}, name).get("ask")    # what it asks, nothing kept
+        if ask:
+            choices.append({
+                "id": key, "source": "feat", "source_name": name,
+                "type": "fighting_style", "count": 1,
+                "pool": [full.get(o, o) for o in ask["options"]],
+                "label": ask["title"], "already_chosen": [],
+            })
+
+    # Feats whose cantrips and spells you pick from a list (spells.py
+    # FEAT_CHOSEN_SPELL_KEYS): each joins your spell list, and how its
+    # leveled one is cast for free is core/spellcasting.py's
+    from dnd_app.data.spells import (STRIXHAVEN_COLLEGES, HIGH_SORCERY_MOONS, ROBES_SCHOOLS,
+                                     RUNE_SHAPER_RUNES, divinely_favored_list, feat_slug)
+
+    def _spells_of(level, classes=None, schools=None):
+        return sorted(sp["name"] for sp in _ALL_SP if sp.get("level") == level
+                      and (classes is None or set(classes) & set(sp.get("classes", [])))
+                      and (schools is None or sp.get("school") in schools))
+
+    def _ask_spells(feat, key, count, pool, label):
+        already = made.get(key, [])
+        if feat in all_feats and len(already) < count:
+            choices.append({
+                "id": key, "source": "feat", "source_name": feat,
+                "type": "magical_secrets", "count": count, "pool": pool,
+                "label": label, "already_chosen": already,
+            })
+
+    def _ask_one(feat, key, pool, label):
+        """A single pick a feat's spells hang off (a college, a moon);
+        returns it once made."""
+        pick = (made.get(key) or [None])[0]
+        if feat in all_feats and not pick:
+            choices.append({
+                "id": key, "source": "feat", "source_name": feat,
+                "type": "fighting_style", "count": 1, "pool": pool,
+                "label": label, "already_chosen": [],
+            })
+        return pick
+
+    _ask_spells("Artificer Initiate", "feat_artificer_initiate_cantrip", 1, _spells_of(0, ["Artificer"]),
+                "Choose an artificer cantrip")
+    _ask_spells("Artificer Initiate", "feat_artificer_initiate_spell", 1, _spells_of(1, ["Artificer"]),
+                "Choose a 1st-level artificer spell (free once per long rest)")
+    _ask_spells("Aberrant Dragonmark", "feat_aberrant_dragonmark_cantrip", 1, _spells_of(0, ["Sorcerer"]),
+                "Choose a sorcerer cantrip")
+    _ask_spells("Aberrant Dragonmark", "feat_aberrant_dragonmark_spell", 1, _spells_of(1, ["Sorcerer"]),
+                "Choose a 1st-level sorcerer spell to cast through your mark (free once per short or long rest)")
+    _ask_spells("Wood Elf Magic", "feat_wood_elf_magic_cantrip", 1, _spells_of(0, ["Druid"]),
+                "Choose a druid cantrip")
+    _ask_spells("Divinely Favored", "feat_divinely_favored_cantrip", 1, _spells_of(0, ["Cleric"]),
+                "Choose a cleric cantrip")
+    df_list = divinely_favored_list(char)
+    _ask_spells("Divinely Favored", "feat_divinely_favored_spell", 1, _spells_of(1, [df_list]),
+                f"Choose a 1st-level {df_list.lower()} spell, for your alignment "
+                f"({char.get('alignment') or 'neutral'}); it and Augury are each free once per long rest")
+    college = _ask_one("Strixhaven Initiate", "feat_strixhaven_initiate_college", list(STRIXHAVEN_COLLEGES),
+                       "Strixhaven Initiate: choose your college")
+    if college in STRIXHAVEN_COLLEGES:
+        cantrips, lists = STRIXHAVEN_COLLEGES[college]
+        _ask_spells("Strixhaven Initiate", "feat_strixhaven_initiate_cantrips", 2, list(cantrips),
+                    f"Choose 2 {college} cantrips")
+        _ask_spells("Strixhaven Initiate", "feat_strixhaven_initiate_spell", 1, _spells_of(1, lists),
+                    f"Choose a 1st-level {' or '.join(c.lower() for c in lists)} spell (free once per long rest)")
+    moon = _ask_one("Initiate of High Sorcery", "feat_initiate_of_high_sorcery_moon", list(HIGH_SORCERY_MOONS),
+                    "Initiate of High Sorcery: choose your moon (Nuitari black, Lunitari red, Solinari white)")
+    _ask_spells("Initiate of High Sorcery", "feat_initiate_of_high_sorcery_cantrip", 1, _spells_of(0, ["Wizard"]),
+                "Choose a wizard cantrip")
+    if moon in HIGH_SORCERY_MOONS:
+        _ask_spells("Initiate of High Sorcery", "feat_initiate_of_high_sorcery_spells", 2,
+                    list(HIGH_SORCERY_MOONS[moon]), f"Choose 2 of {moon}'s spells (each free once per long rest)")
+    for feat, schools in ROBES_SCHOOLS.items():
+        _ask_spells(feat, f"feat_{feat_slug(feat)}_spell", 1, _spells_of(2, None, schools),
+                    f"Choose a 2nd-level {' or '.join(s.lower() for s in schools)} spell (free once per long rest)")
+    if "Rune Shaper" in all_feats:
+        from dnd_app.core.calculator import get_prof_bonus
+        runes = get_prof_bonus(char) // 2
+        _ask_spells("Rune Shaper", "feat_rune_shaper_runes", runes, sorted(RUNE_SHAPER_RUNES.values()),
+                    "Choose your rune's spell (free once per long rest)" if runes == 1 else
+                    f"Choose your {runes} runes' spells (each free once per long rest)")
+
     # Magic Initiate and Spell Sniper: the class whose list the spells come
     # from (it decides their spellcasting ability), unless a background's
     # "Magic Initiate (Cleric)" names it; then the spells, from that list
@@ -2018,7 +2130,7 @@ def _all_relevant_choice_ids(char_snapshot: dict) -> set:
 _CUMULATIVE_IDS = ("eldritch_invocations", "artificer_infusions", "fighter_maneuvers",
                    "sorcerer_metamagic", "four_elements_disciplines", "rune_knight_runes",
                    "blood_hunter_mutagens", "blood_hunter_curses", "arcane_shot_options",
-                   "kensei_weapons", "magical_secrets_spells")
+                   "kensei_weapons", "magical_secrets_spells", "feat_rune_shaper_runes")
 
 _CUMULATIVE_LISTS = ("eldritch_invocations", "artificer_infusions",
                      "battle_master_maneuvers", "magical_secrets_spells")

@@ -598,7 +598,7 @@ def _feature_riders(char, p, out):
         out.append(_r("Maneuver", "", "", use="option",
                       cost=f"For a superiority die ({die}): Trip, Pushing, Menacing...",
                       pay=[("action", "Maneuver", "Passive")],
-                      tip=f"Maneuvers (Trip, Precision, Menacing...): spend a superiority die ({die}); which one you "
+                      tip=f"Maneuvers (Trip, Pushing, Menacing...): spend a superiority die ({die}); which one you "
                           f"pick says what the die does."))
     # Eldritch Smite and Lifedrinker (invocations; your pact weapon)
     inv = " ".join(char.get("eldritch_invocations", []) or []).lower()

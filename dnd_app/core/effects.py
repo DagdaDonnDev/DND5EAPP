@@ -628,6 +628,26 @@ EFFECT_TABLE: dict[str, dict] = {
     "Steady Aim": {
         "note": "Advantage on your next attack roll this turn; your speed is 0 until the end of the turn.",
     },
+    "Emboldening Bond": {
+        "duration_category": "short",
+        "note": "For 10 minutes, while another bonded creature is within 30 ft: once a turn, add a d4 to an attack roll, check or save.",
+    },
+    "Frost Rune": {
+        "duration_category": "short",
+        "note": "For 10 minutes: +2 to Strength and Constitution checks and saving throws.",
+    },
+    "Bolstering Magic": {
+        "duration_category": "short",
+        "note": "For 10 minutes: add a d3 to your attack rolls and ability checks.",
+    },
+    "Boldness": {
+        "duration_category": "short",
+        "note": "For 1 minute: add a d4 to your attack rolls and saving throws.",
+    },
+    "Glibness": {
+        "duration_category": "short",
+        "note": "For 1 hour: a d20 of 14 or lower on a Charisma check counts as 15, and magic that tells truth from lies finds you truthful.",
+    },
     "Trance of Order": {
         "duration_category": "short",
         "note": "For 1 minute: attack rolls against you can't have advantage, and your attack rolls, checks and saves treat a d20 roll of 9 or lower as a 10.",

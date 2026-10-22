@@ -320,29 +320,65 @@ class CharacterSheetBridge(QObject):
 
     @Slot(str, int)
     def rollQuickCheck(self, label: str, bonus: int):
-        """"<Ability> Save" rolls a save, anything else (ability checks,
-        skills, initiative) a check -- one d20 (an automatic failure for a
-        Stunned/Paralyzed/... creature's STR and DEX saves), with a
-        reminder of the advantage and disadvantage the sheet knows about,
-        as desktop: whether they apply is the table's call."""
-        from dnd_app.core.calculator import condition_roll_mode, roll_d20, roll_reminder, SKILL_ABILITY
+        """"<Ability> Save" rolls a save, "Initiative" initiative, anything
+        else (ability checks, skills) a check -- core/checks.py, the same
+        as desktop: one d20 with what always applies on it, what you'd
+        decide first asked first (cast Guidance, take advantage you have),
+        and what you can add after it in the roll dialog (App.qml's attack
+        dialog), with its cost."""
+        from dnd_app.core.calculator import SKILL_ABILITY
         first = label.split(" ")[0].strip().lower()
         ability = self._AB_SHORT.get(first, first.upper() if first.upper() in self._AB_SHORT.values() else "")
         kind = "save" if label.lower().endswith(" save") else "check"
-        cm = condition_roll_mode(self.char, kind, ability)
-        if cm["mode"] == "auto_fail":
-            self.toastRequested.emit(f"{label}: automatic failure ({', '.join(cm['sources'])})")
+        skill = label if label in SKILL_ABILITY else ""
+        if label == "Initiative":
+            kind, ability = "initiative", "DEX"
+        if skill:
+            ability = SKILL_ABILITY[skill]
+        self._roll_check({"kind": kind, "ability": ability, "skill": skill,
+                          "label": f"{skill} check" if skill else label, "bonus": bonus})
+
+    def _roll_check(self, what):
+        from dnd_app.core.checks import roll_check
+        free = [b for b in ("Action", "Bonus Action", "Reaction")
+                if self._turn_counts.get(b, 0) < self._turn_limit(b)]
+
+        def done(res):
+            self._after_check(res)
+            if res.get("report"):
+                self._last_check = res["report"]
+                self._roll_kind = "check"
+                self.attackReport.emit(res["report"]["title"], res["report"])
+        self._ask_through(what["label"], lambda a: roll_check(self.char, what, a, free), done)
+
+    @Slot(list)
+    def takeCheckOptions(self, keys):
+        """The roll dialog's Done for a check or save (or the dialog
+        closed): anything in `keys` is added too, then it's done -- a die
+        that's spent only on a success asks whether it succeeded."""
+        from dnd_app.core.checks import take_check_options
+        report = getattr(self, "_last_check", None)
+        if report is None:
             return
-        d = roll_d20("normal")["d20"]
-        total = d + bonus
-        flair = ""
-        if d == 20:
-            flair = "  NAT 20!"
-        elif d == 1:
-            flair = "  Nat 1..."
-        reminder = roll_reminder(self.char, "initiative" if label == "Initiative" else kind, ability,
-                                 skill=label if label in SKILL_ABILITY else "")["text"]
-        self.toastRequested.emit(f"{label}: [{d}] {bonus:+d} = {total}{flair}" + (f"\n{reminder}" if reminder else ""))
+        self._last_check = None
+        picked = [str(k) for k in keys]
+        self._ask_through(report["title"], lambda a: take_check_options(self.char, report, picked, a),
+                          self._after_check)
+
+    def _after_check(self, res):
+        """What the roll used: parts of the turn, a spell cast first, the
+        toast, and the sheet when something was spent."""
+        for slot in res.get("slots", []):
+            self._mark_turn_used(slot)
+        if res.get("cast"):
+            spell = get_spell(res["cast"])
+            if spell:
+                self._mark_spell_cast_time(spell)
+        if res.get("toast"):
+            self.toastRequested.emit(res["toast"])
+        if res.get("refresh"):
+            self.ctrl.refresh()
+        self.statsChanged.emit()
 
     # ── Inspiration ──────────────────────────────────────────────────
     @Property(bool, notify=statsChanged)
@@ -665,8 +701,11 @@ class CharacterSheetBridge(QObject):
         return out
 
     # ── Weapon roll (Combat screen's Roll to Hit button) ─────────────
-    # The roll, then what you can add with each one's cost -- only what you
-    # can pay for now -- in App.qml's attack dialog (attackReport); the
+    # What you'd decide before the d20 is asked first (Inspiration, Tides
+    # of Chaos, a Portent roll); then the roll, what you can add to it and
+    # to the hit, with each one's cost -- only what you can pay for now --
+    # in App.qml's attack dialog (attackReport). An Add on the roll comes
+    # back through addToRoll and the dialog shows the new total; the
     # ticked ones come back through takeAttackOptions (core/attacks.py,
     # the same as desktop's Hit button)
     @Slot(str)
@@ -674,12 +713,21 @@ class CharacterSheetBridge(QObject):
         self._attack_action_slot = None        # a Hit button, not the Attack action
         self._roll_weapon_attack(name)
 
+    def _free_now(self):
+        return [b for b in ("Action", "Bonus Action", "Reaction")
+                if self._turn_counts.get(b, 0) < self._turn_limit(b)]
+
     def _roll_weapon_attack(self, name: str):
-        from dnd_app.core.attacks import roll_attack, attack_report
+        from dnd_app.core.attacks import attack_before
         _ = self.weapons                       # the rows as they are now
         row = getattr(self, "_attack_rows", {}).get(name)
         if row is None or row.get("atk") is None:
             return
+        self._ask_through(row["name"], lambda a: attack_before(self.char, row, a, self._free_now()),
+                          lambda res: self._roll_weapon_attack_now(row, res.get("before", "")))
+
+    def _roll_weapon_attack_now(self, row, before):
+        from dnd_app.core.attacks import roll_attack
         # A shot takes one piece of ammunition from the inventory
         if row.get("ammo"):
             label = ammo_label(row["ammo"])
@@ -687,17 +735,63 @@ class CharacterSheetBridge(QObject):
                 self.toastRequested.emit(f"Out of {label.lower()} -- tap the {label} counter to add more")
                 return
             self.statsChanged.emit()
-        roll = roll_attack(self.char, row)
-        free = [b for b in ("Action", "Bonus Action", "Reaction")
-                if self._turn_counts.get(b, 0) < self._turn_limit(b)]
-        report = attack_report(self.char, row, roll, free)
+        self._last_attack_row = row
+        self._last_attack_roll = roll_attack(self.char, row, before=before, free=self._free_now())
+        self._roll_kind = "attack"
+        for slot in self._last_attack_roll["state"]["slots"]:    # Cosmic Omen's reaction
+            self._mark_turn_used(slot)
+        if self._last_attack_roll["state"]["spent"]:   # Inspiration spent before the roll
+            self.statsChanged.emit()
+        report = self._attack_report_now()
+        self.attackReport.emit(report["title"], report)
+
+    def _attack_report_now(self):
+        """The attack dialog's report for the roll as it stands."""
+        from dnd_app.core.attacks import attack_report
+        row = self._last_attack_row
+        report = attack_report(self.char, row, self._last_attack_roll, self._free_now())
         if row.get("ammo"):
             left = f"{ammo_count(self.char, row['ammo'])} {ammo_label(row['ammo']).lower()} left"
             report["message"] += f"\n{left}"
             report["roll"]["note"] = "; ".join(x for x in (report["roll"].get("note"), left) if x)
-        self._last_attack_row = row
-        self._last_attack_roll = report["roll"]
-        self.attackReport.emit(report["title"], report)
+        return report
+
+    @Slot(str)
+    def addToRoll(self, key: str):
+        """An Add in the roll dialog (an attack's, a check's or a save's):
+        it's paid for and rolled now -- asking first if it needs to (how
+        many allies) -- and the dialog shows the roll as it stands
+        (attackReport again, with "update": the ticks stay)."""
+        from dnd_app.core.attacks import add_to_attack
+        from dnd_app.core.checks import add_to_check
+        key = str(key)
+        if getattr(self, "_roll_kind", "") == "check" and getattr(self, "_last_check", None) is not None:
+            report = self._last_check
+            call = (lambda a: add_to_check(self.char, report, key, a, self._free_now()))
+            title = report["title"]
+        elif getattr(self, "_roll_kind", "") == "attack" and getattr(self, "_last_attack_row", None) is not None:
+            row, roll = self._last_attack_row, self._last_attack_roll
+            call = (lambda a: add_to_attack(self.char, row, roll, key, a, self._free_now()))
+            title = row["name"]
+        else:
+            return
+
+        def done(res):
+            if not res.get("ok"):
+                if res.get("toast"):
+                    self.toastRequested.emit(res["toast"])
+                return
+            for slot in res.get("slots", []):
+                self._mark_turn_used(slot)
+            if self._roll_kind == "check":
+                self._last_check = res["report"]
+                report = res["report"]
+            else:
+                self._last_attack_roll = res["roll"]
+                report = self._attack_report_now()
+            self.statsChanged.emit()
+            self.attackReport.emit(report["title"], dict(report, update=True))
+        self._ask_through(title, call, done)
 
     @Slot(list, bool)
     def takeAttackOptions(self, keys, hit):
@@ -2684,6 +2778,62 @@ class CharacterSheetBridge(QObject):
         from dnd_app.core.action_use import take_leftover_effects
         return take_leftover_effects(self.char)
 
+    # ── Effects on you (desktop's Active Effects list): what's on you --
+    # Bless or Guidance an ally cast, a potion -- with what it does, to
+    # end, and any to put on by hand. Checks, saves and attacks use them
+    # (core/checks.py). ─────────────────────────────────────────────────
+    @Property(list, notify=statsChanged)
+    def activeEffectRows(self):
+        from dnd_app.core.riders import effect_note
+        out = []
+        for n in self.char.get("active_effects", []):
+            info = EFFECT_TABLE.get(n, {})
+            out.append({"name": n, "concentration": bool(info.get("conc")),
+                        "note": effect_note(self.char, n) or info.get("note", "")
+                        or "Tracked, with no numbers of its own."})
+        return out
+
+    @Property(list, constant=True)
+    def effectChoices(self):
+        return sorted(set(EFFECT_TABLE) | set(RESOURCE_POOL_TOGGLES))
+
+    @Slot(str)
+    def addActiveEffect(self, name: str):
+        from dnd_app.core.calculator import effect_start_problem, on_effect_started
+        if name not in EFFECT_TABLE and name not in RESOURCE_POOL_TOGGLES:
+            return
+        fx = self.char.setdefault("active_effects", [])
+        if name in fx:
+            self.toastRequested.emit(f"{name} is already on you")
+            return
+        why = effect_start_problem(self.char, name)       # Rage in heavy armor
+        if why:
+            self.toastRequested.emit(f"{name}: {why}")
+            return
+        fx.append(name)
+        note = on_effect_started(self.char, name)          # Rage ends concentration
+        self.ctrl.refresh()
+        self.toastRequested.emit(f"{name} is on you" + (f" -- {note}" if note else ""))
+        self.statsChanged.emit()
+
+    @Slot(str)
+    def removeActiveEffect(self, name: str):
+        fx = self.char.get("active_effects", [])
+        if name not in fx:
+            return
+        fx.remove(name)
+        (self.char.get("effect_details") or {}).pop(name, None)
+        msg = f"{name} ends"
+        # Berserker's Frenzy can't outlast the rage: it ends too, with a
+        # level of exhaustion (as desktop)
+        if name == "Rage" and "Frenzy" in fx:
+            fx.remove("Frenzy")
+            self.char["exhaustion"] = min(6, self.char.get("exhaustion", 0) + 1)
+            msg = "Rage ends -- Frenzy ends with it, and you gain 1 level of exhaustion"
+        self.ctrl.refresh()
+        self.toastRequested.emit(msg)
+        self.statsChanged.emit()
+
     @Slot(list)
     def endEffects(self, names):
         from dnd_app.core.action_use import end_effects
@@ -2823,6 +2973,10 @@ class CharacterSheetBridge(QObject):
         spell = get_spell(name)
         if spell is None:
             return
+        from dnd_app.core.spellcasting import ritual_only_source
+        if ritual_only_source(self.char, spell):     # Strixhaven Mascot's Find Familiar
+            self.castSpellAsRitual(name)
+            return
         _ct = (spell.get("cast_time") or "1 action").strip().lower()
         _bucket = {"1 action": "Action", "bonus action": "Bonus Action", "reaction": "Reaction"}.get(_ct)
         if _bucket and self._turn_blocked(_bucket):
@@ -2860,15 +3014,24 @@ class CharacterSheetBridge(QObject):
             self._maybe_apply_spell_active_effect(spell, 0, f"Cast {name} (cantrip -- at will)")
             self.statsChanged.emit()
             return
-        # A free daily cast (a racial spell, Fey Touched, Firbolg Magic...)
-        # is used before any slot -- see core/spellcasting.py.
-        from dnd_app.core.spellcasting import spend_free_cast, free_cast_message
-        free = spend_free_cast(self.char, name)
-        if free:
+        # A feat spell cast at will (Drow High Magic's Detect Magic) costs
+        # nothing; a free daily cast (a racial spell, Fey Touched, Firbolg
+        # Magic...) is used before any slot -- see core/spellcasting.py.
+        from dnd_app.core.spellcasting import spend_free_cast, free_cast_message, at_will_source
+        at_will = at_will_source(self.char, name)
+        if at_will:
             if spell.get("concentration"):
                 start_concentration(self.char, name)
             self._mark_spell_cast_time(spell)
-            self._maybe_apply_spell_active_effect(spell, lvl, free_cast_message(name, free))
+            self._maybe_apply_spell_active_effect(spell, lvl, f"Cast {name} at will ({at_will})")
+            self.statsChanged.emit()
+            return
+        free = spend_free_cast(self.char, name)
+        if free:
+            if spell.get("concentration") and not free.get("no_concentration"):
+                start_concentration(self.char, name)
+            self._mark_spell_cast_time(spell)
+            self._maybe_apply_spell_active_effect(spell, lvl, free_cast_message(name, free, self.char))
             self.statsChanged.emit()
             return
         slots_used = self.char.setdefault("spell_slots_used", [0] * 9)
@@ -2964,17 +3127,16 @@ class CharacterSheetBridge(QObject):
 
     @Slot(int)
     def rollConcentrationSave(self, damage: int):
-        res = concentration_save(self.char, damage)
-        total, dc = res["total"], res["dc"]
-        if res["kept"]:
-            msg = f"Concentration maintained ({total} vs DC {dc})"
-        elif res["kept"] is None:
-            msg = (f"Concentration save: {total} vs DC {dc} -- a failure on this d20. If your second d20 "
-                   f"doesn't save it, tap Drop")
-        else:
-            msg = f"Concentration failed ({total} vs DC {dc}) -- spell dropped"
-        self.toastRequested.emit(msg + (f"\n{res['reminder']}" if res["reminder"] else ""))
-        self.statsChanged.emit()
+        """The CON save to keep concentrating (core/checks.py, the same as
+        desktop): DC 10 or half the damage; what always applies is on the
+        roll, and when it's under the DC, what you can add comes in the
+        roll dialog. Still under it after that, the spell drops."""
+        spell = self.char.get("concentration", {}).get("spell")
+        if not spell:
+            return
+        self._roll_check({"kind": "concentration", "ability": "CON", "skill": "",
+                          "label": f"Concentration ({spell})", "bonus": get_saving_throw_bonus(self.char, "CON"),
+                          "dc": max(10, damage // 2), "spell": spell})
 
     # ── Identity (race/subrace/ancestry/background, editable post-
     # creation) -- mirrors ui_desktop's Choices tab _edit_identity(). ──
@@ -2993,6 +3155,26 @@ class CharacterSheetBridge(QObject):
     @Property(str, notify=statsChanged)
     def identityBackground(self):
         return self.char.get("background", "")
+
+    @Property(str, notify=statsChanged)
+    def identityAlignment(self):
+        return self.char.get("alignment", "")
+
+    @Property(list, constant=True)
+    def alignmentOptions(self):
+        from dnd_app.ui_android.bridge.wizard import ALIGNMENTS
+        return list(ALIGNMENTS)
+
+    @Slot(str)
+    def changeAlignment(self, name: str):
+        if not name or name == self.char.get("alignment", ""):
+            return
+        from dnd_app.core.builder import change_alignment
+        msg = change_alignment(self.char, name)   # Divinely Favored's spell follows it
+        self.ctrl.refresh()
+        if msg:
+            self.toastRequested.emit(msg)
+        self.statsChanged.emit()
 
     @Property(bool, notify=statsChanged)
     def isDragonborn(self):
@@ -3207,20 +3389,31 @@ class CharacterSheetBridge(QObject):
     def grantDmBrowserItem(self, name: str, item_type: str):
         field = "dm_rewards" if item_type == "dm_reward" else "dm_feats"
         granted = self.char.setdefault(field, [])
+        if item_type != "dm_reward" and name in self.char.get("feats", []) and name not in granted:
+            self.toastRequested.emit(f"{name} is already one of your feats")
+            return
         if name not in granted:
             granted.append(name)
+            # the feat's rules, spells and free casts (core/builder.py
+            # rebuild); what it asks waits on the Choices tab
             self.ctrl.refresh()
             self.toastRequested.emit(f"Granted: {name}")
             self.statsChanged.emit()
+            self.autosaveRequested.emit()
 
     @Slot(str, str)
     def revokeDmBrowserItem(self, name: str, item_type: str):
         field = "dm_rewards" if item_type == "dm_reward" else "dm_feats"
         granted = self.char.get(field, [])
         if name in granted:
-            granted.remove(name)
+            if item_type == "dm_reward":
+                granted.remove(name)
+            else:
+                from dnd_app.core.builder import revoke_dm_feat
+                revoke_dm_feat(self.char, name)     # and everything it gave
             self.ctrl.refresh()
             self.statsChanged.emit()
+            self.autosaveRequested.emit()
 
     # ── Appearance (theme + font scale) and DM Secrets (Immersive
     # Spells) -- ui_desktop's Settings dialog Appearance/DM Secrets

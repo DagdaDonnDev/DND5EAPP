@@ -247,24 +247,75 @@ class AbilitiesMixin:
         self.ctrl.update("_choices.extra_save_profs", current)
 
     def _quick_roll_toast(self, label: str, bonus: int, kind: str = "check", ability: str = ""):
-        """Roll a check or save: one d20 (an automatic failure for a
-        Stunned/Paralyzed/... creature's STR and DEX saves), with a
-        reminder of the advantage and disadvantage the sheet knows about
-        -- whether they apply is the table's call."""
-        from dnd_app.core.calculator import condition_roll_mode, roll_d20, roll_reminder, SKILL_ABILITY
-        cm = condition_roll_mode(self.char, kind, ability)
-        if cm["mode"] == "auto_fail":
-            self._toast(f"{label}: automatic failure ({', '.join(cm['sources'])})", 4200)
-            return
-        d = roll_d20("normal")["d20"]
-        total = d + bonus
-        flair = ""
-        if d == 20: flair = "  NAT 20!"
-        elif d == 1: flair = "  Nat 1…"
+        """Roll a check, a save or initiative (core/checks.py, the same on
+        Android): one d20 with what always applies on it (Reliable
+        Talent, Bless...), what you'd decide first asked first (cast
+        Guidance, take advantage you have), and what you can add after it
+        (a superiority die, Lucky...) in the roll dialog, with its cost.
+        Advantage and disadvantage the sheet knows of are a reminder: the
+        table decides."""
+        from dnd_app.core.calculator import SKILL_ABILITY
         skill = label[:-len(" check")] if label.endswith(" check") and label[:-len(" check")] in SKILL_ABILITY else ""
-        reminder = roll_reminder(self.char, "initiative" if label == "Initiative" else kind, ability,
-                                 skill=skill)["text"]
-        self._toast(f"{label}: [{d}] {bonus:+d} = {total}{flair}" + (f"\n{reminder}" if reminder else ""), 4200)
+        if label == "Initiative":
+            kind, ability = "initiative", "DEX"
+        self._roll_check({"kind": kind, "ability": ability or SKILL_ABILITY.get(skill, ""), "skill": skill,
+                          "label": label, "bonus": bonus})
+
+    def _roll_check(self, what):
+        """The roll, asking first if there's something to decide; then the
+        roll dialog when there's something to add -- each Add pays for it
+        and rolls it now, and the dialog shows the new total -- and Done.
+        Returns the last result (None if the question before the roll was
+        cancelled)."""
+        from dnd_app.core.checks import roll_check, add_to_check, finish_check
+        from dnd_app.ui_desktop.dialogs.attack import AttackDialog
+
+        def free():
+            return [b for b in ("Action", "Bonus Action", "Reaction")
+                    if self._turn_counts.get(b, 0) < self._turn_limit(b)]
+        res = self._ask_through(what["label"], lambda a: roll_check(self.char, what, a, free()))
+        if res is None:
+            return None
+        self._after_check(res)
+        if not res.get("report"):
+            return res
+        now = {"report": res["report"]}
+
+        def add(key):
+            got = self._ask_through(what["label"], lambda a: add_to_check(self.char, now["report"], key, a, free()))
+            if not got:
+                return None
+            if not got.get("ok"):
+                if got.get("toast"):
+                    self._toast(got["toast"])
+                return None
+            now["report"] = got["report"]
+            for slot in got.get("slots", []):
+                self._mark_turn_used(slot)
+            self._mark_dirty()
+            return got["report"]
+        AttackDialog(now["report"], self, on_add=add).exec()
+        # Done (or closed): a die that's spent only on a success asks
+        res = (self._ask_through(what["label"], lambda a: finish_check(self.char, now["report"], a))
+               or finish_check(self.char, now["report"], {"succeeded": "It still failed"}))
+        self._after_check(res)
+        return res
+
+    def _after_check(self, res):
+        """What the roll used: parts of the turn, a spell cast first, the
+        toast, and the sheet when something was spent."""
+        for slot in res.get("slots", []):
+            self._mark_turn_used(slot)
+        if res.get("cast"):
+            from dnd_app.data.spells import get_spell
+            spell = get_spell(res["cast"])
+            if spell:
+                self._mark_spell_cast_time(spell)
+        if res.get("toast"):
+            self._toast(res["toast"].replace(" -- ", " — "), 6000)
+        if res.get("refresh"):
+            self._mark_dirty()
+            QTimer.singleShot(0, self.ctrl.refresh)
 
     def _update_save_advantage_badge(self, ab: str):
         """Sync one saving throw's advantage indicator badge to current

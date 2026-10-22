@@ -341,9 +341,11 @@ class FeaturesMixin:
             if feats:
                 self._add_feature_section(title, color, feats, badge_color=color)
 
-        # Chosen feats
+        # Chosen feats (a DM-granted one has its own section, below)
         feat_items = []
         for fname in self.char.get("feats",[]):
+            if fname in self.char.get("dm_feats", []):
+                continue
             fd = get_feat(fname)
             if fd:
                 chosen_ab = self.char.get("_choices", {}).get(f"feat_ability_{fname.lower().replace(' ','_')}")
@@ -688,8 +690,14 @@ class FeaturesMixin:
             item_type = item.data(Qt.UserRole + 1) or "feat"
             field = "dm_rewards" if item_type == "dm_reward" else "dm_feats"
             granted_list = self.char.setdefault(field, [])
+            if item_type != "dm_reward" and fname in self.char.get("feats", []) and fname not in granted_list:
+                self._toast(f"{fname} is already one of your feats")
+                return
             if fname not in granted_list:
                 granted_list.append(fname)
+                # the feat's rules, spells and free casts (core/builder.py
+                # rebuild); what it asks waits on the Choices tab
+                self.ctrl.refresh()
                 self._rebuild_features()
                 self._mark_dirty()
 
@@ -701,7 +709,12 @@ class FeaturesMixin:
             field = "dm_rewards" if item_type == "dm_reward" else "dm_feats"
             granted_list = self.char.get(field, [])
             if fname in granted_list:
-                granted_list.remove(fname)
+                if item_type == "dm_reward":
+                    granted_list.remove(fname)
+                else:
+                    from dnd_app.core.builder import revoke_dm_feat
+                    revoke_dm_feat(self.char, fname)     # and everything it gave
+                self.ctrl.refresh()
                 self._rebuild_features()
                 self._mark_dirty()
 

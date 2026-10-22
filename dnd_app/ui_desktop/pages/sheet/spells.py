@@ -1256,6 +1256,10 @@ class SpellsMixin:
         self._mark_dirty()
 
     def _cast_spell(self, spell):
+        from dnd_app.core.spellcasting import ritual_only_source
+        if ritual_only_source(self.char, spell):     # Strixhaven Mascot's Find Familiar
+            self._cast_spell_as_ritual(spell)
+            return
         if self.char.get("_wildshape_active") and not self._has_beast_spells():
             self._toast(f"Can't cast {spell['name']} while Wild Shaped — "
                         f"revert to your normal form first")
@@ -1302,12 +1306,25 @@ class SpellsMixin:
             fx_msg = self._apply_spell_active_effect(spell)      # Shillelagh
             self._toast(f"Cast {spell['name']} (cantrip — at will)" + (f"\n{fx_msg}" if fx_msg else ""))
             return
-        # A free daily cast (a racial spell, Fey Touched, Firbolg Magic...)
-        # is used before any slot -- see core/spellcasting.py.
-        from dnd_app.core.spellcasting import spend_free_cast, free_cast_message
+        # A feat spell cast at will (Drow High Magic's Detect Magic) costs
+        # nothing; a free daily cast (a racial spell, Fey Touched, Firbolg
+        # Magic...) is used before any slot -- see core/spellcasting.py.
+        from dnd_app.core.spellcasting import spend_free_cast, free_cast_message, at_will_source
+        at_will = at_will_source(self.char, spell["name"])
+        if at_will:
+            if spell.get("concentration"):
+                start_concentration(self.char, spell["name"])
+                self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
+                self._refresh_concentration()
+            fx_msg = self._apply_spell_active_effect(spell, lvl)
+            self._mark_spell_cast_time(spell)
+            self._mark_dirty()
+            self._toast(f"Cast {spell['name']} at will ({at_will.replace(' -- ', ' — ')})"
+                        + (f"\n{fx_msg}" if fx_msg else ""))
+            return
         free = spend_free_cast(self.char, spell["name"])
         if free:
-            if spell.get("concentration"):
+            if spell.get("concentration") and not free.get("no_concentration"):
                 start_concentration(self.char, spell["name"])
                 self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
                 self._refresh_concentration()
@@ -1316,7 +1333,7 @@ class SpellsMixin:
             self._mark_dirty()
             if hasattr(self, "_refresh_combat"):
                 self._refresh_combat()   # the resource counter it came from
-            self._toast(free_cast_message(spell["name"], free).replace(" -- ", " — ")
+            self._toast(free_cast_message(spell["name"], free, self.char).replace(" -- ", " — ")
                         + (f"\n{fx_msg}" if fx_msg else ""))
             return
         for l in range(lvl, 10):
@@ -1467,28 +1484,7 @@ class SpellsMixin:
         dmg, ok = QInputDialog.getInt(self, "Concentration Save", "Damage taken this turn:", 10, 0, 999)
         if not ok:
             return
-        from dnd_app.core.calculator import roll_reminder
-        reminder = roll_reminder(self.char, "concentration")["text"]
-        roll, ok_roll = QInputDialog.getInt(
-            self, "Concentration Save",
-            "Enter your d20 roll (CON modifier applied automatically):"
-            + (f"\n{reminder}" if reminder else ""),
-            10, 1, 30,
-        )
-        if not ok_roll:
-            return
-        from dnd_app.core.calculator import get_saving_throw_bonus
-        dc = max(10, dmg // 2)
-        total = roll + get_saving_throw_bonus(self.char, "CON")
-        if total >= dc:
-            QMessageBox.information(self, "Concentration", f"Maintained ({total} vs DC {dc})")
-        else:
-            drop_concentration(self.char)
-            self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
-            QMessageBox.warning(self, "Concentration", f"Failed ({total} vs DC {dc}) — concentration dropped.")
-            self._toast("Your focus shatters like cheap glass.")
-        self._refresh_concentration()
-        self._mark_dirty()
+        self._concentration_save_prompt(max(10, dmg // 2))     # combat.py: the shared save
 
     def _refresh_concentration(self):
         spell = self.char.get("concentration", {}).get("spell")

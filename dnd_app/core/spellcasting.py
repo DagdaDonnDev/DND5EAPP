@@ -145,6 +145,10 @@ _CAST_NOTES = {
     ("Human", "Magic Weapon"): "it lasts 1 hour and doesn't need concentration",
 }
 
+# Free racial casts that need no concentration (Mark of Making's Magic
+# Weapon lasts its hour without it): {(race, spell)}
+_NO_CONCENTRATION = {("Human", "Magic Weapon")}
+
 # The same for one subrace's spell, where another subrace of the race
 # casts it plainly: {(subrace, spell): note}
 _SUBRACE_CAST_NOTES = {
@@ -183,7 +187,61 @@ def racial_spell_source(char: dict) -> str:
 # Resources whose spell is the player's pick: {resource key: _choices key}
 _CHOSEN_SPELL_RESOURCES = {
     "magic_initiate": "feat_magic_initiate_spell",
+    "strixhaven_initiate": "feat_strixhaven_initiate_spell",
+    "aberrant_dragonmark": "feat_aberrant_dragonmark_spell",
+    "adept_of_the_black_robes_ambitious_magic": "feat_adept_of_the_black_robes_spell",
+    "adept_of_the_red_robes_insightful_magic": "feat_adept_of_the_red_robes_spell",
+    "adept_of_the_white_robes_protective_magic": "feat_adept_of_the_white_robes_spell",
 }
+
+# Feats whose leveled spells are each free once per long rest, with no
+# counter of their own in calculator.py: one counter per spell
+_DAILY_FEAT_SPELLS = ("Fey Touched", "Shadow Touched", "Artificer Initiate", "Initiate of High Sorcery",
+                      "Rune Shaper", "Divinely Favored", "Outlands Envoy", "Svirfneblin Magic")
+
+# Extra wording for a feat's free cast: {(feat, spell): note} -- and a
+# Rune Shaper rune's spell needs no material components either
+_FEAT_CAST_NOTES = {("Outlands Envoy", "Tongues"): "no material components"}
+
+# Feat spells cast at will, without a slot: {(feat, spell): how}
+_AT_WILL_FEAT_SPELLS = {
+    ("Drow High Magic", "Detect Magic"): "",
+    ("Svirfneblin Magic", "Nondetection"): "on yourself, no material component",
+}
+
+
+# Feat spells cast only as a ritual, by a character none of whose classes
+# has the spell on its list: {(feat, spell)}
+_RITUAL_ONLY_FEAT_SPELLS = {("Strixhaven Mascot", "Find Familiar")}
+
+
+def at_will_source(char: dict, spell_name: str) -> str:
+    """The feat that lets the character cast `spell_name` at will, without
+    a slot ("Drow High Magic"), with how if there's a limit ("Svirfneblin
+    Magic -- on yourself, no material component"); "" if none does."""
+    for (feat, spell), how in _AT_WILL_FEAT_SPELLS.items():
+        if spell == spell_name and feat in char.get("feats", []):
+            return f"{feat} -- {how}" if how else feat
+    return ""
+
+
+def at_will_feat_spells(char: dict, feat: str) -> list[str]:
+    """The spells `feat` lets the character cast at will."""
+    if feat not in char.get("feats", []):
+        return []
+    return [spell for (f, spell) in _AT_WILL_FEAT_SPELLS if f == feat]
+
+
+def ritual_only_source(char: dict, spell: dict) -> str:
+    """The feat that lets the character cast `spell` only as a ritual
+    (Strixhaven Mascot's Find Familiar, when none of their classes has it
+    on its list); "" if they cast it the usual way."""
+    classes = {c.get("class") for c in char.get("classes", [])}
+    for feat, name in _RITUAL_ONLY_FEAT_SPELLS:
+        if (name == spell.get("name") and feat in char.get("feats", [])
+                and not classes & set(spell.get("classes", []))):
+            return feat
+    return ""
 
 
 def _slug(text: str) -> str:
@@ -236,7 +294,8 @@ def spend_free_cast(char: dict, spell_name: str):
     options = free_cast_resources(char, spell_name)
     if not options:
         return None
-    res = options[0]
+    # two sources of the spell: the one back on a short rest goes first
+    res = min(options, key=lambda r: 0 if "SR" in r.get("reset", "LR") else 1)
     res["current"] = res.get("current", 0) - 1
     return res
 
@@ -246,35 +305,49 @@ def reset_phrase(resource: dict) -> str:
     return "short or long rest" if "SR" in resource.get("reset", "LR") else "long rest"
 
 
-def free_cast_message(spell_name: str, resource: dict) -> str:
+def free_cast_message(spell_name: str, resource: dict, char: dict = None) -> str:
     """The toast after a free cast, e.g. "Cast Darkness for free (Tiefling)
-    -- no free casts left until a long rest"."""
+    -- no free casts left until a long rest". With `char`, the casts left
+    are the spell's from every source (Fey Teleportation's and Fey
+    Touched's Misty Step)."""
     source = resource.get("name", "")
     if "(" in source and source.endswith(")"):
-        source = source[source.rfind("(") + 1:-1]      # "Darkness (Tiefling)" -> "Tiefling"
-    left = resource.get("current", 0)
+        # "Darkness (Tiefling)" -> "Tiefling"; "Magic Initiate (1st-level
+        # spell)" -> "Magic Initiate"
+        head, tail = source[:source.rfind("(")].strip(), source[source.rfind("(") + 1:-1]
+        source = tail if head.lower() == spell_name.lower() else head
+    left, back = resource.get("current", 0), resource
+    if char is not None:
+        same = [r for r in char.get("resources", []) if spell_name in free_spells_of(char, r)]
+        left = sum(r.get("current", 0) for r in same) if same else left
+        back = next((r for r in same if "SR" in r.get("reset", "LR")), resource)
     tail = (f"{left} free cast{'s' if left != 1 else ''} left" if left
-            else f"no free casts left until a {reset_phrase(resource)}")
+            else f"no free casts left until a {reset_phrase(back)}")
     return f"Cast {spell_name} for free ({source}) -- {tail}"
 
 
 def innate_free_cast_resources(char: dict, existing: list) -> list[dict]:
     """New counters for free casts nothing else tracks yet: each leveled
-    racial spell (once per long rest), and Fey Touched / Shadow Touched's
-    two spells (each once per long rest). A spell already covered by an
-    existing resource (Firbolg Magic, Yuan-ti Suggestion...) is skipped,
-    so no spell gets two counters."""
-    from dnd_app.data.spells import (get_spell, racial_innate_spells,
-                                               FEAT_FIXED_SPELLS, FEAT_CHOSEN_SPELL_KEYS)
-    covered = {sp for r in existing for sp in free_spells_of(char, r)}
+    racial spell (once per long rest), and the leveled spells of the feats
+    in _DAILY_FEAT_SPELLS (each once per long rest). A racial spell the
+    race already has a counter for (Firbolg Magic, Yuan-ti Suggestion...)
+    gets no second one; two sources that each cast the same spell free
+    (Fey Touched's and Outlands Envoy's Misty Step) are a counter each."""
+    from dnd_app.data.spells import get_spell, racial_innate_spells, feat_spells, RUNE_SHAPER_RUNES
+    feat_keys = [f.lower().replace(" ", "_").replace("'", "") for f in char.get("feats", [])]
+
+    def _from_feat(res):
+        key = res.get("key", "")
+        return any(key == k or key.startswith(k + "_") for k in feat_keys)
+    covered = {sp for r in existing if not _from_feat(r) for sp in free_spells_of(char, r)}
     species = char.get("species") or char.get("race", "")
     out = []
 
-    def _add(spell, source, key_prefix, note_extra="", reset="LR"):
+    def _add(spell, source, key_prefix, note_extra="", reset="LR", seen=covered, no_concentration=False):
         sp = get_spell(spell)
-        if not sp or sp.get("level", 0) == 0 or spell in covered:
-            return   # cantrips are at will; one counter per spell
-        covered.add(spell)
+        if not sp or sp.get("level", 0) == 0 or spell in seen:
+            return   # cantrips are at will; one counter per spell and source
+        seen.add(spell)
         note = f"Cast {spell} once without a spell slot ({source})"
         note += f", {note_extra}." if note_extra else "."
         out.append({
@@ -283,6 +356,8 @@ def innate_free_cast_resources(char: dict, existing: list) -> list[dict]:
             "note": note, "free_spells": [spell],
             "source_class": "", "subclass": "",
         })
+        if no_concentration:
+            out[-1]["no_concentration"] = True    # Cast doesn't start any
 
     # a dragonmark's spells are named for the mark ("Shield (Mark of Sentinel)")
     source = racial_spell_source(char)
@@ -295,17 +370,19 @@ def innate_free_cast_resources(char: dict, existing: list) -> list[dict]:
                       if sp == spell and subrace.startswith(sr)),
                      _CAST_NOTES[note_key] if note_key else "")
         short = _race_entry(_SHORT_REST_CASTS, species, spell)
-        _add(spell, source, "free_racial", extra, "SR/LR" if short else "LR")
+        _add(spell, source, "free_racial", extra, "SR/LR" if short else "LR",
+             no_concentration=bool(_race_entry(_NO_CONCENTRATION, species, spell)))
 
-    choices = char.get("_choices", {})
-    for feat in ("Fey Touched", "Shadow Touched"):
+    for feat in _DAILY_FEAT_SPELLS:
         if feat not in char.get("feats", []):
             continue
-        spells = list(FEAT_FIXED_SPELLS.get(feat, []))
-        for key in FEAT_CHOSEN_SPELL_KEYS.get(feat, []):
-            spells.extend(choices.get(key, []))
-        for spell in spells:
-            _add(spell, feat, f"free_{_slug(feat)}")
+        seen = set()
+        for spell in feat_spells(char, feat):
+            if (feat, spell) in _AT_WILL_FEAT_SPELLS:
+                continue
+            extra = ("no material components" if feat == "Rune Shaper" and spell in RUNE_SHAPER_RUNES.values()
+                     else _FEAT_CAST_NOTES.get((feat, spell), ""))
+            _add(spell, feat, f"free_{_slug(feat)}", extra, seen=seen)
     return out
 
 

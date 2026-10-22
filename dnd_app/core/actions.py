@@ -593,7 +593,7 @@ def build_action_abilities(char):
         ('Rogue','Reliable Talent'):  ('Passive', 'Reliable Talent (passive)', "Whenever you make an ability check with a skill or tool you're proficient in, treat any roll of 9 or lower on the d20 as a 10."),
         ('Rogue','Blindsense'):       ('Passive', 'Blindsense (passive)', "If you can hear, you're aware of the location of any hidden or invisible creature within 10 ft of you."),
         ('Rogue','Elusive'):          ('Passive', 'Elusive (passive)', "No attack roll has advantage against you while you aren't incapacitated."),
-        ('Rogue','Stroke of Luck'):  ('Bonus Action', 'Stroke of Luck', "Turn a missed attack into a hit, or a failed ability check into a success (treat the roll as 20). 1/LR."),
+        ('Rogue','Stroke of Luck'):  ('Bonus Action', 'Stroke of Luck', "Turn a missed attack into a hit, or a failed ability check into a success (treat the d20 as a 20). Once a short or long rest."),
         ('Rogue','Fast Hands'):      ('Bonus Action', 'Fast Hands', "Use your Cunning Action bonus action for a Sleight of Hand check, using thieves' tools to disarm a trap or open a lock, or the Use an Object action."),
         ('Rogue','Second-Story Work'): ('Passive', 'Second-Story Work (passive)', "Climbing no longer costs extra movement. Running jump distance increases by your DEX modifier."),
         ('Rogue','Supreme Sneak'):   ('Passive', 'Supreme Sneak (passive)', "Advantage on Stealth checks if you move no more than half your speed on the same turn."),
@@ -1198,7 +1198,7 @@ def build_action_abilities(char):
         ('Cleric',"Order's Demand"): ('Action', "Order's Demand (Channel Divinity)", "Each creature of your choice within 30 ft that can see/hear you: WIS save or be charmed until the end of your next turn or until it takes damage; charmed creatures also drop what they're holding if you choose."),
         ('Cleric','Embodiment of the Law'): ('Passive', 'Embodiment of the Law (passive)', "Casting an enchantment spell with a 1st-level+ slot that normally takes an action can instead be cast as a bonus action. Uses = WIS modifier (min 1) per long rest."),
         ('Cleric',"Order's Wrath"): ('Passive', "Order's Wrath (passive)", "When Voice of Authority triggers an ally's attack and it hits, the target also takes 2d8 extra psychic damage."),
-        ('Cleric','Emboldening Bond'): ('Bonus Action', 'Emboldening Bond', "Create an empathic bond between up to 5 willing creatures within 30 ft (including yourself) for 10 minutes. Bonded creatures near another bonded creature can add 1d4 to attack rolls, ability checks, and saves. Uses = WIS modifier (min 1) per long rest."),
+        ('Cleric','Emboldening Bond'): ('Action', 'Emboldening Bond', "Bond a number of willing creatures within 30 ft equal to your proficiency bonus (you can be one) for 10 minutes: while within 30 ft of another of them, each can add a d4 to an attack roll, ability check or saving throw, once a turn. Uses = proficiency bonus per long rest."),
         ('Cleric','Balm of Peace'): ('Action', 'Balm of Peace', "Move up to your speed without provoking opportunity attacks; heal each creature you touch along the way for 2d6 + WIS modifier (once per creature)."),
         ('Cleric','Protective Bond'): ('Reaction', 'Protective Bond', "A creature bonded to you (Emboldening Bond) can teleport to intercept an attack meant for another bonded creature within 30 ft, taking the damage instead."),
         ('Cleric','Expansive Bond'): ('Passive', 'Expansive Bond (passive)', "Emboldening Bond and Protective Bond now work at 60 ft instead of 30 ft. A creature that uses Protective Bond to take someone else's damage also gains resistance to it."),
@@ -2097,11 +2097,17 @@ def build_action_abilities(char):
         'Fey Touched':        ('Action','Fey Touched (1/LR each)','Cast Misty Step and your chosen Divination/Enchantment spell, each once per long rest.'),
         'Shadow Touched':     ('Action','Shadow Touched (1/LR each)','Cast Invisibility and your chosen Illusion/Necromancy spell, each once per long rest.'),
         'Artificer Initiate': ('Action','Artificer Initiate (1/LR)','Cast your chosen 1st-level Artificer spell once per long rest, or at-will as a cantrip.'),
-        'Aberrant Dragonmark': ('Action','Aberrant Dragonmark (1/LR)','Cast your chosen cantrip at will and 1st-level spell once per long rest (CON-based).'),
+        'Aberrant Dragonmark': ('Action','Aberrant Dragonmark (1/SR)','Cast your chosen 1st-level spell through your mark without a slot, once per short or long rest; your sorcerer cantrip at will. CON is your spellcasting ability for both.'),
         'Strixhaven Initiate': ('Action','Strixhaven Initiate (1/LR)','Cast your chosen 1st-level college spell once per long rest, or the cantrips at-will.'),
-        'Divinely Favored':   ('Action','Divinely Favored (1/LR)','Cast your chosen 1st-level cleric spell once per long rest, or the cantrip at-will.'),
+        'Divinely Favored':   ('Action','Divinely Favored (1/LR each)','Cast your chosen 1st-level spell and Augury without a slot, each once per long rest; your cleric cantrip at will.'),
         'Gift of the Metallic Dragon': ('Action','Draconic Healing','Cast Cure Wounds without a spell slot, once a long rest (or with your slots).'),
-        'Initiate of High Sorcery': ('Action','Wizard Cantrip','Cast your chosen wizard cantrip at will.'),
+        'Initiate of High Sorcery': ('Action','Initiate of High Sorcery (1/LR each)','Cast your two chosen 1st-level spells without a slot, each once per long rest; your wizard cantrip at will.'),
+        'Adept of the Black Robes': ('Action','Ambitious Magic (1/LR)','Cast your chosen 2nd-level enchantment or necromancy spell without a slot, once per long rest.'),
+        'Adept of the Red Robes': ('Action','Insightful Magic (1/LR)','Cast your chosen 2nd-level illusion or transmutation spell without a slot, once per long rest.'),
+        'Adept of the White Robes': ('Action','Protective Magic (1/LR)','Cast your chosen 2nd-level abjuration or divination spell without a slot, once per long rest.'),
+        'Rune Shaper':        ('Action','Rune Shaper (1/LR each)',"Cast Comprehend Languages, and each inscribed rune's spell (no material components), without a slot, each once per long rest."),
+        'Outlands Envoy':     ('Action','Outlands Envoy (1/LR each)','Cast Misty Step and Tongues (no material components) without a slot, each once per long rest.'),
+        'Svirfneblin Magic':  ('Action','Svirfneblin Magic','Nondetection on yourself at will, with no material component. Blindness/Deafness, Blur and Disguise Self each once per long rest.'),
     }
     for bucket, name, text, feat in _feat_cards(char):
         buckets[bucket].append((name, text, feat))
@@ -3215,6 +3221,9 @@ def _race_cards(char, race_name) -> list:
             "proficiency bonus per long rest.")
         add("Passive", "Fearless", "When you fail a save to avoid or end being frightened, succeed instead. Once "
             "a long rest.")
+    if race == "Kenku (MPMM)":
+        add("Passive", "Kenku Recall", "Before you roll a check with a skill you're proficient in: give yourself "
+            "advantage on it. Uses = proficiency bonus per long rest.")
     if race == "Kobold (MPMM)":
         add("Bonus Action", "Draconic Cry", "Until the start of your next turn, you and your allies have "
             "advantage on attacks against enemies within 10 ft that heard you. Uses = proficiency bonus per "

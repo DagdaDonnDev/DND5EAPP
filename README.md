@@ -91,7 +91,7 @@ The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Androi
 
 1. Press **Create New Character** on the start screen (or **File → New Character**). The wizard goes race, ability scores (point buy, standard array or your own), background, class, spells and equipment, and shows each option in full as you pick.
 2. When it finishes, the sheet opens and the character is saved.
-3. Anything the wizard didn't ask — a background's extra skill or tool, a racial language, which ability a feat raises — waits on the **Choices** tab. On Android, the Choices tab pulses until you're done.
+3. Anything the wizard didn't ask — a background's extra skill or tool, a racial language, which ability a feat raises, the spells a feat lets you pick — waits on the **Choices** tab. On Android, the Choices tab pulses until you're done.
 
 Playing a character from paper? **Import PDF Sheet** on the start screen turns a filled-in official character sheet into a full character (see *Saving, sharing and PDFs*).
 
@@ -124,14 +124,17 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 
 - **New Turn** gives back your action, bonus action and reaction, ends turn-long effects and resets once-a-turn extras. Until then, a card whose action you've spent is greyed out.
 - **Use** (or **Cast**) on a card spends what it costs — a slot, ki, a use — turns its effect on, and says what it did and what's left. When there's a choice to make, it asks.
-- **Attacking:** a weapon's **Hit** button (**Roll to Hit** on Android) rolls the d20, says what AC it hits, then offers what you can add and pay for right now: Sneak Attack, a smite, a maneuver… The **Attack** action card asks which weapon first. On a critical hit, the dice shown are already doubled.
+- **Attacking:** a weapon's **Hit** button (**Roll to Hit** on Android) rolls the d20 and says what AC it hits. Under the roll is what you can add to it, each with its cost: Precision Attack, Lucky, Guided Strike, Emboldening Bond… Press **Add** and it's paid for and rolled at once, and the total updates. **If it misses** lists what can turn a miss around: Favored by the Gods, Stroke of Luck, Focused Aim… Below that is what you can add to the hit: Sneak Attack, a smite, a maneuver… The **Attack** action card asks which weapon first. On a critical hit, the dice shown are already doubled.
 - **Damage is your roll.** Every damage line says what to roll and its type; roll it yourself, or open the Dice Roller (Ctrl+D).
-- **Advantage and disadvantage are reminders.** Every roll is one d20, with a note of what the sheet knows applies (Reckless Attack, Poisoned, exhaustion…). Roll the second die yourself, since cover, the target and your DM can change it.
+- **Advantage and disadvantage are reminders.** Every roll is one d20, with a note of what the sheet knows applies (Reckless Attack, Poisoned, exhaustion…). Roll the second die yourself, since cover, the target and your DM can change it. Advantage you spend something on, like Inspiration, is rolled for you.
 - **Taking damage:** type the amount and press **Damage**. Halve it yourself for a resistance; yours are listed just above. Temporary hit points, concentration saves, Wild Shape hit points and death saves follow on their own.
-- **Buffs from someone else:** when an ally casts Bless, Haste and the like on you, add it on the **Effects** tab so its bonuses count. It comes off when its time is up.
+- **Buffs from someone else:** when an ally casts Bless, Guidance, Haste and the like on you, add it on the **Effects** tab (on Android, **Effects on You** on the Combat screen) so its bonuses count. It comes off when its time is up.
 - **Conditions** are one click on or off, and show up on the rolls they change.
 - **Wild Shape:** the Wild Shape card on the Combat tab lists the forms you can take, strongest first. Anything that needs hands asks before going ahead.
 - **Initiative and Inspiration** are at the top of the desktop sheet. Click Initiative to roll it.
+- **Before any roll** (check, save, initiative or attack) it asks if there's something to decide first: cast Guidance or Resistance, give yourself advantage (Inspiration, Tides of Chaos, Kenku Recall) or use a Portent roll.
+- **Checks, saves and initiative** roll the same way as an attack. What always applies is already counted (Reliable Talent, Bless on a save, Halfling Lucky, Jack of All Trades…). Then each thing you can still add has an **Add** button and its cost: a superiority die, a Bardic Inspiration, your reaction, a use. Press **Done** when you're finished.
+- **Concentration saves** roll themselves on both apps when you take damage. A failed save ends the spell, unless the sheet knows you have advantage on it (War Caster); then your second d20 decides.
 
 </details>
 
@@ -141,7 +144,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **Preparing:** tick the spell in My Spells. Spells your class, race or a feat gives you are always prepared, and can't be removed.
 - **Where to cast:** cantrips and bonus-action and reaction spells always have a card on the Combat tab. A leveled spell that takes an action only shows there once you pin it with ☆ (on Android, press and hold → Add to favourites), so a long spell list doesn't bury your Action tab. Anything slower is cast from My Spells: right-click → Cast, or Cast as Ritual.
 - **The Spellcasting table** lists each class, your race and each feat that gives you spells, with its own ability, save DC and attack. A racial spell uses its own row, not your class's.
-- **Free casts** from your race or a feat have their own counter, and Cast spends it before a slot.
+- **Free casts** from your race or a feat have their own counter, and Cast spends it before a slot. A spell a feat gives at will (Drow High Magic's Detect Magic) never takes one, and Strixhaven Mascot's Find Familiar is cast as a ritual.
 - **The Spell Browser** shows the spells on your classes' lists that you can cast now. **Homebrew mode** shows every spell and lifts the limits, if your DM allows it.
 - **Spell scrolls** are read with **Use**, from your inventory.
 
@@ -165,7 +168,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 
 - **Level Up / Multiclass** is on the Choices tab: pick the class to level or add, then make that level's choices.
 - **Level Down** and **Remove Class** take a level or a whole class away, with everything it brought: invocations, maneuvers, the spells it alone gave. Level back up and you're asked again.
-- Change your race, subrace, background or a feat later and the same clean-up happens. Anything new to pick waits on Choices.
+- Change your race, subrace, background, alignment or a feat later and the same clean-up happens. Anything new to pick waits on Choices (a new alignment asks for Divinely Favored's spell again).
 - Your own edits on the Skills tab stay until you press **↺ Reset Manual Changes**.
 - **Levelling by XP?** Settings → Advancement → Leveling → Experience Points adds an XP tracker and tells you when you can level. Levelling up is still your click.
 
@@ -175,7 +178,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 <summary><b>For DMs and house rules</b></summary>
 
 - **DM-granted proficiencies…** (Skills & Proficiencies): any weapon, armour, tool or language, picked from the list or typed in.
-- **The Features tab** grants a feat outside a level-up, or a DM reward: a Character Secret, Supernatural Gift, Dark Gift or replacement background feature.
+- **The Features tab** grants a feat outside a level-up, with all its rules (its +1 and any spells to pick wait on Choices; Remove takes it all back), or a DM reward: a Character Secret, Supernatural Gift, Dark Gift or replacement background feature.
 - **Homebrew mode** in the Spell Browser: learn any spell, with no spells-known limit.
 - **A custom race**, in the race list.
 - **Table rules**, in Settings and saved with each character: feat prerequisites, multiclass ability requirements, the DMG and Xanathar's optional actions (Disarm, Overrun, Tumble…), maximum hit points every level, component restrictions, and Tasha's optional class features (Eldritch, Martial, Cantrip, Bardic and Sorcerous Versatility, and Harness Divine Power).
@@ -299,6 +302,7 @@ dnd_app/
     actions.py         every action, bonus action and reaction a character has
     action_use.py      what pressing Use on one does
     attacks.py         every attack, its roll and what a hit can add
+    checks.py          every d20: checks, saves, initiative, an attack's roll, and what adds to them
     riders.py          the extra damage on a weapon hit, by damage type
     spellcasting.py    spell limits, components, free casts, scrolls
     spell_effects.py   what casting a spell does to your own sheet

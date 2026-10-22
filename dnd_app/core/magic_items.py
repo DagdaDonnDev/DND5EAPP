@@ -189,12 +189,15 @@ def reset_magic_item_modifiers(char: dict) -> None:
     char["spell_attack_bonus"] = 0
     char["magic_ac_bonus"] = 0
     char["magic_save_bonus"] = 0
+    char["magic_check_bonus"] = 0          # every ability check (Stone of Good Luck)
+    char["magic_skill_bonus"] = {}         # {skill: bonus} (Gloves of Thievery)
     char["magic_speed_bonus"] = 0
     char["_blackrazor_spellcasting"] = False
     char["_named_weapon_bonuses"] = {}  # {item_name: bonus_value}
     # Source-tracked breakdowns, used to build tooltips
     char["_ac_bonus_sources"] = []        # [(item_name, value), ...]
     char["_save_bonus_sources"] = []      # [(item_name, value), ...]
+    char["_check_bonus_sources"] = []     # [(item_name, value), ...]
     char["_speed_bonus_sources"] = []     # [(item_name, value), ...]
     # Resistances / immunities granted by equipped+attuned items
     char["damage_resistances"] = []       # [(damage_type, item_name), ...]
@@ -308,6 +311,18 @@ def _apply_single_effect(char: dict, item_name: str, effect: dict) -> None:
         val = effect.get("value", 0)
         char["magic_save_bonus"] = char.get("magic_save_bonus", 0) + val
         char.setdefault("_save_bonus_sources", []).append((item_name, val))
+
+    elif etype == "check_bonus":
+        # every ability check, initiative too (calculator.py)
+        val = effect.get("value", 0)
+        char["magic_check_bonus"] = char.get("magic_check_bonus", 0) + val
+        char.setdefault("_check_bonus_sources", []).append((item_name, val))
+
+    elif etype == "skill_bonus":
+        val = effect.get("value", 0)
+        bonus = char.setdefault("magic_skill_bonus", {})
+        bonus[effect["skill"]] = bonus.get(effect["skill"], 0) + val
+        char.setdefault("_check_bonus_sources", []).append((f"{item_name} ({effect['skill']})", val))
 
     elif etype == "weapon_damage_bonus":
         char.setdefault("_weapon_damage_bonuses", []).append({

@@ -734,6 +734,10 @@ ApplicationWindow {
     //   what it was (gold a critical, red a natural 1)
     //   ON A HIT: the damage and what's on now, each with its type and where
     //   it's from; a next-hit effect it used up can be marked here
+    //   ADD TO THE ROLL / IF IT MISSES (a check's ADD TO THIS CHECK / IF IT
+    //   FAILS): right under the roll, each with an Add button -- it's paid
+    //   for and rolled there and then (sheetBridge.addToRoll), and the roll
+    //   comes back with its new total (attackReport with "update": ticks stay)
     //   YOU CAN ADD / ALSO THIS TURN: choices with their costs, only what you
     //   can pay for now -- tap a row to pick it (its border turns gold). One
     //   pick per group (a Divine Smite slot); undead or fiend needs a smite.
@@ -745,7 +749,12 @@ ApplicationWindow {
         property var report: ({})
         property var options: []
         property var ticked: ({})
+        // a check or save (core/checks.py): Done takes it, and closing the
+        // dialog any other way takes it with nothing added
+        property bool taken: false
+        readonly property bool isCheck: report.kind === "check"
         readonly property var roll: report.roll || ({})
+        onClosed: if (isCheck && !taken) { taken = true; window.sheetBridge.takeCheckOptions([]) }
         function optionByKey(k) {
             for (var i = 0; i < options.length; i++) if (options[i].key === k) return options[i]
             return null
@@ -775,6 +784,9 @@ ApplicationWindow {
             return out
         }
         function section(name) { return options.filter(function(o) { return o.section === name }) }
+        function sectionsNow(now) {
+            return (report.sections || []).filter(function(x) { return (x.now === true) === now })
+        }
         parent: Overlay.overlay
         anchors.centerIn: parent
         modal: true
@@ -829,8 +841,8 @@ ApplicationWindow {
                                 font.bold: true
                                 Layout.alignment: Qt.AlignHCenter
                             }
-                            Label { text: "to hit"; color: Theme.text2; font.pixelSize: Theme.fsSmall
-                                    Layout.alignment: Qt.AlignHCenter }
+                            Label { text: attackDialog.report.total_label || "to hit"; color: Theme.text2
+                                    font.pixelSize: Theme.fsSmall; Layout.alignment: Qt.AlignHCenter }
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
@@ -859,6 +871,31 @@ ApplicationWindow {
                                 font.bold: attackDialog.roll.crit === true || attackDialog.roll.nat1 === true
                                 wrapMode: Text.WordWrap
                                 Layout.fillWidth: true
+                            }
+                        }
+                    }
+                }
+
+                // ADD TO THE ROLL, then IF IT MISSES: each with its Add
+                Repeater {
+                    model: attackDialog.sectionsNow(true)
+                    delegate: ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Label {
+                            text: modelData.title
+                            color: Theme.text2
+                            font.pixelSize: Theme.fsSmall
+                            font.bold: true
+                            font.letterSpacing: 1
+                        }
+                        Repeater {
+                            model: attackDialog.section(modelData.name)
+                            delegate: MAttackOption {
+                                Layout.fillWidth: true
+                                opt: modelData
+                                now: true
+                                onAdd: window.sheetBridge.addToRoll(modelData.key)
                             }
                         }
                     }
@@ -937,7 +974,7 @@ ApplicationWindow {
 
                 // ADD TO THIS HIT, then WITH YOUR BONUS ACTION
                 Repeater {
-                    model: attackDialog.report.sections || []
+                    model: attackDialog.sectionsNow(false)
                     delegate: ColumnLayout {
                         property var rows: attackDialog.section(modelData.name)
                         Layout.fillWidth: true
@@ -996,6 +1033,7 @@ ApplicationWindow {
                     spacing: 8
                     MButton {
                         objectName: "attackMissed"
+                        visible: !attackDialog.isCheck
                         text: attackDialog.report.miss_button || "Missed"
                         primary: false
                         Layout.fillWidth: true
@@ -1012,6 +1050,12 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         onClicked: {
                             var keys = attackDialog.pickedKeys()
+                            if (attackDialog.isCheck) {
+                                attackDialog.taken = true
+                                attackDialog.close()
+                                window.sheetBridge.takeCheckOptions(keys)
+                                return
+                            }
                             attackDialog.close()
                             window.sheetBridge.takeAttackOptions(keys, true)
                         }
@@ -1035,8 +1079,22 @@ ApplicationWindow {
             actionQuestionDialog.open()
         }
         function onAttackReport(title, report) {
+            // an Add on the roll: the same dialog, its new total; what's
+            // ticked stays ticked
+            if (report.update === true && attackDialog.visible) {
+                var keep = ({})
+                for (var i = 0; i < (report.options || []).length; i++) {
+                    var k = report.options[i].key
+                    if (attackDialog.ticked[k]) keep[k] = true
+                }
+                attackDialog.report = report
+                attackDialog.options = report.options || []
+                attackDialog.ticked = keep
+                return
+            }
             attackDialog.heading = title
             attackDialog.ticked = ({})
+            attackDialog.taken = false
             attackDialog.report = report
             attackDialog.options = report.options || []
             attackDialog.open()

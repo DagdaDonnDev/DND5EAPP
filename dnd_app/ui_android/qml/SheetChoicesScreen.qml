@@ -110,6 +110,12 @@ Page {
                                 Label { Layout.fillWidth: true; text: sheetBridge.identityBackground; color: Theme.text; font.pixelSize: Theme.fsBody; font.bold: true }
                                 MButton { primary: false; height: 32; text: "Change"; onClicked: backgroundDialog.open() }
                             }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label { text: "Alignment"; color: Theme.text2; font.pixelSize: Theme.fsSmall; Layout.preferredWidth: 90 }
+                                Label { Layout.fillWidth: true; text: sheetBridge.identityAlignment || "(none)"; color: Theme.text; font.pixelSize: Theme.fsBody; font.bold: true }
+                                MButton { primary: false; height: 32; text: "Change"; onClicked: alignmentDialog.open() }
+                            }
                         }
                     }
 
@@ -1227,6 +1233,12 @@ Page {
                 backgroundFeatDialog.open()
             }
         }
+    }
+    MPickerDialog {
+        id: alignmentDialog
+        dialogTitle: "Change Alignment"
+        options: sheetBridge.alignmentOptions
+        onPicked: (value) => sheetBridge.changeAlignment(value)
     }
     MPickerDialog {
         id: backgroundFeatDialog

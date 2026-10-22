@@ -1089,7 +1089,85 @@ Page {
                     }
                 }
             }
+
+            // ── Effects on you (desktop's Active Effects) ───────────────
+            // Bless or Guidance an ally cast, a potion...: what each does,
+            // End to take it off, and Add for one put on you. Checks, saves
+            // and attacks use them.
+            MCard {
+                objectName: "effectsCard"
+                title: "Effects on You"
+                iconName: "effects"
+
+                Label {
+                    visible: sheetBridge.activeEffectRows.length === 0
+                    text: "Nothing on you. A spell you cast on yourself shows here; add one an ally put on you."
+                    color: Theme.text3
+                    font.pixelSize: Theme.fsSmall
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+                Repeater {
+                    model: sheetBridge.activeEffectRows
+                    delegate: Rectangle {
+                        objectName: "effectRow_" + modelData.name
+                        Layout.fillWidth: true
+                        radius: 8
+                        color: Theme.surf2
+                        border.color: Theme.border
+                        implicitHeight: Math.max(fxCol.implicitHeight, fxEnd.height) + 14
+                        Rectangle {
+                            width: 4; radius: 2
+                            anchors { left: parent.left; top: parent.top; bottom: parent.bottom; margins: 1 }
+                            color: Theme.teal2
+                        }
+                        Column {
+                            id: fxCol
+                            anchors { left: parent.left; right: fxEnd.left; top: parent.top
+                                      leftMargin: 14; rightMargin: 8; topMargin: 7 }
+                            spacing: 2
+                            Label {
+                                text: modelData.name + (modelData.concentration ? " (concentration)" : "")
+                                color: Theme.text
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                                wrapMode: Text.WordWrap
+                                width: parent.width
+                            }
+                            Label {
+                                text: modelData.note
+                                color: Theme.text2
+                                font.pixelSize: Theme.fsSmall - 1
+                                wrapMode: Text.WordWrap
+                                width: parent.width
+                            }
+                        }
+                        MButton {
+                            id: fxEnd
+                            anchors { right: parent.right; top: parent.top; margins: 6 }
+                            primary: false
+                            height: 32
+                            text: "End"
+                            onClicked: sheetBridge.removeActiveEffect(modelData.name)
+                        }
+                    }
+                }
+                MButton {
+                    objectName: "addEffectButton"
+                    Layout.fillWidth: true
+                    primary: false
+                    text: "Add an effect on you"
+                    onClicked: effectPicker.open()
+                }
+            }
         }
+    }
+
+    MPickerDialog {
+        id: effectPicker
+        dialogTitle: "Add an effect on you"
+        options: sheetBridge.effectChoices
+        onPicked: (value) => sheetBridge.addActiveEffect(value)
     }
 
     // How much ammunition you have: type a number or use - / + (hold to
