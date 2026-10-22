@@ -320,6 +320,16 @@ def get_initiative_advantage_status(char: dict) -> dict:
     }
 
 
+def initiative_adds_proficiency(char: dict) -> bool:
+    """Whether your initiative roll adds your proficiency bonus: Harengon's
+    Hare-Trigger, the Watchers paladin's Aura of the Sentinel (7th), the
+    2024 Alert -- so it's an ability check Reliable Talent applies to."""
+    cl, subs = class_levels(char), subclasses(char)
+    return ((char.get("species") or char.get("race", "")) == "Harengon"
+            or (cl.get("Paladin", 0) >= 7 and "watchers" in subs.get("Paladin", "").lower())
+            or ("Alert" in char.get("feats", []) and char.get("edition", "2014") == "2024"))
+
+
 def get_initiative(char: dict) -> int:
     dex = ability_mod(char, "DEX")
     bonus = char.get("initiative_bonus", 0)
@@ -332,7 +342,7 @@ def get_initiative(char: dict) -> int:
         bonus += pb if ed == "2024" else 5
 
     cl, subs = class_levels(char), subclasses(char)
-    pb_in = has_alert and ed == "2024"
+    pb_in = initiative_adds_proficiency(char)
 
     # Aura of the Sentinel (Paladin, Oath of the Watchers, 7th level):
     # +proficiency bonus to initiative for yourself (and allies within
@@ -340,13 +350,11 @@ def get_initiative(char: dict) -> int:
     pal_lvl = cl.get("Paladin", 0)
     if pal_lvl >= 7 and "watchers" in subs.get("Paladin", "").lower():
         bonus += pb
-        pb_in = True
 
     # Hare-Trigger (Harengon): +proficiency bonus to initiative.
     race_init = char.get("species") or char.get("race", "")
     if race_init == "Harengon":
         bonus += pb
-        pb_in = True
 
     # Initiative is a DEX check: half your proficiency bonus when nothing
     # above adds it -- Jack of All Trades (Bard 2, rounded down) or

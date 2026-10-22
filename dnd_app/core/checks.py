@@ -293,13 +293,25 @@ def _is_attack(w):
     return w["kind"] == "attack"
 
 
+def _adds_proficiency(char, w) -> bool:
+    """Does this ability check add your proficiency bonus (Reliable
+    Talent's test)? A skill you're proficient in, or initiative when your
+    proficiency bonus goes on it (Hare-Trigger, Aura of the Sentinel).
+    Half of it (Jack of All Trades, Remarkable Athlete) isn't."""
+    if w["kind"] == "initiative":
+        from dnd_app.core.calculator import initiative_adds_proficiency
+        return initiative_adds_proficiency(char)
+    skill = w.get("skill") or ""
+    return bool(skill) and _skill_prof(char, skill) >= 2
+
+
 def _floors(char, w, ability) -> list:
     """[(lowest d20, source)] that apply to this roll."""
     out = []
     cl = _cl(char)
     skill = w.get("skill") or ""
     if _is_check(w):
-        if cl.get("Rogue", 0) >= 11 and skill and _skill_prof(char, skill) >= 2:
+        if cl.get("Rogue", 0) >= 11 and _adds_proficiency(char, w):
             out.append((10, "Reliable Talent"))
         if skill in ("Persuasion", "Deception") and cl.get("Bard", 0) >= 3 and "eloquence" in _sub(char, "Bard"):
             out.append((10, "Silver Tongue"))
