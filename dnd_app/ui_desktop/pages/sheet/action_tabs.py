@@ -443,6 +443,13 @@ class ActionTabsMixin:
             if spell:
                 self._cast_spell(spell)
             return
+        if res.get("check"):
+            # a check with a tool you carry (or Fast Hands' Sleight of Hand):
+            # rolled the way a skill is, and the part of the turn it takes is
+            # spent once it's made
+            if self._roll_check(res["check"]) is not None and res.get("check_slot"):
+                self._mark_turn_used(res["check_slot"])
+            return
         if res.get("attack"):
             # the Attack action: the attack picked is rolled the way its Hit
             # button does, and the action is spent once it's made

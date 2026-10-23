@@ -441,6 +441,68 @@ def fey_wanderer_check_bonus(char: dict, ability: str) -> int:
     return max(1, ability_mod(char, "WIS"))
 
 
+# ── Tools ─────────────────────────────────────────────────────────────────
+# The ability a check with a tool usually uses -- your DM says which, so a
+# tool check asks, with this one first. Instruments: Charisma; gaming
+# sets: Wisdom.
+TOOL_USUAL_ABILITY = {
+    "Alchemist's supplies": "INT", "Brewer's supplies": "INT", "Calligrapher's supplies": "DEX",
+    "Carpenter's tools": "STR", "Cartographer's tools": "WIS", "Cobbler's tools": "DEX",
+    "Cook's utensils": "WIS", "Glassblower's tools": "INT", "Jeweler's tools": "INT",
+    "Leatherworker's tools": "DEX", "Mason's tools": "STR", "Painter's supplies": "WIS",
+    "Potter's tools": "INT", "Smith's tools": "STR", "Tinker's tools": "DEX", "Weaver's tools": "DEX",
+    "Woodcarver's tools": "DEX", "Disguise kit": "CHA", "Forgery kit": "DEX", "Herbalism kit": "WIS",
+    "Navigator's tools": "WIS", "Poisoner's kit": "INT", "Thieves' tools": "DEX",
+}
+
+
+def tool_usual_ability(tool: str) -> str:
+    from dnd_app.data.items import INSTRUMENT_TOOLS, GAMING_SETS
+    low = tool.lower()
+    if low in {t.lower() for t in INSTRUMENT_TOOLS}:
+        return "CHA"
+    if low in {g.lower() for g in GAMING_SETS}:
+        return "WIS"
+    return next((ab for t, ab in TOOL_USUAL_ABILITY.items() if t.lower() == low), "DEX")
+
+
+def carried_tools(char: dict) -> list:
+    """The tools you're proficient with and have on you (in your inventory,
+    whatever its capitals: a rogue's starting "Thieves' Tools") -- a check
+    with one needs both. Vehicles aren't something you carry."""
+    have = {str(e.get("name", "")).strip().lower() for e in char.get("equipment", [])}
+    out = []
+    for t in char.get("tool_proficiencies", []):
+        if t.lower() in have and t not in out and not t.lower().startswith("vehicles"):
+            out.append(t)
+    return out
+
+
+def tool_expertise(char: dict, tool: str) -> str:
+    """What doubles your proficiency bonus on a check with this tool, or "":
+    Tool Expertise (Artificer 6), the Fire Rune (Rune Knight), or Expertise
+    you picked for it (a rogue's thieves' tools)."""
+    cl, subs = class_levels(char), subclasses(char)
+    if cl.get("Artificer", 0) >= 6:
+        return "Tool Expertise"
+    runes = " ".join((char.get("_choices") or {}).get("rune_knight_runes", []) or [])
+    if cl.get("Fighter", 0) >= 3 and "rune knight" in subs.get("Fighter", "").lower() and "Fire Rune" in runes:
+        return "Fire Rune"
+    picks = [p for k, v in (char.get("_choices") or {}).items() if "expertise" in k and isinstance(v, list) for p in v]
+    if any(str(p).lower() == tool.lower() for p in picks):
+        return "Expertise"
+    return ""
+
+
+def get_tool_bonus(char: dict, tool: str, ability: str) -> int:
+    """A check with a tool you're proficient with: the ability modifier,
+    your proficiency bonus (doubled with tool_expertise), and what adds to
+    every check of that ability (Otherworldly Glamour, Stone of Good Luck)."""
+    pb = get_prof_bonus(char) * (2 if tool_expertise(char, tool) else 1)
+    return (ability_mod(char, ability) + pb + fey_wanderer_check_bonus(char, ability)
+            + char.get("magic_check_bonus", 0))
+
+
 def _elegant_courtier(char: dict) -> bool:
     return class_levels(char).get("Fighter", 0) >= 7 and "samurai" in subclasses(char).get("Fighter", "").lower()
 

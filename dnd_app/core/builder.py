@@ -1336,11 +1336,16 @@ def get_choices_needed(char: dict) -> list:
                 if clvl >= exp_lvl:
                     already_exp = choices_made.get(exp_key, [])
                     if len(already_exp) < exp_count:
+                        # two skills, or one and your thieves' tools (once)
+                        other = "rogue_expertise_2" if exp_key == "rogue_expertise_1" else "rogue_expertise_1"
+                        tools_ok = any(t.lower() == "thieves' tools" for t in char.get("tool_proficiencies", [])) \
+                            and "Thieves' tools" not in choices_made.get(other, [])
                         needed.append({
                             "id": exp_key, "source": "class", "source_name": cname,
                             "type": "expertise", "count": exp_count,
-                            "pool": None,
-                            "label": f"Choose {exp_count} skills for Expertise ({cname} Lv{exp_lvl})",
+                            "pool": None, "extra_pool": ["Thieves' tools"] if tools_ok else [],
+                            "label": f"Choose {exp_count} skills for Expertise ({cname} Lv{exp_lvl})"
+                                     + (" -- or 1 skill and your thieves' tools" if tools_ok else ""),
                             "already_chosen": already_exp,
                         })
         elif cname == "Bard":

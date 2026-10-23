@@ -338,12 +338,16 @@ class CharacterSheetBridge(QObject):
         self._roll_check({"kind": kind, "ability": ability, "skill": skill,
                           "label": f"{skill} check" if skill else label, "bonus": bonus})
 
-    def _roll_check(self, what):
+    def _roll_check(self, what, slot=None):
+        """slot: the part of the turn the roll takes once it's made (Fast
+        Hands' bonus action)."""
         from dnd_app.core.checks import roll_check
         free = [b for b in ("Action", "Bonus Action", "Reaction")
                 if self._turn_counts.get(b, 0) < self._turn_limit(b)]
 
         def done(res):
+            if slot:
+                self._mark_turn_used(slot)
             self._after_check(res)
             if res.get("report"):
                 self._last_check = res["report"]
@@ -2754,6 +2758,11 @@ class CharacterSheetBridge(QObject):
             # a feat's or trait's spell: the spell's own cast spends its free use
             self.castSpell(res["cast"])
             return
+        if res.get("check"):
+            # a check with a tool you carry (or Fast Hands' Sleight of Hand):
+            # rolled the way a skill is, as desktop
+            self._roll_check(res["check"], slot=res.get("check_slot"))
+            return
         if res.get("attack"):
             # the Attack action: the attack picked is rolled the way its Roll
             # to Hit button does, and the action is spent once it's made
@@ -4234,6 +4243,8 @@ class CharacterSheetBridge(QObject):
                 already = set(c.get("already_chosen") or [])
                 c["pool"] = sorted(s for s, lvl in self.char.get("skills", {}).items()
                                     if lvl >= 2 and s not in already)
+                # a rogue's thieves' tools can take the place of one skill
+                c["pool"] += [t for t in (c.get("extra_pool") or []) if t not in already]
             elif c["type"] == "infusion":
                 # Matches desktop's _build_infusion_chooser: only
                 # infusions this character's Artificer level actually

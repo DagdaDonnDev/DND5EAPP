@@ -866,6 +866,20 @@ DRAGONMARK_INTUITION = {
     "Mark of Sentinel": ("Sentinel's Intuition", ["Insight", "Perception"]),
 }
 
+# ...and the tools a dragonmark's d4 goes on too (Mark of Making: any
+# artisan's tools; Mark of Passage's land vehicles aren't a tool you carry)
+DRAGONMARK_INTUITION_TOOLS = {
+    "Mark of Warding": ["Thieves' tools"],
+    "Mark of Scribing": ["Calligrapher's supplies"],
+    "Mark of Storm": ["Navigator's tools"],
+    "Mark of Healing": ["Herbalism kit"],
+    "Mark of Hospitality": ["Brewer's supplies", "Cook's utensils"],
+    "Mark of Making": ["Alchemist's supplies", "Brewer's supplies", "Calligrapher's supplies", "Carpenter's tools",
+                       "Cartographer's tools", "Cobbler's tools", "Cook's utensils", "Glassblower's tools",
+                       "Jeweler's tools", "Leatherworker's tools", "Mason's tools", "Painter's supplies",
+                       "Potter's tools", "Smith's tools", "Tinker's tools", "Weaver's tools", "Woodcarver's tools"],
+}
+
 # A subrace whose languages replace the race's (Mark of Finding: Common and Goblin)
 SUBRACE_LANGUAGES = {("Half-Orc", "Mark of Finding"): ["Common", "Goblin"],
                      ("Human", "Mark of Finding"): ["Common", "Goblin"]}

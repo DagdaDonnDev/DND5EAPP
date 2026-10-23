@@ -9,7 +9,10 @@ you can add, each with its cost, only what you can pay for now.
         what    {"kind": "check" | "save" | "initiative" | "concentration",
                  "ability": "DEX", "skill": "Stealth" or "", "label":
                  "Stealth check", "bonus": 7, and for a concentration save
-                 "dc" and "spell"}
+                 "dc" and "spell"}; a check with a tool you're proficient
+                 with: {"kind": "check", "tool": "Thieves' tools",
+                 "ability": "DEX" or "" -- then it asks which, your DM's
+                 call, the usual one first; the bonus is worked out here}
         free    the parts of the turn still free ("Action", "Reaction"...)
         result  {"ask": ...} first, when there's something to decide before
                 the roll: cast Guidance or Resistance on yourself, take
@@ -159,6 +162,25 @@ def _vedalken_skill(char) -> str:
     return pick[0] if pick else ""
 
 
+def _vedalken_tool(char) -> str:
+    if not _race(char).startswith("Vedalken"):
+        return ""
+    pick = (char.get("_choices") or {}).get("race_tool_profs") or []
+    return pick[0] if pick else ""
+
+
+_AB_NAMES = {"STR": "Strength", "DEX": "Dexterity", "CON": "Constitution", "INT": "Intelligence",
+             "WIS": "Wisdom", "CHA": "Charisma"}
+
+
+def _tool_ability_options(char, tool) -> list:
+    """[(ability, "Dexterity (+7)")] -- the usual one for this tool first."""
+    from dnd_app.core.calculator import tool_usual_ability, get_tool_bonus
+    first = tool_usual_ability(tool)
+    order = [first] + [a for a in _AB_NAMES if a != first]
+    return [(a, f"{_AB_NAMES[a]} ({get_tool_bonus(char, tool, a):+d})") for a in order]
+
+
 def _can_cast(char, name, free) -> bool:
     """You know the cantrip and could cast it now, with your action."""
     from dnd_app.data.spells import get_spell
@@ -301,6 +323,8 @@ def _adds_proficiency(char, w) -> bool:
     if w["kind"] == "initiative":
         from dnd_app.core.calculator import initiative_adds_proficiency
         return initiative_adds_proficiency(char)
+    if w.get("tool"):
+        return True                     # only a tool you're proficient with is rolled
     skill = w.get("skill") or ""
     return bool(skill) and _skill_prof(char, skill) >= 2
 
@@ -352,6 +376,14 @@ def _auto_parts(char, w, ability):
             if mark and skill in mark[1]:
                 dice.append({"source": mark[0], "dice": "1d4", "sign": 1})
             if skill == _vedalken_skill(char):
+                dice.append({"source": "Tireless Precision", "dice": "1d4", "sign": 1})
+        tool = w.get("tool") or ""
+        if tool:
+            from dnd_app.data.races import DRAGONMARK_INTUITION, DRAGONMARK_INTUITION_TOOLS
+            sub = char.get("subrace") or ""
+            if tool.lower() in {t.lower() for t in DRAGONMARK_INTUITION_TOOLS.get(sub, [])}:
+                dice.append({"source": DRAGONMARK_INTUITION[sub][0], "dice": "1d4", "sign": 1})
+            if tool.lower() == _vedalken_tool(char).lower():
                 dice.append({"source": "Tireless Precision", "dice": "1d4", "sign": 1})
     if ability in ("STR", "CON") and "Frost Rune" in fx:
         flat.append({"source": "Frost Rune", "value": 2})
@@ -435,6 +467,8 @@ def _start(char, w, pick, free, rng):
     _before_options) paid for, the d20 -- two with advantage you took --
     what always applies, the reminder, and the total."""
     state = _new_state()
+    if w.get("note"):                     # what the roll is for (Set a Trap: its total is the DC)
+        state["notes"].append(w["note"][0].upper() + w["note"][1:])
     if pick:
         _pay_before(char, pick, state, free)
     state["dice"] = [_d20(char, rng, state["notes"]) for _ in range(2 if state["adv"] else 1)]
@@ -622,8 +656,8 @@ def _after_options(char, w, state, free) -> list:
             add("Pact of the Talisman", "Pact of the Talisman", "+1d4", uses(r), ("dice", "1d4"),
                 [("res", "pact_of_the_talisman")], section="fail")
         psi = _pool(char, "psi")
-        if skill and _skill_prof(char, skill) >= 2 and cl.get("Rogue", 0) >= 3 and "soulknife" in _sub(char, "Rogue") \
-                and _left(psi):
+        if (w.get("tool") or (skill and _skill_prof(char, skill) >= 2)) and cl.get("Rogue", 0) >= 3 \
+                and "soulknife" in _sub(char, "Rogue") and _left(psi):
             add("Psi-Bolstered Knack", "Psi-Bolstered Knack", f"+{_special_die(char, 'PSI')}",
                 f"1 Psionic Energy die, spent only if the check then succeeds ({_left(psi)} left)",
                 ("dice", "PSI"), [("defer", ("pool", "psi", 1))], section="fail")
@@ -849,6 +883,17 @@ def roll_check(char: dict, what: dict, answers=None, free=("Action", "Bonus Acti
     rng = rng or random
     answers = answers if answers is not None else {}
     w = dict(what)
+    if w.get("tool"):
+        from dnd_app.core.calculator import get_tool_bonus
+        if not w.get("ability"):
+            opts = _tool_ability_options(char, w["tool"])
+            pick = next((a for a, label in opts if label == answers.get("tool_ability")), None)
+            if pick is None:
+                return {"ok": False, "ask": {"key": "tool_ability", "title": f"{w['tool']}: which ability? "
+                                             f"(your DM says)", "options": [label for _, label in opts]}}
+            w["ability"] = pick
+        w["bonus"] = get_tool_bonus(char, w["tool"], w["ability"])
+        w["label"] = f"{w['tool']} check ({w['ability']})"
     w.setdefault("ability", "DEX" if w["kind"] == "initiative" else "CON" if w["kind"] == "concentration" else "")
     if w["kind"] == "check" and w.get("skill") and not w.get("ability"):
         from dnd_app.core.calculator import SKILL_ABILITY

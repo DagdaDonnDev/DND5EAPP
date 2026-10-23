@@ -134,6 +134,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **Initiative and Inspiration** are at the top of the desktop sheet. Click Initiative to roll it.
 - **Before any roll** (check, save, initiative or attack) it asks if there's something to decide first: cast Guidance or Resistance, give yourself advantage (Inspiration, Tides of Chaos, Kenku Recall) or use a Portent roll.
 - **Checks, saves and initiative** roll the same way as an attack. What always applies is already counted (Reliable Talent, Bless on a save, Halfling Lucky, Jack of All Trades…). Then each thing you can still add has an **Add** button and its cost: a superiority die, a Bardic Inspiration, your reaction, a use. Press **Done** when you're finished.
+- **Tools:** each tool you're proficient with and carry has a card on the **Other** tab that rolls a check with it. It asks which ability, since that's your DM's call, with the usual one first. A Thief's **Fast Hands** card can do the same with your bonus action.
 - **Concentration saves** roll themselves on both apps when you take damage. A failed save ends the spell, unless the sheet knows you have advantage on it (War Caster); then your second d20 decides.
 
 </details>

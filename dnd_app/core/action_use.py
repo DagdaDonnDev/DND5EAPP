@@ -1228,6 +1228,47 @@ def _lower_first(text):
     return text
 
 
+def tool_check_card(char, display, answers):
+    """A card that's a check with a tool you carry -- "Thieves' tools check"
+    (one for each tool: core/actions.py), Decipher Treasure Map, Set a Trap
+    -- and Fast Hands, which asks what your bonus action does first. None
+    for any other card. {"ok", "check": what, for the apps to roll with
+    core/checks.py roll_check (it asks the ability: your DM's call), and
+    "check_slot": the part of the turn it takes once rolled}."""
+    from dnd_app.core.calculator import carried_tools, get_skill_bonus
+    carried = {t.lower(): t for t in carried_tools(char)}
+    name = display.strip()
+
+    def tool_check(tool, ability="", note="", check_slot=None):
+        return _result(True, "", check={"kind": "check", "tool": tool, "ability": ability, "skill": "",
+                                        "label": f"{tool} check", "note": note}, check_slot=check_slot)
+    if name.lower().endswith(" check") and name[:-len(" check")].lower() in carried:
+        return tool_check(carried[name[:-len(" check")].lower()])
+    m = re.fullmatch(r"(Decipher Treasure Map|Set a Trap) \((.+)\)", name)
+    if m and m.group(2).lower() in carried:
+        if m.group(1) == "Decipher Treasure Map":
+            return tool_check(carried[m.group(2).lower()], "INT")
+        return tool_check(carried[m.group(2).lower()], note="your total is the trap's DC to find or disable it")
+    if name == "Fast Hands":
+        opts = ["A Sleight of Hand check"]
+        if "thieves' tools" in carried:
+            opts.append("Thieves' tools: pick a lock or disarm a trap")
+        opts.append("Use an Object")
+        if answers.get("fast_hands") not in opts:
+            return _result(False, ask={"key": "fast_hands", "title": "Fast Hands: what does your bonus action do?",
+                                       "options": opts})
+        pick = answers["fast_hands"]
+        if pick == "Use an Object":
+            return _result(True, "Fast Hands: Use an Object, with your bonus action", slot="Bonus Action")
+        if pick.startswith("Thieves' tools"):
+            return tool_check(carried["thieves' tools"], check_slot="Bonus Action")
+        return _result(True, "", check={"kind": "check", "skill": "Sleight of Hand", "ability": "DEX",
+                                        "label": "Sleight of Hand check",
+                                        "bonus": get_skill_bonus(char, "Sleight of Hand")},
+                       check_slot="Bonus Action")
+    return None
+
+
 def _result(ok=True, toast="", slot=None, refresh=False, **kw):
     out = {"ok": ok, "toast": toast, "slot": slot, "refresh": refresh, "ask": None}
     out.update(kw)
@@ -1896,6 +1937,11 @@ def use_action(char, bucket, display, desc="", answers=None, rng=random):
     if stop:
         return stop
 
+    # 1b. a check with a tool you carry, rolled by the apps (core/checks.py)
+    out = tool_check_card(char, display, answers)
+    if out is not None:
+        return out
+
     # 2. hand-written
     out = _special(char, key, display, slot, answers, rng, desc)
     if out is not None:
@@ -2020,6 +2066,10 @@ def _use_item(char, item, display, desc, slot, answers):
         uses["current"] -= 1
         tail = (" (used for today, back at dawn)" if per_day == 1 else
                 f" ({uses['current']} of {per_day} left today, back at dawn)")
+        if display == "Cursed Luckstone":
+            # its curse, the same as when a check uses it (core/checks.py)
+            char["_luckstone_curse"] = 2
+            tail += ". Your next two ability checks have disadvantage"
     card = next((d for d in char.get("item_granted_spell_details", [])
                  if f"{d.get('spell')} ({item})" == display), None)
     if card:

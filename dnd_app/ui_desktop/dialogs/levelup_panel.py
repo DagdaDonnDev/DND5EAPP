@@ -159,6 +159,8 @@ class ChoiceWidget(QFrame):
             # expertise together regardless of prior proficiency — a
             # genuinely different mechanic).
             pool = [s for s, lvl in self.char.get("skills", {}).items() if lvl >= 2]
+            # a rogue's thieves' tools can take the place of one skill
+            pool += list(self.choice_info.get("extra_pool") or [])
         else:
             raw_pool = explicit_pool or ALL_SKILLS
             # If pool is a placeholder like ['Any 3 skills'], use full skill list

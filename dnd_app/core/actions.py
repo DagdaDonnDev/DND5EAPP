@@ -2274,18 +2274,27 @@ def build_action_abilities(char):
             ("Craft Arrows", "As part of a short rest craft up to 5 arrows, or up to 20 on a long rest."),
         ],
     }
-    owned_item_names = {e.get("name","") for e in char.get("equipment", [])}
+    # A check with each tool you carry (Use rolls it: core/action_use.py
+    # tool_check_card), then its special uses
+    from dnd_app.core.calculator import carried_tools, tool_usual_ability
+    from dnd_app.data.items import INSTRUMENT_TOOLS
+    _ab_full = {"STR": "Strength", "DEX": "Dexterity", "CON": "Constitution", "INT": "Intelligence",
+                "WIS": "Wisdom", "CHA": "Charisma"}
+    carried = carried_tools(char)
+    for tool_name in carried:
+        usual = _ab_full[tool_usual_ability(tool_name)]
+        task = ("Pick a lock or disarm a trap: a" if tool_name.lower() == "thieves' tools" else "A")
+        buckets['Passive'].append((f"{tool_name} check", f"{task} check with your {tool_name[0].lower() + tool_name[1:]}. "
+                                   f"Your DM says which ability (usually {usual}).", 'Tool'))
+    carried_low = {t.lower() for t in carried}
     for tool_name, uses in TOOL_SPECIAL_USES.items():
-        if tool_name in char.get("tool_proficiencies", []) and tool_name in owned_item_names:
+        if tool_name.lower() in carried_low:
             for use_name, use_desc in uses:
                 buckets['Passive'].append((f"{use_name} ({tool_name})", use_desc, 'Tool'))
 
-    # ── Musical instrument / gaming set special uses (name-matched against
-    # owned equipment individually, since these are specific instruments/
-    # games rather than one fixed tool name) ─────────────────────────────────
-    from dnd_app.data.items import INSTRUMENT_TOOLS, GAMING_SETS
+    # ── Musical instrument special uses (each a specific instrument) ──────────
     for inst in INSTRUMENT_TOOLS:
-        if inst in char.get("tool_proficiencies", []) and inst in owned_item_names:
+        if inst.lower() in carried_low:
             buckets['Passive'].append((f"Compose a Tune ({inst})",
                 "As part of a long rest, compose a new tune and lyrics.", 'Tool'))
     from dnd_app.core.calculator import get_prof_bonus, ability_mod
