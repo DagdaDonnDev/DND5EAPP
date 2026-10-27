@@ -15,9 +15,7 @@ from dnd_app.data.backgrounds import BACKGROUND_NAMES, get_background
 from dnd_app.data.classes import CLASS_NAMES, CLASS_DICT
 from dnd_app.core.save_load import name_in_use, NAME_IN_USE_MESSAGE
 from dnd_app.data.starting_equipment import get_starting_equipment
-from dnd_app.data.items import (
-    ARMOR, ALL_WEAPONS, WEAPON_DICT, EQUIPMENT_PACKS, weapon_category_pool,
-)
+from dnd_app.data.items import weapon_category_pool
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1051,9 +1049,6 @@ class ClassWizardBridge(QObject):
 # contain "Any X" placeholders (e.g. "Any martial weapon") that need a
 # concrete pick from that category's weapon/tool pool.
 
-_ARMOR_DICT = {a[0]: a for a in ARMOR}
-_ARMOR_NAMES = set(_ARMOR_DICT)
-_WEAPON_NAMES = {w[0] for w in ALL_WEAPONS}
 
 
 def _is_placeholder(item: str) -> bool:
@@ -1200,57 +1195,13 @@ class EquipmentWizardBridge(QObject):
                     chosen_items.append(item)
 
         char = self.char
-        char["armor_worn"] = "No Armor"
-        char["shield"] = False
-        char["equipped_weapons"] = []
-        char["equipment"] = []
-        for item in chosen_items:
-            base = item.split(" (")[0].strip()
-            if base == "Shield":
-                char["shield"] = True
-                a = _ARMOR_DICT.get("Shield")
-                char["equipment"].append({"name": "Shield", "qty": 1,
-                                           "weight": a[6] if a else 6, "cost": a[7] if a else 10})
-            elif base in _ARMOR_NAMES:
-                char["armor_worn"] = base
-                a = _ARMOR_DICT.get(base)
-                char["equipment"].append({"name": base, "qty": 1,
-                                           "weight": a[6] if a else 0, "cost": a[7] if a else 0})
-            elif base in _WEAPON_NAMES:
-                char["equipped_weapons"].append(base)
-                w = WEAPON_DICT.get(base, {})
-                char["equipment"].append({"name": base, "qty": 1,
-                                           "weight": w.get("weight", 0), "cost": w.get("cost", 0)})
-            elif base in EQUIPMENT_PACKS:
-                for pack_item, qty in EQUIPMENT_PACKS[base]:
-                    char["equipment"].append({"name": pack_item, "qty": qty, "weight": 0, "cost": 0})
-            else:
-                char["equipment"].append({"name": item, "qty": 1, "weight": 0, "cost": 0})
-
+        # the same as desktop's wizard (core/inventory.py): each item
+        # counted once with its weight and cost, a pack as its contents,
+        # the background's gear and coins
+        from dnd_app.core.inventory import set_starting_inventory
         bg = get_background(char.get("background", ""))
-        bg_eq_text = (bg or {}).get("equipment", "")
-        if bg_eq_text and char.get("background") != "Custom Background":
-            import re
-            parts, depth, current = [], 0, ""
-            for ch in bg_eq_text:
-                if ch == '(':
-                    depth += 1; current += ch
-                elif ch == ')':
-                    depth -= 1; current += ch
-                elif ch == ',' and depth == 0:
-                    parts.append(current.strip()); current = ""
-                else:
-                    current += ch
-            if current.strip():
-                parts.append(current.strip())
-            for p in parts:
-                m = re.match(r'^(\d+)\s*(gp|sp|cp|ep|pp)$', p, re.IGNORECASE)
-                if m:
-                    cur = char.setdefault("currency", {})
-                    denom = m.group(2).upper()
-                    cur[denom] = cur.get(denom, 0) + int(m.group(1))
-                elif p:
-                    char["equipment"].append({"name": p, "qty": 1, "weight": 0, "cost": 0})
+        bg_text = "" if char.get("background") == "Custom Background" else (bg or {}).get("equipment", "")
+        set_starting_inventory(char, chosen_items, bg_text)
 
         if self._notes:
             char["notes"] = self._notes

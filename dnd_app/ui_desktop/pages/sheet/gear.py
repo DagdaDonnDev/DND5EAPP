@@ -140,9 +140,13 @@ class GearMixin:
         # (blank) last column and leaves names cut short beside empty space
         hdr.setStretchLastSection(False)
         hdr.setSectionResizeMode(0, QHeaderView.Stretch)
-        for col, w in [(1,40),(2,76),(3,48),(4,55),(5,32),(6,32)]:   # col 1: Eq tick / scroll's Use
+        for col, w in [(1,40),(2,76),(5,32),(6,32)]:   # col 1: Eq tick (an item is used from its card on the Combat tab)
             hdr.setSectionResizeMode(col, QHeaderView.Fixed)
             self._gear_equip_tree.setColumnWidth(col, w)
+        # weight and value: always as wide as what's in them, never cut short
+        for col in (3, 4):
+            hdr.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+        hdr.setMinimumSectionSize(32)
         # a magic item's rarity is a coloured bar on the row's left edge
         self._gear_equip_tree.setItemDelegateForColumn(0, RarityBarDelegate(self._gear_equip_tree))
         egl.addWidget(self._gear_equip_tree, 1)
@@ -240,18 +244,18 @@ class GearMixin:
         md_hdr = self._md_list.header()
         md_hdr.setStretchLastSection(False)
         md_hdr.setSectionResizeMode(0, QHeaderView.Stretch)
-        for col, w in [(1, 120), (2, 104), (3, 60), (4, 64)]:
+        for col, w in [(1, 120), (2, 104)]:
             md_hdr.setSectionResizeMode(col, QHeaderView.Interactive)
             self._md_list.setColumnWidth(col, w)
+        # weight and cost: as wide as what's in them, never cut short
+        for col in (3, 4):
+            md_hdr.setSectionResizeMode(col, QHeaderView.ResizeToContents)
         md_hdr.setMinimumSectionSize(32)
         md_hdr.setSectionResizeMode(5, QHeaderView.Fixed)
         self._md_list.setColumnWidth(5, 32)
         # the list is already grouped under category headings, so a
-        # Category column only took width from the names; and an item's
-        # weight is on its details (the magnifying glass) and in your
-        # inventory, so the names get that width too
+        # Category column only took width from the names
         self._md_list.setColumnHidden(1, True)
-        self._md_list.setColumnHidden(3, True)
         self._md_list.header().setStyleSheet(
             f"QHeaderView::section{{background:{SURF2};color:{GOLD2};font-weight:700;"
             f"font-size:{FS_SMALL}px;padding:6px;border:1px solid {BORDER};}}")
@@ -391,11 +395,13 @@ class GearMixin:
         if cat in ("All","Adventuring Gear"):
             sections.append(("Adventuring Gear", ADVENTURING_GEAR, "gear"))
         if cat in ("All","Tools"):
-            tool_data = [(t,"Tool","—","—","varies") for t in ALL_TOOLS]
+            from dnd_app.data.items import TOOL_STATS
+            tool_data = [(t, "Tool") + TOOL_STATS[t] for t in ALL_TOOLS if t in TOOL_STATS]
             sections.append(("Tools",          tool_data,       "tool"))
         if cat in ("All","Mounts & Vehicles"):
             sections.append(("Mounts",         MOUNTS,          "mount"))
 
+        from dnd_app.core.inventory import money_text, weight_text
         for section_name, items, kind in sections:
             parent = QTreeWidgetItem([section_name])
             parent.setForeground(0, __import__('PySide6.QtGui',fromlist=['QColor']).QColor(GOLD2))
@@ -407,23 +413,25 @@ class GearMixin:
                     name,wcat,dmg,dtype,wt,cost,props = row[0],row[1],row[2],row[3],row[4] if len(row)>4 else 0,row[5] if len(row)>5 else "—",row[6] if len(row)>6 else []
                     display_dmg = f"{dmg} {dtype}"
                     display_cat = wcat
-                    display_wt  = f"{wt} lb"
-                    display_cost= f"{cost} gp"
+                    display_wt  = weight_text(wt) or "—"
+                    display_cost= money_text(cost) if isinstance(cost, (int, float)) else "—"
                 elif kind == "arm":
                     name,akind,base_ac,dex_cap = row[0],row[1],row[2],row[3]
                     if name in ("No Armor","Mage Armor (spell)"): continue
                     display_dmg = f"AC {base_ac}" + (f" +DEX(max {dex_cap})" if dex_cap else " +DEX" if akind in ("light","medium") and dex_cap is None else "")
                     display_cat = akind.title()
-                    display_wt  = f"{row[6] if len(row)>6 else '—'} lb" if len(row)>6 else "—"
-                    display_cost= f"{row[7] if len(row)>7 else '—'} gp" if len(row)>7 else "—"
+                    display_wt  = (weight_text(row[6]) or "—") if len(row) > 6 else "—"
+                    display_cost= (money_text(row[7]) or "—") if len(row) > 7 else "—"
                 elif kind == "gear":
                     name,wt,cost,notes = row[0],row[1],row[2],row[3] if len(row)>3 else ""
                     display_dmg = notes[:30] if notes else "—"
                     display_cat = "Gear"
-                    display_wt  = f"{wt} lb"
-                    display_cost= f"{cost} gp"
+                    display_wt  = weight_text(wt) or "—"
+                    display_cost= money_text(cost) or "—"
                 elif kind == "tool":
-                    name = row[0]; display_dmg="—"; display_cat="Tool"; display_wt="—"; display_cost="varies"
+                    name = row[0]; display_dmg = "—"; display_cat = "Tool"
+                    display_wt = weight_text(row[2]) or "—"
+                    display_cost = money_text(row[3]) or "—"
                 elif kind == "mount":
                     name = row[0]
                     display_dmg = f"Speed {row[2]}'" if len(row)>2 else "—"
@@ -450,7 +458,7 @@ class GearMixin:
                     if notes:
                         tip_lines.append(notes)
                 elif kind == "tool":
-                    tip_lines.append("Tool proficiency")
+                    tip_lines.append(f"{display_wt} \u2014 {display_cost}")
                 elif kind == "mount":
                     tip_lines.append(f"{display_dmg} \u2014 {display_cost}")
                 child.setToolTip(0, "<br>".join(tip_lines))
@@ -488,26 +496,12 @@ class GearMixin:
             self._add_mount(name)
             self._toast(f"{name} added — see its stat block in the Companions tab")
             return
-        # Get weight and cost from item data
-        from dnd_app.data.items import WEAPON_DICT, ARMOR_DICT, ADVENTURING_GEAR, ALL_WEAPONS
-        weight = 0.0
-        cost = 0.0
-        wd = WEAPON_DICT.get(name)
-        if wd:
-            weight = float(wd.get("weight",0) or 0)
-            cost = float(wd.get("cost",0) or 0)
-        else:
-            for g in ADVENTURING_GEAR:
-                if g[0] == name: weight = float(g[1] or 0); cost = float(g[2] or 0); break
-        # Ask quantity via a small dialog
         qty, ok = QInputDialog.getInt(self, f"Add {name}", f"How many {name}?", 1, 1, 9999, 1)
         if not ok: return
-        eq = self.char.setdefault("equipment", [])
-        existing = next((e for e in eq if isinstance(e,dict) and e.get("name")==name), None)
-        if existing:
-            existing["qty"] = existing.get("qty",1) + qty
-        else:
-            eq.append({"name": name, "qty": qty, "weight": weight, "cost": cost, "notes": ""})
+        # onto its row if it's already carried, with the rules' weight and
+        # cost (core/inventory.py, as Android)
+        from dnd_app.core.inventory import add_item
+        add_item(self.char, name, qty)
         self._refresh_gear_equipment()
         if hasattr(self,"_update_weight"): self._update_weight()
         self._mark_dirty()
@@ -1152,14 +1146,13 @@ class GearMixin:
     def _update_weight(self):
         """Show total carried weight vs capacity."""
         if not hasattr(self,"_weight_lbl"): return
-        total = sum(eq.get("weight",0)*eq.get("qty",1) for eq in self.char.get("equipment",[]))
-        total += sum(eq.get("weight",0) for eq in self.char.get("magic_items",[]))
-        from dnd_app.core.calculator import ability_score as _as
-        str_score = _as(self.char,"STR")
-        cap = str_score * 15
-        push = cap * 2
+        # the same numbers as Android's: core's total and carrying capacity
+        from dnd_app.core.calculator import get_total_weight, get_carry_capacity_detail
+        total = get_total_weight(self.char)
+        detail = get_carry_capacity_detail(self.char)
+        cap, push = detail["carry"], detail["push_drag_lift"]
         col = TEAL2 if total <= cap else (AMBER if total <= push else CRIM2)
-        self._weight_lbl.setText(f"Carry: {total:.1f} / {cap} lb  (push {push} lb)")
+        self._weight_lbl.setText(f"Carry: {total:g} / {cap} lb  (push {push} lb)")
         self._weight_lbl.setStyleSheet(f"color:{col};font-size:{FS_SMALL}px;")
 
     def _refresh_gear_equipment(self):
@@ -1216,6 +1209,9 @@ class GearMixin:
             return (g, 0, e.get("name", "").lower())
 
         items.sort(key=_sort_key)
+        from dnd_app.core.actions import item_action_cards
+        from dnd_app.core.inventory import item_weight, item_cost, money_text, weight_text
+        _item_cards = item_action_cards(self.char)
         _counts = {}
         for e in items:
             _counts[_group_of(e)] = _counts.get(_group_of(e), 0) + 1
@@ -1249,12 +1245,11 @@ class GearMixin:
                     else "potion" if "potion" in _ln else "file" if is_scroll_name(name)
                     else gear_icon(name) or "package")
 
-            wt = eq.get("weight",0)
-            total_wt = wt * eq.get("qty",1)
-            wt_str = f"{total_wt:.1f}" if total_wt else "—"
-            cost = eq.get("cost",0)
-            total_cost = cost * eq.get("qty",1)
-            cost_str = f"{total_cost:g} gp" if total_cost else ("—" if not is_magic else "")
+            # one of it, its own or the rules' numbers (core/inventory.py), times how many
+            total_wt = item_weight(eq) * eq.get("qty", 1)
+            wt_str = weight_text(total_wt) or "—"
+            total_cost = item_cost(eq) * eq.get("qty", 1)
+            cost_str = money_text(total_cost) or ("—" if not is_magic else "")
 
             # beside the name: "1 of 3 equipped", "dedicated weapon"
             from dnd_app.core.weapons import inventory_notes
@@ -1296,7 +1291,9 @@ class GearMixin:
                 if notes:
                     base += f"<br>{notes}"
                 if wt_str != "—" or cost_str not in ("", "—"):
-                    base += f"<br>{wt_str} lb \u2014 {cost_str}" if wt_str != "—" else f"<br>{cost_str}"
+                    base += f"<br>{wt_str} \u2014 {cost_str}" if wt_str != "—" else f"<br>{cost_str}"
+                if name in _item_cards:          # used from its card, on the Combat tab
+                    base += f"<br><br>On the Combat tab: {_item_cards[name][2]}"
                 item.setToolTip(0, base)
 
             _header.addChild(item)
@@ -1319,16 +1316,6 @@ class GearMixin:
                                      f"QCheckBox::indicator:checked{{background:{GOLD};border-color:{GOLD2};}}")
                 eq_cb.stateChanged.connect(lambda s,n=name: self._toggle_armor_worn(n, bool(s)))
                 self._gear_equip_tree.setItemWidget(item, 1, eq_cb)
-            elif is_scroll_name(name):
-                # Use: a spell scroll casts its spell (a blank one asks which)
-                use_btn = QPushButton("Use"); use_btn.setFixedHeight(20)
-                use_btn.setToolTip("Read the scroll and cast its spell")
-                use_btn.setStyleSheet(
-                    f"QPushButton{{min-height:0;background:{SURF2};border:1px solid {BORDER2};border-radius:4px;"
-                    f"color:{TEXT};font-size:{FS_TINY}px;font-weight:700;padding:0 6px;}}"
-                    f"QPushButton:hover{{background:{SURF3};}}")
-                use_btn.clicked.connect(lambda checked=False, n=name: self._use_scroll(n))
-                self._gear_equip_tree.setItemWidget(item, 1, use_btn)
 
             # Quantity spin (col 2)
             qty_spin = QSpinBox()
@@ -1340,10 +1327,16 @@ class GearMixin:
                 f"QSpinBox{{min-height:0;background:{SURF2};border:1px solid {BORDER2};border-radius:4px;"
                 f"color:{GOLD2 if eq.get('qty',1)>1 else TEXT};font-size:{FS_TINY}px;font-weight:700;padding:0 2px;}}"
                 f"QSpinBox::up-button,QSpinBox::down-button{{width:16px;background:{BORDER};}}")
-            def _qty_changed(v, eq_ref=eq, n=name):
-                eq_ref["qty"] = v
-                if v == 0:
-                    self._remove_equipment(n)
+            def _qty_changed(v, eq_ref=eq):
+                from dnd_app.core.inventory import set_item_count
+                held = list(self.char.get("equipped_weapons", [])), self.char.get("armor_worn"), self.char.get("shield")
+                set_item_count(self.char, eq_ref, v)
+                if v == 0 or held != (self.char.get("equipped_weapons", []), self.char.get("armor_worn"),
+                                      self.char.get("shield")):
+                    # the row goes, or fewer are left than were in hand:
+                    # after this change has finished, the lists are rebuilt
+                    self._mark_dirty()
+                    QTimer.singleShot(0, self, self._after_items_removed)
                     return
                 self._update_weight(); self._refresh_ammo_counters(); self._mark_dirty()
             qty_spin.valueChanged.connect(_qty_changed)
@@ -1354,8 +1347,8 @@ class GearMixin:
             view.clicked.connect(lambda checked=False, n=name, it=item:
                                  self._show_item_details_for(n, tip=it.toolTip(0)))
             self._gear_equip_tree.setItemWidget(item, 5, view)
-            rm = self._row_icon_btn("trash", "Remove", CRIMSON)
-            rm.clicked.connect(lambda checked=False, n=name: self._remove_equipment(n))
+            rm = self._row_icon_btn("trash", "Remove one" if eq.get("qty", 1) > 1 else "Remove", CRIMSON)
+            rm.clicked.connect(lambda checked=False, e=eq: self._remove_item_row(e))
             self._gear_equip_tree.setItemWidget(item, 6, rm)
 
             # Right-click context menu for full details (magic items) / removal
@@ -1417,18 +1410,9 @@ class GearMixin:
                 elif can_dedicate(self.char, _name):
                     dw_act = menu.addAction(_icons.icon("dagger"), f"Make {_name[:30]} your Dedicated Weapon")
                     dw_act.triggered.connect(lambda checked=False, n=_name: self._set_dedicated_weapon(n))
-            if _eq.get("type") == "Potion" or "potion" in _name.lower():
-                drink_act = menu.addAction(_icons.icon("potion"), f"Drink {_name[:36]}")
-                drink_act.triggered.connect(lambda checked=False, n=_name: self._use_potion(n))
-            if is_scroll_name(_name):
-                from dnd_app.core.spellcasting import parse_spell_scroll
-                _scroll = parse_spell_scroll(_name)
-                label = (f"Use: cast {_scroll[1]}" if _scroll and _scroll[1]
-                         else "Use (choose its spell)" if _scroll else f"Read {_name[:36]}")
-                read_act = menu.addAction(_icons.icon("file"), label)
-                read_act.triggered.connect(lambda checked=False, n=_name: self._use_scroll(n))
-            rm_act = menu.addAction(_icons.icon("trash"), f"Remove {_name[:36]}")
-            rm_act.triggered.connect(lambda: self._remove_equipment(_name))
+            rm_act = menu.addAction(_icons.icon("trash"),
+                                    f"Remove one {_name[:36]}" if _eq.get("qty", 1) > 1 else f"Remove {_name[:36]}")
+            rm_act.triggered.connect(lambda: self._remove_item_row(_eq))
             if _eq.get("_mi_only"):
                 rm_act.setEnabled(False)
                 rm_act.setText("(Manage in Magic Items list below)")
@@ -1510,20 +1494,27 @@ class GearMixin:
         self._refresh_gear_equipment()
         self._mark_dirty()
 
-    def _remove_equipment(self, name: str):
-        # Don't try to remove _mi_only (magic-item-only) entries — they aren't
-        # in the real equipment list; they're injected for display only.
-        real_eq = self.char.get("equipment", [])
-        if not any(e.get("name") == name for e in real_eq):
-            return   # nothing to remove (was a display-only magic item row)
-        self.char["equipment"] = [e for e in real_eq if e.get("name") != name]
-        # Also un-equip from combat if equipped
-        if name in self.char.get("equipped_weapons",[]):
-            self.char["equipped_weapons"].remove(name)
-        if self.char.get("armor_worn","") == name:
-            self.char["armor_worn"] = "No Armor"
+    def _remove_item_row(self, entry: dict, n: int = 1):
+        """Trash on an inventory row: one of that row goes (core/inventory.py)
+        -- not every row of the same name -- and a weapon, armor or shield
+        no longer owned isn't in hand or worn any more. The lists are rebuilt
+        once this click has finished (the button is on the row)."""
+        from dnd_app.core.inventory import remove_items
+        if not remove_items(self.char, entry, n):
+            return   # a display-only row (a magic item's), not in the inventory
+        self._mark_dirty()
+        QTimer.singleShot(0, self, self._after_items_removed)
+
+    def _after_items_removed(self):
         self._refresh_gear_equipment()
-        self._refresh_combat(); self._mark_dirty()
+        self._update_weight()
+        self._refresh_combat()
+
+    def _remove_equipment(self, name: str):
+        """One of the first inventory row called `name` goes."""
+        entry = next((e for e in self.char.get("equipment", []) if e.get("name") == name), None)
+        if entry is not None:
+            self._remove_item_row(entry)
 
     def _use_potion(self, name: str):
         """Drink one dose of a potion: consumes it from inventory and, if
@@ -1532,13 +1523,11 @@ class GearMixin:
         the same list Rage/Haste/etc. already use — and can be removed by
         hand or fades automatically on a short/long rest per its
         duration_category."""
-        eq = self.char.get("equipment", [])
-        entry = next((e for e in eq if e.get("name") == name), None)
+        from dnd_app.core.inventory import remove_items
+        entry = next((e for e in self.char.get("equipment", []) if e.get("name") == name), None)
         if not entry:
             return
-        entry["qty"] = entry.get("qty", 1) - 1
-        if entry["qty"] <= 0:
-            self.char["equipment"] = [e for e in eq if e.get("name") != name]
+        remove_items(self.char, entry, 1)          # this one dose, not every row of it
 
         from dnd_app.core.effects import EFFECT_TABLE, INSTANT_POTION_EFFECTS
         instant = INSTANT_POTION_EFFECTS.get(name)
@@ -1638,13 +1627,11 @@ class GearMixin:
         if parse_spell_scroll(name):
             self._use_spell_scroll(name)
             return
-        eq = self.char.get("equipment", [])
-        entry = next((e for e in eq if e.get("name") == name), None)
+        from dnd_app.core.inventory import remove_items
+        entry = next((e for e in self.char.get("equipment", []) if e.get("name") == name), None)
         if not entry:
             return
-        entry["qty"] = entry.get("qty", 1) - 1
-        if entry["qty"] <= 0:
-            self.char["equipment"] = [e for e in eq if e.get("name") != name]
+        remove_items(self.char, entry, 1)          # this one scroll, not every row of it
 
         from dnd_app.core.effects import EFFECT_TABLE
         info = EFFECT_TABLE.get(name, {})

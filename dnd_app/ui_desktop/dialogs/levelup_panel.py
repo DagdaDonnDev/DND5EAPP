@@ -12,7 +12,7 @@ Author: Ethan O'Brien
 Date: 2026-08-20
 """
 from PySide6.QtWidgets import *
-from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtCore import Qt, Signal, QSize, QTimer
 from PySide6.QtGui import QColor
 from dnd_app.ui_desktop.style.theme import *
 from ..shared import h as _h, _btn
@@ -1200,7 +1200,8 @@ class LevelUpPanel(QWidget):
         # ── Expertise ─────────────────────────────────────────────────────
         elif "expertise" in choice_id:
             for skill in selected:
-                self.char["skills"][skill] = 3
+                if skill in self.char.get("skills", {}):   # a tool (Thieves' tools) isn't a skill
+                    self.char["skills"][skill] = 3
             self.char.setdefault("_choices",{})[choice_id] = selected
             # Same pattern as "_skill_profs" above: aggregate into a
             # dedicated key so rebuild() can re-derive expertise choices
@@ -1215,21 +1216,11 @@ class LevelUpPanel(QWidget):
 
         # ── Languages ─────────────────────────────────────────────────────
         elif "language" in choice_id or "bg_languages" in choice_id:
-            langs = self.char.get("languages",["Common"])
-            for lang in selected:
-                if lang not in langs: langs.append(lang)
-            self.char["languages"] = langs
-            self.char.setdefault("_choices",{})[choice_id] = selected
-            # Aggregate into "extra_languages" — the exact key builder.py's
-            # rebuild() reads from (char["languages"] = grants["languages"]
-            # + choices.get("extra_languages", [...])) — without this, any
-            # language chosen here would be lost on the next rebuild.
-            choices = self.char["_choices"]
-            all_extra_langs = []
-            for k, v in choices.items():
-                if ("language" in k or k.endswith("_bg_languages")) and isinstance(v, list):
-                    all_extra_langs.extend(v)
-            choices["extra_languages"] = list(set(all_extra_langs))
+            # the shared rule (core/builder.py apply_choice, as Android): the
+            # pick, and every language pick gathered into "extra_languages"
+            # -- which rebuild() reads -- so a language changed or no longer
+            # chosen goes too
+            apply_choice(self.char, choice_id, selected)
 
         # ── ASI: store in _choices['asi_bonuses'] only, rebuild() applies ──
 
@@ -1345,7 +1336,10 @@ class LevelUpPanel(QWidget):
             apply_choice(self.char, choice_id, selected)
 
         rebuild(self.char)
-        self.choices_changed.emit()
+        # The sheet (and this panel) are rebuilt once the pick's own signal
+        # has finished -- the language combo's, a box's, a radio's -- not in
+        # the middle of it, while the widget that sent it is being torn down.
+        QTimer.singleShot(0, self, self.choices_changed.emit)   # not if this panel's gone by then
         # Sheet observer handles refresh via ctrl.refresh() -> _levelup_panel.refresh()
 
 

@@ -207,6 +207,116 @@ def _optional_feature_enabled(char, feature_name):
     return char.get("optional_rules", {}).get(rules_key, False)
 
 
+def item_action_cards(char: dict) -> dict:
+    """{inventory item name: (tab, card, what it does)} -- the action card
+    an item you carry has on the Actions page (a Tinderbox, a flask to
+    throw, a check with a tool, a potion, a scroll), so its inventory row
+    can say what using it does. It's used from the card."""
+    from dnd_app.core.inventory import same_item_key
+    by_key = {}
+    for e in char.get("equipment", []):
+        n = e.get("name", "") if isinstance(e, dict) else ""
+        if n:
+            by_key.setdefault(same_item_key(n), n)
+    out = {}
+    for bucket, cards in build_action_abilities(char).items():
+        for card in cards:
+            name, desc = card[0], card[1]
+            src = card[2] if len(card) > 2 else ""
+            item = by_key.get(same_item_key(name)) or (by_key.get(same_item_key(str(src))) if src else None)
+            if not item and src == "Tool" and name.lower().endswith(" check"):
+                item = by_key.get(same_item_key(name[:-len(" check")]))
+            if item and item not in out:
+                out[item] = (bucket, name, desc)
+    return out
+
+
+def _first_sentence(text: str) -> str:
+    text = " ".join(str(text or "").split())
+    m = re.match(r"(.+?[.!?])(\s|$)", text)
+    return (m.group(1) if m else text)[:220]
+
+
+def _potion_does(name: str) -> str:
+    """What drinking a potion does, in a line."""
+    from dnd_app.core.effects import EFFECT_TABLE, INSTANT_POTION_EFFECTS
+    from dnd_app.data.magic_items import get_magic_item
+    now = INSTANT_POTION_EFFECTS.get(name)
+    if now:
+        parts = []
+        if "heal_dice" in now:
+            n, d, b = now["heal_dice"]
+            parts.append(f"you regain {n}d{d}{f' + {b}' if b else ''} hit points")
+        if "damage_dice" in now:
+            n, d, b = now["damage_dice"]
+            parts.append(f"you take {n}d{d}{f' + {b}' if b else ''} {now.get('damage_type', '')} damage")
+        if "add_condition" in now:
+            parts.append(f"you're {now['add_condition'].lower()}")
+        if "cure_conditions" in now:
+            ends = [c.lower() for c in now["cure_conditions"]]
+            parts.append("it ends " + (ends[0] if len(ends) == 1 else ", ".join(ends[:-1]) + " and " + ends[-1]))
+        text = ", ".join(parts)
+        text = (text[0].upper() + text[1:] + ".") if text else now.get("cure_note", "")
+        return " ".join(text.split())
+    note = (EFFECT_TABLE.get(name) or {}).get("note", "")
+    if note:
+        return _first_sentence(note)
+    return _first_sentence((get_magic_item(name) or {}).get("desc", "")) or "Drink it."
+
+
+def potion_scroll_cards(char: dict) -> list:
+    """[(tab, (card, what it does, "Potion" or "Scroll"))]: a card on the Actions page for
+    each potion and scroll you carry -- where they're drunk and read, the
+    way every other action is. A potion takes an action (a bonus action
+    under the 2024 rules); a spell scroll, its spell's casting time; any
+    other scroll, an action."""
+    from dnd_app.core.effects import EFFECT_TABLE
+    from dnd_app.core.inventory import consumable_kind
+    from dnd_app.core.spellcasting import parse_spell_scroll
+    from dnd_app.data.magic_items import get_magic_item
+    from dnd_app.data.spells import get_spell
+    counts, kinds = {}, {}
+    for e in char.get("equipment", []):
+        kind = consumable_kind(e)
+        if kind and e.get("name"):
+            counts[e["name"]] = counts.get(e["name"], 0) + (e.get("qty", 1) or 1)
+            kinds[e["name"]] = kind
+    out = []
+    for name, kind in kinds.items():
+        have = f" You have {counts[name]}." if counts[name] > 1 else ""
+        if kind == "potion":
+            tab = "Bonus Action" if char.get("edition") == "2024" else "Action"
+            does = _potion_does(name)
+            if len(does) > 1 and does[0].isupper() and does[1].islower():
+                does = does[0].lower() + does[1:]          # "Drink it: you regain..."
+            out.append((tab, (name, f"Drink it: {does}{have}", "Potion")))
+            continue
+        scroll = parse_spell_scroll(name)
+        tab = "Action"
+        if scroll and scroll[1]:
+            spell = get_spell(scroll[1]) or {}
+            ct = (spell.get("cast_time") or "1 action").strip().lower()
+            tab = {"bonus action": "Bonus Action", "reaction": "Reaction"}.get(ct, "Action")
+            does = f"Read it to cast {scroll[1]}, with the scroll's own save DC and attack. It's used up."
+        elif scroll:
+            does = "Pick the spell written on it, then read it to cast that spell. It's used up."
+        else:
+            note = (EFFECT_TABLE.get(name) or {}).get("note", "") or (get_magic_item(name) or {}).get("desc", "")
+            does = f"Read it: {_first_sentence(note)}" if note else "Read it."
+        out.append((tab, (name, does + have, "Scroll")))
+    return out
+
+
+def carried_use_item(char: dict, card: str):
+    """{"kind": "potion" or "scroll", "name"} when an Actions page card is a
+    potion's or scroll's you carry (potion_scroll_cards), else None."""
+    from dnd_app.core.inventory import consumable_kind
+    for e in char.get("equipment", []):
+        if isinstance(e, dict) and e.get("name") == card and consumable_kind(e):
+            return {"kind": consumable_kind(e), "name": card}
+    return None
+
+
 def build_action_abilities(char):
     """
     Return {bucket: [(name, desc, source), ...]} for the action economy display.
@@ -2898,13 +3008,18 @@ def build_action_abilities(char):
         "Vial of Stardust": ("Action", "Vial of Stardust"),
     }
     from dnd_app.data.items import ADVENTURING_GEAR as _AG
+    from dnd_app.core.inventory import same_item_key
     _gear_notes = {row[0]: (row[3] if len(row) > 3 else "") for row in _AG}
-    owned_names = {eq.get("name", "") for eq in char.get("equipment", [])}
+    # however it's written: a background's "Holy water" is a Holy Water (flask)
+    owned_names = {same_item_key(eq.get("name", "")) for eq in char.get("equipment", []) if isinstance(eq, dict)}
     for item_name, (bucket_name, gear_key) in CONSUMABLE_ITEM_ACTIONS.items():
-        if item_name in owned_names:
+        if same_item_key(item_name) in owned_names:
             note = _gear_notes.get(gear_key, "")
             if note:
                 buckets[bucket_name].append((item_name, note, item_name))
+    # potions and scrolls: drunk and read from their cards here
+    for bucket_name, entry in potion_scroll_cards(char):
+        buckets[bucket_name].append(entry)
 
     # Interception / Protection fighting styles are reaction-based
     # (unlike the other 9 fighting styles, which are passive combat-math

@@ -1942,6 +1942,16 @@ def use_action(char, bucket, display, desc="", answers=None, rng=random):
     if out is not None:
         return out
 
+    # 1c. a potion or a scroll you carry (core/actions.py potion_scroll_cards):
+    #     the apps drink or read it, and mark the part of the turn it took
+    #     ("spends" -- a spell scroll's spell marks its own casting time)
+    from dnd_app.core.actions import carried_use_item
+    carried = carried_use_item(char, display)
+    if carried is not None:
+        from dnd_app.core.spellcasting import parse_spell_scroll
+        spell_scroll = carried["kind"] == "scroll" and parse_spell_scroll(carried["name"])
+        return _result(True, "", use_item=carried, spends=None if spell_scroll else slot)
+
     # 2. hand-written
     out = _special(char, key, display, slot, answers, rng, desc)
     if out is not None:

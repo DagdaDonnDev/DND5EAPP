@@ -458,6 +458,12 @@ class ActionTabsMixin:
             if row is not None and self._attack(row) and res.get("attack_slot"):
                 self._mark_turn_used(res["attack_slot"])
             return
+        if res.get("use_item"):
+            # a potion or scroll from its card: drunk or read once this click
+            # is done (it rebuilds the cards, this one's button included)
+            item, spends = res["use_item"], res.get("spends")
+            QTimer.singleShot(0, self, lambda: self._use_carried(item["kind"], item["name"], spends))
+            return
         if res.get("toast"):
             self._toast(res["toast"])
         if not res.get("ok"):
@@ -476,6 +482,15 @@ class ActionTabsMixin:
         self._mark_dirty()
         # after this click has finished: the card's own button is rebuilt
         QTimer.singleShot(0, self.ctrl.refresh if res.get("refresh") else self._refresh_action_tabs)
+
+    def _use_carried(self, kind, name, spends):
+        """A potion drunk or a scroll read from its card (gear.py does it),
+        with the part of the turn it took."""
+        if not any(e.get("name") == name for e in self.char.get("equipment", [])):
+            return
+        if spends:
+            self._mark_turn_used(spends)
+        (self._use_potion if kind == "potion" else self._use_scroll)(name)
 
     def _refresh_action_tabs(self):
         """Rebuild the action economy tabs from current character state."""

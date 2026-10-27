@@ -360,12 +360,17 @@ def set_class_level(char: dict, class_name: str, level: int) -> None:
 def level_up_block_reason(char: dict, class_name: str = "") -> str:
     """Why the character can't gain a level (in `class_name`, if given):
     character level 20 is the most there is, across every class combined,
-    and no single class goes past 20 either. "" when a level is fine."""
+    and no single class goes past 20 either; a new class needs the
+    multiclassing ability scores (core/multiclass.py). "" when a level is
+    fine."""
     if total_level(char) >= 20:
         return "you're at character level 20, the maximum"
     entry = get_class_entry(char, class_name) if class_name else None
     if entry and entry.get("level", 0) >= 20:
         return f"{class_name} is already at level 20"
+    if class_name and not entry:
+        from dnd_app.core.multiclass import multiclass_block_reason
+        return multiclass_block_reason(char, class_name)
     return ""
 
 

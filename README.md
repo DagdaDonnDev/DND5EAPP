@@ -147,7 +147,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **The Spellcasting table** lists each class, your race and each feat that gives you spells, with its own ability, save DC and attack. A racial spell uses its own row, not your class's.
 - **Free casts** from your race or a feat have their own counter, and Cast spends it before a slot. A spell a feat gives at will (Drow High Magic's Detect Magic) never takes one, and Strixhaven Mascot's Find Familiar is cast as a ritual.
 - **The Spell Browser** shows the spells on your classes' lists that you can cast now. **Homebrew mode** shows every spell and lifts the limits, if your DM allows it.
-- **Spell scrolls** are read with **Use**, from your inventory.
+- **Spell scrolls** are read from their card on the Combat tab (Actions on Android), like any other action.
 
 </details>
 
@@ -156,6 +156,8 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 
 - **Adding things:** pick a browser on the right of Gear & Items (Equipment, Magic Items or Companions), then double-click a row, or select it and press **Add Selected to Inventory**.
 - **Equip** a weapon to give it a Hit button on the Combat tab. **Wear** armour and it goes into your AC.
+- **Every item shows what it weighs and what it's worth**, for the whole stack, from the rules' tables. The same item is one row with how many you have: the trash takes one, and setting the number lower does too (on Android, press and hold → How many). A weapon, armour or shield you no longer have isn't in hand or worn any more. Your background's artisan's tools, instrument or gaming set is the one you picked for it, so its check has a card too.
+- **Using an item** is its card on the Combat tab (Actions on Android), the same as every other action: a potion, a scroll, a tinderbox, a flask to throw, a check with a tool you carry. Drinking a potion takes your action (a bonus action under the 2024 rules). The inventory only lists them, with what each one does.
 - **Magic items** only work while they're ticked **Eq'd**, and **Attuned** if they need it. The list's title shows how many you can attune.
 - Some items ask a question when you add them: which of your own weapons a +1 goes on, which spell a scroll holds, what damage type a Ring of Resistance guards against.
 - **Manuals and tomes:** right-click → Study.
@@ -167,7 +169,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 <details>
 <summary><b>Levelling up, and changing your mind</b></summary>
 
-- **Level Up / Multiclass** is on the Choices tab: pick the class to level or add, then make that level's choices.
+- **Level Up / Multiclass** is on the Choices tab: pick the class to level or add, then make that level's choices. A new class needs the multiclassing scores, for your current classes and the new one (Monk: Dexterity 13 and Wisdom 13; Fighter: Strength 13 or Dexterity 13). One you can't take yet is greyed, with what it needs.
 - **Level Down** and **Remove Class** take a level or a whole class away, with everything it brought: invocations, maneuvers, the spells it alone gave. Level back up and you're asked again.
 - Change your race, subrace, background, alignment or a feat later and the same clean-up happens. Anything new to pick waits on Choices (a new alignment asks for Divinely Favored's spell again).
 - Your own edits on the Skills tab stay until you press **↺ Reset Manual Changes**.
@@ -192,6 +194,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **Characters are saved in `Documents/MIMIC Characters`**, one `.json` file each, with each character's exported sheets in a folder of its own. Settings → Character Folder changes where; on Android it has to be inside Documents or Download.
 - **It saves itself** when you create a character, level up or down, or confirm a choice. For anything else, save with **Ctrl+S** (Android: Save & Export → Save). Leaving with unsaved changes asks first.
 - **A backup, on desktop:** while you have unsaved changes, a copy is written every minute to `<name>.autosave.json`, next to the character's file. If the app ever closes unexpectedly, rename it to `<name>.json` to get your changes back.
+- **If something goes wrong**, it's noted in `mimic_error_log.txt`: next to MIMIC.exe on desktop, in the character folder on Android. Send that file along with what you were doing.
 - **Campaign folders:** on the start screen, the folder button on a character moves it into a folder.
 - **Between your phone and your computer**, copy the `.json` file across. Open it with **File → Open…** (Ctrl+O), or **Save & Export → Import…** on Android.
 - **File → Duplicate Character** (Ctrl+Shift+D) makes a copy to try a different build on.
@@ -310,10 +313,12 @@ dnd_app/
     effects.py         buffs, conditions and other active effects
     magic_items.py     item effects, attunement, owned copies
     item_details.py    what an item's details page says, on both apps
+    inventory.py       weights and values, stacks, starting gear, taking items out
     dying.py, ammo.py  damage and death saves; ammunition
     save_load.py       save files, the save folder, old-save upgrades
     pdf_sheet.py       the official 5e PDF sheet, both ways
     readme.py          this file, as both apps' Credits screens show it
+    error_log.py       mimic_error_log.txt: what went wrong, for fixing it
   data/              Game data: races, classes, spells, feats, items, stat blocks...
     phb2024/           the 2024 rules' data, for later
     themes.py, icon_data.py, flavor_text.py   shared by both apps' looks

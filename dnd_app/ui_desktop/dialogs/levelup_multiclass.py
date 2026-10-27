@@ -119,7 +119,7 @@ class LevelUpMulticlassDialog(QDialog):
                 ok_req, msg = self._meets_multiclass_reqs(cls_name, existing)
                 if not ok_req:
                     rb.setEnabled(False)
-                    rb.setToolTip(f"Doesn't meet multiclass prerequisites: {msg}")
+                    rb.setToolTip(f"Not yet: {msg}")
             rb.toggled.connect(lambda checked, n=cls_name: self._on_pick(n) if checked else None)
             self._btn_group.addButton(rb)
             self._radios[cls_name] = rb
@@ -283,20 +283,12 @@ class LevelUpMulticlassDialog(QDialog):
             self._on_pick(default_choice)
 
     def _meets_multiclass_reqs(self, class_name, existing_classes):
-        """Delegates to the single canonical check_multiclass_prereq()
-        function rather than keeping a second copy of the ability-score
-        requirements here, so this dialog's eligibility check and
-        multiclass.py's MULTICLASS_PREREQS_2024 can never drift apart
-        (e.g. Blood Hunter's real requirement is INT 13 AND (STR or DEX)
-        13, not STR AND INT both)."""
-        from dnd_app.core.multiclass import check_multiclass_prereq
-        if not self.char.get("optional_rules", {}).get("multiclass_ability_reqs", True):
-            return True, ""
-        base_scores = self.char.get("abilities", {})
-        bonuses = self.char.get("ability_bonuses", {})
-        scores = {ab: base_scores.get(ab, 10) + bonuses.get(ab, 0) for ab in
-                  ("STR", "DEX", "CON", "INT", "WIS", "CHA")}
-        return check_multiclass_prereq(class_name, scores)
+        """The one shared check (core/multiclass.py multiclass_block_reason,
+        Android's too): the scores your current classes need and the new
+        one's."""
+        from dnd_app.core.multiclass import multiclass_block_reason
+        why = multiclass_block_reason(self.char, class_name)
+        return not why, why
 
     def _append_level_preview(self, lines, cls_name, is_new):
         """Appends the HP/spell-slot numbers this pick would actually

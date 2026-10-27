@@ -49,8 +49,10 @@ def unequip_weapon(char: dict, name: str) -> None:
 
 
 def equipped_note(char: dict, name: str, qty: int) -> str:
-    """"1 of 3 equipped" for a stack with one in hand, else ""."""
-    return f"1 of {qty} equipped" if qty > 1 and name in char.get("equipped_weapons", []) else ""
+    """"1 of 3 equipped" for a stack with one in hand (2 of 2 with one in
+    each), else ""."""
+    held = char.get("equipped_weapons", []).count(name)
+    return f"{min(held, qty)} of {qty} equipped" if qty > 1 and held else ""
 
 
 # ── Monk weapons (Martial Arts) ───────────────────────────────────────────

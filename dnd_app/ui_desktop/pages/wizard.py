@@ -1603,78 +1603,13 @@ class Step5Equipment(QWidget):
                 else:
                     chosen_items.append(item)
 
-        armor_names = {a[0] for a in ARMOR}
-        weapon_names = {w[0] for w in ALL_WEAPONS}
-        armor_dict = {a[0]: a for a in ARMOR}
-        char["armor_worn"] = "No Armor"
-        char["shield"] = False
-        # setdefault only initializes an empty list, it never clears one
-        # that's already there — so navigating back and changing class
-        # (re-triggering populate() -> collect()) would otherwise
-        # accumulate the previous class's starting equipment on top of
-        # the new class's, rather than replacing it. Safe to reset here
-        # since this method only runs during the wizard flow, before any
-        # real gameplay additions could exist.
-        char["equipped_weapons"] = []
-        char["equipment"] = []
-        from dnd_app.data.items import WEAPON_DICT, EQUIPMENT_PACKS
-        for item in chosen_items:
-            base = item.split(" (")[0].strip()
-            if base == "Shield":
-                char["shield"] = True
-                a = armor_dict.get("Shield")
-                # Adds a corresponding entry to the actual inventory
-                # list, not just the mechanical flag used for AC math, so
-                # the Gear tab shows starting armor/weapons as owned items.
-                char["equipment"].append({"name": "Shield", "qty": 1,
-                                          "weight": a[6] if a else 6, "cost": a[7] if a else 10})
-            elif base in armor_names:
-                char["armor_worn"] = base
-                a = armor_dict.get(base)
-                char["equipment"].append({"name": base, "qty": 1,
-                                          "weight": a[6] if a else 0, "cost": a[7] if a else 0})
-            elif base in weapon_names:
-                # Each weapon copy is added as its own row rather than
-                # skipped when a name is already present, so real
-                # multi-weapon starting equipment (e.g. a Rogue's two
-                # daggers, "two Handaxes") is fully represented.
-                char["equipped_weapons"].append(base)
-                w = WEAPON_DICT.get(base, {})
-                char["equipment"].append({"name": base, "qty": 1,
-                                          "weight": w.get("weight", 0), "cost": w.get("cost", 0)})
-            elif base in EQUIPMENT_PACKS:
-                # A chosen pack adds its real, individual contents rather than a single, opaque item.
-                for pack_item, qty in EQUIPMENT_PACKS[base]:
-                    char["equipment"].append({"name": pack_item, "qty": qty, "weight": 0, "cost": 0})
-            else:
-                char["equipment"].append({"name": item, "qty": 1, "weight": 0, "cost": 0})
-
-        # Background equipment is parsed and added to the character's
-        # real inventory/currency, not just shown as display text.
+        # into the inventory the same way Android's wizard does
+        # (core/inventory.py): each item counted once with its weight and
+        # cost, a pack as its contents, the background's gear and coins
+        from dnd_app.core.inventory import set_starting_inventory
         bg = get_background(char.get("background", ""))
-        bg_eq_text = (bg or {}).get("equipment", "")
-        if bg_eq_text and char.get("background") != "Custom Background":
-            import re
-            parts, depth, current = [], 0, ""
-            for ch in bg_eq_text:
-                if ch == '(':
-                    depth += 1; current += ch
-                elif ch == ')':
-                    depth -= 1; current += ch
-                elif ch == ',' and depth == 0:
-                    parts.append(current.strip()); current = ""
-                else:
-                    current += ch
-            if current.strip():
-                parts.append(current.strip())
-            for p in parts:
-                m = re.match(r'^(\d+)\s*(gp|sp|cp|ep|pp)$', p, re.IGNORECASE)
-                if m:
-                    cur = char.setdefault("currency", {})
-                    denom = m.group(2).upper()
-                    cur[denom] = cur.get(denom, 0) + int(m.group(1))
-                elif p:
-                    char["equipment"].append({"name": p, "qty": 1, "weight": 0, "cost": 0})
+        bg_text = "" if char.get("background") == "Custom Background" else (bg or {}).get("equipment", "")
+        set_starting_inventory(char, chosen_items, bg_text)
 
         notes = self._notes.toPlainText()
         if notes: char["notes"] = notes
