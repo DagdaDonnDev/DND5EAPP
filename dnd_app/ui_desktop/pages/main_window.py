@@ -1310,6 +1310,11 @@ def main(app=None, splash=None):
     if app is None:
         app = QApplication(sys.argv)
         app.setApplicationName("MIMIC")
+    # what goes wrong is noted in mimic_error_log.txt next to MIMIC.exe
+    # (core/error_log.py; the same as Android's, in its save folder)
+    from dnd_app.core.error_log import install as _log_errors
+    from dnd_app.ui_desktop.shared import diagnostic_log_dir
+    _log_errors(diagnostic_log_dir()) or _log_errors(os.path.expanduser("~"))
 
     if splash is None:
         # Show a splash immediately — building the sheet (magic items, spells,

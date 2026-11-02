@@ -16,7 +16,7 @@ import random
 import re
 import sys
 
-from PySide6.QtCore import QObject, Signal, Slot, Property
+from PySide6.QtCore import QObject, Signal, Slot, Property, QTimer
 
 from dnd_app.core.controller import CharacterController
 from dnd_app.core.app_settings import get_app_theme
@@ -25,7 +25,7 @@ from dnd_app.core.character import (
     get_class_entry, set_class_level, add_class, set_subclass, add_feat,
     clean_subclass_name, xp_progress, total_level, restore_spell_slot, subclasses,
 )
-from dnd_app.core.multiclass import get_saving_throw_profs, check_multiclass_prereq
+from dnd_app.core.multiclass import get_saving_throw_profs
 from dnd_app.core.builder import get_choices_needed, apply_choice, rebuild, full_list_dumped_spell_names
 from dnd_app.core.calculator import (
     SKILL_ABILITY, get_ac, get_initiative, get_prof_bonus,
@@ -44,7 +44,7 @@ from dnd_app.core.calculator import (
 from dnd_app.data.feature_ui_interactions import TOOLS as SWAP_TOOLS_POOL
 from dnd_app.core.magic_items import (
     concentration_save, start_concentration, drop_concentration, parse_magic_suffix,
-    parse_material_prefix, ABILITY_SCORE_MANUALS,
+    ABILITY_SCORE_MANUALS,
 )
 from dnd_app.core.effects import EFFECT_TABLE, INSTANT_POTION_EFFECTS
 from dnd_app.core.riders import base_weapon_options as _base_weapon_options, weapon_base_of as _weapon_base_of
@@ -255,9 +255,10 @@ class CharacterSheetBridge(QObject):
     def __init__(self, char: dict, parent=None):
         super().__init__(parent)
         self.char = char
+        self._change_queued = False
         self.ctrl = CharacterController(char)
         self.ctrl.mark_ui_ready()
-        self.ctrl.subscribe(lambda _c: self.statsChanged.emit())
+        self.ctrl.subscribe(lambda _c: self._changed())
         # Turn tracker -- session-only state (matches ui_desktop's
         # CombatMixin._turn_counts exactly: never saved to the character
         # file, just this-session bookkeeping for the action economy).
@@ -272,6 +273,27 @@ class CharacterSheetBridge(QObject):
         # -- desktop asks for it straight after the damage; here the
         # combat screen's concentration row shows a Save button.
         self._pending_conc_dc = 0
+
+    # ── Telling the screens ──────────────────────────────────────────
+    # Every change is told once the tap that made it has finished, never
+    # in the middle of it: when a list's model changes, Qt Quick tears down
+    # the list's rows at once -- the very button being tapped included,
+    # while its handler is still running (the Choices screen's Confirm, an
+    # action's Use, the roll dialog's Add, a question's answer that leads
+    # to the next question). Several changes in one tap are told once.
+    def _changed(self):
+        if not self._change_queued:
+            self._change_queued = True
+            QTimer.singleShot(0, self, self._tell_changed)
+
+    def _tell_changed(self):
+        self._change_queued = False
+        self.statsChanged.emit()
+
+    def _later(self, emit, *args):
+        """A dialog's signal (a question, a roll), after the tap -- in order
+        with the changes told before it."""
+        QTimer.singleShot(0, self, lambda: emit(*args))
 
     @Slot()
     def refresh(self):
@@ -352,7 +374,7 @@ class CharacterSheetBridge(QObject):
             if res.get("report"):
                 self._last_check = res["report"]
                 self._roll_kind = "check"
-                self.attackReport.emit(res["report"]["title"], res["report"])
+                self._later(self.attackReport.emit, res["report"]["title"], res["report"])
         self._ask_through(what["label"], lambda a: roll_check(self.char, what, a, free), done)
 
     @Slot(list)
@@ -382,7 +404,7 @@ class CharacterSheetBridge(QObject):
             self.toastRequested.emit(res["toast"])
         if res.get("refresh"):
             self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Inspiration ──────────────────────────────────────────────────
     @Property(bool, notify=statsChanged)
@@ -392,7 +414,7 @@ class CharacterSheetBridge(QObject):
     @Slot(bool)
     def setInspiration(self, on: bool):
         self.ctrl.update("inspiration", on, rebuild_char=False)
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Ability scores ──────────────────────────────────────────────
     @Property(list, notify=statsChanged)
@@ -490,7 +512,7 @@ class CharacterSheetBridge(QObject):
             char["current_hp"] = min(char.get("current_hp", value) + diff, value)
         else:
             char["current_hp"] = min(char.get("current_hp", value), value)
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot()
     def resetMaxHpOverride(self):
@@ -534,7 +556,7 @@ class CharacterSheetBridge(QObject):
         max_hp = self.char.get("max_hp", 0)
         self.char["current_hp"] = min(max_hp, self.char.get("current_hp", 0) + heal)
         self.toastRequested.emit(f"Spent a {die_key}: healed {heal} HP")
-        self.statsChanged.emit()
+        self._changed()
 
     @Property(int, notify=statsChanged)
     def proficiencyBonus(self):
@@ -578,7 +600,7 @@ class CharacterSheetBridge(QObject):
         from dnd_app.core.builder import set_skill_level
         set_skill_level(self.char, skill_name, level)
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot()
     def resetSkillProficiencies(self):
@@ -655,7 +677,7 @@ class CharacterSheetBridge(QObject):
         else:
             unequip_weapon(self.char, name)
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Property(list, notify=statsChanged)
     def weapons(self):
@@ -738,16 +760,16 @@ class CharacterSheetBridge(QObject):
             if not spend_ammo(self.char, row["ammo"]):
                 self.toastRequested.emit(f"Out of {label.lower()} -- tap the {label} counter to add more")
                 return
-            self.statsChanged.emit()
+            self._changed()
         self._last_attack_row = row
         self._last_attack_roll = roll_attack(self.char, row, before=before, free=self._free_now())
         self._roll_kind = "attack"
         for slot in self._last_attack_roll["state"]["slots"]:    # Cosmic Omen's reaction
             self._mark_turn_used(slot)
         if self._last_attack_roll["state"]["spent"]:   # Inspiration spent before the roll
-            self.statsChanged.emit()
+            self._changed()
         report = self._attack_report_now()
-        self.attackReport.emit(report["title"], report)
+        self._later(self.attackReport.emit, report["title"], report)
 
     def _attack_report_now(self):
         """The attack dialog's report for the roll as it stands."""
@@ -793,8 +815,8 @@ class CharacterSheetBridge(QObject):
             else:
                 self._last_attack_roll = res["roll"]
                 report = self._attack_report_now()
-            self.statsChanged.emit()
-            self.attackReport.emit(report["title"], dict(report, update=True))
+            self._changed()
+            self._later(self.attackReport.emit, report["title"], dict(report, update=True))
         self._ask_through(title, call, done)
 
     @Slot(list, bool)
@@ -820,7 +842,7 @@ class CharacterSheetBridge(QObject):
                 self.toastRequested.emit(res["toast"])
             if res.get("refresh"):
                 self.ctrl.refresh()
-            self.statsChanged.emit()
+            self._changed()
         self._ask_through(row["name"], lambda a: take_attack_options(self.char, row, picked, a,
                                                                     hit=bool(hit), roll=roll), done)
 
@@ -832,7 +854,7 @@ class CharacterSheetBridge(QObject):
             return
         total = set_ammo(self.char, kind, n)
         self.toastRequested.emit(f"{ammo_label(kind)}: {total}")
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str)
     def toggleWeaponPowerAttack(self, wpn_name: str):
@@ -841,7 +863,7 @@ class CharacterSheetBridge(QObject):
             pa_list.remove(wpn_name)
         else:
             pa_list.append(wpn_name)
-        self.statsChanged.emit()
+        self._changed()
 
     @Property(list, notify=statsChanged)
     def equipment(self):
@@ -851,9 +873,12 @@ class CharacterSheetBridge(QObject):
         # category/icon/detail/equip* drive the Equipment screen's
         # grouped inventory (Weapons / Armor / Consumables / Gear), where
         # a weapon is equipped and armor worn straight from its own row.
+        from dnd_app.core.actions import item_action_cards
+        from dnd_app.core.inventory import item_weight, item_cost, money_text, weight_text
         out = []
         equipped_weapons = set(self.char.get("equipped_weapons", []))
         worn = self.char.get("armor_worn", "")
+        cards = item_action_cards(self.char)          # what a tinderbox, a potion... does (on Actions)
         for e in self.char.get("equipment", []):
             name = e.get("name", "")
             lname = name.lower()
@@ -887,8 +912,12 @@ class CharacterSheetBridge(QObject):
                 category = "Consumables" if is_thrown_consumable(name) else "Tools & Gear"
                 icon, equip_kind = gear_icon(name) or "package", ""
                 detail, equipped = "", False
-            weight = e.get("weight", (wdata or adata or {}).get("weight", 0)) or 0
-            cost = e.get("cost", (wdata or adata or {}).get("cost", 0)) or 0
+            # one of it: its own numbers or the rules' (core/inventory.py)
+            weight, cost = item_weight(e), item_cost(e)
+            qty = e.get("qty", 1)
+            use = cards.get(name)
+            if use and not detail:
+                detail = use[2]                       # what using it does
             out.append({
                 "name": name,
                 "qty": e.get("qty", 1),
@@ -899,6 +928,8 @@ class CharacterSheetBridge(QObject):
                 "detail": detail,
                 "weight": weight,
                 "cost": cost,
+                # all of the stack's, the way the row shows it: "3 lb · 15 gp"
+                "weightValue": "  ·  ".join(x for x in (weight_text(weight * qty), money_text(cost * qty)) if x),
                 "equipKind": equip_kind,
                 "equipped": equipped,
                 # Dedicated Weapon (Monk, Tasha's optional feature)
@@ -920,7 +951,7 @@ class CharacterSheetBridge(QObject):
         else:
             self.char.pop("dedicated_weapon", None)
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     _INVENTORY_GROUPS = (("Weapons", "combat"), ("Armor", "shield"),
                          ("Consumables", "potion"), ("Tools & Gear", "package"))
@@ -948,13 +979,11 @@ class CharacterSheetBridge(QObject):
 
     @Slot(str)
     def usePotion(self, name: str):
-        eq = self.char.get("equipment", [])
-        entry = next((e for e in eq if e.get("name") == name), None)
+        from dnd_app.core.inventory import remove_items
+        entry = next((e for e in self.char.get("equipment", []) if e.get("name") == name), None)
         if not entry:
             return
-        entry["qty"] = entry.get("qty", 1) - 1
-        if entry["qty"] <= 0:
-            self.char["equipment"] = [e for e in eq if e.get("name") != name]
+        remove_items(self.char, entry, 1)          # this one dose, not every row of it
 
         instant = INSTANT_POTION_EFFECTS.get(name)
         if instant:
@@ -997,7 +1026,7 @@ class CharacterSheetBridge(QObject):
             else:
                 self.toastRequested.emit(f"Drank {name}")
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str)
     def useScroll(self, name: str):
@@ -1007,13 +1036,11 @@ class CharacterSheetBridge(QObject):
         if parse_spell_scroll(name):
             self._use_spell_scroll(name)
             return
-        eq = self.char.get("equipment", [])
-        entry = next((e for e in eq if e.get("name") == name), None)
+        from dnd_app.core.inventory import remove_items
+        entry = next((e for e in self.char.get("equipment", []) if e.get("name") == name), None)
         if not entry:
             return
-        entry["qty"] = entry.get("qty", 1) - 1
-        if entry["qty"] <= 0:
-            self.char["equipment"] = [e for e in eq if e.get("name") != name]
+        remove_items(self.char, entry, 1)          # this one scroll, not every row of it
         info = EFFECT_TABLE.get(name, {})
         if info:
             fx = self.char.setdefault("active_effects", [])
@@ -1025,12 +1052,12 @@ class CharacterSheetBridge(QObject):
         else:
             self.toastRequested.emit(f"Read {name}")
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     def _use_spell_scroll(self, name: str):
         level, spell_name = parse_spell_scroll(name)
         if not spell_name:
-            self.scrollSpellNeeded.emit(name, level)
+            self._later(self.scrollSpellNeeded.emit, name, level)
             return
         spell = get_spell(spell_name)
         if spell:
@@ -1053,7 +1080,7 @@ class CharacterSheetBridge(QObject):
         else:
             self.toastRequested.emit(res["message"])
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str, str)
     def bindScrollSpell(self, name: str, spell_name: str):
@@ -1063,7 +1090,7 @@ class CharacterSheetBridge(QObject):
         if not new_name:
             self.toastRequested.emit(f"{spell_name} can't go on that scroll")
             return
-        self.statsChanged.emit()
+        self._changed()
         self._use_spell_scroll(new_name)
 
     @Property(list, notify=statsChanged)
@@ -1082,7 +1109,7 @@ class CharacterSheetBridge(QObject):
     @Slot(str, int)
     def setCurrency(self, denom: str, value: int):
         self.char.setdefault("currency", {})[denom] = max(0, value)
-        self.statsChanged.emit()
+        self._changed()
 
     @Property(str, notify=statsChanged)
     def carryText(self):
@@ -1167,11 +1194,16 @@ class CharacterSheetBridge(QObject):
                 notes = row[3] if len(row) > 3 else ""
                 out.append({"name": name, "category": "Gear", "detail": notes, "weight": weight, "cost": cost})
         if category in ("All", "Tools"):
-            for name in ALL_TOOLS:
+            from dnd_app.data.items import TOOL_STATS
+            for name, (weight, cost) in TOOL_STATS.items():
                 if q and q not in name.lower():
                     continue
-                out.append({"name": name, "category": "Tool", "detail": "Tool proficiency", "weight": 0.0, "cost": 0.0})
+                out.append({"name": name, "category": "Tool", "detail": "", "weight": float(weight),
+                            "cost": float(cost)})
 
+        from dnd_app.core.inventory import money_text, weight_text
+        for e in out:          # "2 lb · 2 gp", the way the list shows it
+            e["weightValue"] = "  ·  ".join(x for x in (weight_text(e["weight"]), money_text(e["cost"])) if x)
         if sort_by == "Cost":
             out.sort(key=lambda e: (e["cost"], e["name"]))
         elif sort_by == "Weight":
@@ -1182,26 +1214,11 @@ class CharacterSheetBridge(QObject):
 
     @Slot(str, int)
     def addEquipmentItem(self, name: str, qty: int):
-        qty = max(1, qty)
-        weight = 0.0
-        base_name, _material = parse_material_prefix(name)
-        wd = WEAPON_DICT.get(base_name)
-        if wd:
-            weight = float(wd.get("weight", 0) or 0)
-        elif base_name in ARMOR_DICT:
-            weight = float(ARMOR_DICT[base_name].get("weight", 0) or 0)
-        else:
-            for row in ADVENTURING_GEAR:
-                if row[0] == base_name:
-                    weight = float(row[1]) if len(row) > 1 and row[1] is not None else 0.0
-                    break
-        eq = self.char.setdefault("equipment", [])
-        existing = next((e for e in eq if isinstance(e, dict) and e.get("name") == name), None)
-        if existing:
-            existing["qty"] = existing.get("qty", 1) + qty
-        else:
-            eq.append({"name": name, "qty": qty, "weight": weight, "notes": ""})
-        self.statsChanged.emit()
+        # onto its row if it's already carried, with the rules' weight and
+        # cost (core/inventory.py, as desktop)
+        from dnd_app.core.inventory import add_item
+        add_item(self.char, name, max(1, qty))
+        self._changed()
 
     @Slot(str, int)
     def addCustomEquipmentItem(self, name: str, qty: int):
@@ -1220,7 +1237,7 @@ class CharacterSheetBridge(QObject):
             existing["qty"] = existing.get("qty", 1) + qty
         else:
             eq.append({"name": name, "qty": qty, "weight": 0.0, "notes": ""})
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Ability Score Manuals/Tomes ("Study" action) ────────────────
     @Slot(str, result=bool)
@@ -1243,26 +1260,30 @@ class CharacterSheetBridge(QObject):
         self.ctrl.refresh()
         self.toastRequested.emit(
             f"{entry['name']} -- your {ability} score permanently increases by 2 (now {score})")
-        self.statsChanged.emit()
+        self._changed()
+
+    def _equipment_row(self, name: str):
+        return next((e for e in self.char.get("equipment", []) if isinstance(e, dict) and e.get("name") == name),
+                    None)
 
     @Slot(str)
     def removeEquipmentItem(self, name: str):
-        eq = self.char.get("equipment", [])
-        self.char["equipment"] = [e for e in eq if not (isinstance(e, dict) and e.get("name") == name)]
-        self.statsChanged.emit()
+        """That row goes -- not every row of the same name -- and a weapon,
+        armor or shield no longer owned isn't in hand or worn (core/inventory.py)."""
+        from dnd_app.core.inventory import remove_items
+        row = self._equipment_row(name)
+        if row is not None and remove_items(self.char, row, row.get("qty", 1)):
+            self._changed()
 
     @Slot(str, int)
     def setEquipmentQuantity(self, name: str, qty: int):
-        """Set how many of an item you have -- 0 removes it."""
-        if qty <= 0:
-            self.removeEquipmentItem(name)
-            return
-        for e in self.char.get("equipment", []):
-            if isinstance(e, dict) and e.get("name") == name:
-                if e.get("qty", 1) != qty:
-                    e["qty"] = qty
-                    self.statsChanged.emit()
-                return
+        """Set how many of an item you have -- 0 removes it; fewer than are
+        in hand puts the rest away."""
+        from dnd_app.core.inventory import set_item_count
+        row = self._equipment_row(name)
+        if row is not None and row.get("qty", 1) != max(0, qty):
+            set_item_count(self.char, row, max(0, qty))
+            self._changed()
 
     # ── Magic items ──────────────────────────────────────────────────
     # Each owned copy is its own entry with a "uid" (core/magic_items.py's
@@ -1308,14 +1329,14 @@ class CharacterSheetBridge(QObject):
     def setMagicItemEquipped(self, uid: str, on: bool):
         set_owned_magic_item_equipped(self.char, uid, on)
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str, int)
     def setMagicItemQuantity(self, uid: str, qty: int):
         """Magic ammunition stacks -- 0 removes the stack."""
         set_owned_magic_item_qty(self.char, uid, qty)
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str, str)
     def setMagicItemDamageType(self, item_name: str, damage_type: str):
@@ -1326,7 +1347,7 @@ class CharacterSheetBridge(QObject):
         else:
             choices.pop(key, None)
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str, result="QVariant")
     def classifyMagicItemPick(self, name: str):
@@ -1406,7 +1427,7 @@ class CharacterSheetBridge(QObject):
             items.append({"name": enchanted_name, "attunement": False, "equipped": True, "notes": ""})
         self.ctrl.refresh()
         self.toastRequested.emit(f"{enchanted_name} equipped")
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(int)
     def applyShieldEnchant(self, bonus: int):
@@ -1419,7 +1440,7 @@ class CharacterSheetBridge(QObject):
             items.append({"name": item_name, "attunement": False, "equipped": True, "notes": ""})
         self.ctrl.refresh()
         self.toastRequested.emit(f"{item_name} equipped")
-        self.statsChanged.emit()
+        self._changed()
 
     # Matches desktop's gear.py magic item browser's three QComboBoxes.
     @Property(list, constant=True)
@@ -1479,7 +1500,7 @@ class CharacterSheetBridge(QObject):
             # every copy is its own entry (only ammunition stacks)
             add_owned_magic_item(self.char, name)
             self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str, str)
     def setWeaponBase(self, item_name: str, base: str):
@@ -1489,7 +1510,7 @@ class CharacterSheetBridge(QObject):
         if set_weapon_base(self.char, item_name, base):
             self.ctrl.refresh()
             self.toastRequested.emit(f"{item_name} is a {base.lower()}")
-            self.statsChanged.emit()
+            self._changed()
 
     @Slot(str, bool)
     def setMagicItemAttuned(self, uid: str, on: bool):
@@ -1498,13 +1519,13 @@ class CharacterSheetBridge(QObject):
             self.toastRequested.emit(why)
             return
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str)
     def removeMagicItem(self, uid: str):
         remove_owned_magic_item(self.char, uid)
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Simple HP adjustments (damage/heal/temp) ───────────────────
     @Slot(int)
@@ -1527,7 +1548,7 @@ class CharacterSheetBridge(QObject):
                 if self.isConcentrating:
                     self._pending_conc_dc = max(10, amount // 2)
                 self.toastRequested.emit(f"Beast form took {amount} damage")
-                self.statsChanged.emit()
+                self._changed()
                 return
             excess = amount - cur
             self._revert_wildshape()
@@ -1550,7 +1571,7 @@ class CharacterSheetBridge(QObject):
                              f"DC {res['concentration_dc']} CON save to keep it")
             if notes:
                 self.toastRequested.emit("\n".join(notes))
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(int)
     def applyHealing(self, amount: int):
@@ -1561,7 +1582,7 @@ class CharacterSheetBridge(QObject):
         if beast:
             cur = char.get("_wildshape_hp", beast["hp"])
             char["_wildshape_hp"] = min(beast["hp"], cur + amount)
-            self.statsChanged.emit()
+            self._changed()
             return
         # The dead need Revive, not a potion. Otherwise core/dying.py's
         # heal(): up to max HP, and back up from 0 resets the death saves.
@@ -1572,12 +1593,12 @@ class CharacterSheetBridge(QObject):
         note = heal(char, amount)
         if note:
             self.toastRequested.emit(note)
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(int)
     def setTempHp(self, amount: int):
         self.char["temp_hp"] = max(0, amount)
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Death saves ──────────────────────────────────────────────────
     # Mirrors ui_desktop's combat.py exactly, both on core/dying.py: 3
@@ -1620,7 +1641,7 @@ class CharacterSheetBridge(QObject):
             self._maybe_critical_flavor_toast()
         elif verdict == "stable":
             self.toastRequested.emit(STABLE_MESSAGE)
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(int, bool)
     def setDeathSaveSuccess(self, index: int, checked: bool):
@@ -1635,7 +1656,7 @@ class CharacterSheetBridge(QObject):
     @Slot()
     def revive(self):
         _revive_char(self.char)          # 1 HP, saves and exhaustion cleared
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Exhaustion ───────────────────────────────────────────────────
     @Property(int, notify=statsChanged)
@@ -1657,7 +1678,7 @@ class CharacterSheetBridge(QObject):
             self._maybe_critical_flavor_toast()
         elif level >= 4:
             self.toastRequested.emit(f"Exhaustion {level}: hit point maximum halved")
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Conditions ───────────────────────────────────────────────────
     @Property(list, notify=statsChanged)
@@ -1687,7 +1708,7 @@ class CharacterSheetBridge(QObject):
         self.char["conditions"] = []
         self.ctrl.refresh()
         self.toastRequested.emit("Conditions cleared")
-        self.statsChanged.emit()
+        self._changed()
 
     @Property(list, notify=statsChanged)
     def activeConditions(self):
@@ -1723,7 +1744,7 @@ class CharacterSheetBridge(QObject):
         # apply to the sheet (matches setExhaustionLevel's same call
         # just above).
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Actions economy + resources ──────────────────────────────────
     # build_action_abilities() is the same pure data/logic function
@@ -1848,7 +1869,7 @@ class CharacterSheetBridge(QObject):
         """A Portent roll tapped under Resources: it's used (the same as
         desktop's Resources & Charges row)."""
         self.toastRequested.emit(spend_portent(self.char, roll))
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str)
     def spendResource(self, key: str):
@@ -1856,7 +1877,7 @@ class CharacterSheetBridge(QObject):
             data = self.char.get("item_charges", {}).get(key[5:])
             if data:
                 data["current"] = max(0, data.get("current", 0) - 1)
-            self.statsChanged.emit()
+            self._changed()
             return
         # Second Wind and Action Surge have a real mechanical effect
         # beyond "decrement a counter" -- matches ui_desktop's
@@ -1877,7 +1898,7 @@ class CharacterSheetBridge(QObject):
             self.toastRequested.emit(
                 f"Second Wind: rolled {roll} + {fighter_lvl} (Fighter level) = {heal} HP healed "
                 f"({res['current']}/{res.get('current_max')} left)")
-            self.statsChanged.emit()
+            self._changed()
             return
         for res in self.char.get("resources", []):
             if res.get("key") == key:
@@ -1887,7 +1908,7 @@ class CharacterSheetBridge(QObject):
         if key == "action_surge":
             self.char["_action_surge_used_this_turn"] = True
             self.toastRequested.emit("Action Surge: gained an extra action this turn")
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str)
     def toggleResourceEffect(self, key: str):
@@ -1901,14 +1922,14 @@ class CharacterSheetBridge(QObject):
             why = effect_start_problem(self.char, effect)   # Rage in heavy armor
             if why:
                 self.toastRequested.emit(f"{effect}: {why}")
-                self.statsChanged.emit()   # the toggle shows off again
+                self._changed()   # the toggle shows off again
                 return
             active.append(effect)
             note = on_effect_started(self.char, effect)    # Rage ends concentration
             if note:
                 self.toastRequested.emit(f"{effect}: {note}")
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str)
     def restoreResource(self, key: str):
@@ -1916,14 +1937,14 @@ class CharacterSheetBridge(QObject):
             data = self.char.get("item_charges", {}).get(key[5:])
             if data:
                 data["current"] = data.get("max", 0)
-            self.statsChanged.emit()
+            self._changed()
             return
         for res in self.char.get("resources", []):
             if res.get("key") == key:
                 if isinstance(res.get("current_max"), int):
                     res["current"] = res["current_max"]
                 break
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Wild Shape ───────────────────────────────────────────────────
     # Same core/calculator.py gating as ui_desktop's combat.py
@@ -2001,14 +2022,14 @@ class CharacterSheetBridge(QObject):
         self.toastRequested.emit(msg)
         if ok:
             self.ctrl.refresh()
-            self.statsChanged.emit()
+            self._changed()
 
     @Slot()
     def revertWildShape(self):
         self._revert_wildshape()
         self.ctrl.refresh()
         self.toastRequested.emit("Reverted to normal form")
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Features (read-only) ─────────────────────────────────────────
     # Full parity with ui_desktop's features.py _rebuild_features:
@@ -2267,7 +2288,7 @@ class CharacterSheetBridge(QObject):
         added = dm.add(self.char, kind, name)
         if added:
             self.ctrl.refresh()
-            self.statsChanged.emit()
+            self._changed()
         return added
 
     @Slot(str, str)
@@ -2275,7 +2296,7 @@ class CharacterSheetBridge(QObject):
         from dnd_app.core import dm_proficiencies as dm
         dm.remove(self.char, kind, name)
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Spells ───────────────────────────────────────────────────────
     @Property(list, notify=statsChanged)
@@ -2307,7 +2328,7 @@ class CharacterSheetBridge(QObject):
             slots_used[level - 1] = max(0, min(used, maxes[level - 1]))
         else:
             return
-        self.statsChanged.emit()
+        self._changed()
 
     @Property(list, notify=statsChanged)
     def knownSpells(self):
@@ -2410,7 +2431,7 @@ class CharacterSheetBridge(QObject):
     @Slot(bool)
     def setSpellHomebrewMode(self, enabled: bool):
         self._spell_homebrew = enabled
-        self.statsChanged.emit()
+        self._changed()
 
     # Matches desktop's spells.py browser's class-filter QComboBox exactly.
     @Property(list, constant=True)
@@ -2546,7 +2567,7 @@ class CharacterSheetBridge(QObject):
         sp = get_spell(name)
         if sp is None:
             known.append(name)
-            self.statsChanged.emit()
+            self._changed()
             return
         my_classes = char_spell_classes(char)
         if not self._spell_homebrew:
@@ -2606,7 +2627,7 @@ class CharacterSheetBridge(QObject):
                 prepped = char.setdefault("spells_prepared", [])
                 if name not in prepped:
                     prepped.append(name)
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str)
     def removeKnownSpell(self, name: str):
@@ -2621,7 +2642,7 @@ class CharacterSheetBridge(QObject):
             char["spells_prepared"].remove(name)
         if name in char.get("quick_spells", []):
             char["quick_spells"].remove(name)   # no starring a spell you no longer have
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str, bool)
     def setSpellPrepared(self, name: str, prepared: bool):
@@ -2635,7 +2656,7 @@ class CharacterSheetBridge(QObject):
         if not prepared:
             if name in prepped:
                 prepped.remove(name)
-            self.statsChanged.emit()
+            self._changed()
             return
         if name in prepped:
             return
@@ -2656,7 +2677,7 @@ class CharacterSheetBridge(QObject):
                         f"-- unprepare another {target} spell first")
                     return
         prepped.append(name)
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Turn tracker (Action/Bonus Action/Reaction economy) ─────────────
     # Session-only state, never saved -- same as ui_desktop's
@@ -2729,7 +2750,7 @@ class CharacterSheetBridge(QObject):
             return
         limit = self._turn_limit(bucket)
         self._turn_counts[bucket] = 0 if self._turn_counts[bucket] >= limit else limit
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Use button (Actions screen) ──────────────────────────────────
     # The shared rules decide what Use does (core/action_use.py: what it
@@ -2769,6 +2790,16 @@ class CharacterSheetBridge(QObject):
             self._attack_action_slot = res.get("attack_slot")
             self._roll_weapon_attack(res["attack"])
             return
+        if res.get("use_item"):
+            # a potion or scroll from its card: drunk or read, with the part
+            # of the turn it took (a spell scroll's spell marks its own)
+            item = res["use_item"]
+            if not any(e.get("name") == item["name"] for e in self.char.get("equipment", [])):
+                return
+            if res.get("spends"):
+                self._mark_turn_used(res["spends"])
+            (self.usePotion if item["kind"] == "potion" else self.useScroll)(item["name"])
+            return
         if res.get("toast"):
             self.toastRequested.emit(res["toast"])
         if not res.get("ok"):
@@ -2777,7 +2808,7 @@ class CharacterSheetBridge(QObject):
             self._mark_turn_used(res["slot"])
         if res.get("refresh"):
             self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     # A character just opened from a save with effects a short rest would
     # end still on (Rage, Bladesong, a potion...): App.qml asks whether
@@ -2823,7 +2854,7 @@ class CharacterSheetBridge(QObject):
         note = on_effect_started(self.char, name)          # Rage ends concentration
         self.ctrl.refresh()
         self.toastRequested.emit(f"{name} is on you" + (f" -- {note}" if note else ""))
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str)
     def removeActiveEffect(self, name: str):
@@ -2841,14 +2872,14 @@ class CharacterSheetBridge(QObject):
             msg = "Rage ends -- Frenzy ends with it, and you gain 1 level of exhaustion"
         self.ctrl.refresh()
         self.toastRequested.emit(msg)
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(list)
     def endEffects(self, names):
         from dnd_app.core.action_use import end_effects
         if end_effects(self.char, [str(n) for n in names]):
             self.ctrl.refresh()
-            self.statsChanged.emit()
+            self._changed()
 
     @Slot(str)
     def answerActionQuestion(self, choice: str):
@@ -2866,7 +2897,7 @@ class CharacterSheetBridge(QObject):
         ask = res.get("ask")
         if ask:
             p["key"] = ask["key"]
-            self.actionQuestion.emit(p["title"], ask["title"], list(ask["options"]))
+            self._later(self.actionQuestion.emit, p["title"], ask["title"], list(ask["options"]))
             return
         self._pending_use = None
         p["done"](res)
@@ -2881,7 +2912,7 @@ class CharacterSheetBridge(QObject):
             quick.remove(name)
         else:
             quick.append(name)
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot()
     def newTurn(self):
@@ -2906,7 +2937,7 @@ class CharacterSheetBridge(QObject):
             self.toastRequested.emit("New turn -- still incapacitated, no actions or reactions")
         else:
             self.toastRequested.emit("New turn -- action, bonus & reaction ready")
-        self.statsChanged.emit()
+        self._changed()
 
     def _has_beast_spells(self) -> bool:
         return any(c.get("class") == "Druid" and c.get("level", 0) >= 18
@@ -2948,7 +2979,7 @@ class CharacterSheetBridge(QObject):
             msg = "\n".join(m for m in (said, res.get("toast", "")) if m)
             if msg:
                 self.toastRequested.emit(msg)
-            self.statsChanged.emit()
+            self._changed()
         self._ask_through(name, lambda a: cast_effect(self.char, name, level, a), done)
 
     def _weapon_cantrip(self, spell: dict):
@@ -2968,8 +2999,8 @@ class CharacterSheetBridge(QObject):
                     self.toastRequested.emit(res["toast"])
                 return
             self._mark_spell_cast_time(spell)
-            self.sheetMessage.emit(name, res["message"])
-            self.statsChanged.emit()
+            self._later(self.sheetMessage.emit, name, res["message"])
+            self._changed()
         self._ask_through(name, lambda a: weapon_cantrip(self.char, name, rows, a), done)
 
     @Slot(str)
@@ -3021,7 +3052,7 @@ class CharacterSheetBridge(QObject):
                 return
             self._mark_spell_cast_time(spell)
             self._maybe_apply_spell_active_effect(spell, 0, f"Cast {name} (cantrip -- at will)")
-            self.statsChanged.emit()
+            self._changed()
             return
         # A feat spell cast at will (Drow High Magic's Detect Magic) costs
         # nothing; a free daily cast (a racial spell, Fey Touched, Firbolg
@@ -3033,7 +3064,7 @@ class CharacterSheetBridge(QObject):
                 start_concentration(self.char, name)
             self._mark_spell_cast_time(spell)
             self._maybe_apply_spell_active_effect(spell, lvl, f"Cast {name} at will ({at_will})")
-            self.statsChanged.emit()
+            self._changed()
             return
         free = spend_free_cast(self.char, name)
         if free:
@@ -3041,7 +3072,7 @@ class CharacterSheetBridge(QObject):
                 start_concentration(self.char, name)
             self._mark_spell_cast_time(spell)
             self._maybe_apply_spell_active_effect(spell, lvl, free_cast_message(name, free, self.char))
-            self.statsChanged.emit()
+            self._changed()
             return
         slots_used = self.char.setdefault("spell_slots_used", [0] * 9)
         slots_max = self.char.get("spell_slots_max", [0] * 9)
@@ -3052,7 +3083,7 @@ class CharacterSheetBridge(QObject):
                     start_concentration(self.char, name)
                 self._mark_spell_cast_time(spell)
                 self._maybe_apply_spell_active_effect(spell, i + 1, f"Cast {name} -- slot expended")
-                self.statsChanged.emit()
+                self._changed()
                 return
         if self.char.get("pact_slots_max", 0) > 0 and self.char.get("pact_slots_used", 0) < self.char["pact_slots_max"]:
             self.char["pact_slots_used"] = self.char.get("pact_slots_used", 0) + 1
@@ -3061,7 +3092,7 @@ class CharacterSheetBridge(QObject):
             self._mark_spell_cast_time(spell)
             self._maybe_apply_spell_active_effect(spell, self.char.get("pact_slot_level", 0) or lvl,
                                                   f"Cast {name} -- pact slot expended")
-            self.statsChanged.emit()
+            self._changed()
             return
         self.toastRequested.emit(f"Can't cast {name} -- no level-{lvl}+ spell slots available")
 
@@ -3092,7 +3123,7 @@ class CharacterSheetBridge(QObject):
         self._maybe_apply_spell_active_effect(
             spell, spell.get("level", 0),
             f"Cast {name} as a ritual -- no spell slot used, but casting time is {base_time} + 10 minutes.")
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Concentration ────────────────────────────────────────────────
     # Same core/magic_items.py helpers as ui_desktop's spells.py (full
@@ -3111,13 +3142,13 @@ class CharacterSheetBridge(QObject):
     def startConcentration(self, spell_name: str):
         start_concentration(self.char, spell_name)
         self._pending_conc_dc = 0
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot()
     def dropConcentration(self):
         drop_concentration(self.char)
         self._pending_conc_dc = 0
-        self.statsChanged.emit()
+        self._changed()
 
     @Property(int, notify=statsChanged)
     def concentrationSaveDc(self):
@@ -3183,7 +3214,7 @@ class CharacterSheetBridge(QObject):
         self.ctrl.refresh()
         if msg:
             self.toastRequested.emit(msg)
-        self.statsChanged.emit()
+        self._changed()
 
     @Property(bool, notify=statsChanged)
     def isDragonborn(self):
@@ -3227,13 +3258,13 @@ class CharacterSheetBridge(QObject):
             self.char, lambda: self.char.update(race=name, species=name, subrace="", draconic_ancestry=""),
             RACE_SCOPED_CHOICE_IDS if name != old_race else ())
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str)
     def changeSubrace(self, subrace_name: str):
         change_and_prune(self.char, lambda: self.char.update(subrace=subrace_name))
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str)
     def changeAncestry(self, choice_text: str):
@@ -3241,7 +3272,7 @@ class CharacterSheetBridge(QObject):
         # ancestryOptions -- only the name is stored on the character.
         self.char["draconic_ancestry"] = choice_text.split(" (")[0].strip()
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str)
     def changeBackground(self, name: str):
@@ -3249,7 +3280,7 @@ class CharacterSheetBridge(QObject):
         change_and_prune(self.char, lambda: self.char.update(background=name),
                                BACKGROUND_SCOPED_CHOICE_IDS if name != old_bg else ())
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str, result=list)
     def backgroundFeatChoices(self, name: str):
@@ -3261,7 +3292,7 @@ class CharacterSheetBridge(QObject):
         feats = self.char.setdefault("feats", [])
         if feat_name not in feats:
             feats.append(feat_name)
-        self.statsChanged.emit()
+        self._changed()
         self.autosaveRequested.emit()
 
     # ── Class Manager: level down / remove class -- the inverse of
@@ -3284,7 +3315,7 @@ class CharacterSheetBridge(QObject):
         for _cn, sub, need in dropped:
             msg += f" -- {sub} set aside until level {need}"
         self.toastRequested.emit(msg)
-        self.statsChanged.emit()
+        self._changed()
         self.autosaveRequested.emit()
 
     @Property(bool, notify=statsChanged)
@@ -3316,7 +3347,7 @@ class CharacterSheetBridge(QObject):
         self.ctrl.refresh()
         self.toastRequested.emit(f"{class_name} removed" + (
             f", along with its spells: {name_list(lost)}" if lost else ""))
-        self.statsChanged.emit()
+        self._changed()
         self.autosaveRequested.emit()
 
     # ── Experience / leveling mode ──────────────────────────────────────
@@ -3327,7 +3358,7 @@ class CharacterSheetBridge(QObject):
     @Slot(bool)
     def setXpLevelingMode(self, enabled: bool):
         self.char["leveling_mode"] = "xp" if enabled else "milestone"
-        self.statsChanged.emit()
+        self._changed()
 
     @Property(dict, notify=statsChanged)
     def xpProgress(self):
@@ -3350,12 +3381,12 @@ class CharacterSheetBridge(QObject):
             self.toastRequested.emit(f"+{amount:,} XP -- {suffix}")
         else:
             self.toastRequested.emit(f"+{amount:,} XP")
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(int)
     def setTotalXp(self, value: int):
         self.char["experience"] = max(0, value)
-        self.statsChanged.emit()
+        self._changed()
 
     # ── DM Rewards / Feat grant browser -- grants a feat or DM Reward
     # ("Character Secret" etc.) outside normal class progression, same
@@ -3407,7 +3438,7 @@ class CharacterSheetBridge(QObject):
             # rebuild); what it asks waits on the Choices tab
             self.ctrl.refresh()
             self.toastRequested.emit(f"Granted: {name}")
-            self.statsChanged.emit()
+            self._changed()
             self.autosaveRequested.emit()
 
     @Slot(str, str)
@@ -3421,7 +3452,7 @@ class CharacterSheetBridge(QObject):
                 from dnd_app.core.builder import revoke_dm_feat
                 revoke_dm_feat(self.char, name)     # and everything it gave
             self.ctrl.refresh()
-            self.statsChanged.emit()
+            self._changed()
             self.autosaveRequested.emit()
 
     # ── Appearance (theme + font scale) and DM Secrets (Immersive
@@ -3446,7 +3477,7 @@ class CharacterSheetBridge(QObject):
     @Slot(str)
     def setTheme(self, name: str):
         self.char["theme"] = name
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str)
     def stampThemeIfMissing(self, current_theme: str):
@@ -3467,7 +3498,7 @@ class CharacterSheetBridge(QObject):
     @Slot(str)
     def setFontScale(self, name: str):
         self.char["ui_font_scale"] = name
-        self.statsChanged.emit()
+        self._changed()
 
     @Property(bool, notify=statsChanged)
     def immersiveSpells(self):
@@ -3476,7 +3507,7 @@ class CharacterSheetBridge(QObject):
     @Slot(bool)
     def setImmersiveSpells(self, enabled: bool):
         self.char.setdefault("optional_rules", {})["immersive_spells"] = enabled
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Optional rules (Settings) ────────────────────────────────────
     # The other 12 desktop Settings-dialog toggles (ui_desktop's
@@ -3516,7 +3547,7 @@ class CharacterSheetBridge(QObject):
     def setOptionalRule(self, key: str, value: bool):
         self.char.setdefault("optional_rules", {})[key] = value
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Choices (read-only view of levelup/feat/background sub-picks) ──
     @Property(list, notify=statsChanged)
@@ -3546,7 +3577,7 @@ class CharacterSheetBridge(QObject):
     @Slot(str)
     def setNotes(self, text: str):
         self.char["notes"] = text
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Traits / Backstory / Appearance / Campaign Notes ────────────────
     # Ports ui_desktop's TraitsNotesMixin: 4 short trait fields (flat
@@ -3573,7 +3604,7 @@ class CharacterSheetBridge(QObject):
         if real_key is None:
             return
         self.char[real_key] = text
-        self.statsChanged.emit()
+        self._changed()
 
     def _notes_pages_for_char(self):
         pages = self.char.get("notes_pages")
@@ -3598,7 +3629,7 @@ class CharacterSheetBridge(QObject):
         if 0 <= index < len(pages):
             pages[index]["text"] = text
             self.char["notes_pages"] = pages
-            self.statsChanged.emit()
+            self._changed()
 
     @Slot(str)
     def addNotesPage(self, title: str):
@@ -3609,7 +3640,7 @@ class CharacterSheetBridge(QObject):
         title = (title or "").strip() or "Notes"
         pages.append({"title": title, "text": ""})
         self.char["notes_pages"] = pages
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(int)
     def removeNotesPage(self, index: int):
@@ -3620,7 +3651,7 @@ class CharacterSheetBridge(QObject):
         if 0 <= index < len(pages):
             pages.pop(index)
             self.char["notes_pages"] = pages
-            self.statsChanged.emit()
+            self._changed()
 
     @Slot(int, str)
     def renameNotesPage(self, index: int, title: str):
@@ -3630,7 +3661,7 @@ class CharacterSheetBridge(QObject):
             return
         pages[index]["title"] = title
         self.char["notes_pages"] = pages
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Infusions (Artificer only; not grantable until level 2, so an
     # empty list at level 1 is correct, not a gap) ──────────────────
@@ -3730,7 +3761,7 @@ class CharacterSheetBridge(QObject):
             self.toastRequested.emit(f"{item_name} infused with {infusion_name}")
         else:
             self.toastRequested.emit(f"{infusion_name} activated and given to another character")
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str, str)
     def activateInfusionOnItem(self, infusion_name: str, item_name: str):
@@ -3743,7 +3774,7 @@ class CharacterSheetBridge(QObject):
     @Slot(str)
     def setResistantArmorDamageType(self, damage_type: str):
         self.char.setdefault("_choices", {})["resistant_armor_type"] = damage_type
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str)
     def deactivateInfusion(self, infusion_name: str):
@@ -3760,7 +3791,7 @@ class CharacterSheetBridge(QObject):
                     break
         self.char["active_infusions"] = [a for a in active if a["infusion"] != infusion_name]
         self.toastRequested.emit(f"Deactivated {infusion_name}")
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Rest (reachable from the drawer on any screen, not just the
     # sheet). Full port of ui_desktop's base.py _preview_short_rest/
@@ -3920,7 +3951,7 @@ class CharacterSheetBridge(QObject):
             self.restToastRequested.emit("Short rest complete -- SR resources restored")
         if expired:
             self.restToastRequested.emit(f"Faded: {', '.join(expired)}")
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot()
     def applyLongRest(self):
@@ -3962,7 +3993,7 @@ class CharacterSheetBridge(QObject):
             self.restToastRequested.emit(f"Faded: {', '.join(expired)}{items}")
         else:
             self.restToastRequested.emit(f"Long rest complete -- HP, slots & resources restored{items}\n{random_long_rest_dream()}")
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Rest options ("also reconfigure?" checklist) -- one Slot per
     # shape of follow-up needed, matching _apply_rest_options exactly.
@@ -4016,7 +4047,7 @@ class CharacterSheetBridge(QObject):
             return
         rebuild(char)
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str, str)
     def applyRestOptionWithValue(self, kind: str, value: str):
@@ -4041,7 +4072,7 @@ class CharacterSheetBridge(QObject):
             return
         rebuild(char)
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str, str)
     def applyAstralKnowledgeSwap(self, skill: str, weapon_or_tool: str):
@@ -4052,7 +4083,7 @@ class CharacterSheetBridge(QObject):
         self.toastRequested.emit(f"Astral Knowledge/Trance: {skill}, {weapon_or_tool}")
         rebuild(char)
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot()
     def applyArcaneRecovery(self):
@@ -4085,7 +4116,7 @@ class CharacterSheetBridge(QObject):
             self.toastRequested.emit(
                 f"Arcane Recovery: recovered {len(recovered)} slot(s) (levels {', '.join(map(str, sorted(recovered)))})")
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Level-up ─────────────────────────────────────────────────────
     # Not full desktop parity: ui_desktop's level-up flow
@@ -4115,20 +4146,17 @@ class CharacterSheetBridge(QObject):
     # via the single generic apply_choice() call.
     @Property(list, notify=statsChanged)
     def levelUpClassOptions(self):
+        from dnd_app.core.multiclass import multiclass_block_reason
         taken = {c["class"]: c["level"] for c in self.char.get("classes", [])}
-        # Matches desktop's _meets_multiclass_reqs: when the optional
-        # rule is off, every class is eligible regardless of score.
-        enforce = self.char.get("optional_rules", {}).get("multiclass_ability_reqs", True)
-        scores = {ab: ability_score(self.char, ab) for ab in ABILITIES}
         out = []
         for cname in taken:
-            out.append({"name": cname, "currentLevel": taken[cname], "isNew": False})
+            out.append({"name": cname, "currentLevel": taken[cname], "isNew": False, "blocked": ""})
+        # a class the multiclassing scores don't allow yet is listed, greyed,
+        # with what it needs (desktop's dialog greys it the same way)
         for cname in CLASS_DICT:
-            if cname in taken:
-                continue
-            met, reason = (True, "") if not enforce else check_multiclass_prereq(cname, scores)
-            if met:
-                out.append({"name": cname, "currentLevel": 0, "isNew": True})
+            if cname not in taken:
+                out.append({"name": cname, "currentLevel": 0, "isNew": True,
+                            "blocked": multiclass_block_reason(self.char, cname)})
         # Sorted by name, not "taken classes first" -- a class's row
         # must stay in the same visual slot regardless of whether
         # multiclassing into it (or leveling/removing another class)
@@ -4159,7 +4187,7 @@ class CharacterSheetBridge(QObject):
         if self.hasPendingChoices:
             msg += " -- go to Choices to pick your new options"
         self.toastRequested.emit(msg)
-        self.statsChanged.emit()
+        self._changed()
         self.autosaveRequested.emit()
 
     @Property(bool, notify=statsChanged)
@@ -4325,7 +4353,8 @@ class CharacterSheetBridge(QObject):
                 char["magical_secrets_spells"] = selected
         elif "expertise" in choice_id:
             for skill in selected:
-                char.setdefault("skills", {})[skill] = 3
+                if skill in char.get("skills", {}):   # a tool (Thieves' tools) isn't a skill
+                    char["skills"][skill] = 3
             # Aggregate into a dedicated key (same pattern as
             # "_skill_profs" -> class_skill_profs) so rebuild() can
             # re-derive every expertise choice from _choices rather than
@@ -4352,7 +4381,7 @@ class CharacterSheetBridge(QObject):
                     a for a in char.get("active_infusions", [])
                     if a.get("infusion") not in removed_names]
         apply_choice(char, choice_id, selected)
-        self.statsChanged.emit()
+        self._changed()
         self.autosaveRequested.emit()
 
     @Slot(str, str)
@@ -4362,14 +4391,14 @@ class CharacterSheetBridge(QObject):
             return
         set_subclass(self.char, choice["source_name"], subclass_name)
         apply_choice(self.char, choice_id, [subclass_name])
-        self.statsChanged.emit()
+        self._changed()
         self.autosaveRequested.emit()
 
     @Slot(str, dict)
     def applyAsiLevelUpChoice(self, choice_id: str, allocations: dict):
         selected = [f"asi:{ability}:{amount}" for ability, amount in allocations.items() if amount > 0]
         apply_choice(self.char, choice_id, selected)
-        self.statsChanged.emit()
+        self._changed()
         self.autosaveRequested.emit()
 
     @Slot(str, str)
@@ -4388,7 +4417,7 @@ class CharacterSheetBridge(QObject):
         def done(res):
             add_feat(self.char, feat_name)
             apply_choice(self.char, choice_id, res["picks"])
-            self.statsChanged.emit()
+            self._changed()
             self.autosaveRequested.emit()
         self._ask_through(feat_name, lambda a: feat_choice_picks(self.char, feat_name, a), done)
 
@@ -4517,7 +4546,7 @@ class CharacterSheetBridge(QObject):
         else:
             self.toastRequested.emit(f"Pact Boon changed to {boon_label}")
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(int, str, str)
     def applyArcanumVersatility(self, spell_level: int, old_name: str, new_name: str):
@@ -4538,7 +4567,7 @@ class CharacterSheetBridge(QObject):
                 lst.remove(old_name)
         self.toastRequested.emit(f"Eldritch Versatility: swapped Mystic Arcanum {old_name} for {new_name}")
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str, str)
     def applyFightingStyleVersatility(self, old_style: str, new_style: str):
@@ -4551,7 +4580,7 @@ class CharacterSheetBridge(QObject):
         self.toastRequested.emit(f"Martial Versatility: swapped {old_style.split(' (')[0].strip()} "
                                   f"for {new_style.split(' (')[0].strip()}")
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str, str)
     def applyManeuverVersatility(self, old_maneuver: str, new_maneuver: str):
@@ -4564,7 +4593,7 @@ class CharacterSheetBridge(QObject):
         self.toastRequested.emit(f"Martial Versatility: swapped maneuver {old_maneuver.split(' – ')[0].strip()} "
                                   f"for {new_maneuver.split(' – ')[0].strip()}")
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str, str)
     def applyExpertiseVersatility(self, old_skill: str, new_skill: str):
@@ -4572,7 +4601,7 @@ class CharacterSheetBridge(QObject):
         move_expertise(self.char, old_skill, new_skill)       # in the pick, so it stays
         self.toastRequested.emit(f"Bardic Versatility: moved Expertise from {old_skill} to {new_skill}")
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str, str)
     def applyMetamagicVersatility(self, old_metamagic: str, new_metamagic: str):
@@ -4583,7 +4612,7 @@ class CharacterSheetBridge(QObject):
         self.toastRequested.emit(f"Sorcerous Versatility: swapped metamagic "
                                   f"{old_metamagic.split(' – ')[0].strip()} for {new_metamagic.split(' – ')[0].strip()}")
         self.ctrl.refresh()
-        self.statsChanged.emit()
+        self._changed()
 
     # ── Companions (mounts/vehicles/summoned creatures/class-granted
     # companions) -- verbatim port of ui_desktop/pages/sheet/companions.py's
@@ -4659,14 +4688,14 @@ class CharacterSheetBridge(QObject):
         if not name:
             return
         self.char.setdefault("owned_mounts", []).append(name)
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(int)
     def removeMount(self, index: int):
         owned = self.char.get("owned_mounts", [])
         if 0 <= index < len(owned):
             owned.pop(index)
-            self.statsChanged.emit()
+            self._changed()
 
     @Property(list, constant=True)
     def vehicleOptions(self):
@@ -4730,14 +4759,14 @@ class CharacterSheetBridge(QObject):
         if not name:
             return
         self.char.setdefault("owned_vehicles", []).append(name)
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(int)
     def removeVehicle(self, index: int):
         owned = self.char.get("owned_vehicles", [])
         if 0 <= index < len(owned):
             owned.pop(index)
-            self.statsChanged.emit()
+            self._changed()
 
     @Property(list, constant=True)
     def scalingSummonSpellOptions(self):
@@ -4771,14 +4800,14 @@ class CharacterSheetBridge(QObject):
             return
         self.char.setdefault("owned_summons", []).append(
             {"spell": spell_name, "level": level, "form": form})
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(int)
     def removeSummonedCreature(self, index: int):
         owned = self.char.get("owned_summons", [])
         if 0 <= index < len(owned):
             owned.pop(index)
-            self.statsChanged.emit()
+            self._changed()
 
     @Property(list, notify=statsChanged)
     def activeCompanions(self):
@@ -4863,14 +4892,14 @@ class CharacterSheetBridge(QObject):
         sb = resolve_companion_statblock(instance_key, self.char)
         self.char.setdefault("summon_hp_tracking", {})[f"companion_{instance_key}"] = sb.get("hp", 1)
         self.toastRequested.emit(f"{tmpl['display_name']} summoned!")
-        self.statsChanged.emit()
+        self._changed()
 
     @Slot(str)
     def dismissCompanion(self, key: str):
         active = self.char.get("active_summoned_companions", [])
         if key in active:
             active.remove(key)
-            self.statsChanged.emit()
+            self._changed()
 
     @Slot(str, int, str)
     def setCompanionHp(self, hp_key: str, value: int, companion_key: str = ""):
@@ -4901,7 +4930,7 @@ class CharacterSheetBridge(QObject):
                     pending.append(companion_key)
                 self.toastRequested.emit(
                     f"{display_name} has perished -- a new one can be made at your next long rest.")
-        self.statsChanged.emit()
+        self._changed()
 
     @Property(bool, notify=statsChanged)
     def wildShapeBrowseAvailable(self):

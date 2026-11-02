@@ -504,10 +504,8 @@ Page {
                                             Layout.fillWidth: true
                                         }
                                         Label {
-                                            text: [modelData.equipped ? "Equipped" : "",
-                                                   modelData.detail,
-                                                   modelData.weight > 0 ? (modelData.weight * modelData.qty) + " lb" : "",
-                                                   modelData.cost > 0 ? (modelData.cost * modelData.qty) + " gp" : ""]
+                                            // what it is -- cut short first on a narrow row
+                                            text: [modelData.equipped ? "Equipped" : "", modelData.detail]
                                                   .filter(function(x) { return x.length > 0 }).join("  ·  ")
                                             visible: text.length > 0
                                             color: Theme.text3
@@ -515,11 +513,22 @@ Page {
                                             elide: Text.ElideRight
                                             Layout.fillWidth: true
                                         }
+                                        Label {
+                                            // what the stack weighs and is worth: its own
+                                            // line, never cut short ("3 lb  ·  15 gp")
+                                            objectName: "invWeightValue_" + modelData.name
+                                            text: modelData.weightValue
+                                            visible: text.length > 0
+                                            color: Theme.text3
+                                            font.pixelSize: Theme.fsSmall
+                                            wrapMode: Text.WordWrap
+                                            Layout.fillWidth: true
+                                        }
                                     }
                                     // row buttons, right to left: View (magnifier) ·
                                     // the stack's count (×N, opens the amount dialog) ·
-                                    // the everyday action -- Equip/Wear, Drink, or Use
-                                    // (a scroll: casts its spell)
+                                    // Equip/Wear. Using an item -- a potion, a scroll,
+                                    // a tinderbox -- is its card on the Actions screen.
                                     MButton {
                                         visible: modelData.equipKind !== ""
                                         primary: false
@@ -535,23 +544,6 @@ Page {
                                             else
                                                 sheetBridge.toggleArmorWorn(modelData.name, !modelData.equipped)
                                         }
-                                    }
-                                    MButton {
-                                        visible: modelData.isPotion
-                                        primary: false
-                                        implicitWidth: 64
-                                        implicitHeight: 34
-                                        text: "Drink"
-                                        onClicked: sheetBridge.usePotion(modelData.name)
-                                    }
-                                    MButton {
-                                        visible: modelData.isScroll
-                                        primary: false
-                                        implicitWidth: 64
-                                        implicitHeight: 34
-                                        // casts the scroll's spell (asks which, on a blank one)
-                                        text: "Use"
-                                        onClicked: sheetBridge.useScroll(modelData.name)
                                     }
                                     // how many you have -- tap to change it
                                     MButton {
@@ -712,12 +704,24 @@ Page {
                                     elide: Text.ElideRight
                                     Layout.fillWidth: true
                                 }
-                                Label {
-                                    text: modelData.category + (modelData.detail ? "  ·  " + modelData.detail : "")
-                                    color: Theme.text3
-                                    font.pixelSize: Theme.fsSmall
-                                    elide: Text.ElideRight
+                                RowLayout {
                                     Layout.fillWidth: true
+                                    spacing: 8
+                                    Label {
+                                        // what it is -- cut short first
+                                        text: modelData.category + (modelData.detail ? "  ·  " + modelData.detail : "")
+                                        color: Theme.text3
+                                        font.pixelSize: Theme.fsSmall
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+                                    Label {
+                                        // what one weighs and costs, in full
+                                        text: modelData.weightValue || ""
+                                        visible: text.length > 0
+                                        color: Theme.text3
+                                        font.pixelSize: Theme.fsSmall
+                                    }
                                 }
                             }
                             MButton {

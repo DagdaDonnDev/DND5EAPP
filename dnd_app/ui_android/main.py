@@ -117,6 +117,11 @@ def _setup_qml_disk_cache():
 def main():
     app = QGuiApplication(sys.argv)
     app.setApplicationName("MIMIC")
+    # what goes wrong is noted in mimic_error_log.txt in the save folder
+    # (core/error_log.py; the same as desktop's, next to MIMIC.exe)
+    from dnd_app.core.error_log import install as _log_errors
+    from dnd_app.core.save_load import get_save_dir
+    print(f"[MIMIC] error log: {_log_errors(get_save_dir()) or 'none'}", file=sys.stderr)
     # before the engine exists -- Qt reads these when it's created
     _setup_qml_disk_cache()
 

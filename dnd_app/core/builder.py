@@ -251,6 +251,12 @@ def rebuild(char: dict) -> None:
     # A subclass a level down set aside comes back once its class is at
     # the subclass level again (the pick waits in _choices meanwhile).
     restore_set_aside_subclasses(char)
+    # a background's "Artisan's tools" is the kind picked for it; the same
+    # plain item in two inventory rows is one row of both (older characters'
+    # starting gear listed a rogue's daggers one by one)
+    from .inventory import merge_stacks, name_tool_kinds
+    name_tool_kinds(char)
+    merge_stacks(char)
 
     grants = {
         "skill_profs": [],      # skills granted (no choice needed)

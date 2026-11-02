@@ -283,9 +283,12 @@ def _spells_named(text: str) -> list[str]:
 
 
 def free_cast_resources(char: dict, spell_name: str) -> list[dict]:
-    """Resources with a use left that can cast `spell_name` for free."""
+    """Resources with a use left that can cast `spell_name` for free.
+    (Some rows are words, not counts -- a Rage Damage Bonus of "+2", a
+    Martial Arts Die of "d6", "Unlimited" -- and cast nothing.)"""
     return [r for r in char.get("resources", [])
-            if r.get("current", 0) > 0 and spell_name in free_spells_of(char, r)]
+            if isinstance(r.get("current"), (int, float)) and r["current"] > 0
+            and spell_name in free_spells_of(char, r)]
 
 
 def spend_free_cast(char: dict, spell_name: str):

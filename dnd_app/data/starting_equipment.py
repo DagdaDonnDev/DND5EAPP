@@ -43,7 +43,7 @@ STARTING_EQUIPMENT = {
     "Druid": [
         {"options": [["Wooden Shield"], ["Any simple weapon"]]},
         {"options": [["Scimitar"], ["Any simple melee weapon"]]},
-        {"options": [["Leather", "Explorer's Pack", "Druidic Focus"]]},
+        {"options": [["Leather", "Explorer's Pack", "Any druidic focus"]]},
     ],
     "Fighter": [
         {"options": [["Chain Mail"], ["Leather", "Longbow", "Arrows (20)"]]},
@@ -78,19 +78,19 @@ STARTING_EQUIPMENT = {
     ],
     "Sorcerer": [
         {"options": [["Light Crossbow", "Crossbow Bolts (20)"], ["Any simple weapon"]]},
-        {"options": [["Component Pouch"], ["Arcane Focus"]]},
+        {"options": [["Component Pouch"], ["Any arcane focus"]]},
         {"options": [["Dungeoneer's Pack"], ["Explorer's Pack"]]},
         {"options": [["Dagger", "Dagger"]]},
     ],
     "Warlock": [
         {"options": [["Light Crossbow", "Crossbow Bolts (20)"], ["Any simple weapon"]]},
-        {"options": [["Component Pouch"], ["Arcane Focus"]]},
+        {"options": [["Component Pouch"], ["Any arcane focus"]]},
         {"options": [["Scholar's Pack"], ["Dungeoneer's Pack"]]},
         {"options": [["Leather", "Any simple weapon", "Dagger", "Dagger"]]},
     ],
     "Wizard": [
         {"options": [["Quarterstaff"], ["Dagger"]]},
-        {"options": [["Component Pouch"], ["Arcane Focus"]]},
+        {"options": [["Component Pouch"], ["Any arcane focus"]]},
         {"options": [["Scholar's Pack"], ["Explorer's Pack"]]},
         {"options": [["Spellbook"]]},
     ],

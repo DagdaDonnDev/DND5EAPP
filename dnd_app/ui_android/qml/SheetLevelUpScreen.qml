@@ -42,13 +42,14 @@ Page {
                     // RowLayout's margins, or the button overflows past
                     // the Rectangle's (unclipped) bottom edge and visibly
                     // renders on top of the card below it.
-                    Layout.preferredHeight: 68
+                    Layout.preferredHeight: Math.max(68, clsRowLayout.implicitHeight + 20)
                     radius: 10
                     color: Theme.surf
                     border.color: Theme.border
                     clip: true
 
                     RowLayout {
+                        id: clsRowLayout
                         anchors.fill: parent
                         anchors.margins: 10
                         ColumnLayout {
@@ -61,15 +62,19 @@ Page {
                                 font.bold: true
                             }
                             Label {
-                                text: modelData.isNew ? "New class (multiclass)" : "Currently level " + modelData.currentLevel
+                                // a new class the scores don't allow yet: what it needs
+                                text: modelData.blocked ? "Not yet: " + modelData.blocked
+                                      : modelData.isNew ? "New class (multiclass)" : "Currently level " + modelData.currentLevel
                                 color: Theme.text3
                                 font.pixelSize: Theme.fsSmall
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
                             }
                         }
                         MButton {
                             text: modelData.isNew ? "Multiclass In" : "Level Up"
                             // character level 20 is the most there is
-                            enabled: !sheetBridge.atMaxLevel && modelData.currentLevel < 20
+                            enabled: !sheetBridge.atMaxLevel && modelData.currentLevel < 20 && !modelData.blocked
                             onClicked: sheetBridge.levelUpClass(modelData.name)
                         }
                     }

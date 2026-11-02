@@ -202,6 +202,11 @@ ADVENTURING_GEAR = [
     ("Ammunition, Needles (50)",0.5, 1,    "Blowgun needles."),
     ("Antitoxin",               0,   50,   "Adv. on saves vs poison for 1 hour."),
     ("Arcane Focus",            0, 0, "Crystal/Orb/Rod/Staff/Wand. Used by Sorcerer/Warlock/Wizard."),
+    ("Arcane Focus: Crystal",   1,   10,   "A spellcasting focus for Sorcerers, Warlocks and Wizards."),
+    ("Arcane Focus: Orb",       3,   20,   "A spellcasting focus for Sorcerers, Warlocks and Wizards."),
+    ("Arcane Focus: Rod",       2,   10,   "A spellcasting focus for Sorcerers, Warlocks and Wizards."),
+    ("Arcane Focus: Staff",     4,   5,    "A spellcasting focus for Sorcerers, Warlocks and Wizards."),
+    ("Arcane Focus: Wand",      1,   10,   "A spellcasting focus for Sorcerers, Warlocks and Wizards."),
     ("Backpack",                5,   2,    "Holds 30 lb (1 cu ft)."),
     ("Ball Bearings (1000)",    2,   1,    "Scatter: DEX DC 10 or fall prone."),
     ("Barrel",                  70,  2,    "Holds 40 gallons liquid or 4 cu ft solid."),
@@ -228,6 +233,10 @@ ADVENTURING_GEAR = [
     ("Component Pouch",         2,   25,   "Material spell components (non-costly)."),
     ("Crowbar",                 5,   2,    "Adv. STR checks where leverage applies."),
     ("Druidic Focus",           0, 0, "Sprig of mistletoe/totem/staff/wand. For Druids."),
+    ("Druidic Focus: Sprig of Mistletoe", 0, 1, "A spellcasting focus for Druids."),
+    ("Druidic Focus: Totem",    0,   1,    "A spellcasting focus for Druids."),
+    ("Druidic Focus: Wooden Staff", 4, 5,  "A spellcasting focus for Druids."),
+    ("Druidic Focus: Yew Wand", 1,   10,   "A spellcasting focus for Druids."),
     ("Fishing Tackle",          4,   1,    ""),
     ("Flask or Tankard",        1,   0.02, ""),
     ("Grappling Hook",          4,   2,    ""),
@@ -407,6 +416,23 @@ OTHER_TOOLS = [
 ]
 
 
+# Every tool's weight (lb) and cost (gp), from the PHB's Tools table.
+TOOL_STATS = {
+    "Alchemist's supplies": (8, 50), "Brewer's supplies": (9, 20), "Calligrapher's supplies": (5, 10),
+    "Carpenter's tools": (6, 8), "Cartographer's tools": (6, 15), "Cobbler's tools": (5, 5),
+    "Cook's utensils": (8, 1), "Glassblower's tools": (5, 30), "Jeweler's tools": (2, 25),
+    "Leatherworker's tools": (5, 5), "Mason's tools": (8, 10), "Painter's supplies": (5, 10),
+    "Potter's tools": (3, 10), "Smith's tools": (8, 20), "Tinker's tools": (10, 50),
+    "Weaver's tools": (5, 1), "Woodcarver's tools": (5, 1),
+    "Dice set": (0, 0.1), "Dragonchess set": (0.5, 1), "Playing card set": (0, 0.5),
+    "Three-Dragon Ante set": (0, 1),
+    "Bagpipes": (6, 30), "Drum": (3, 6), "Dulcimer": (10, 25), "Flute": (1, 2), "Lute": (2, 35),
+    "Lyre": (2, 30), "Horn": (2, 3), "Pan flute": (2, 12), "Shawm": (1, 2), "Viol": (1, 30),
+    "Disguise kit": (3, 25), "Forgery kit": (5, 15), "Herbalism kit": (3, 5), "Navigator's tools": (2, 25),
+    "Poisoner's kit": (2, 50), "Thieves' tools": (1, 25),
+}
+
+
 # Mundane items you *use* (kits, instruments, lights, thrown flasks) get
 # their own icon in the inventory on both apps, rather than the plain
 # "package" every other piece of gear shows. Icon keys are names in
@@ -459,6 +485,9 @@ def weapon_category_pool(category_text: str) -> list:
     "martial" appears in that text and a weapon-pool fallback would
     otherwise wrongly claim it."""
     t = category_text.lower()
+    if "arcane focus" in t or "druidic focus" in t:
+        kind = "arcane focus: " if "arcane" in t else "druidic focus: "
+        return [row[0] for row in ADVENTURING_GEAR if row[0].lower().startswith(kind)]
     if "instrument" in t:
         return list(INSTRUMENT_TOOLS)
     if "artisan" in t:

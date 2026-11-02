@@ -2196,14 +2196,21 @@ def get_carry_capacity(char: dict) -> int:
 
 
 def get_total_weight(char: dict) -> float:
+    """Everything carried, in lb: each item's own weight, or the rules'
+    (core/inventory.py). Worn armor and a carried shield are in the
+    inventory -- counted there, once."""
+    from .inventory import item_weight
     total = 0.0
+    names = set()
     for item in char.get("equipment", []):
-        total += item.get("weight", 0) * item.get("qty", 1)
+        if isinstance(item, dict):
+            total += item_weight(item) * item.get("qty", 1)
+            names.add(item.get("name", ""))
     armor_name = char.get("armor_worn", "No Armor")
     armor = ARMOR_DICT.get(armor_name)
-    if armor:
+    if armor and armor_name not in names:     # worn, but not listed (an older save)
         total += armor.get("weight", 0)
-    if char.get("shield"):
+    if char.get("shield") and not any(ARMOR_DICT.get(n, {}).get("type") == "shield" for n in names):
         total += 6  # standard shield weight
     for w in char.get("weapons", []):
         # look up weapon weight

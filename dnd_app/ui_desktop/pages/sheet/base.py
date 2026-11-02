@@ -1300,43 +1300,12 @@ class BaseSheetMixin:
         eldritch_versatility = dlg.get_eldritch_versatility()
 
         if is_new:
-            # Same ability score prerequisite check as before — kept as a
-            # safety net even though the dialog already grays out
-            # ineligible classes entirely, in case of any edge case (e.g.
-            # abilities changing between opening the dialog and confirming).
-            existing = {c["class"] for c in self.char.get("classes", [])}
-
-            def _meets_reqs(class_name):
-                reqs = CLASS_DICT.get(class_name, {}).get("multiclass_reqs", {})
-                if not reqs:
-                    return True, ""
-                if not self.char.get("optional_rules", {}).get("multiclass_ability_reqs", True):
-                    return True, ""
-                base_scores = self.char.get("abilities", {})
-                bonuses = self.char.get("ability_bonuses", {})
-                scores = {ab: base_scores.get(ab, 10) + bonuses.get(ab, 0) for ab in
-                          ("STR", "DEX", "CON", "INT", "WIS", "CHA")}
-                if class_name == "Fighter":
-                    if any(scores.get(ab, 0) >= val for ab, val in reqs.items()):
-                        return True, ""
-                    req_text = " or ".join(f"{ab} {val}" for ab, val in reqs.items())
-                    return False, f"{class_name} requires {req_text}"
-                missing = [f"{ab} {val}" for ab, val in reqs.items() if scores.get(ab, 0) < val]
-                if missing:
-                    return False, f"{class_name} requires " + " and ".join(missing)
-                return True, ""
-
-            fails = []
-            for existing_cls in existing:
-                ok_req, msg = _meets_reqs(existing_cls)
-                if not ok_req: fails.append(msg)
-            ok_req, msg = _meets_reqs(cls_name)
-            if not ok_req: fails.append(msg)
-            if fails:
-                QMessageBox.warning(
-                    self, "Multiclass Requirements Not Met",
-                    "This character doesn't meet the ability score prerequisites to multiclass:\n\n"
-                    + "\n".join(f"• {f}" for f in fails))
+            # The dialog already greys out a class the scores don't allow;
+            # checked again in case they changed while it was open.
+            why = level_up_block_reason(self.char, cls_name)
+            if why:
+                QMessageBox.warning(self, "Multiclass Requirements Not Met",
+                                    f"You can't take a level in {cls_name} yet: {why}.")
                 return
             hd = CLASS_DICT.get(cls_name, {}).get("hit_die", 8)
             add_class(self.char, cls_name, 1, "", hd)
@@ -1541,45 +1510,11 @@ class BaseSheetMixin:
         cls_name, ok = QInputDialog.getItem(self, "Add Multiclass", "New class:", available, 0, False)
         if not ok: return
 
-        # Ability score prerequisites — per the 2014 PHB multiclassing
-        # rule, a character must meet the requirements for BOTH their
-        # current class(es) and the new one.
-        def _meets_reqs(class_name):
-            reqs = CLASS_DICT.get(class_name, {}).get("multiclass_reqs", {})
-            if not reqs:
-                return True, ""
-            if not self.char.get("optional_rules", {}).get("multiclass_ability_reqs", True):
-                return True, ""
-            base_scores = self.char.get("abilities", {})
-            bonuses = self.char.get("ability_bonuses", {})
-            scores = {ab: base_scores.get(ab, 10) + bonuses.get(ab, 0) for ab in
-                      ("STR", "DEX", "CON", "INT", "WIS", "CHA")}
-            if class_name == "Fighter":
-                # The one special "OR" case: STR 13 or DEX 13, either
-                # sufficing — every other multi-ability requirement below
-                # is a strict AND.
-                if any(scores.get(ab, 0) >= val for ab, val in reqs.items()):
-                    return True, ""
-                req_text = " or ".join(f"{ab} {val}" for ab, val in reqs.items())
-                return False, f"{class_name} requires {req_text}"
-            missing = [f"{ab} {val}" for ab, val in reqs.items() if scores.get(ab, 0) < val]
-            if missing:
-                return False, f"{class_name} requires " + " and ".join(missing)
-            return True, ""
-
-        fails = []
-        for existing_cls in existing:
-            ok_req, msg = _meets_reqs(existing_cls)
-            if not ok_req: fails.append(msg)
-        ok_req, msg = _meets_reqs(cls_name)
-        if not ok_req: fails.append(msg)
-        if fails:
-            QMessageBox.warning(
-                self, "Multiclass Requirements Not Met",
-                "This character doesn't meet the ability score prerequisites to multiclass:\n\n"
-                + "\n".join(f"• {f}" for f in fails)
-                + "\n\nPer the 2014 PHB rule, you need at least a 13 in the relevant "
-                  "ability score(s) for both your current class(es) and the new one.")
+        from dnd_app.core.character import level_up_block_reason
+        why = level_up_block_reason(self.char, cls_name)   # the multiclassing ability scores
+        if why:
+            QMessageBox.warning(self, "Multiclass Requirements Not Met",
+                                f"You can't take a level in {cls_name} yet: {why}.")
             return
 
         hd = CLASS_DICT.get(cls_name, {}).get("hit_die", 8)

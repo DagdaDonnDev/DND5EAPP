@@ -121,7 +121,7 @@ MULTICLASS_PREREQS_2024 = {
     "Cleric":      {"WIS": 13},
     "Druid":       {"WIS": 13},
     "Fighter":     {"STR": 13, "DEX": 13, "_or": True},
-    "Monk":        {"STR": 13, "WIS": 13},
+    "Monk":        {"DEX": 13, "WIS": 13},
     "Paladin":     {"STR": 13, "CHA": 13},
     "Ranger":      {"DEX": 13, "WIS": 13},
     "Rogue":       {"DEX": 13},
@@ -182,6 +182,39 @@ def check_multiclass_prereq(class_name: str, ability_scores: dict) -> tuple[bool
         if not failures:
             return True, "All prerequisites met"
         return False, "; ".join(failures)
+
+
+_AB_WORDS = {"STR": "Strength", "DEX": "Dexterity", "CON": "Constitution",
+             "INT": "Intelligence", "WIS": "Wisdom", "CHA": "Charisma"}
+
+
+def multiclass_requirement_text(class_name: str) -> str:
+    """What a class needs, in words: "Dexterity 13 and Wisdom 13",
+    "Strength 13 or Dexterity 13". "" for a class with no requirement."""
+    reqs = MULTICLASS_PREREQS_2024.get(class_name, {})
+    plain = [f"{_AB_WORDS.get(ab, ab)} {n}" for ab, n in reqs.items() if not ab.startswith("_")]
+    if reqs.get("_or"):
+        return " or ".join(plain)
+    group = reqs.get("_or_group")
+    if group:
+        plain.append(" or ".join(f"{_AB_WORDS.get(ab, ab)} {n}" for ab, n in group.items()))
+    return " and ".join(plain)
+
+
+def multiclass_block_reason(char: dict, new_class: str) -> str:
+    """Why `char` can't take its first level in `new_class` ("" when it
+    can): the scores every class it already has needs, and the new one's
+    (PHB multiclassing). Nothing when the optional rule is off, or for a
+    character's first class."""
+    if not char.get("optional_rules", {}).get("multiclass_ability_reqs", True):
+        return ""
+    current = [c.get("class", "") for c in char.get("classes", [])]
+    if not current or new_class in current:
+        return ""
+    from dnd_app.core.character import ability_score
+    scores = {ab: ability_score(char, ab, ignore_wildshape=True) for ab in _AB_WORDS}   # your own, not a beast's
+    short = [cls for cls in current + [new_class] if not check_multiclass_prereq(cls, scores)[0]]
+    return "; ".join(f"{cls} needs {multiclass_requirement_text(cls)}" for cls in short)
 
 
 def prof_bonus(total_level: int) -> int:

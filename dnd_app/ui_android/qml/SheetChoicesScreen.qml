@@ -1161,9 +1161,13 @@ Page {
                                     font.bold: true
                                 }
                                 Label {
-                                    text: modelData.isNew ? "New class (multiclass)" : "Currently level " + modelData.currentLevel
+                                    // a new class the scores don't allow yet: what it needs
+                                    text: modelData.blocked ? "Not yet: " + modelData.blocked
+                                          : modelData.isNew ? "New class (multiclass)" : "Currently level " + modelData.currentLevel
                                     color: Theme.text3
                                     font.pixelSize: Theme.fsSmall
+                                    wrapMode: Text.WordWrap
+                                    Layout.fillWidth: true
                                 }
                                 // A wrapping Flow, not a fixed RowLayout -- three
                                 // buttons plus a class name can't reliably fit
@@ -1191,7 +1195,7 @@ Page {
                                         text: modelData.isNew ? "Multiclass In" : "Level Up"
                                         height: 36
                                         // character level 20 is the most there is
-                                        enabled: !sheetBridge.atMaxLevel && modelData.currentLevel < 20
+                                        enabled: !sheetBridge.atMaxLevel && modelData.currentLevel < 20 && !modelData.blocked
                                         onClicked: sheetBridge.levelUpClass(modelData.name)
                                     }
                                 }
