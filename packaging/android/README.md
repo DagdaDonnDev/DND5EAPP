@@ -291,9 +291,15 @@ Android shrinks `icon.png` and pads it with white.
   couple of minutes instead of 30–50.
 - If a build is interrupted (Ctrl+C) while extracting or configuring a
   component, the next run can find it half-extracted and fail
-  confusingly. Deleting just that component's folder under
+  confusingly. The clean build re-extracts a half-there Python source
+  (`hostpython3`, `python3`) itself; for anything else, deleting just that
+  component's folder under
   `dnd_app/ui_android/.buildozer/android/platform/build-*/build/other_builds/`
   is usually enough — no need to wipe the whole cache.
+- On a computer that built MIMIC before `deployment\` went away,
+  `dnd_app\ui_android\.buildozer` is a link into `deployment\.buildozer`.
+  The clean build swaps it for a fresh cache (keeping the downloads) and
+  deletes `deployment\`, so that one build is a slow one.
 - Installing a new APK over the old one (or `adb install -r`) keeps the
   app's data; don't uninstall between builds unless the package name or
   signing key changed.
@@ -328,7 +334,7 @@ once, and nobody has to again.
 | The clean build stops with "buildozer.spec p4a.hook is ..." | The spec still points at the hook's old place — run `setup_buildozer_spec.bat` once |
 | `git clone -b 'master', ...` in the log even though the spec sets `p4a.branch` | The spec's `p4a.branch` line got removed, or the local p4a checkout's remembered branch drifted — check `dnd_app/ui_android/buildozer.spec` |
 | A patch fails to apply deep inside the `python3` recipe | You're on p4a `master` (Python 3.14), not the pinned `v2024.01.21` — see [Why this p4a version](#why-this-p4a-version) |
-| `sh.CommandNotFound: .../python3/config.guess` | A half-extracted Python source tree from an interrupted build — delete `other_builds/python3/` under `dnd_app/ui_android/.buildozer/.../build/` |
+| `can't find file to patch` on `hostpython3`'s `pyconfig_detection.patch`, or `sh.CommandNotFound: .../python3/config.guess` | A half-extracted (or half-deleted) Python source in the cache. The clean build deletes it and extracts it again, so build with that rather than plain `buildozer`; by hand, delete `other_builds/hostpython3/` or `other_builds/python3/` under `dnd_app/ui_android/.buildozer/.../build/` |
 | "ANDROID_SDK_ROOT is not set" / NDK not found | Re-run `setup_buildozer_spec.bat` — it writes the paths into the spec rather than relying on environment variables |
 | Build succeeds but the app crashes instantly on launch | `p4a_hook.py`'s `before_apk_build` step (bundling `libc++_shared.so`) didn't run |
 | Java compile fails on `QtNative.setEnvironmentVariable` / "cannot find symbol" | `p4a_hook.py`'s `before_apk_assemble` patch didn't run |

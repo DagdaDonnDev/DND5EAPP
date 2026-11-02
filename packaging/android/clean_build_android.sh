@@ -12,7 +12,9 @@
 #   1. kill any leftover buildozer / p4a / Gradle / aapt2 processes
 #   2. clear the dist's Gradle outputs, old bin/ artifacts, and the
 #      staging dir; reset PythonActivity.java to p4a's pristine template
-#      so p4a_hook.py patches it from scratch
+#      so p4a_hook.py patches it from scratch. Also: swap an old link
+#      into deployment/ for a fresh cache (and delete deployment/), and
+#      re-extract a half-there Python source
 #   3. pre-flight p4a_hook.py: run its Java patch against that template
 #      and check every marker it asserts on at build time is present
 #   4. stage dnd_app/main.py (as main.py) + README.md + dnd_app/ into
@@ -105,6 +107,48 @@ fi
 echo "(clean)"
 
 step "2/6 Clearing previous build outputs"
+# Before the tidy, the build cache was deployment/.buildozer, and the old
+# build scripts made .buildozer here a link to it. The tidy deletes
+# deployment/, so a link like that points at a cache that's gone or half
+# gone (a half-deleted Python source fails p4a's first patch: "can't find
+# file to patch"). Swap it for a fresh cache, keeping just the downloaded
+# sources (p4a only reuses a download it saw finish), and delete what's
+# left of deployment/: nothing uses it now.
+if [ -L "$UI/.buildozer" ] && [[ "$(readlink "$UI/.buildozer")" == *deployment/.buildozer* ]]; then
+    echo "dnd_app/ui_android/.buildozer was a link to the old deployment/.buildozer;"
+    echo "making a fresh build cache instead, so this build is a slow one (20-40 min)"
+    OLD_PKGS="$ROOT/deployment/.buildozer/android/platform/build-arm64-v8a/packages"
+    # rm takes a link made in WSL; one Windows made goes with cmd's rmdir,
+    # which (without /s) only ever removes the link itself
+    rm -f "$UI/.buildozer" 2>/dev/null \
+        || cmd.exe /c rmdir "$(wslpath -w "$UI")\\.buildozer" >/dev/null 2>&1 \
+        || true
+    [ ! -L "$UI/.buildozer" ] \
+        || die "couldn't remove the link dnd_app/ui_android/.buildozer -- delete it from Windows (only the link goes), then run this again"
+    if [ -d "$OLD_PKGS" ]; then
+        mkdir -p "$UI/.buildozer/android/platform/build-arm64-v8a"
+        mv "$OLD_PKGS" "$UI/.buildozer/android/platform/build-arm64-v8a/packages" \
+            && echo "kept the downloaded sources" \
+            || echo "couldn't keep the downloaded sources; p4a downloads them again"
+    fi
+fi
+if [ -e "$ROOT/deployment" ]; then
+    echo "deleting deployment/, the old build kit (can take a few minutes)"
+    rm -rf "${ROOT:?}/deployment" 2>/dev/null \
+        || echo "WARNING: some of deployment/ couldn't be deleted; delete the folder from Windows (the build doesn't need it)"
+fi
+# A Python source an interrupted run left half-extracted (or a half-deleted
+# cache left half there) still counts as unpacked to p4a, which then fails
+# on it ("can't find file to patch", config.guess not found). Delete that
+# component so it's extracted and compiled again.
+OTHER="$UI/.buildozer/android/platform/build-arm64-v8a/build/other_builds"
+for SRC in "$OTHER"/hostpython3/*/hostpython3 "$OTHER"/python3/*/python3; do
+    [ -d "$SRC" ] || continue
+    [ -f "$SRC/Lib/site.py" ] && [ -f "$SRC/config.guess" ] && continue
+    PART="$(dirname "$(dirname "$SRC")")"
+    echo "$(basename "$PART")'s source in the cache is incomplete; deleting it so it's extracted again"
+    rm -rf "${PART:?}"
+done
 if [ -d "$DIST" ]; then
     rm -rf "${DIST:?}/build" "${DIST:?}/.gradle"
     if [ -f "$TEMPLATE" ]; then

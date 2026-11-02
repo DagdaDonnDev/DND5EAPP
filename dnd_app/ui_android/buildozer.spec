@@ -64,8 +64,7 @@ android.qt_libs = Quick,Core,Qml,Gui,QuickControls2,OpenGL,Network
 # Don't run setup.py
 p4a.setup_py = false
 
-# Build hook (packaging/android/p4a_hook.py -- tracked despite living
-# under gitignored deployment/, see .gitignore's exception for it):
+# Build hook (packaging/android/p4a_hook.py):
 # before_apk_build bundles libc++_shared.so into the dist (Qt refuses
 # to load without it); before_apk_assemble patches the dist's
 # PythonActivity.java to replace QtNative.setEnvironmentVariable(...),
