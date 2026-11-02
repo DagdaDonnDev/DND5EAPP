@@ -215,7 +215,7 @@ class InspectButtonDelegate(QStyledItemDelegate):
         bar, and the bar, for RarityInspectDelegate), with its text cut
         short to end at x = text_end. Done here rather than by overriding
         initStyleOption, which Qt also calls for every row's size: under
-        PySide6 6.12.0 on Python 3.11 or older (see requirements.txt) each
+        PySide6 6.12.0 on Python 3.11 or older (see packaging/requirements.txt) each
         of those calls loses a reference to None, and a thousand-row list
         used them up within seconds."""
         opt = RarityBarDelegate.indented(option) if self.RARITY_BAR else QStyleOptionViewItem(option)

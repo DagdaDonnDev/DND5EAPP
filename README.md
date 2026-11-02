@@ -63,8 +63,8 @@ numbers. The dice, and your DM's calls, stay with you.
 You need **Python 3.10 or newer**.
 
 ```bash
-pip install -r requirements.txt
-python run_dnd_creator.py
+pip install -r packaging/requirements.txt
+python dnd_app/run_dnd_creator.py
 ```
 
 ### Build it yourself
@@ -78,9 +78,9 @@ The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Androi
 
 ### Troubleshooting
 
-- **"No module named 'PySide6'"** — run `pip install -r requirements.txt`.
-- **The app closes after a while with "deallocating None"** — that's PySide6 6.12.0 on Python 3.11 or older. Run `pip install -r requirements.txt` again (it installs a PySide6 without the fault), or use Python 3.12 or newer.
-- **The built program starts and closes straight away** — run it from a terminal to see the error, delete the `build/` and `dist/` folders and rebuild, and check that `dnd_app/ui_desktop/splash/` and `dnd_app/ui_desktop/icon.ico` exist.
+- **"No module named 'PySide6'"** — run `pip install -r packaging/requirements.txt`.
+- **The app closes after a while with "deallocating None"** — that's PySide6 6.12.0 on Python 3.11 or older. Run `pip install -r packaging/requirements.txt` again (it installs a PySide6 without the fault), or use Python 3.12 or newer.
+- **The built program starts and closes straight away** — run it from a terminal to see the error, delete `dist/` and `packaging/windows/build/` and rebuild, and check that `dnd_app/ui_desktop/splash/` and `dnd_app/ui_desktop/icon.ico` exist.
 - **The splash screen looks frozen** — update to the current source: the startup work runs in the background so the splash keeps moving.
 
 ---
@@ -325,13 +325,15 @@ dnd_app/
     themes.py, icon_data.py, flavor_text.py   shared by both apps' looks
   ui_desktop/        The desktop app (Qt Widgets): pages/, dialogs/, style/
   ui_android/        The Android app (Qt Quick/QML): bridge/, qml/
+  run_dnd_creator.py The desktop app's launcher (from source, and the Windows build's)
+  main.py            The Android app's launcher (the build puts it in the APK)
 docs/                The reference lists the game data is checked against
 packaging/
   setup_new_computer.bat   one click: what both builds need on a new computer
+  requirements.txt   what the desktop app needs from pip
   windows/           build_exe.bat / .sh and MIMIC.spec
-  android/           the clean build, its first-time setup, p4a recipes, p4a_hook.py, icons
-run_dnd_creator.py   Desktop entry point
-main.py              Android entry point
+  android/           the clean build, its first-time setup, the PySide6 wheels and their p4a recipes, p4a_hook.py, icons
+dist/                (made by the builds) MIMIC.exe and MIMIC.apk
 ```
 
 ---

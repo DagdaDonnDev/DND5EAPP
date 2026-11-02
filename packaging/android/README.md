@@ -18,12 +18,13 @@ doesn't mean you did something wrong.
 |---|---|
 | `clean_build_android.bat` / `.sh` | **The build.** Run it every time you want a new APK |
 | `first_time_setup.sh` | Everything a new computer needs, inside WSL — `packaging\setup_new_computer.bat` runs it (see [First-time setup](#first-time-setup-do-this-once)) |
-| `setup_buildozer_spec.bat` / `.sh` | Finds the Android SDK/NDK, the wheels and the Qt jars, makes the p4a recipes, and writes their paths into `buildozer.spec` (the first-time setup runs it) |
-| `recipes/` | The PySide6/Shiboken6 recipes for p4a, rendered from PySide6's own templates; the setup copies them into `deployment/recipes/` |
+| `setup_buildozer_spec.bat` / `.sh` | Finds the Android SDK/NDK, the wheels and the Qt jars, and writes their paths and the recipes' into `buildozer.spec` (the first-time setup runs it) |
+| `recipes/` | p4a's recipes for the PySide6/Shiboken6 wheels (they unpack them rather than compile them), rendered from PySide6's own templates; `buildozer.spec`'s `p4a.local_recipes` points here |
 | `make-android-apk.sh` | Turns the build's `.aab` into an installable APK (the clean build runs it) |
 | `p4a_hook.py` | Build hook p4a runs to fix the Qt bootstrap — see [Why `p4a_hook.py` exists](#why-p4a_hookpy-exists) |
 | `icon.png`, `icon_background.png`, `icon_foreground.png` | Launcher icons — see [Icon](#icon) |
-| `wheels/` | Any Android PySide6/Shiboken6 wheels the setup had to download (not in git -- the repo's own copies are at the repo root) |
+| `wheels/` | The Android PySide6/Shiboken6 wheels (cross-compiled for `android_aarch64` — not the desktop `pip install PySide6`); the setup downloads either one if it's missing |
+| `jars/` | The Qt Android jars the setup takes out of the PySide6 wheel (made on each computer, not in git) |
 
 The build config itself is `dnd_app/ui_android/buildozer.spec`. It stays
 next to the Android app because buildozer keeps its multi-GB build cache,
@@ -71,9 +72,10 @@ off:
   place. Without it, the phone won't take the new APK as an update until
   MIMIC is uninstalled once — your saved characters are in Documents and
   stay.
-- **`deployment\recipes\python3\`**, if the old computer has one (the
-  hand-patched python3 recipe — see `.gitignore`). Without it p4a uses its
-  own, which the pinned `v2024.01.21` builds cleanly.
+- **`deployment\recipes\python3\`**, if the old computer has one (a
+  hand-patched python3 recipe): copy it into `packaging\android\recipes\`
+  and commit it. Without it p4a uses its own, which the pinned
+  `v2024.01.21` builds cleanly.
 
 ### Doing it by hand
 
@@ -108,11 +110,10 @@ What the setup does, if you'd rather (or a step needs fixing):
    ```
    packaging\android\setup_buildozer_spec.bat
    ```
-   It finds the SDK/NDK, uses the Android PySide6/Shiboken6 wheels at the
-   repo root (or downloads them into `wheels/` if they're missing; they're cross-compiled for
-   `android_aarch64` — not the desktop `pip install PySide6`), makes the p4a
-   recipes in `deployment/recipes/` from `recipes/`, extracts the
-   Qt Android jars from the wheel, and writes `buildozer.spec`'s
+   It finds the SDK/NDK, checks the Android PySide6/Shiboken6 wheels are in
+   `wheels/` (downloading any that are missing) and their recipes in
+   `recipes/`, takes the Qt Android jars out of the PySide6 wheel into
+   `jars/`, and writes `buildozer.spec`'s
    machine-specific lines: `source.dir`, `android.sdk_path`,
    `android.ndk_path`, `p4a.local_recipes`, `p4a.hook`, `android.add_jars`
    and the icon paths. It's safe to re-run any time a path changes, and it
@@ -131,9 +132,9 @@ Double-click **`clean_build_android.bat`**. It:
    `PythonActivity.java` so `p4a_hook.py` patches it from scratch
 2. dry-runs the hook's Java patch, so a mistake fails in seconds rather
    than 20 minutes in
-3. stages the repo-root `main.py`, `README.md` (the Credits screen shows it)
-   and `dnd_app/` — without `ui_desktop/`, which the Android app doesn't
-   use: it shares only `core/` and `data/` with the desktop app
+3. stages `dnd_app/main.py` as the app's `main.py`, `README.md` (the Credits
+   screen shows it) and `dnd_app/` — without `ui_desktop/`, which the Android
+   app doesn't use: it shares only `core/` and `data/` with the desktop app
 4. runs `buildozer android release` (log in `/tmp/mimic-build-*.log`)
 5. turns the AAB into **`dist/MIMIC.apk`**, replacing the last build, with
    bundletool (downloaded once to `~/.cache/mimic/`) and your debug key
@@ -197,14 +198,12 @@ the spec by hand:
   `--load-local-libs=plugins_platforms_qtforandroid` (the Qt Android
   platform plugin) and `--icon=` (must match `android.icon`). They all
   need to agree.
-- **`p4a.local_recipes`** — `deployment/recipes/` on your machine (not in
-  git): the PySide6/Shiboken6 recipes that unpack the wheels instead of
-  compiling them — the setup makes them from `packaging/android/recipes/`,
-  which is in git — and, on the old build machine, a hand-patched
-  `python3` recipe. That one isn't regenerable, so commit it (see the note
-  in `.gitignore`). Each wheel recipe names its wheel by full path
-  (`wheel_path`); if that file has gone, the clean build points the recipe
-  at the same wheel in the repo root or `wheels/`.
+- **`p4a.local_recipes`** — `packaging/android/recipes/`, in git: the
+  PySide6/Shiboken6 recipes that unpack the wheels instead of compiling
+  them, each finding its wheel in `packaging/android/wheels/` by its own
+  location. A recipe there wins over p4a's own of the same name (a
+  hand-patched `python3` one would go there too). The clean build stops,
+  saying to re-run the setup, if the spec still points anywhere else.
 - **`version`** — the app's one version number. The Windows EXE reads it
   from here too, so both always match.
 - **Package name (`package.domain` + `package.name`)** — changing it

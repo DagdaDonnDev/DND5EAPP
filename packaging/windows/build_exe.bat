@@ -4,9 +4,10 @@ REM Run from the repo root regardless of where this script is invoked
 REM from. (The spec file itself -- packaging\windows\MIMIC.spec --
 REM resolves its own paths via SPECPATH, so it doesn't actually depend on
 REM this cd; but --distpath/--workpath below are plain CLI args resolved
-REM against CWD, so this still matters for dist\ and build\ landing at
-REM the repo root. This script lives two levels down, in
-REM packaging\windows\, so it takes two ".." to reach the repo root.)
+REM against CWD, so this still matters for dist\ landing at the repo root
+REM and PyInstaller's cache in packaging\windows\build\. This script lives
+REM two levels down, in packaging\windows\, so it takes two ".." to reach
+REM the repo root.)
 cd /d "%~dp0..\.."
 echo === MIMIC - Windows Builder ===
 echo.
@@ -14,9 +15,9 @@ echo.
 REM ── Step 1: Dependencies ─────────────────────────────────────────────────
 echo [1/3] Installing dependencies...
 python -m pip install --upgrade pip --quiet
-REM PySide6 comes from requirements.txt, which skips the one release that
+REM PySide6 comes from packaging\requirements.txt, which skips the one release that
 REM crashes on Python 3.11 and older
-python -m pip install -r requirements.txt pyinstaller --quiet
+python -m pip install -r packaging\requirements.txt pyinstaller --quiet
 if %errorlevel% neq 0 (
     echo ERROR: pip install failed. Make sure Python is in PATH.
     pause & exit /b 1
@@ -28,7 +29,7 @@ python -c "import PySide6; print('  PySide6', PySide6.__version__, 'OK')"
 python -c "import PyInstaller; print('  PyInstaller', PyInstaller.__version__, 'OK')"
 
 REM ── Step 3: Build ─────────────────────────────────────────────────────────
-REM --clean wipes PyInstaller's own incremental analysis cache (the build\
+REM --clean wipes PyInstaller's own incremental analysis cache (packaging\windows\build\
 REM folder) and forces it to redo the entire Analysis phase from scratch —
 REM including collect_all('PySide6') re-walking the whole PySide6 install
 REM dir — every single time. That's the right thing to do after changing
@@ -47,7 +48,7 @@ if defined PYI_CLEAN_FLAG (
     echo   Run "packaging\windows\build_exe.bat clean" to force a full rebuild.
 )
 echo.
-python -m PyInstaller %PYI_CLEAN_FLAG% --noconfirm --distpath dist --workpath build packaging\windows\MIMIC.spec
+python -m PyInstaller %PYI_CLEAN_FLAG% --noconfirm --distpath dist --workpath packaging\windows\build packaging\windows\MIMIC.spec
 if %errorlevel% neq 0 (
     echo.
     echo ERROR: Build failed. Common causes:

@@ -26,14 +26,14 @@ lands in `dist\MIMIC.exe`, at the repo root.
 
 ## What the build does
 
-1. Installs PySide6 and PyInstaller via pip  
+1. Installs PySide6 (from `packaging\requirements.txt`) and PyInstaller via pip  
 2. Runs PyInstaller with `MIMIC.spec`  
 3. Produces a **single self-contained EXE** — no Python required on the target machine
 
 First build: **2–5 minutes**. Subsequent builds: **~1 minute** — the default
 `packaging\windows\build_exe.bat` / `./packaging/windows/build_exe.sh` no longer force
-`--clean`, so PyInstaller reuses its incremental analysis cache (the
-`build\` folder) instead of re-walking the entire PySide6 install
+`--clean`, so PyInstaller reuses its incremental analysis cache
+(`packaging\windows\build\`) instead of re-walking the entire PySide6 install
 directory from scratch every time. Run `packaging\windows\build_exe.bat clean` /
 `./packaging/windows/build_exe.sh clean` to force a full rebuild — do this after
 editing the `.spec` file or upgrading PySide6/PyInstaller, since a stale

@@ -6,12 +6,12 @@ package.domain = org.mimic
 
 source.dir = /mnt/c/Users/OBRIET/Dev/Projects/Extra/DND/DND5EAPP
 source.include_exts = py,qml,png,jpg,jpeg,ico,gif,svg,pdf,json,md,ttf
-# dnd_app/** and main.py explicit: the --private staging dir (see
-# p4a.extra_args below) needs main.py + dnd_app/ copied into it -- the
+# dnd_app/** explicit: the --private staging dir (see p4a.extra_args
+# below) needs dnd_app/ and, at its root, main.py (dnd_app/main.py) -- the
 # clean build stages them, leaving out ui_desktop/ (the Android app
 # shares only core/ and data/ with desktop) -- not just whatever
 # source.include_exts happens to glob from source.dir.
-source.include_patterns = dnd_app/**,main.py,packaging/android/icon.png
+source.include_patterns = dnd_app/**,packaging/android/icon.png
 source.exclude_dirs = .git,build,dist,deployment,.buildozer,packaging/windows,docs,dnd_app/ui_desktop
 source.exclude_patterns = *.whl,*.pyc,*.pyo,buildozer.spec,buildozer.spec.*
 
@@ -56,7 +56,7 @@ p4a.bootstrap = qt
 p4a.branch = v2024.01.21
 
 # Local recipes provide the Qt bootstrap glue
-p4a.local_recipes = /mnt/c/Users/OBRIET/Dev/Projects/Extra/DND/DND5EAPP/deployment/recipes
+p4a.local_recipes = /mnt/c/Users/OBRIET/Dev/Projects/Extra/DND/DND5EAPP/packaging/android/recipes
 
 # Which Qt modules the app uses
 android.qt_libs = Quick,Core,Qml,Gui,QuickControls2,OpenGL,Network
@@ -88,7 +88,7 @@ p4a.hook = /mnt/c/Users/OBRIET/Dev/Projects/Extra/DND/DND5EAPP/packaging/android
 # isn't on the classpath, registerNatives() fails, JNI_OnLoad returns
 # JNI_ERR, and QtLoader aborts its whole load sequence (see packaging/android/README.md's
 # troubleshooting table). Added below.
-android.add_jars = /mnt/c/Users/OBRIET/Dev/Projects/Extra/DND/DND5EAPP/deployment/jar/PySide6/jar/Qt6Android.jar,/mnt/c/Users/OBRIET/Dev/Projects/Extra/DND/DND5EAPP/deployment/jar/PySide6/jar/Qt6AndroidBindings.jar,/mnt/c/Users/OBRIET/Dev/Projects/Extra/DND/DND5EAPP/deployment/jar/PySide6/jar/Qt6AndroidQuick.jar
+android.add_jars = /mnt/c/Users/OBRIET/Dev/Projects/Extra/DND/DND5EAPP/packaging/android/jars/Qt6Android.jar,/mnt/c/Users/OBRIET/Dev/Projects/Extra/DND/DND5EAPP/packaging/android/jars/Qt6AndroidBindings.jar,/mnt/c/Users/OBRIET/Dev/Projects/Extra/DND/DND5EAPP/packaging/android/jars/Qt6AndroidQuick.jar
 
 # Extra args to p4a.
 # --private=/tmp/mimic-app-staging: a real, populated staging directory

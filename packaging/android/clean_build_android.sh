@@ -15,7 +15,8 @@
 #      so p4a_hook.py patches it from scratch
 #   3. pre-flight p4a_hook.py: run its Java patch against that template
 #      and check every marker it asserts on at build time is present
-#   4. stage main.py + README.md + dnd_app/ into /tmp/mimic-app-staging (the
+#   4. stage dnd_app/main.py (as main.py) + README.md + dnd_app/ into
+#      /tmp/mimic-app-staging (the
 #      --private dir buildozer.spec's p4a.extra_args points p4a at)
 #   5. buildozer android release, logged to /tmp/mimic-build-*.log
 #   6. turn the .aab into an installable universal APK in dist/ via
@@ -62,22 +63,15 @@ SPEC_SRC="$(sed -nE 's/^source\.dir[[:space:]]*=[[:space:]]*//p' "$SPEC" | head 
 # still points at the old place.
 SPEC_HOOK="$(sed -nE 's/^p4a\.hook[[:space:]]*=[[:space:]]*//p' "$SPEC" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
 [ "$SPEC_HOOK" = "$HOOK" ] || die "buildozer.spec p4a.hook is '$SPEC_HOOK' but the hook is '$HOOK' -- run packaging\\android\\setup_buildozer_spec.bat once"
-# The PySide6/Shiboken6 recipes in deployment/recipes/ (this machine's,
-# not in git) unpack the wheel their wheel_path line names. The wheels are
-# committed at the repo root (packaging/android/wheels/ holds any the setup
-# downloaded); a recipe naming a wheel that isn't there any more is
-# pointed at the same wheel in either place.
-WHEELS="$ROOT/packaging/android/wheels"
-for RECIPE in "$ROOT"/deployment/recipes/*/__init__.py; do
-    [ -f "$RECIPE" ] || continue
-    NAME="$(basename "$(dirname "$RECIPE")")"
-    WP="$(sed -nE "s/^[[:space:]]*wheel_path[[:space:]]*=[[:space:]]*['\"]([^'\"]*)['\"].*/\1/p" "$RECIPE" | head -1)"
-    [ -n "$WP" ] && [ ! -f "$WP" ] || continue
-    NEW="$(find "$ROOT" "$WHEELS" -maxdepth 1 -iname "$(basename "$WP")" -print -quit 2>/dev/null || true)"
-    [ -n "$NEW" ] || die "the $NAME recipe's wheel is missing: $WP -- run packaging\\android\\setup_buildozer_spec.bat to download it"
-    NEW_SED="$(printf '%s' "$NEW" | sed 's/[#&\\]/\\&/g')"
-    sed -i -E "s#^([[:space:]]*wheel_path[[:space:]]*=[[:space:]]*['\"])[^'\"]*#\1$NEW_SED#" "$RECIPE"
-    echo "$NAME recipe now unpacks $NEW"
+# The PySide6/Shiboken6 recipes are used from packaging/android/recipes/
+# (in git), and unpack the wheels in packaging/android/wheels/. A spec
+# written before that still points at the old deployment/recipes/.
+RECIPES="$ROOT/packaging/android/recipes"
+SPEC_RECIPES="$(sed -nE 's/^p4a\.local_recipes[[:space:]]*=[[:space:]]*//p' "$SPEC" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
+[ "$SPEC_RECIPES" = "$RECIPES" ] || die "buildozer.spec p4a.local_recipes is '$SPEC_RECIPES' but the recipes are in '$RECIPES' -- run packaging\\android\\setup_buildozer_spec.bat once"
+for WHL in $(sed -nE "s/.*'wheels' \/ '([^']+)'.*/\1/p" "$RECIPES"/*/__init__.py); do
+    [ -f "$ROOT/packaging/android/wheels/$WHL" ] \
+        || die "packaging/android/wheels/$WHL is missing -- run packaging\\android\\setup_buildozer_spec.bat to download it"
 done
 PY="$(find_python311)" || die "python3.11 not found on PATH or under ${PYENV_ROOT:-$HOME/.pyenv}"
 echo "Python: $PY"
@@ -189,12 +183,12 @@ step "4/6 Staging app source into $STAGE"
 # the APK always matches.
 (cd "$ROOT" && "$PY" -m dnd_app.data.icon_data)
 mkdir -p "$STAGE"
-# The repo-root main.py wrapper, NOT dnd_app/ui_android/main.py: that
+# The dnd_app/main.py wrapper, NOT dnd_app/ui_android/main.py: that
 # file finds its QML relative to its own location (qml/ next to it), so
 # copied to the staging root it looks for $STAGE/qml/App.qml, which
 # doesn't exist -- engine.load() produces no root objects and the app
 # exits on launch.
-cp "$ROOT/main.py" "$STAGE/main.py"
+cp "$ROOT/dnd_app/main.py" "$STAGE/main.py"
 # The Credits screen shows the project README; core/readme.py looks for
 # it at the app root, next to main.py.
 cp "$ROOT/README.md" "$STAGE/README.md"
@@ -202,10 +196,12 @@ rsync -a --delete \
     --exclude='.buildozer' --exclude='bin' --exclude='build' --exclude='.gradle' \
     --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' \
     --exclude='buildozer.spec*' --exclude='*.sh' \
-    --exclude='ui_desktop' \
+    --exclude='ui_desktop' --exclude='/main.py' --exclude='/run_dnd_creator.py' \
     "$ROOT/dnd_app/" "$STAGE/dnd_app/"
 # (ui_desktop/ is left out: the Android app shares only core/ and data/
-# with the desktop app, and never imports the desktop UI.)
+# with the desktop app, and never imports the desktop UI. So are the two
+# launchers: main.py is already at the staging root, run_dnd_creator.py
+# is the desktop's.)
 [ -f "$STAGE/dnd_app/ui_android/qml/App.qml" ] || die "App.qml missing from staging"
 [ -f "$STAGE/README.md" ] || die "README.md missing from staging (Credits would show the fallback text)"
 echo "$(find "$STAGE" -type f | wc -l) files staged"

@@ -4,18 +4,19 @@ set -e
 # (The spec file itself -- packaging/windows/MIMIC.spec --
 # resolves its own paths via SPECPATH, so it doesn't actually depend on
 # this cd; but --distpath/--workpath below are plain CLI args resolved
-# against CWD, so this still matters for dist/ and build/ landing at the
-# repo root. This script lives two levels down, in packaging/windows/, so
-# it takes two ".." to reach the repo root.)
+# against CWD, so this still matters for dist/ landing at the repo root
+# and PyInstaller's cache in packaging/windows/build/. This script lives
+# two levels down, in packaging/windows/, so it takes two ".." to reach
+# the repo root.)
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 echo "=== MIMIC — EXE Builder ==="
 echo
 
 echo "Step 1: Installing dependencies..."
 python3 -m pip install --upgrade pip
-# PySide6 comes from requirements.txt, which skips the one release that
+# PySide6 comes from packaging/requirements.txt, which skips the one release that
 # crashes on Python 3.11 and older
-python3 -m pip install -r requirements.txt pyinstaller
+python3 -m pip install -r packaging/requirements.txt pyinstaller
 
 echo
 echo "Step 2: Verifying PySide6..."
@@ -23,7 +24,7 @@ python3 -c "import PySide6; print('PySide6', PySide6.__version__, 'OK')"
 
 echo
 echo "Step 3: Building app using spec file..."
-# --clean wipes PyInstaller's own incremental analysis cache (the build/
+# --clean wipes PyInstaller's own incremental analysis cache (packaging/windows/build/
 # folder) and forces the whole Analysis phase from scratch every time —
 # including collect_all('PySide6') re-walking the entire PySide6 install
 # dir. Only do that after changing the spec file or upgrading a
@@ -37,7 +38,7 @@ else
     echo "Incremental build - ~1 minute unless the spec changed."
     echo "Run './packaging/windows/build_exe.sh clean' to force a full rebuild."
 fi
-python3 -m PyInstaller $CLEAN_FLAG --distpath dist --workpath build packaging/windows/MIMIC.spec
+python3 -m PyInstaller $CLEAN_FLAG --distpath dist --workpath packaging/windows/build packaging/windows/MIMIC.spec
 
 echo
 echo "=== Done! ==="

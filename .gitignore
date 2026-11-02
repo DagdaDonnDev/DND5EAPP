@@ -22,20 +22,11 @@ dnd_app/ui_android/bin/
 *.ap_
 .gradle/
 
-# deployment/ is this machine's own Android build kit: older build caches,
-# the Qt jars taken from the wheels (jar/) and p4a's local recipes
-# (recipes/: setup_buildozer_spec makes the PySide6 and shiboken6 ones
-# from packaging/android/recipes/). All regenerable by setup_buildozer_spec,
-# except...
-deployment/.buildozer/
-deployment/jar/
-deployment/recipes/*
-# ...the hand-patched python3 recipe that disables broken 3.14 patches in
-# p4a 2026.05.09: not regenerable from the wheels, and losing it means
-# re-disabling 6 patches by hand. It isn't in the repo yet -- commit it
-# from the machine that has it.
-!deployment/recipes/python3/
-!deployment/recipes/python3/__init__.py
+# deployment/ was the old Android build kit (an old build cache, the Qt
+# jars, p4a's recipes); nothing uses it now -- the recipes are in
+# packaging/android/recipes/ (a hand-patched python3 one goes there too)
+# and the jars come out of the wheel into packaging/android/jars/.
+deployment/
 
 # dnd_app/ui_android/buildozer.spec is hand-edited and IS committed; the
 # backups setup_buildozer_spec leaves beside it, and a stray copy at the
@@ -43,12 +34,14 @@ deployment/recipes/*
 dnd_app/ui_android/buildozer.spec.bak.*
 /buildozer.spec
 
-# The Android PySide6/Shiboken6 wheels are committed at the repo root;
-# setup_buildozer_spec downloads any that are missing into
-# packaging/android/wheels/, which isn't committed -- nor are the Qt jars
-# it takes out of the wheel (packaging/android/jars/).
-packaging/android/wheels/
+# The Android PySide6/Shiboken6 wheels are committed, in
+# packaging/android/wheels/; the Qt jars setup_buildozer_spec takes out of
+# the PySide6 one aren't (packaging/android/jars/).
 packaging/android/jars/
+
+# What the desktop app writes where it's run from, from source: its
+# diagnostic logs (mimic_error_log.txt, mimic_crash_log.txt...)
+mimic_*_log.txt
 
 # The key that signs the APK. first_time_setup.sh copies an old computer's
 # debug.keystore from packaging/android/ into WSL; it never goes in git.

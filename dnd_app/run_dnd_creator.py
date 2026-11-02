@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""MIMIC (D&D 5e Character Creator) — launcher."""
+"""MIMIC (D&D 5e Character Creator) — the desktop app's launcher.
+
+From source: python dnd_app/run_dnd_creator.py (from the repo folder).
+The Windows build (packaging/windows/MIMIC.spec) starts the EXE here too."""
 import sys
 import os
 import threading
 import time
 
 # ── Resolve base path (works from source AND inside a PyInstaller bundle) ─────
+# the folder dnd_app/ is in: this file's parent's parent from source
 if getattr(sys, "frozen", False):
     BASE_DIR = sys._MEIPASS          # PyInstaller extraction directory
 else:
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 sys.path.insert(0, BASE_DIR)
 # pypdf (the PDF sheet) ships inside the app, in dnd_app/_vendor -- the

@@ -11,7 +11,8 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 # running it, so every relative path below resolves against THAT
 # directory, not the CWD the `pyinstaller`/build script was invoked from.
 # This spec lives in packaging/windows/, TWO levels below the repo root
-# where run_dnd_creator.py, dnd_app/, and README.md actually are -- go up
+# where dnd_app/ (the launcher, dnd_app/run_dnd_creator.py, included) and
+# README.md actually are -- go up
 # two, not one. _ROOT makes every path explicit and location-independent
 # instead of relying on an assumption about CWD that doesn't hold once
 # PyInstaller chdirs.
@@ -250,7 +251,7 @@ _SPLASH_GIF = os.path.join(_ROOT, 'dnd_app', 'ui_desktop', 'splash', 'splash.gif
 _SPLASH_PNG = os.path.join(_ROOT, 'dnd_app', 'ui_desktop', 'splash', 'splash.png')
 
 a = Analysis(
-    [os.path.join(_ROOT, 'run_dnd_creator.py')],
+    [os.path.join(_ROOT, 'dnd_app', 'run_dnd_creator.py')],
     pathex=[_ROOT, _VENDOR],
     binaries=pyside6_binaries + extra_binaries,
     datas=[
@@ -281,7 +282,7 @@ a = Analysis(
         # buried in a function body), so it needs to be declared
         # explicitly or "Export Character" -> "Official character sheet
         # (PDF)" fails with ModuleNotFoundError in the built exe even
-        # though `pip install -r requirements.txt` has it installed. It's
+        # though `pip install -r packaging/requirements.txt` has it installed. It's
         # found in dnd_app/_vendor (see _VENDOR above).
         *collect_submodules('pypdf'),
     ],
