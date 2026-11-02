@@ -17,7 +17,9 @@ doesn't mean you did something wrong.
 | File | What it's for |
 |---|---|
 | `clean_build_android.bat` / `.sh` | **The build.** Run it every time you want a new APK |
-| `setup_buildozer_spec.bat` / `.sh` | One-time setup: finds the Android SDK/NDK, the wheels and the Qt jars, and writes their paths into `buildozer.spec` |
+| `first_time_setup.sh` | Everything a new computer needs, inside WSL — `packaging\setup_new_computer.bat` runs it (see [First-time setup](#first-time-setup-do-this-once)) |
+| `setup_buildozer_spec.bat` / `.sh` | Finds the Android SDK/NDK, the wheels and the Qt jars, makes the p4a recipes, and writes their paths into `buildozer.spec` (the first-time setup runs it) |
+| `recipes/` | The PySide6/Shiboken6 recipes for p4a, rendered from PySide6's own templates; the setup copies them into `deployment/recipes/` |
 | `make-android-apk.sh` | Turns the build's `.aab` into an installable APK (the clean build runs it) |
 | `p4a_hook.py` | Build hook p4a runs to fix the Qt bootstrap — see [Why `p4a_hook.py` exists](#why-p4a_hookpy-exists) |
 | `icon.png`, `icon_background.png`, `icon_foreground.png` | Launcher icons — see [Icon](#icon) |
@@ -33,42 +35,92 @@ the end. You can also run the `.sh` directly from a WSL terminal.
 
 ## First-time setup (do this once)
 
+**Double-click `packaging\setup_new_computer.bat`.** It does everything
+below, skipping anything already there, so it's safe to run again after a
+failed step:
+
+1. Python, for the Windows build (`packaging\windows\build_exe.bat`), if
+   there isn't one
+2. Ubuntu 24.04 in WSL, if there's no Linux there yet (and WSL itself, if
+   it's off). Ubuntu opens once in the same window to make your Linux
+   account: a user name, then a password twice; at the line ending in `$`,
+   type `exit`. Only if Windows has to turn WSL on does it stop: restart,
+   then double-click the setup again.
+3. inside WSL, `first_time_setup.sh`:
+   - the Linux packages: compilers, Java 17, unzip, rsync… (asks for the
+     Linux password)
+   - Python 3.11.9 through pyenv, and buildozer and cython for it
+   - the Android SDK (the command-line tools buildozer expects,
+     platform-tools, the platform `buildozer.spec` targets, build-tools)
+     and the NDK r28c, in `~/.pyside6_android_deploy/`, licences accepted
+   - the debug key that signs the APK — see [Signing](#signing)
+   - `setup_buildozer_spec.sh`: the wheels, the p4a recipes, the Qt jars
+     and `buildozer.spec`'s paths
+
+The first time takes 20–40 minutes, mostly downloads (the NDK alone is
+about 700 MB).
+
+**Coming from another computer?** Before running it, copy two things across
+if you still have them, so the new one carries on where the old one left
+off:
+
+- **the debug key**: on the old computer it's in WSL at
+  `~/.android/debug.keystore` (from Windows,
+  `\\wsl$\Ubuntu\home\<your Linux name>\.android\debug.keystore`).
+  Put it in `packaging\android\` (git ignores it) and the setup moves it into
+  place. Without it, the phone won't take the new APK as an update until
+  MIMIC is uninstalled once — your saved characters are in Documents and
+  stay.
+- **`deployment\recipes\python3\`**, if the old computer has one (the
+  hand-patched python3 recipe — see `.gitignore`). Without it p4a uses its
+  own, which the pinned `v2024.01.21` builds cleanly.
+
+### Doing it by hand
+
+What the setup does, if you'd rather (or a step needs fixing):
+
 1. **Install WSL** (Windows Subsystem for Linux), if you don't already
    have it: `wsl --install` from an admin Command Prompt, then restart.
 2. **Install Python 3.11 inside WSL.** p4a is pinned to `v2024.01.21` in
    `buildozer.spec` (see [Why this p4a version](#why-this-p4a-version)),
    which targets Python 3.11:
    ```bash
-   sudo apt install python3.11 python3.11-venv
-   # or: pyenv install 3.11.9 && pyenv global 3.11.9
+   pyenv install 3.11.9 && pyenv global 3.11.9
+   # or, where the distro has it: sudo apt install python3.11 python3.11-venv
    ```
 3. **Install buildozer and cython for that Python**, inside WSL:
    ```bash
    python3.11 -m pip install --user buildozer cython
    ```
-4. **Install a JDK (Java)** inside WSL: [Eclipse Temurin 17](https://adoptium.net/)
-   (`sudo apt install temurin-17-jdk`, or Adoptium's instructions) — 17 is
-   the Qt-recommended version.
-5. **Get the Android SDK and NDK.** Easiest: install
-   [Android Studio](https://developer.android.com/studio), open it once,
-   then *More Actions / Tools → SDK Manager → SDK Tools* → tick
-   **NDK (Side by side)** → *Apply*. p4a `v2024.01.21` recommends NDK 25b;
-   a newer one (r28c) has worked too, with a warning.
+4. **Install a JDK (Java) 17** inside WSL: `sudo apt install openjdk-17-jdk-headless`
+   (or [Eclipse Temurin 17](https://adoptium.net/)) — 17 is the
+   Qt-recommended version.
+5. **Get the Android SDK and NDK for Linux**, into
+   `~/.pyside6_android_deploy/android-sdk` and
+   `~/.pyside6_android_deploy/android-ndk/android-ndk-r28c` (where the setup
+   script looks first): the command-line tools
+   `commandlinetools-linux-6514223_latest.zip` unpacked into `android-sdk/`
+   (buildozer looks for `android-sdk/tools/bin/sdkmanager`), then
+   `sdkmanager --licenses` and `sdkmanager "platform-tools" "platforms;android-33" "build-tools;34.0.0"`;
+   and `android-ndk-r28c-linux.zip` unpacked into `android-ndk/`. p4a
+   `v2024.01.21` recommends NDK 25b; r28c has worked, with a warning.
 6. **Run the setup script:**
    ```
    packaging\android\setup_buildozer_spec.bat
    ```
    It finds the SDK/NDK, uses the Android PySide6/Shiboken6 wheels at the
    repo root (or downloads them into `wheels/` if they're missing; they're cross-compiled for
-   `android_aarch64` — not the desktop `pip install PySide6`), extracts the
-   Qt Android jars from them, and writes `buildozer.spec`'s
+   `android_aarch64` — not the desktop `pip install PySide6`), makes the p4a
+   recipes in `deployment/recipes/` from `recipes/`, extracts the
+   Qt Android jars from the wheel, and writes `buildozer.spec`'s
    machine-specific lines: `source.dir`, `android.sdk_path`,
    `android.ndk_path`, `p4a.local_recipes`, `p4a.hook`, `android.add_jars`
    and the icon paths. It's safe to re-run any time a path changes, and it
    backs the spec up first. It never touches `p4a.branch`.
 
-That's all. You won't need to repeat it unless you move the repo or
-reinstall the SDK/NDK.
+You won't need to repeat any of it unless you move the repo or reinstall
+the SDK/NDK. Keep the project in a folder with no spaces in its path
+(`C:\Dev\DND5EAPP`, say): the build's arguments can't carry one.
 
 ## Every time you want a new build
 
@@ -147,11 +199,12 @@ the spec by hand:
   need to agree.
 - **`p4a.local_recipes`** — `deployment/recipes/` on your machine (not in
   git): the PySide6/Shiboken6 recipes that unpack the wheels instead of
-  compiling them, and a hand-patched `python3` recipe. That one isn't
-  regenerable, so commit it (see the note in `.gitignore`). Each wheel
-  recipe names its wheel by full path (`wheel_path`); if that file has
-  gone, the clean build points the recipe at the same wheel in the repo
-  root or `wheels/`.
+  compiling them — the setup makes them from `packaging/android/recipes/`,
+  which is in git — and, on the old build machine, a hand-patched
+  `python3` recipe. That one isn't regenerable, so commit it (see the note
+  in `.gitignore`). Each wheel recipe names its wheel by full path
+  (`wheel_path`); if that file has gone, the clean build points the recipe
+  at the same wheel in the repo root or `wheels/`.
 - **`version`** — the app's one version number. The Windows EXE reads it
   from here too, so both always match.
 - **Package name (`package.domain` + `package.name`)** — changing it
@@ -253,6 +306,9 @@ The APK is signed with your PC's **debug key**
 missing). Android only installs an update signed with the same key as the
 installed app, so **back that file up** — a new PC with a new key means
 uninstalling and reinstalling (your saves survive; they're in Documents).
+On a new PC, put the old key in `packaging\android\debug.keystore` before
+the first-time setup and it's moved into place (git never takes a
+`.keystore`).
 
 For a release (sharing the app widely, or the Play Store), make a proper
 key once and keep it safe — treat it like a password, never commit it:

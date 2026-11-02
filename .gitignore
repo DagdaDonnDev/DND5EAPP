@@ -24,7 +24,9 @@ dnd_app/ui_android/bin/
 
 # deployment/ is this machine's own Android build kit: older build caches,
 # the Qt jars taken from the wheels (jar/) and p4a's local recipes
-# (recipes/). All regenerable by setup_buildozer_spec, except...
+# (recipes/: setup_buildozer_spec makes the PySide6 and shiboken6 ones
+# from packaging/android/recipes/). All regenerable by setup_buildozer_spec,
+# except...
 deployment/.buildozer/
 deployment/jar/
 deployment/recipes/*
@@ -43,8 +45,15 @@ dnd_app/ui_android/buildozer.spec.bak.*
 
 # The Android PySide6/Shiboken6 wheels are committed at the repo root;
 # setup_buildozer_spec downloads any that are missing into
-# packaging/android/wheels/, which isn't committed.
+# packaging/android/wheels/, which isn't committed -- nor are the Qt jars
+# it takes out of the wheel (packaging/android/jars/).
 packaging/android/wheels/
+packaging/android/jars/
+
+# The key that signs the APK. first_time_setup.sh copies an old computer's
+# debug.keystore from packaging/android/ into WSL; it never goes in git.
+*.keystore
+*.jks
 
 # Stray backup files build scripts drop next to what they patch (e.g. an
 # icon-stripping step's *.pre-strip.bak).

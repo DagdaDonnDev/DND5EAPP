@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # One-time (re-runnable) setup: finds the Android SDK/NDK, PySide6 wheels
-# and Qt Android jars, and writes their paths into
-# dnd_app/ui_android/buildozer.spec. Run from WSL, or double-click
-# setup_buildozer_spec.bat next to this file.
+# and Qt Android jars, makes the p4a recipes in deployment/recipes/, and
+# writes their paths into dnd_app/ui_android/buildozer.spec. Run from WSL,
+# or double-click setup_buildozer_spec.bat next to this file (a new
+# computer's first_time_setup.sh runs it at the end).
 #
 # Only the machine-specific path lines are touched: source.dir,
 # android.sdk_path, android.ndk_path, p4a.local_recipes, p4a.hook,
@@ -56,21 +57,21 @@ echo "Spec:    $SPEC"
 [ -f "$SPEC" ] || die "buildozer.spec not found (expected DND5EAPP/dnd_app/ui_android/buildozer.spec)"
 
 echo
-echo "[0/6] Python 3.11 + buildozer"
+echo "[0/7] Python 3.11 + buildozer"
 PY="$(find_python311)" || die "python3.11 not found. Install with: pyenv install 3.11.9 && pyenv global 3.11.9"
 echo "  Python:    $PY ($("$PY" --version 2>&1))"
 BZ="$("$PY" -m buildozer --version 2>/dev/null | head -1 || true)"
 [ -n "$BZ" ] || die "buildozer not installed for $PY. Run: $PY -m pip install --user buildozer cython"
 echo "  $BZ"
 
-echo "[1/6] Android SDK"
+echo "[1/7] Android SDK"
 SDK="$(first_dir "$(spec_value 'android\.sdk_path')" \
                  "$HOME/.pyside6_android_deploy/android-sdk" \
                  "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "${ANDROIDSDK:-}")" \
     || die "Android SDK not found in the spec, ~/.pyside6_android_deploy/android-sdk, \$ANDROID_HOME, \$ANDROID_SDK_ROOT or \$ANDROIDSDK"
 echo "  $SDK"
 
-echo "[2/6] Android NDK"
+echo "[2/7] Android NDK"
 NDK="$(first_dir "$(spec_value 'android\.ndk_path')" \
                  "$HOME/.pyside6_android_deploy/android-ndk/android-ndk-r28c" \
                  "${ANDROIDNDK:-}" "${ANDROID_NDK_HOME:-}" \
@@ -78,7 +79,7 @@ NDK="$(first_dir "$(spec_value 'android\.ndk_path')" \
     || die "Android NDK not found in the spec, ~/.pyside6_android_deploy/android-ndk/, \$ANDROIDNDK or \$ANDROID_NDK_HOME"
 echo "  $NDK"
 
-echo "[3/6] PySide6/Shiboken6 wheels ($WHEELS)"
+echo "[3/7] PySide6/Shiboken6 wheels ($WHEELS)"
 mkdir -p "$WHEELS"
 fetch() {  # fetch <glob> <url>
     local hit
@@ -93,7 +94,36 @@ fetch() {  # fetch <glob> <url>
 fetch "[Pp]y[Ss]ide6-*-android_aarch64.whl" "$PYSIDE_URL"
 fetch "shiboken6-*-android_aarch64.whl" "$SHIB_URL"
 
-echo "[4/6] Qt Android jars (${JARS[*]})"
+# p4a's recipes for the two wheels (they unpack them, not compile them) go
+# in deployment/recipes/, which isn't in git: made from the copies in
+# packaging/android/recipes/ (PySide6's own templates, rendered), with
+# wheel_path set to this computer's wheel. A recipe already there is kept.
+echo "[4/7] p4a recipes (deployment/recipes)"
+for NAME in PySide6 shiboken6; do
+    DEST="$ROOT/deployment/recipes/$NAME/__init__.py"
+    if [ -f "$DEST" ]; then
+        echo "  $NAME: kept $DEST"
+        continue
+    fi
+    SRC="$ROOT/packaging/android/recipes/$NAME/__init__.py"
+    [ -f "$SRC" ] || die "$SRC is missing -- it's in git"
+    if [ "$NAME" = PySide6 ]; then GLOB="[Pp]y[Ss]ide6-*-android_aarch64.whl"; else GLOB="shiboken6-*-android_aarch64.whl"; fi
+    WHL="$(ls "$ROOT"/$GLOB "$WHEELS"/$GLOB 2>/dev/null | head -1 || true)"
+    [ -n "$WHL" ] || die "no $NAME wheel in the repo root or $WHEELS"
+    mkdir -p "$(dirname "$DEST")"
+    "$PY" - "$SRC" "$DEST" "$WHL" <<'EOF'
+import re, sys
+src, dest, whl = sys.argv[1:]
+text = open(src, encoding="utf-8").read()
+text, n = re.subn(r"(?m)^(\s*wheel_path\s*=\s*)'[^']*'", lambda m: f"{m.group(1)}'{whl}'", text, count=1)
+if n != 1:
+    sys.exit(f"no wheel_path line in {src}")
+open(dest, "w", encoding="utf-8").write(text)
+EOF
+    echo "  $NAME: made $DEST (unpacks $(basename "$WHL"))"
+done
+
+echo "[5/7] Qt Android jars (${JARS[*]})"
 CUR_JARS="$(spec_value 'android\.add_jars' | cut -d, -f1)"
 JAR_DIR=""
 for d in "${CUR_JARS%/*}" "$ROOT/deployment/jar/PySide6/jar" "$ROOT/packaging/android/jars"; do
@@ -103,7 +133,9 @@ if [ -z "$JAR_DIR" ]; then
     JAR_DIR="$ROOT/packaging/android/jars"
     echo "  extracting from the PySide6 wheel into $JAR_DIR"
     mkdir -p "$JAR_DIR"
-    WHL="$(ls "$ROOT"/[Pp]y[Ss]ide6-*-android_aarch64.whl "$WHEELS"/[Pp]y[Ss]ide6-*-android_aarch64.whl 2>/dev/null | head -1)"
+    # (|| true: ls fails on whichever of the two places has no wheel)
+    WHL="$(ls "$ROOT"/[Pp]y[Ss]ide6-*-android_aarch64.whl "$WHEELS"/[Pp]y[Ss]ide6-*-android_aarch64.whl 2>/dev/null | head -1 || true)"
+    [ -n "$WHL" ] || die "no PySide6 Android wheel in the repo root or $WHEELS"
     "$PY" - "$WHL" "$JAR_DIR" "${JARS[@]}" <<'EOF'
 import sys, zipfile
 from pathlib import Path
@@ -117,7 +149,7 @@ EOF
 fi
 echo "  $JAR_DIR"
 
-echo "[5/6] Updating buildozer.spec"
+echo "[6/7] Updating buildozer.spec"
 BACKUP="$SPEC.bak.$(date +%s)"
 cp "$SPEC" "$BACKUP"
 "$PY" - "$SPEC" "$ROOT" "$SDK" "$NDK" "$JAR_DIR" "${JARS[@]}" <<'EOF'
@@ -153,7 +185,7 @@ else
     diff "$BACKUP" "$SPEC" | sed 's/^/    /' || true
 fi
 
-echo "[6/6] Verifying"
+echo "[7/7] Verifying"
 grep -E '^(source\.dir|android\.(sdk_path|ndk_path|add_jars|icon|apptheme)|p4a\.(local_recipes|branch|hook|extra_args))[[:space:]]*=' "$SPEC" | sed 's/^/  /'
 grep -qE '^p4a\.branch[[:space:]]*=[[:space:]]*v2024\.01\.21' "$SPEC" \
     || echo "  WARNING: p4a.branch is not v2024.01.21 -- see packaging/android/README.md before building"

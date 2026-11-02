@@ -10,7 +10,9 @@ on Windows, `dist/MIMIC` on macOS/Linux — with PyInstaller.
 
 ## Quick start
 
-Run from the repo root:
+On a new computer, double-click `packaging\setup_new_computer.bat` once
+first: it installs Python if there isn't one (and everything the Android
+build needs). Then run from the repo root:
 
 ```
 packaging\windows\build_exe.bat
