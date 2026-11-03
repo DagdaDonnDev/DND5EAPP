@@ -13,7 +13,7 @@ from ...shared import *
 # already brought in).
 from ...shared import _btn, _pill
 from ...widgets import FlowLayout, FlowContainer
-from dnd_app.ui_desktop.action_abilities import build_action_abilities
+from dnd_app.core.actions import build_action_abilities
 from dnd_app.core.character import (
     ability_score, ability_mod, total_level, class_levels, subclasses,
     long_rest, short_rest, add_class
@@ -36,26 +36,53 @@ from dnd_app.core.multiclass import (
 from dnd_app.core.builder import rebuild
 from dnd_app.core.controller import CharacterController
 from dnd_app.core.magic_items import concentration_save, start_concentration, drop_concentration
-from dnd_app.core.spell_components import spell_component_block_reason
+from dnd_app.core.spellcasting import spell_component_block_reason
 from dnd_app.core.save_load import (
     save_character, load_character, list_saved_characters, character_filename, validate_character,
 )
 from dnd_app.core.character import set_subclass, get_class_entry
-from dnd_app.data.phbCommon.magic_items import ALL_MAGIC_ITEMS, has_item_effect
+from dnd_app.data.magic_items import ALL_MAGIC_ITEMS, has_item_effect
 from dnd_app.ui_desktop.dialogs.levelup_panel import LevelUpPanel
-from dnd_app.data.phb2014.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
-from dnd_app.data.phb2014.races import get_race
-from dnd_app.data.phbCommon.backgrounds import get_background
-from dnd_app.data.phbCommon.feats import get_feat
-from dnd_app.data.phbCommon.spells import get_spell, spells_for_class, ALL_SPELLS
-from dnd_app.data.phbCommon.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
+from dnd_app.data.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
+from dnd_app.data.races import get_race
+from dnd_app.data.backgrounds import get_background
+from dnd_app.data.feats import get_feat
+from dnd_app.data.spells import get_spell, spells_for_class, ALL_SPELLS
+from dnd_app.data.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
     ADVENTURING_GEAR, GEAR_NAMES, MOUNTS, ALL_TOOLS, SIMPLE_MELEE, SIMPLE_RANGED,
     MARTIAL_MELEE, MARTIAL_RANGED, ARTISAN_TOOLS, SPECIAL_ARMOR)
-from dnd_app.data.phbCommon.conditions import CONDITIONS
+from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
 
+
+
+# One height for every control in an Other-tab resource row (the -/+
+# buttons, the counter, a toggle, Spend), so they line up on the row. Set in
+# their style sheets too: the theme's QPushButton min-height (36px) would
+# otherwise win over a fixed size, and a min-height of 0 lets the row
+# squash them.
+_ROW_CONTROL_H = 28
+_ROW_BTN_QSS = f"QPushButton{{min-height:{_ROW_CONTROL_H - 2}px;max-height:{_ROW_CONTROL_H - 2}px;}}"
+
+
+def _resource_row_qss(row, color) -> str:
+    """A resource row's tinted box. Named, so it styles the row alone: a
+    bare QWidget{...} rule would give every button and box inside it the
+    row's border and margin too, knocking them off its centre line."""
+    row.setObjectName("resourceRow")
+    return (f"QWidget#resourceRow{{background:{qa(color,0x14)};border:1px solid {qa(color,0x44)};"
+            f"border-radius:6px;margin:1px;}}")
+
+
+def _center_row(layout) -> None:
+    """Every control in a resource row on the row's centre line (a layout
+    item with no alignment of its own sits at the top of its cell)."""
+    for i in range(layout.count()):
+        w = layout.itemAt(i).widget()
+        if w is not None:
+            layout.setAlignment(w, Qt.AlignVCenter)
 
 class ActionTabsMixin:
     def _build_resource_rows(self, bl):
@@ -78,9 +105,7 @@ class ActionTabsMixin:
             if pct > 0.5: bar_color = TEAL2
             elif pct > 0: bar_color = AMBER
             else: bar_color = CRIM2
-            row.setStyleSheet(
-                f"QWidget{{background:{qa(bar_color,0x14)};border:1px solid {qa(bar_color,0x44)};"
-                f"border-radius:6px;margin:1px;}}")
+            row.setStyleSheet(_resource_row_qss(row, bar_color))
             rl = QHBoxLayout(row); rl.setContentsMargins(8,5,8,5); rl.setSpacing(6)
 
             name_l = _lbl(name, TEXT, FS_TINY, bold=True, wrap=False)
@@ -91,12 +116,14 @@ class ActionTabsMixin:
 
             # Spinbox for current value — editable in-place
             sp = QSpinBox(); sp.setRange(0, maximum); sp.setValue(current)
-            sp.setFixedWidth(48); sp.setAlignment(Qt.AlignCenter)
+            sp.setFixedSize(72, _ROW_CONTROL_H); sp.setAlignment(Qt.AlignCenter)   # "-  n  +"
             sp.setToolTip(f"Current uses of {name}")
             sp.setStyleSheet(
                 f"QSpinBox{{background:{SURF2};border:1px solid {qa(bar_color,0x66)};"
                 f"border-radius:4px;color:{bar_color};font-size:{FS_TINY}px;"
-                f"font-weight:700;padding:1px;}}")
+                f"font-weight:700;padding:1px;min-height:{_ROW_CONTROL_H - 4}px;"
+                f"max-height:{_ROW_CONTROL_H - 4}px;}}"
+                f"QSpinBox::up-button,QSpinBox::down-button{{width:17px;background:{BORDER};}}")
             max_l = _lbl(f"/{maximum}", TEXT3, FS_TINY, wrap=False)
 
             def _save_res(val, _key=res_key, _iname=item_name, _is_item=is_item):
@@ -112,12 +139,12 @@ class ActionTabsMixin:
             self._resource_widgets.append(row)
 
             # −/+ buttons for quick spend/restore
-            minus = QPushButton("−"); minus.setFixedSize(30,30)
-            plus  = QPushButton("+"); plus.setFixedSize(30,30)
+            minus = QPushButton("−"); minus.setFixedSize(_ROW_CONTROL_H, _ROW_CONTROL_H)
+            plus  = QPushButton("+"); plus.setFixedSize(_ROW_CONTROL_H, _ROW_CONTROL_H)
             btn_ss = _btn("", bar_color, variant="danger", radius=5, border_width=1,
                           bg_alpha=0x22, border_alpha=0x55, hover_text="white",
                           font_size=16, padding="0px").styleSheet()
-            minus.setStyleSheet(btn_ss); plus.setStyleSheet(btn_ss)
+            minus.setStyleSheet(btn_ss + _ROW_BTN_QSS); plus.setStyleSheet(btn_ss + _ROW_BTN_QSS)
             def _on_minus_click(checked=False, _key=res_key):
                 # Earth Genasi Blade Ward needs the same gate as real
                 # spell-casting — even though Blade Ward is a cantrip,
@@ -168,16 +195,16 @@ class ActionTabsMixin:
                     if active:
                         return (f"QPushButton{{background:{CRIM2};color:{BG};"
                                 f"border:1px solid {CRIM2};border-radius:6px;"
-                                f"font-size:{FS_TINY}px;font-weight:700;}}")
+                                f"font-size:{FS_TINY}px;font-weight:700;padding:0px;}}" + _ROW_BTN_QSS)
                     return (f"QPushButton{{background:{SURF2};color:{TEXT3};"
                             f"border:1px solid {BORDER};border-radius:6px;"
-                            f"font-size:{FS_TINY}px;font-weight:700;}}")
+                            f"font-size:{FS_TINY}px;font-weight:700;padding:0px;}}" + _ROW_BTN_QSS)
                 tgl = QPushButton("Active" if is_active else "Inactive")
                 tgl.setCheckable(True)
                 tgl.setChecked(is_active)
                 # Fixed size (fits "Inactive", the longer of the two
                 # labels) so the button never resizes as it toggles.
-                tgl.setFixedSize(76, 24)
+                tgl.setFixedSize(76, _ROW_CONTROL_H)
                 tgl.setStyleSheet(_toggle_style(is_active))
                 tgl.setToolTip(f"Toggle {name} on/off — applies its AC bonus, "
                                f"damage resistance/immunity, and any other real "
@@ -186,7 +213,17 @@ class ActionTabsMixin:
                 def _on_toggle(checked, _name=toggle_effect, _btn=tgl):
                     active = self.char.setdefault("active_effects", [])
                     if checked and _name not in active:
+                        from dnd_app.core.calculator import effect_start_problem, on_effect_started
+                        why = effect_start_problem(self.char, _name)   # Rage in heavy armor
+                        if why:
+                            _btn.blockSignals(True); _btn.setChecked(False); _btn.blockSignals(False)
+                            self._toast(f"{_name}: {why}".replace(" -- ", " — "))
+                            return
                         active.append(_name)
+                        note = on_effect_started(self.char, _name)
+                        if note:   # Rage ends concentration
+                            self._toast(f"{_name}: {note}")
+                            self._refresh_concentration()
                     elif not checked and _name in active:
                         active.remove(_name)
                     _btn.setText("Active" if checked else "Inactive")
@@ -207,6 +244,45 @@ class ActionTabsMixin:
                 rl.addWidget(tgl)
             rl.addWidget(minus); rl.addWidget(sp); rl.addWidget(max_l); rl.addWidget(plus)
             rl.addWidget(reset_l)
+            _center_row(rl)
+            bl.insertWidget(bl.count()-1, row)
+
+        def _portent_row(res, reset_label):
+            """Portent: the foretelling rolls themselves, one button each;
+            clicking a roll uses it (core/action_use.py spend_portent)."""
+            from dnd_app.core.action_use import portent_rolls, spend_portent
+            rolls = portent_rolls(self.char)
+            maximum = res.get("current_max", 0)
+            pct = (len(rolls) / maximum) if maximum else 0
+            bar_color = TEAL2 if pct > 0.5 else (AMBER if pct > 0 else CRIM2)
+            row = QWidget()
+            row.setStyleSheet(_resource_row_qss(row, bar_color))
+            rl = QHBoxLayout(row); rl.setContentsMargins(8,5,8,5); rl.setSpacing(6)
+            name_l = _lbl(res.get("name", "Portent"), TEXT, FS_TINY, bold=True, wrap=False)
+            tip = ("Your foretelling rolls. Click one to use it in place of an attack roll, saving throw "
+                   "or ability check by you or a creature you can see: before the roll, once a turn.")
+            for w in (row, name_l): w.setToolTip(tip)
+            rl.addWidget(name_l, 1)
+            if not rolls:
+                rl.addWidget(_lbl("none left", TEXT3, FS_TINY, wrap=False))
+            for value in rolls:
+                b = QPushButton(str(value)); b.setFixedSize(36, _ROW_CONTROL_H)
+                b.setToolTip(f"Use {value} as the d20 roll")
+                b.setStyleSheet(_btn("", bar_color, variant="chip", radius=5, text_color=TEXT,
+                                     hover_text=TEXT, font_size=FS_TINY, padding="0px").styleSheet()
+                                + _ROW_BTN_QSS)
+                def _use(checked=False, _v=value):
+                    self._toast(spend_portent(self.char, _v))
+                    self._mark_dirty()
+                    # after this click: the row (and this button) is rebuilt
+                    QTimer.singleShot(0, self.ctrl.refresh)
+                b.clicked.connect(_use)
+                rl.addWidget(b)
+            reset_l = _lbl(reset_label, TEXT3, FS_TINY-1, wrap=False)
+            reset_l.setFixedWidth(70)
+            rl.addWidget(reset_l)
+            _center_row(rl)
+            self._resource_widgets.append(row)
             bl.insertWidget(bl.count()-1, row)
 
         has_any = False
@@ -227,6 +303,10 @@ class ActionTabsMixin:
             if not isinstance(maximum, int) or maximum <= 0:
                 continue
             reset_label = RESET_LABEL.get(r.get('reset',''), r.get('reset','—'))
+            if r.get('key') == 'portent':       # the rolls, not a counter
+                _portent_row(r, reset_label)
+                has_any = True
+                continue
             TOGGLE_KEY_MAP = {
                 "hybrid_form": "Hybrid Transformation",
                 "rage": "Rage",
@@ -300,23 +380,23 @@ class ActionTabsMixin:
                 pct = remaining/total if total else 0
                 bar_color = GREEN2 if pct > 0.5 else (AMBER if pct > 0 else CRIM2)
                 hd_row = QWidget()
-                hd_row.setStyleSheet(f"QWidget{{background:{qa(bar_color,0x14)};border:1px solid "
-                                     f"{qa(bar_color,0x44)};border-radius:6px;margin:1px;}}")
-                hr = QHBoxLayout(hd_row); hr.setContentsMargins(8,4,8,4); hr.setSpacing(8)
+                hd_row.setStyleSheet(_resource_row_qss(hd_row, bar_color))
+                hr = QHBoxLayout(hd_row); hr.setContentsMargins(8,5,8,5); hr.setSpacing(8)
                 hr.addWidget(_lbl(f"Hit Dice ({die_key})", TEXT, FS_TINY, bold=True, wrap=False), 1)
                 hr.addWidget(_lbl(f"{remaining}/{total}", bar_color, FS_TINY, bold=True, wrap=False))
                 spend = QPushButton("Spend")
                 _icons.set_button_icon(spend, "dice", 12)
-                spend.setFixedSize(74, 24)
+                spend.setFixedSize(74, _ROW_CONTROL_H)
                 spend.setEnabled(remaining > 0)
                 spend.setToolTip(f"Roll 1{die_key} + {con_mod} CON and heal that much")
                 spend.setStyleSheet(
                     _btn("", bar_color, variant="danger", radius=4, border_width=1,
                          bg_alpha=0x22, hover_text="white", font_size=FS_TINY,
                          padding="0px").styleSheet()
-                    + f"QPushButton:disabled{{color:{TEXT3};border-color:{BORDER};}}")
+                    + f"QPushButton:disabled{{color:{TEXT3};border-color:{BORDER};}}" + _ROW_BTN_QSS)
                 spend.clicked.connect(lambda checked=False, k=die_key: self._spend_hit_die(k))
                 hr.addWidget(spend)
+                _center_row(hr)
                 bl.insertWidget(bl.count()-1, hd_row)
             has_any = True
 
@@ -324,11 +404,118 @@ class ActionTabsMixin:
             sep = _lbl("— Passive Features —", TEXT3, FS_TINY, bold=True, wrap=False, align=Qt.AlignCenter)
             bl.insertWidget(bl.count()-1, sep)
 
+    def _ask_through(self, title, call):
+        """Run one of the shared rules that can ask the player something
+        first (core/action_use.py, core/spell_effects.py): call(answers)
+        returns a result; while it has an "ask", show the question, add
+        the answer and call again. Returns the last result, or None when
+        the player cancels."""
+        answers = {}
+        while True:
+            res = call(answers)
+            ask = res.get("ask")
+            if not ask:
+                return res
+            opts = ask["options"]
+            if len(opts) == 2 and opts[1] in ("No", "Cancel"):
+                yes = QMessageBox.question(self, title, ask["title"],
+                                           QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes
+                answers[ask["key"]] = opts[0] if yes else opts[1]
+                continue
+            choice, ok = QInputDialog.getItem(self, title, ask["title"], opts, 0, False)
+            if not ok:
+                return None
+            answers[ask["key"]] = choice
+
+    def _use_action(self, bucket, display, desc):
+        """Use on an action card. The shared rules decide what happens
+        (core/action_use.py: what it costs, what it does); this asks the
+        player any question they raise (how many ki, which slot...),
+        then shows what happened and updates the sheet."""
+        from dnd_app.core.action_use import use_action
+        res = self._ask_through(display, lambda answers: use_action(self.char, bucket, display, desc, answers))
+        if res is None:
+            return
+        if res.get("cast"):
+            # a feat's or trait's spell: the spell's own cast spends its free use
+            from dnd_app.data.spells import get_spell
+            spell = get_spell(res["cast"])
+            if spell:
+                self._cast_spell(spell)
+            return
+        if res.get("check"):
+            # a check with a tool you carry (or Fast Hands' Sleight of Hand):
+            # rolled the way a skill is, and the part of the turn it takes is
+            # spent once it's made
+            if self._roll_check(res["check"]) is not None and res.get("check_slot"):
+                self._mark_turn_used(res["check_slot"])
+            return
+        if res.get("attack"):
+            # the Attack action: the attack picked is rolled the way its Hit
+            # button does, and the action is spent once it's made
+            from dnd_app.core.attacks import attack_rows
+            row = next((r for r in attack_rows(self.char) if r["name"] == res["attack"]), None)
+            if row is not None and self._attack(row) and res.get("attack_slot"):
+                self._mark_turn_used(res["attack_slot"])
+            return
+        if res.get("use_item"):
+            # a potion or scroll from its card: drunk or read once this click
+            # is done (it rebuilds the cards, this one's button included)
+            item, spends = res["use_item"], res.get("spends")
+            QTimer.singleShot(0, self, lambda: self._use_carried(item["kind"], item["name"], spends))
+            return
+        if res.get("toast"):
+            self._toast(res["toast"])
+        if not res.get("ok"):
+            return
+        if res.get("wild_shape") and hasattr(self, "_wildshape_shown"):
+            if res.get("slot"):
+                self._mark_turn_used(res["slot"])
+            self._wildshape_shown()           # the card above shows the beast now
+            return
+        if res.get("slot"):
+            self._mark_turn_used(res["slot"])
+        if res.get("slots_changed"):
+            self._sync_slot_bars_from_char()
+            if hasattr(self, "_pact_bar"):
+                self._pact_bar.set_used(self.char.get("pact_slots_used", 0))
+        self._mark_dirty()
+        # after this click has finished: the card's own button is rebuilt
+        QTimer.singleShot(0, self.ctrl.refresh if res.get("refresh") else self._refresh_action_tabs)
+
+    def _use_carried(self, kind, name, spends):
+        """A potion drunk or a scroll read from its card (gear.py does it),
+        with the part of the turn it took."""
+        if not any(e.get("name") == name for e in self.char.get("equipment", [])):
+            return
+        if spends:
+            self._mark_turn_used(spends)
+        (self._use_potion if kind == "potion" else self._use_scroll)(name)
+
     def _refresh_action_tabs(self):
         """Rebuild the action economy tabs from current character state."""
         if not hasattr(self, '_action_bucket_widgets'):
             return
         buckets = build_action_abilities(self.char)
+
+        # The Use button just pressed is about to be rebuilt: take focus off
+        # it first, or Qt hands focus down the list card by card as each one
+        # goes, scrolling the list to the bottom. And each list comes back
+        # where it was scrolled to.
+        from PySide6.QtWidgets import QApplication, QScrollArea
+        fw = QApplication.focusWidget()
+        if fw is not None and any(bw.isAncestorOf(fw) for bw, _bl in self._action_bucket_widgets.values()):
+            fw.clearFocus()
+        scroll_at = {}
+        for bw, _bl in self._action_bucket_widgets.values():
+            area = bw.parentWidget().parentWidget() if bw.parentWidget() else None
+            if isinstance(area, QScrollArea):
+                scroll_at[area] = area.verticalScrollBar().value()
+
+        def _restore_scroll():
+            for area, value in scroll_at.items():
+                area.verticalScrollBar().setValue(value)
+        QTimer.singleShot(0, _restore_scroll)
 
         for bucket_name, (bw, bl) in self._action_bucket_widgets.items():
             # Clear existing rows — items 0 and 1 are the permanent
@@ -373,7 +560,7 @@ class ActionTabsMixin:
             self._bucket_use_btns[bucket_name] = []
 
             # ── Laptop-friendly 2-column card grid ───────────────────────────
-            grid_host = QWidget(); grid_host.setStyleSheet("background:transparent;")
+            grid_host = QWidget(); grid_host.setStyleSheet("background:transparent;border:none;")
             grid = QGridLayout(grid_host)
             grid.setContentsMargins(0,0,0,0)
             grid.setHorizontalSpacing(8); grid.setVerticalSpacing(6)
@@ -406,7 +593,8 @@ class ActionTabsMixin:
                 cl = QHBoxLayout(card); cl.setContentsMargins(10,7,8,7); cl.setSpacing(8)
 
                 src_badge = _lbl(source[:9], src_color, FS_TINY, bold=True, wrap=False)
-                src_badge.setFixedWidth(60); src_badge.setAlignment(Qt.AlignCenter)
+                # wide enough for 9-letter tags ("Universal", "Barbarian") in bold
+                src_badge.setFixedWidth(76); src_badge.setAlignment(Qt.AlignCenter)
                 src_badge.setStyleSheet(
                     f"background:{qa(src_color,0x22)};border:1px solid {qa(src_color,0x55)};"
                     f"border-radius:4px;color:{src_color};font-size:{FS_TINY}px;"
@@ -433,279 +621,8 @@ class ActionTabsMixin:
                     use_btn.clicked.connect(_cast_from_card)
                 else:
                     def _use_ability(checked=False, _display=display,
-                                     _desc=desc, _src=source, _b=bucket_name):
-                        key = _display.split('(')[0].strip().lower()
-                        # Wild Shape blocks features that need a holy
-                        # symbol/spellcasting focus in hand and/or speech —
-                        # the same standard as spellcasting itself, since
-                        # neither is physically possible in most beast
-                        # forms. Everything else is allowed by default,
-                        # per the real rule ("retain the benefit of any
-                        # features... if the new form is physically
-                        # capable of doing so") — Rage, Unarmored Defense,
-                        # Danger Sense, Second Wind, etc. all work fine in
-                        # beast form and are deliberately NOT in this list.
-                        if self.char.get("_wildshape_active") and any(
-                                b in key for b in WILDSHAPE_BLOCKED_FEATURES):
-                            self._toast(f"Can't use {_display} while Wild Shaped — "
-                                        f"your beast form can't perform what it requires "
-                                        f"(a held item, speech, an unarmed strike, or casting)")
-                            return
-                        # Wild Shape: unlike a flat toggle (Rage, Reckless
-                        # Attack), actually using this requires picking a
-                        # beast — something only the dedicated card (top of
-                        # this same Combat tab) can do. This generic Use
-                        # button used to fall through to the resource
-                        # fallback below, which would silently spend a use
-                        # and do nothing else: no beast chosen, no HP pool
-                        # switched, _wildshape_active left untouched — a
-                        # spent charge with no visible effect, which is
-                        # exactly what looked like "the counter doesn't
-                        # decrement" (a use WAS spent, just with nothing to
-                        # show for it). Redirects instead of guessing a beast.
-                        if key == "wild shape":
-                            self._toast("Use the Wild Shape card at the top of this tab to "
-                                        "pick a beast and transform")
-                            return
-                        # Reckless Attack: a real toggle rather than a
-                        # one-off reminder. Doesn't consume a turn slot —
-                        # it modifies an attack you're already making, not
-                        # a separate action — and stays on until manually
-                        # toggled off or cleared by the New Turn button.
-                        if key == "reckless attack":
-                            fx = self.char.setdefault("active_effects", [])
-                            if "Reckless Attack" in fx:
-                                fx.remove("Reckless Attack")
-                                self._toast("Reckless Attack: OFF")
-                            else:
-                                fx.append("Reckless Attack")
-                                msg = ("Reckless Attack: ON — advantage on your melee "
-                                       "attacks, but attacks against you also have advantage")
-                                # Reckless Abandon (Battlerager, 2nd level):
-                                # gain temp HP equal to CON mod (min 1) when
-                                # you use Reckless Attack while wearing
-                                # battlerager armor. Can't verify the armor
-                                # specifically (not a tracked item), gated
-                                # on the subclass alone like Armor Spikes.
-                                from dnd_app.core.character import subclasses, class_levels
-                                barb_sub = subclasses(self.char).get("Barbarian", "")
-                                if (class_levels(self.char).get("Barbarian", 0) >= 2
-                                        and "battlerager" in barb_sub.lower()):
-                                    con_mod = max(1, ability_mod(self.char, "CON"))
-                                    cur_temp = self.char.get("temp_hp", 0)
-                                    if con_mod > cur_temp:
-                                        self.char["temp_hp"] = con_mod
-                                    msg += f"\nReckless Abandon: {con_mod} temporary HP"
-                                self._toast(msg)
-                            self._mark_dirty()
-                            self._refresh_combat_weapons()
-                            self._refresh_effects_list()
-                            self._refresh_combat()
-                            return
-                        # Berserker's Frenzy: clicking Use must actually turn
-                        # the effect on, same as Rage. Requires Rage to
-                        # already be active (you can only
-                        # frenzy while raging); doesn't consume a turn slot
-                        # itself since it's a decision made alongside
-                        # raging, not a separate action.
-                        # Sacred Weapon (Paladin, Oath of Devotion): draws
-                        # from the shared Channel Divinity pool rather than
-                        # having its own resource, so the generic
-                        # fuzzy-match loop below wouldn't find a match for
-                        # "sacred weapon" against a resource named "Channel
-                        # Divinity" — needs its own handling.
-                        # Second Wind (Fighter, 1st level): the generic
-                        # fallback below only decrements the use counter,
-                        # it never actually applies HP — meaning every
-                        # Fighter's most basic, most-used feature required
-                        # manually rolling and updating HP themselves.
-                        # Rolls and applies the heal directly, matching
-                        # the pattern used for hit-dice spending.
-                        if key == "second wind":
-                            sw_res = next((r for r in self.char.get("resources", [])
-                                           if "second wind" in str(r.get("name","")).lower()), None)
-                            if sw_res is None or sw_res.get("current", 0) <= 0:
-                                self._toast("Second Wind: no uses left (recharges on short/long rest)")
-                                return
-                            import random
-                            from dnd_app.core.character import class_levels as _class_levels_sw
-                            fighter_lvl = _class_levels_sw(self.char).get("Fighter", 0)
-                            roll = random.randint(1, 10)
-                            heal = roll + fighter_lvl
-                            sw_res["current"] = sw_res.get("current", 1) - 1
-                            cur, mx = self.char.get("current_hp", 0), self.char.get("max_hp", 0)
-                            self.char["current_hp"] = min(mx, cur + heal)
-                            if hasattr(self, "_hp_current_hp"):
-                                self._hp_current_hp.setValue(self.char["current_hp"])
-                            self._toast(f"Second Wind: rolled {roll} + {fighter_lvl} "
-                                        f"(Fighter level) = {heal} HP healed "
-                                        f"({sw_res['current']}/{sw_res.get('current_max')} left)")
-                            self._mark_dirty()
-                            self._refresh_combat()
-                            return
-                        if key == "divine smite":
-                            avail_levels = [l for l in range(1, 6)
-                                           if (bar := self._slot_bars.get(l)) and bar._max > 0
-                                           and bar.get_used() < bar._max]
-                            if not avail_levels:
-                                self._toast("Divine Smite: no available spell slots to expend")
-                                return
-                            level, ok = QInputDialog.getItem(
-                                self, "Divine Smite", "Expend which spell slot level?",
-                                [f"{l}{'st' if l==1 else 'nd' if l==2 else 'rd' if l==3 else 'th'}-level"
-                                 for l in avail_levels], 0, False)
-                            if not ok:
-                                return
-                            slot_lvl = avail_levels[[f"{l}{'st' if l==1 else 'nd' if l==2 else 'rd' if l==3 else 'th'}-level"
-                                                      for l in avail_levels].index(level)]
-                            # The undead/fiend bonus is asked about and
-                            # added to the computed total here, not just
-                            # shown as a static reminder in the toast text.
-                            is_undead_fiend = QMessageBox.question(
-                                self, "Divine Smite", "Is the target undead or a fiend?",
-                                QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes
-                            bar = self._slot_bars[slot_lvl]
-                            bar.set_used(bar.get_used() + 1)
-                            bar._update_count()
-                            self._on_slot_change()
-                            # 1d8 base + 1d8 per slot level (equivalent to the
-                            # standard "2d8 + 1d8 per level above 1st"
-                            # phrasing, capped at 5d8 before the undead/fiend
-                            # bonus), +1d8 more if the target is undead/fiend.
-                            dice = min(5, 1 + slot_lvl)
-                            if is_undead_fiend:
-                                dice += 1
-                            self._toast(f"Divine Smite: expended a level-{slot_lvl} slot — "
-                                        f"{dice}d8 radiant damage"
-                                        + (" (includes +1d8 vs. undead/fiend)" if is_undead_fiend else ""))
-                            self._mark_dirty()
-                            return
-                        if key == "sacred weapon":
-                            fx = self.char.setdefault("active_effects", [])
-                            if "Sacred Weapon" in fx:
-                                fx.remove("Sacred Weapon")
-                                self._toast("Sacred Weapon: OFF")
-                            else:
-                                cd_res = next((r for r in self.char.get("resources", [])
-                                               if "channel divinity" in str(r.get("name","")).lower()), None)
-                                if cd_res and cd_res.get("current", 0) <= 0:
-                                    self._toast("Sacred Weapon: no Channel Divinity uses left "
-                                                "(recharges on short/long rest)")
-                                    return
-                                if cd_res:
-                                    cd_res["current"] = cd_res.get("current", 0) - 1
-                                fx.append("Sacred Weapon")
-                                self._toast("Sacred Weapon: ON — add CHA mod to attacks with "
-                                            "your weapon for 1 minute")
-                            self._mark_dirty()
-                            self._refresh_combat_weapons()
-                            self._refresh_effects_list()
-                            return
-                        if key == "peerless athlete":
-                            # Peerless Athlete is a Channel Divinity
-                            # option (Oath of Glory, 3rd level), not its own resource.
-                            fx = self.char.setdefault("active_effects", [])
-                            if "Peerless Athlete" in fx:
-                                fx.remove("Peerless Athlete")
-                                self._toast("Peerless Athlete: OFF")
-                            else:
-                                cd_res = next((r for r in self.char.get("resources", [])
-                                               if "channel divinity" in str(r.get("name","")).lower()), None)
-                                if cd_res and cd_res.get("current", 0) <= 0:
-                                    self._toast("Peerless Athlete: no Channel Divinity uses left "
-                                                "(recharges on short/long rest)")
-                                    return
-                                if cd_res:
-                                    cd_res["current"] = cd_res.get("current", 0) - 1
-                                fx.append("Peerless Athlete")
-                                self._toast("Peerless Athlete: ON — doubled carry capacity, "
-                                            "advantage on Athletics/Acrobatics, for 10 minutes")
-                            self._mark_dirty()
-                            self._refresh_combat_weapons()
-                            self._refresh_effects_list()
-                            return
-                        if "frenzi" in key:
-                            if "Rage" not in self.char.get("active_effects", []):
-                                self._toast("Frenzy requires an active Rage first")
-                                return
-                            fx = self.char.setdefault("active_effects", [])
-                            if "Frenzy" in fx:
-                                fx.remove("Frenzy")
-                                self._toast("Frenzy: OFF")
-                            else:
-                                fx.append("Frenzy")
-                                self._toast("Frenzy: ON — bonus action melee attack each turn "
-                                            "for the rest of your rage; 1 exhaustion when it ends")
-                            self._mark_dirty()
-                            self._refresh_effects_list()
-                            return
-                        # Try to spend a matching tracked resource first
-                        for res in self.char.get("resources", []):
-                            rname = str(res.get("name","")).lower()
-                            if (key and (key in rname or rname in key)
-                                    and res.get("current_max", 0) > 0):
-                                # Simple toggles (Rage, Bladesong, Invincible
-                                # Conqueror, etc. — anything in
-                                # RESOURCE_POOL_TOGGLES): don't spend a second
-                                # use if already active — the real toggle for
-                                # on/off is the "Active" checkbox on this
-                                # resource's own row in the Other tab, which
-                                # already correctly manages active_effects.
-                                # This button is for STARTING the effect, not
-                                # re-affirming one already in progress. This
-                                # check (and the matching activation below)
-                                # must cover every RESOURCE_POOL_TOGGLES
-                                # entry, not just Rage, since each shares the
-                                # same fallback Use button.
-                                if _display in RESOURCE_POOL_TOGGLES and _display in self.char.get("active_effects", []):
-                                    self._toast(f"{_display} already active — use the \"Active\" "
-                                                f"checkbox on its resource row (Other tab) to end it")
-                                    return
-                                cur = res.get("current", 0)
-                                if cur <= 0:
-                                    self._toast(f"{_display}: no uses left "
-                                                f"(recharges on {res.get('reset','rest')})")
-                                else:
-                                    res["current"] = cur - 1
-                                    self._toast(f"Used {_display} "
-                                                f"({res['current']}/{res.get('current_max')} left)")
-                                    # The resource spend alone wouldn't
-                                    # otherwise turn the effect on — every
-                                    # mechanical effect of these toggles reads
-                                    # active_effects, and this keeps the two
-                                    # in sync with what the Other tab's
-                                    # checkbox already does, so starting the
-                                    # effect from either place works the same.
-                                    if _display in RESOURCE_POOL_TOGGLES:
-                                        fx = self.char.setdefault("active_effects", [])
-                                        if _display not in fx:
-                                            fx.append(_display)
-                                        self._refresh_combat_weapons()
-                                        self._refresh_effects_list()
-                                        # The Other tab's own "Active" checkbox
-                                        # for this same toggle calls
-                                        # ctrl.refresh() (deferred, same
-                                        # reason as there: not synchronously
-                                        # inside a signal handler) so that
-                                        # update_all() actually applies the
-                                        # effect's real mechanics -- AC,
-                                        # resistances, etc., all keyed off
-                                        # active_effects. This button used to
-                                        # skip that and only call the two
-                                        # narrow refreshers above, so using
-                                        # Rage (or any other toggle) from its
-                                        # action-tab card spent the resource
-                                        # and flipped active_effects, but
-                                        # never actually applied what turning
-                                        # it on is supposed to do.
-                                        QTimer.singleShot(0, self.ctrl.refresh)
-                                    self._mark_dirty()
-                                    self._mark_turn_used(_b)
-                                    self._refresh_action_tabs()
-                                return
-                        # No tracked resource → consume the turn slot + summary
-                        self._mark_turn_used(_b)
-                        self._toast(f"{_display}: {_desc[:90]}")
+                                     _desc=desc, _b=bucket_name):
+                        self._use_action(_b, _display, _desc)
                     use_btn.clicked.connect(_use_ability)
                     # Row click → full rules text (button = do it)
                     card.mousePressEvent = (lambda e, _d=display, _s=source, _x=desc:
@@ -725,7 +642,7 @@ class ActionTabsMixin:
             if rows:
                 # Balance odd counts so the last card doesn't stretch full width
                 if len(rows) % 2 == 1:
-                    filler = QWidget(); filler.setStyleSheet("background:transparent;")
+                    filler = QWidget(); filler.setStyleSheet("background:transparent;border:none;")
                     grid.addWidget(filler, (len(rows)-1)//2, 1)
                 bl.insertWidget(bl.count()-1, grid_host)
             else:

@@ -26,14 +26,26 @@ Button {
     topInset: 0
     bottomInset: 0
 
+    // Text never draws outside the button: when it doesn't fit it's cut
+    // short with "…", or -- with wrapText -- wraps onto more lines and the
+    // button grows taller (for long option text like a fighting style
+    // with its description).
+    property bool wrapText: false
+
     contentItem: Item {
-        implicitWidth: row.implicitWidth
-        implicitHeight: row.implicitHeight
+        // natural (unwrapped, untruncated) size, so a button with no set
+        // width still sizes itself to fit its text
+        implicitWidth: (icon.visible ? icon.width + row.spacing : 0) + (label.visible ? label.implicitWidth : 0)
+        implicitHeight: Math.max(icon.visible ? icon.height : 0, label.visible ? label.height : 0)
         Row {
             id: row
+            // centred on the whole button: Material pads the left side more
+            // than the right (24 vs 16), which pushed icons and text right
             anchors.centerIn: parent
+            anchors.horizontalCenterOffset: (control.rightPadding - control.leftPadding) / 2
             spacing: 6
             MIcon {
+                id: icon
                 visible: control.iconName.length > 0
                 name: control.iconName
                 size: control.iconSize
@@ -41,11 +53,18 @@ Button {
                 anchors.verticalCenter: parent.verticalCenter
             }
             Text {
+                id: label
                 visible: control.text.length > 0
+                // may use the button's side padding (small buttons like
+                // "View" rely on it) -- only a 6px margin each side is kept
+                width: Math.min(implicitWidth,
+                                Math.max(0, control.width - 12 - (icon.visible ? icon.width + row.spacing : 0)))
                 text: control.text
                 font.pixelSize: Theme.fsBody
                 font.bold: true
                 color: control.primary ? Theme.bg : Theme.text
+                wrapMode: control.wrapText ? Text.WordWrap : Text.NoWrap
+                elide: control.wrapText ? Text.ElideNone : Text.ElideRight
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
                 anchors.verticalCenter: parent.verticalCenter

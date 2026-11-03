@@ -110,6 +110,12 @@ Page {
                                 Label { Layout.fillWidth: true; text: sheetBridge.identityBackground; color: Theme.text; font.pixelSize: Theme.fsBody; font.bold: true }
                                 MButton { primary: false; height: 32; text: "Change"; onClicked: backgroundDialog.open() }
                             }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label { text: "Alignment"; color: Theme.text2; font.pixelSize: Theme.fsSmall; Layout.preferredWidth: 90 }
+                                Label { Layout.fillWidth: true; text: sheetBridge.identityAlignment || "(none)"; color: Theme.text; font.pixelSize: Theme.fsBody; font.bold: true }
+                                MButton { primary: false; height: 32; text: "Change"; onClicked: alignmentDialog.open() }
+                            }
                         }
                     }
 
@@ -212,6 +218,13 @@ Page {
                             // Captured before the nested Repeaters below shadow
                             // the outer modelData with their own.
                             readonly property string choiceId: modelData.id
+                            // "asi_or_feat", or one half on its own: "asi" (two +1s) or
+                            // "feat" (a Variant Human's)
+                            readonly property string mode: modelData.mode || "asi_or_feat"
+                            readonly property int maxPer: modelData.maxPer || (mode === "asi" ? 1 : 2)
+                            // a dragonmark's +1: one point, not to the ability with the +2
+                            readonly property int points: modelData.points || 2
+                            readonly property var excluded: modelData.exclude || []
                             property var asiAlloc: ({})
                             readonly property int asiTotal: {
                                 var t = 0
@@ -243,6 +256,8 @@ Page {
                                 TabBar {
                                     id: asiModeTab
                                     objectName: "asiModeTab"
+                                    visible: asiCard.mode === "asi_or_feat"
+                                    currentIndex: asiCard.mode === "feat" ? 1 : 0
                                     Layout.fillWidth: true
                                     TabButton { text: "Ability Score" }
                                     TabButton { text: "Feat" }
@@ -253,7 +268,10 @@ Page {
                                     Layout.fillWidth: true
                                     spacing: 6
                                     Label {
-                                        text: "Pick one ability to +2, or two abilities to +1 each."
+                                        text: asiCard.points === 1 ? "Pick one ability to +1."
+                                      : asiCard.points === 3 ? "Pick +2 for one ability and +1 for another, or +1 for three."
+                                      : asiCard.maxPer === 1 ? "Pick two abilities to +1 each."
+                                                                   : "Pick one ability to +2, or two abilities to +1 each."
                                         color: Theme.text3
                                         font.pixelSize: Theme.fsSmall
                                         wrapMode: Text.WordWrap
@@ -296,7 +314,8 @@ Page {
                                                     ToolButton {
                                                         text: "+"
                                                         implicitWidth: 32
-                                                        enabled: asiCard.asiTotal < 2 && (asiCard.asiAlloc[modelData] || 0) < 2
+                                                        enabled: asiCard.asiTotal < asiCard.points && (asiCard.asiAlloc[modelData] || 0) < asiCard.maxPer
+                                                                 && asiCard.excluded.indexOf(modelData) < 0
                                                         onClicked: {
                                                             asiCard.asiAlloc[modelData] = (asiCard.asiAlloc[modelData] || 0) + 1
                                                             asiCard.asiAllocChanged()
@@ -308,7 +327,7 @@ Page {
                                     }
                                     MButton {
                                         text: "Confirm Ability Increase"
-                                        enabled: asiCard.asiTotal === 2
+                                        enabled: asiCard.asiTotal === asiCard.points
                                         onClicked: {
                                             sheetBridge.applyAsiLevelUpChoice(asiCard.choiceId, asiCard.asiAlloc)
                                             asiCard.asiAlloc = ({})
@@ -367,7 +386,10 @@ Page {
                                                             Layout.alignment: Qt.AlignVCenter
                                                             height: 28
                                                             primary: false
-                                                            text: "View"
+                                                            implicitWidth: 40
+                                                            iconName: "search"   // View -- a magnifying glass
+                                                            iconSize: 22
+                                                            Accessible.name: "View"
                                                             onClicked: {
                                                                 Window.window.pendingFeatDetail = modelData
                                                                 featDetailDialog.open()
@@ -437,6 +459,9 @@ Page {
                                     Repeater {
                                         model: subCard.poolData
                                         delegate: MButton {
+                                            // never wider than the row; long option text wraps
+                                            width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                                            wrapText: true
                                             primary: false
                                             text: modelData
                                             onClicked: sheetBridge.applySubclassLevelUpChoice(subCard.choiceId, modelData)
@@ -511,7 +536,8 @@ Page {
                                 spacing: 8
 
                                 Label {
-                                    text: modelData.label + " (choose " + modelData.count + ")"
+                                    // "(choose 2)" only when the label doesn't already say how many
+                                    text: modelData.label + (/\bchoose\b/i.test(modelData.label) ? "" : " (choose " + modelData.count + ")")
                                     color: Theme.teal2
                                     font.pixelSize: Theme.fsBody
                                     font.bold: true
@@ -548,12 +574,14 @@ Page {
                                         GridLayout {
                                             id: poolGrid
                                             width: parent.width
-                                            columns: 2
+                                            // one column when options carry descriptions
+                                            columns: genCard.poolData.some(function(t) { return String(t).length > 24 }) ? 1 : 2
                                             columnSpacing: 8
                                             rowSpacing: 8
                                             Repeater {
                                                 model: genCard.poolData
                                                 delegate: MButton {
+                                                    wrapText: true
                                                     Layout.fillWidth: true
                                                     primary: genCard.newSelections.indexOf(modelData) >= 0
                                                     text: modelData
@@ -636,6 +664,9 @@ Page {
                                 Repeater {
                                     model: pbCard.pb.pool || []
                                     delegate: MButton {
+                                        // never wider than the row; long option text wraps
+                                        width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                                        wrapText: true
                                         primary: modelData === pbCard.newSel
                                         text: modelData.split(" (")[0]
                                         onClicked: pbCard.newSel = modelData
@@ -694,6 +725,9 @@ Page {
                                     Repeater {
                                         model: arcUnitCard.newPool
                                         delegate: MButton {
+                                            // never wider than the row; long option text wraps
+                                            width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                                            wrapText: true
                                             primary: modelData === arcUnitCard.newSel
                                             text: modelData
                                             onClicked: arcUnitCard.newSel = modelData
@@ -751,6 +785,9 @@ Page {
                                 Repeater {
                                     model: fsCard.fs.current || []
                                     delegate: MButton {
+                                        // never wider than the row; long option text wraps
+                                        width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                                        wrapText: true
                                         primary: modelData === fsCard.oldSel
                                         text: modelData.split(" (")[0]
                                         onClicked: fsCard.oldSel = modelData
@@ -768,6 +805,9 @@ Page {
                                 Repeater {
                                     model: fsCard.fs.pool || []
                                     delegate: MButton {
+                                        // never wider than the row; long option text wraps
+                                        width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                                        wrapText: true
                                         primary: modelData === fsCard.newSel
                                         // .split(" (")[0]: these pool entries carry
                                         // a full mechanical description in
@@ -829,6 +869,9 @@ Page {
                                 Repeater {
                                     model: manCard.man.current || []
                                     delegate: MButton {
+                                        // never wider than the row; long option text wraps
+                                        width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                                        wrapText: true
                                         primary: modelData === manCard.oldSel
                                         text: modelData.split(" – ")[0]
                                         onClicked: manCard.oldSel = modelData
@@ -846,6 +889,9 @@ Page {
                                 Repeater {
                                     model: manCard.man.pool || []
                                     delegate: MButton {
+                                        // never wider than the row; long option text wraps
+                                        width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                                        wrapText: true
                                         primary: modelData === manCard.newSel
                                         text: modelData.split(" – ")[0]
                                         onClicked: manCard.newSel = modelData
@@ -901,6 +947,9 @@ Page {
                                 Repeater {
                                     model: expCard.exp.from || []
                                     delegate: MButton {
+                                        // never wider than the row; long option text wraps
+                                        width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                                        wrapText: true
                                         primary: modelData === expCard.oldSel
                                         text: modelData
                                         onClicked: expCard.oldSel = modelData
@@ -918,6 +967,9 @@ Page {
                                 Repeater {
                                     model: expCard.exp.to || []
                                     delegate: MButton {
+                                        // never wider than the row; long option text wraps
+                                        width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                                        wrapText: true
                                         primary: modelData === expCard.newSel
                                         text: modelData
                                         onClicked: expCard.newSel = modelData
@@ -973,6 +1025,9 @@ Page {
                                 Repeater {
                                     model: mmCard.mm.current || []
                                     delegate: MButton {
+                                        // never wider than the row; long option text wraps
+                                        width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                                        wrapText: true
                                         primary: modelData === mmCard.oldSel
                                         text: modelData.split(" – ")[0]
                                         onClicked: mmCard.oldSel = modelData
@@ -990,6 +1045,9 @@ Page {
                                 Repeater {
                                     model: mmCard.mm.pool || []
                                     delegate: MButton {
+                                        // never wider than the row; long option text wraps
+                                        width: Math.min(implicitWidth, parent ? parent.width : implicitWidth)
+                                        wrapText: true
                                         primary: modelData === mmCard.newSel
                                         text: modelData.split(" – ")[0]
                                         onClicked: mmCard.newSel = modelData
@@ -1103,9 +1161,13 @@ Page {
                                     font.bold: true
                                 }
                                 Label {
-                                    text: modelData.isNew ? "New class (multiclass)" : "Currently level " + modelData.currentLevel
+                                    // a new class the scores don't allow yet: what it needs
+                                    text: modelData.blocked ? "Not yet: " + modelData.blocked
+                                          : modelData.isNew ? "New class (multiclass)" : "Currently level " + modelData.currentLevel
                                     color: Theme.text3
                                     font.pixelSize: Theme.fsSmall
+                                    wrapMode: Text.WordWrap
+                                    Layout.fillWidth: true
                                 }
                                 // A wrapping Flow, not a fixed RowLayout -- three
                                 // buttons plus a class name can't reliably fit
@@ -1132,6 +1194,8 @@ Page {
                                     MButton {
                                         text: modelData.isNew ? "Multiclass In" : "Level Up"
                                         height: 36
+                                        // character level 20 is the most there is
+                                        enabled: !sheetBridge.atMaxLevel && modelData.currentLevel < 20 && !modelData.blocked
                                         onClicked: sheetBridge.levelUpClass(modelData.name)
                                     }
                                 }
@@ -1173,6 +1237,12 @@ Page {
                 backgroundFeatDialog.open()
             }
         }
+    }
+    MPickerDialog {
+        id: alignmentDialog
+        dialogTitle: "Change Alignment"
+        options: sheetBridge.alignmentOptions
+        onPicked: (value) => sheetBridge.changeAlignment(value)
     }
     MPickerDialog {
         id: backgroundFeatDialog

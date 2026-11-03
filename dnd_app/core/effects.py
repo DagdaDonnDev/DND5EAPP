@@ -19,6 +19,147 @@ Date: 2026-08-20
 """
 
 EFFECT_TABLE: dict[str, dict] = {
+    # ── From actions (core/action_use.py); New Turn ends the turn-long ones ──
+    "Dodge": {
+        "duration_category": "short",
+        "save_adv": ["DEX"],
+        "note": "Attacks against you have disadvantage (if you can see the attacker) and "
+                "you have advantage on DEX saves until your next turn.",
+    },
+    "Agile Parry": {
+        "duration_category": "short",
+        "ac": 2,
+        "note": "+2 AC until the start of your next turn.",
+    },
+    "Kensei's Shot": {
+        "duration_category": "short",
+        "note": "+1d4 damage on ranged attacks with your kensei weapons this turn.",
+    },
+    "Sharpen the Blade": {
+        "duration_category": "short",
+        "note": "A bonus to attack and damage rolls with one kensei weapon for 1 minute.",
+    },
+    "Fighting Spirit": {
+        "duration_category": "short",
+        "note": "Advantage on weapon attack rolls until the end of this turn.",
+    },
+    # ── Extra damage on your weapon hits (the weapon rows list it with its
+    # type: core/riders.py). "caster": the effect is on you even when the
+    # spell targets someone else (a smite, Hex, Hunter's Mark), so casting
+    # it never asks who it's on. Which weapon, which damage type and the
+    # slot level are kept in char["effect_details"] (core/spell_effects.py).
+    "Divine Favor": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "+1d4 radiant damage on your weapon hits for 1 minute.",
+    },
+    "Crusader's Mantle": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "You and allies within 30 ft deal +1d4 radiant damage with weapon hits for 1 minute.",
+    },
+    "Holy Weapon": {
+        "conc": True, "duration_category": "short",
+        "note": "+2d8 radiant damage on hits with the weapon you touched, for 1 hour. "
+                "A bonus action ends it in a burst of light (4d8 radiant, CON save or blinded).",
+    },
+    "Spirit Shroud": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "+1d8 radiant, necrotic or cold damage on your hits within 10 ft, and those "
+                "creatures can't regain hit points, for 1 minute.",
+    },
+    "Elemental Weapon": {
+        "conc": True, "duration_category": "short",
+        "note": "The weapon you touched is magical: +1 to attack rolls and +1d4 damage of "
+                "the type you chose, for 1 hour.",
+    },
+    "Magic Weapon": {
+        "conc": True, "duration_category": "short",
+        "note": "The weapon you touched is magical: +1 to attack and damage rolls for 1 hour.",
+    },
+    "Flame Arrows": {
+        "conc": True, "duration_category": "short",
+        "note": "Ammunition from the quiver deals +1d6 fire damage on a hit (12 pieces, 1 hour).",
+    },
+    "Searing Smite": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next melee weapon hit deals +1d6 fire damage and sets the target alight.",
+    },
+    "Thunderous Smite": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next melee weapon hit deals +2d6 thunder damage: STR save or pushed 10 ft and prone.",
+    },
+    "Wrathful Smite": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next melee weapon hit deals +1d6 psychic damage: WIS save or frightened of you.",
+    },
+    "Branding Smite": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next weapon hit deals +2d6 radiant damage, and the target can't turn invisible.",
+    },
+    "Blinding Smite": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next melee weapon hit deals +3d8 radiant damage: CON save or blinded.",
+    },
+    "Staggering Smite": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next melee weapon hit deals +4d6 psychic damage: WIS save or staggered.",
+    },
+    "Banishing Smite": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next weapon hit deals +5d10 force damage; at 50 hit points or fewer it's banished.",
+    },
+    "Lightning Arrow": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next ranged weapon attack deals 4d8 lightning instead of its damage, "
+                "and 2d8 lightning to each creature within 10 ft of the target.",
+    },
+    "Hail of Thorns": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "Your next ranged weapon hit also deals 1d10 piercing to the target and "
+                "everything within 5 ft of it (DEX save halves).",
+    },
+    "Shillelagh": {
+        "duration_category": "short",
+        "note": "Your club or quarterstaff uses your spellcasting ability and a d8 for "
+                "damage, and is magical, for 1 minute.",
+    },
+    "Symbiotic Entity": {
+        "duration_category": "short",
+        "note": "Your melee weapon hits deal +1d6 necrotic damage and your Halo of Spores "
+                "dice double, for 10 minutes or until the temporary hit points are gone.",
+    },
+    "Slayer's Prey": {
+        "duration_category": "short",
+        "note": "Once a turn, +1d6 damage on a weapon hit against your quarry.",
+    },
+    "Favored Foe": {
+        "conc": True, "duration_category": "short",
+        "note": "Once a turn, extra damage on a weapon hit against the marked creature, for 1 minute.",
+    },
+    "Planar Warrior": {
+        "duration_category": "short",
+        "note": "Your next hit on the creature deals extra force damage, and all of the hit's damage is force.",
+    },
+    "Elemental Cleaver": {
+        "duration_category": "short",
+        "note": "Your weapon deals extra damage of the element you chose while you rage.",
+    },
+    "Crimson Rite": {
+        "duration_category": "short",
+        "note": "Your rite's element on every hit with the weapon until your next rest.",
+    },
+    "Chromatic Infusion": {
+        "duration_category": "short",
+        "note": "+1d4 damage of the type you chose on hits with the weapon, for 1 minute.",
+    },
+    "Shadow Blade": {
+        "conc": True, "duration_category": "short", "caster": True,
+        "note": "A blade of shadow in your hand: 2d8 psychic, finesse, light, thrown 20/60; "
+                "advantage in dim light or darkness. 1 minute.",
+    },
+    "Flame Tongue": {
+        "duration_category": "short",
+        "note": "Ablaze, with +2d6 fire damage on a hit and bright light for 40 ft.",
+    },
     "Haste": {
         "ac": 2, "speed_mult": 2, "extra_action": True, "conc": True,
         "note": "+2 AC, double speed, adv. DEX saves, +1 action "
@@ -138,7 +279,7 @@ EFFECT_TABLE: dict[str, dict] = {
                 "Cunning (adv. INT checks), or Owl's Wisdom (adv. WIS checks). 1 hour.",
     },
     "Zephyr Strike": {
-        "conc": False,
+        "conc": True, "caster": True, "duration_category": "short",
         "note": "Your movement doesn't provoke opportunity attacks. Once before the spell "
                 "ends: advantage on one weapon attack (+1d8 force on a hit), and your walking "
                 "speed +30 ft. until the end of that turn either way. 1 minute.",
@@ -205,7 +346,7 @@ EFFECT_TABLE: dict[str, dict] = {
                 "poison affecting you is suspended until the spell ends. 1 hour.",
     },
     "Absorb Elements": {
-        "conc": False,
+        "conc": False, "caster": True, "duration_category": "short",
         "note": "Resistance to the triggering damage type (acid/cold/fire/lightning/thunder) "
                 "until the start of your next turn. First melee hit before then adds +1d6 of "
                 "that type (+1d6 per slot level above 1st) and ends the spell.",
@@ -248,7 +389,7 @@ EFFECT_TABLE: dict[str, dict] = {
                 "advantage on attack rolls against any creature within 5 ft. of you.",
     },
     "Ensnaring Strike": {
-        "conc": True,
+        "conc": True, "caster": True, "duration_category": "short",
         "note": "Your next weapon hit before this ends: target makes a STR save (advantage if "
                 "Large+) or is restrained by vines until the spell ends, taking 1d6 piercing at "
                 "the start of each of its turns. 1 minute.",
@@ -414,12 +555,12 @@ EFFECT_TABLE: dict[str, dict] = {
                 "to your AC — doesn't stack with Unarmored Defense.",
     },
     "Hex": {
-        "conc": True,
+        "conc": True, "caster": True, "duration_category": "short",
         "note": "Cursed target takes +1d6 necrotic from your attacks; "
                 "disadvantage on chosen ability checks.",
     },
     "Hunter's Mark": {
-        "conc": True,
+        "conc": True, "caster": True, "duration_category": "short",
         "note": "Marked target takes +1d6 from your weapon attacks.",
     },
     # Resistance-granting class-feature toggles. These have no AC/speed
@@ -429,25 +570,124 @@ EFFECT_TABLE: dict[str, dict] = {
     # one of these for a character who doesn't qualify is harmless (no
     # resistance gets added, it just sits in active_effects unused).
     "Umbral Form": {
-        "note": "Sorcerer (Shadow Magic, 18th): resistance to all damage except force and radiant.",
+        "note": "Resistance to all damage except force and radiant, and you move through creatures and objects as difficult terrain (1 minute).",
     },
     "Spirit Projection": {
-        "note": "Warlock (Undead, 10th): resistance to all damage except force and radiant.",
+        "note": "Your spirit is out of your body (up to 1 hour, as concentration): resistance to bludgeoning, piercing and slashing damage.",
     },
     "Invincible Conqueror": {
-        "note": "Paladin (Oath of Conquest, 20th): resistance to all damage.",
+        "note": "For 1 minute: resistance to all damage, one more attack with the Attack action, and critical hits on a 19 or 20.",
     },
     "Emissary of Redemption": {
-        "note": "Paladin (Oath of Redemption, 20th): resistance to all damage from others' attacks/spells.",
+        "note": "Resistance to all damage from other creatures; a creature that hits you takes radiant damage equal to half the damage you take. Not against a creature you've attacked or harmed until your next long rest.",
     },
     "Starry Form": {
-        "note": "Druid (Circle of Stars, 10th+): resistance to bludgeoning/piercing/slashing while in Starry Form.",
+        "note": "Starry Form for 10 minutes: bright light 10 ft and your constellation's benefit (Archer, Chalice or Dragon); from 14th level, resistance to bludgeoning, piercing and slashing damage.",
     },
     "Dragon Wings": {
-        "note": "Sorcerer (Draconic Bloodline, 14th): bonus action, flying speed equal to your walking speed.",
+        "note": "Draconic wings: a flying speed equal to your walking speed until you dismiss them.",
     },
     "Elemental Gift": {
-        "note": "Warlock (Genie, 6th): bonus action, flying speed of 30 ft for 10 minutes, plus resistance to your genie kind's damage type.",
+        "note": "A 30-ft flying speed for 10 minutes (you can hover).",
+    },
+    "Elder Champion": {
+        "duration_category": "short",
+        "note": "For 1 minute: regain 10 hit points at the start of each of your turns, cast 1-action paladin spells as a bonus action, and enemies within 10 ft have disadvantage on saves against your paladin spells and Channel Divinity.",
+    },
+    "Living Legend": {
+        "duration_category": "short",
+        "note": "For 1 minute: advantage on CHA checks; once on each of your turns a missed weapon attack can hit instead; your reaction can reroll a failed save.",
+    },
+    "Mortal Bulwark": {
+        "duration_category": "short",
+        "note": "For 1 minute: truesight 120 ft, advantage on attacks against aberrations, celestials, elementals, fey and fiends, and a creature you damage makes a CHA save or is banished to its own plane.",
+    },
+    "Exalted Champion": {
+        "duration_category": "short",
+        "note": "For 1 hour: resistance to nonmagical bludgeoning, piercing and slashing damage; allies within 30 ft have advantage on death saves; you and they have advantage on WIS saves.",
+    },
+    "Awakened Astral Self": {
+        "duration_category": "short",
+        "note": "For 10 minutes: +2 AC, and the Attack action makes three attacks with your astral arms.",
+    },
+    "Otherworldly Wings": {
+        "note": "Spectral wings: a 30-ft flying speed until you're incapacitated or dismiss them.",
+    },
+    "Writhing Tide": {
+        "duration_category": "short",
+        "note": "Your swarm lifts you: a 10-ft flying speed and you can hover, for 1 minute.",
+    },
+    "Ghost Walk": {
+        "duration_category": "short",
+        "note": "Spectral form for 10 minutes: a 10-ft flying speed and hover, attack rolls against you have disadvantage, and you move through creatures and objects (1d10 force if you end a turn inside one).",
+    },
+    "Empty Body": {
+        "duration_category": "short",
+        "note": "Invisible for 1 minute, with resistance to all damage but force.",
+    },
+    "Steady Aim": {
+        "note": "Advantage on your next attack roll this turn; your speed is 0 until the end of the turn.",
+    },
+    "Emboldening Bond": {
+        "duration_category": "short",
+        "note": "For 10 minutes, while another bonded creature is within 30 ft: once a turn, add a d4 to an attack roll, check or save.",
+    },
+    "Frost Rune": {
+        "duration_category": "short",
+        "note": "For 10 minutes: +2 to Strength and Constitution checks and saving throws.",
+    },
+    "Bolstering Magic": {
+        "duration_category": "short",
+        "note": "For 10 minutes: add a d3 to your attack rolls and ability checks.",
+    },
+    "Boldness": {
+        "duration_category": "short",
+        "note": "For 1 minute: add a d4 to your attack rolls and saving throws.",
+    },
+    "Glibness": {
+        "duration_category": "short",
+        "note": "For 1 hour: a d20 of 14 or lower on a Charisma check counts as 15, and magic that tells truth from lies finds you truthful.",
+    },
+    "Trance of Order": {
+        "duration_category": "short",
+        "note": "For 1 minute: attack rolls against you can't have advantage, and your attack rolls, checks and saves treat a d20 roll of 9 or lower as a 10.",
+    },
+    "Maelstrom Aura": {
+        "duration_category": "short",
+        "note": "Until the start of your next turn: resistance to lightning and thunder damage, attack rolls against you have disadvantage, and a creature that starts its turn within 10 ft makes a STR save or its speed is halved.",
+    },
+    "Precise Strike": {
+        "duration_category": "short",
+        "note": "Advantage on your next weapon attack roll this turn; +1d8 damage if it hits (a use is spent then).",
+    },
+    # Race traits switched on with Use (core/actions.py _race_cards)
+    "Shell Defense": {
+        "ac": 4, "save_adv": ["STR", "CON"], "speed_mult": 0,
+        "note": "In your shell: +4 AC and advantage on STR and CON saves; you're prone, your speed is 0, you have disadvantage on DEX saves, you can't take reactions, and your only action is a bonus action to come out.",
+    },
+    "Chromatic Warding": {
+        "duration_category": "short",
+        "note": "Immunity to your ancestry's damage type for 1 minute.",
+    },
+    "Gem Flight": {
+        "duration_category": "short",
+        "note": "Spectral wings for 1 minute: a flying speed equal to your walking speed, and you can hover.",
+    },
+    "Shifting": {
+        "duration_category": "short",
+        "note": "Shifted for 1 minute (end it with a bonus action): your subrace's benefit while it lasts.",
+    },
+    "Tentacle of the Deeps": {
+        "duration_category": "short",
+        "note": "A 10-ft spectral tentacle within 60 ft for 1 minute. Attack with it from its row on the Combat page now, and with your bonus action on later turns (it can move up to 30 ft first).",
+    },
+    "Spirit Totem": {
+        "duration_category": "short",
+        "note": "A spirit's 30-ft aura for 1 minute (Bear, Hawk or Unicorn).",
+    },
+    "Vow of Enmity": {
+        "duration_category": "short",
+        "note": "Advantage on attack rolls against the creature you vowed against, for 1 minute.",
     },
     "Warding Bond": {
         "note": "2nd-level spell (Cleric/Paladin, 1 hour, no concentration): while within 60 ft of the bonded creature, you both gain +1 AC and +1 to saving throws, and resistance to all damage. Whenever the target takes damage, you take the same amount.",
@@ -783,31 +1023,34 @@ INSTANT_POTION_EFFECTS: dict[str, dict] = {
 }
 
 
-def effect_ac_bonus(char: dict) -> int:
-    """Sum of flat AC modifiers from active effects."""
-    total = 0
-    heavy_armors = {"Plate", "Splint", "Ring Mail", "Chain Mail", "Half Plate"}
-    medium_armors = {"Hide", "Chain Shirt", "Scale Mail", "Breastplate"}
-    wearing_heavy = char.get("armor_worn") in heavy_armors
+def effect_ac_parts(char: dict) -> list:
+    """[(label, AC)] from active effects and effect-like feats -- each line
+    of what effect_ac_bonus() adds, so the AC breakdown can show it."""
+    from dnd_app.core.calculator import armor_type_worn, ability_mod
+    worn = armor_type_worn(char)              # "none" / "light" / "medium" / "heavy"
+    parts = []
     for name in char.get("active_effects", []):
         e = EFFECT_TABLE.get(name, {})
-        total += e.get("ac", 0)
-        if "ac_no_heavy_armor" in e and not wearing_heavy:
-            total += e["ac_no_heavy_armor"]
+        if e.get("ac"):
+            parts.append((name, e["ac"]))
+        if "ac_no_heavy_armor" in e and worn != "heavy":
+            parts.append((f"{name} (no heavy armor)", e["ac_no_heavy_armor"]))
     # Bladesong (Wizard, Bladesinging, 2nd level): +INT modifier to AC
     # while lightly armored or unarmored. Variable per-character bonus,
     # so it can't live as a static EFFECT_TABLE value like most entries.
-    if "Bladesong" in char.get("active_effects", []):
-        wearing_medium_or_heavy = char.get("armor_worn") in (heavy_armors | medium_armors)
-        if not wearing_medium_or_heavy:
-            from dnd_app.core.calculator import ability_mod
-            total += max(0, ability_mod(char, "INT"))
+    if "Bladesong" in char.get("active_effects", []) and worn not in ("medium", "heavy"):
+        int_mod = max(0, ability_mod(char, "INT"))
+        if int_mod:
+            parts.append(("Bladesong (INT modifier)", int_mod))
+    # A beasthide shifter: +1 AC while shifted
+    if "Shifting" in char.get("active_effects", []) and "beasthide" in (char.get("subrace") or "").lower():
+        parts.append(("Shifting (Beasthide)", 1))
     # Dual Wielder: +1 AC while wielding a separate melee weapon in each
     # hand. Checks the character's actual equipped weapons (not just
     # "has the feat") for 2+ distinct melee weapons, neither Two-handed,
     # since a Two-handed weapon can't be one of a pair held one in each hand.
     if "Dual Wielder" in char.get("feats", []):
-        from dnd_app.data.phbCommon.items import WEAPON_DICT
+        from dnd_app.data.items import WEAPON_DICT
         melee_one_handed = []
         for wname in char.get("equipped_weapons", []):
             base_name = wname.split(" +")[0].strip()  # strip a magic "+1"/"+2" suffix
@@ -815,13 +1058,18 @@ def effect_ac_bonus(char: dict) -> int:
             if w.get("category","").endswith("Melee") and "Two-handed" not in w.get("properties", []):
                 melee_one_handed.append(wname)
         if len(set(melee_one_handed)) >= 2:
-            total += 1
+            parts.append(("Dual Wielder", 1))
     # Revenant Blade: +1 AC while holding a double-bladed scimitar with two hands.
     if "Revenant Blade" in char.get("feats", []):
         equipped = {w.split(" +")[0].strip() for w in char.get("equipped_weapons", [])}
         if "Double-Bladed Scimitar" in equipped:
-            total += 1
-    return total
+            parts.append(("Revenant Blade", 1))
+    return parts
+
+
+def effect_ac_bonus(char: dict) -> int:
+    """Sum of flat AC modifiers from active effects (see effect_ac_parts)."""
+    return sum(v for _, v in effect_ac_parts(char))
 
 
 def effect_ac_floor(char: dict) -> int:
@@ -840,6 +1088,9 @@ def effect_speed(char: dict, base: int) -> int:
         if "speed_mult" in e:
             speed = int(speed * e["speed_mult"])
         speed += e.get("speed_add", 0)
+    # a swiftstride shifter: +10 ft walking speed while shifted
+    if "Shifting" in char.get("active_effects", []) and "swiftstride" in (char.get("subrace") or "").lower():
+        speed += 10
     return speed
 
 
@@ -851,3 +1102,72 @@ def has_extra_action(char: dict) -> bool:
     return (char.get("_action_surge_used_this_turn", False)
             or any(EFFECT_TABLE.get(n, {}).get("extra_action")
                    for n in char.get("active_effects", [])))
+
+
+# Wild Shape (PHB): "You retain the benefit of any features from your
+# class, race, or other source and can use them if the new form is
+# physically capable of doing so" -- but "you can't cast spells", and
+# anything needing hands is "limited to the capabilities of your beast
+# form" (an ape has hands, a wolf doesn't). So in beast form:
+#   WILDSHAPE_NO_CAST  spellcasting, and features that are spellcasting:
+#                      refused
+#   WILDSHAPE_ASK      needs hands, a held weapon or an unarmed strike:
+#                      the app asks, since the DM decides whether this
+#                      beast can do it
+# Matched as a substring against the feature's display name, lowercased.
+# ("disciple of life", "sacred weapon", "pact magic" and "moon fire" are
+# left out on purpose: the app's feature names bundle them with a part
+# that works in beast form, and casting is checked on its own anyway.)
+WILDSHAPE_NO_CAST = {
+    "war magic", "eldritch strike", "spell thief", "magical ambush",
+    "versatile trickster", "share spells", "misty wanderer",
+    "fey reinforcements", "mystic frenzy", "revealed arcana",
+    "unsealed arcana", "alchemical savant", "arcane firearm",
+    "destructive wrath", "blessed healer", "reaper", "supreme healing",
+    "grim harvest", "spell breaker",
+    "circle of mortality", "voice of authority", "expert divination",
+    "spell mastery", "signature spells", "arcane ward",
+    "projected ward", "improved abjuration", "focused conjuration",
+    "split enchantment", "alter memories", "sculpt spells",
+    "potent cantrip", "empowered evocation", "overchannel",
+    "power surge", "durable magic", "arcane abeyance", "gravity well",
+    "awakened spellbook", "font of magic", "metamagic",
+    "controlled chaos", "divine magic", "tempestuous magic",
+    "clockwork magic", "psionic spells", "psionic sorcery",
+    "eldritch master", "bonus cantrips",
+    "grasping tentacles", "magical secrets", "additional magical secrets",
+    "battle magic", "mantle of majesty", "mystic chronicle",
+    "awakened spirit", "light bearer", "ritual caster",
+}
+WILDSHAPE_ASK = {
+    # touching with your hands
+    "lay on hands",
+    # an unarmed strike (natural weapons are weapons, not unarmed strikes)
+    "martial arts", "flurry of blows", "stunning strike",
+    "ki-empowered strikes", "hands of harm", "open hand technique",
+    "quivering palm", "touch of the long death", "drunken technique",
+    "intoxicated frenzy", "radiant sun bolt", "searing arc strike",
+    "searing sunburst", "sun shield",
+    # astral arms and the rest of the astral self
+    "arms of the astral self", "visage of the astral self",
+    "body of the astral self", "awakened astral self",
+    # a blade made of psychic energy, held in the hand
+    "soul blades", "psychic blades",
+    # Sneak Attack: a finesse or ranged weapon
+    "insightful fighting", "eye for weakness", "sudden strike",
+    "wails from the grave", "death's friend",
+    # a bow
+    "arcane shot", "magic arrow", "curving shot", "ever-ready shot",
+    # kensei weapons: a ranged one for the shot, a melee one to parry
+    "kensei's shot", "agile parry", "sharpen the blade", "deft strike",
+}
+# both, for anything that only needs to know "affected in Wild Shape"
+WILDSHAPE_BLOCKED_FEATURES = WILDSHAPE_NO_CAST | WILDSHAPE_ASK
+
+# Combat-duration on/off active_effects toggles (Rage, Reckless Attack,
+# Bladesong, etc.) that share a resource pool -- using the resource
+# both flips the effect on and spends a use. One shared definition read
+# by every method that needs the set, including the rest handlers (see
+# _short_rest()/_long_rest()), so it can't drift out of sync between
+# them.
+RESOURCE_POOL_TOGGLES = {"Hybrid Transformation", "Rage", "Form of Dread", "Starry Form", "Reckless Attack", "Frenzy", "Sacred Weapon", "Invincible Conqueror", "Exalted Champion", "Peerless Athlete", "Hexblade's Curse", "Bladesong", "Radiant Soul (Aasimar)", "Necrotic Shroud", "Gem Flight", "Shifting", "Vow of Enmity", "Living Legend", "Mortal Bulwark", "Elder Champion", "Elemental Gift", "Writhing Tide", "Otherworldly Wings", "Trance of Order", "Umbral Form", "Ghost Walk", "Steps of Night", "Arms of the Astral Self", "Awakened Astral Self", "Giant's Might", "Aspect of the Wyrm", "Spirit Totem", "Radiant Consumption", "Maelstrom Aura"}

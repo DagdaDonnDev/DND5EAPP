@@ -2,7 +2,7 @@ import QtQuick
 import "IconData.js" as IconData
 
 // One of the app's line icons (shared with desktop -- see
-// dnd_app/ui_desktop/icon_data.py, which generates IconData.js), drawn in
+// dnd_app/data/icon_data.py, which generates IconData.js), drawn in
 // the theme's accent colour. Replaces the emoji the UI used to show:
 // emoji render differently on every phone, often in full colour, and
 // don't follow the theme. Repaints whenever the theme or size changes.

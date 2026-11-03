@@ -15,6 +15,224 @@ Page {
 
     Component.onCompleted: sheetBridge.refresh()
 
+    // How this screen is put together:
+    //   Inventory    -- grouped rows; tap a button for the everyday action,
+    //                   press and hold a row (or tap its ×N) to set how many
+    //   Add Equipment -- search + Qty; "+ Add … as a custom item" under the
+    //                   results when nothing fits
+    //   Magic Items  -- one card per owned copy, bordered in its rarity;
+    //                   press and hold for attune / study / remove
+    //   Add a Magic Item -- the browser, sorted rarity then name
+    //
+    // Adding a magic item from the browser:
+    //   "+N Weapon/Armor/Shield" -> pick which owned item to enchant
+    //   "Spell Scroll (Nth level)" -> pick the spell on it (never blank)
+    //   anything else            -> added as is (a new copy each time)
+    function pickMagicItem(name) {
+        var info = sheetBridge.classifyMagicItemPick(name)
+        if (info.kind === "enchant") {
+            pendingEnchantKind = info.itemKind
+            pendingEnchantBonus = info.bonus
+            if (info.itemKind === "Shield") {
+                sheetBridge.applyShieldEnchant(info.bonus)
+            } else {
+                var candidates = sheetBridge.enchantCandidates(info.itemKind, info.bonus)
+                if (candidates.length === 0) {
+                    sheetBridge.notify("You don't own a nonmagical " + info.itemKind.toLowerCase() + " to enchant yet.")
+                } else {
+                    enchantPickerDialog.dialogTitle = "Enchant which " + info.itemKind.toLowerCase() + "?"
+                    enchantPickerDialog.options = candidates.map(function(c) {
+                        var tag = c.equipped ? "  (equipped)" : "  (owned)"
+                        if (c.existingBonus) tag += "  — currently +" + c.existingBonus
+                        return c.name + tag
+                    })
+                    enchantPickerDialog.rawNames = candidates.map(function(c) { return c.name })
+                    enchantPickerDialog.open()
+                }
+            }
+        } else if (info.kind === "scroll") {
+            pendingScrollName = name
+            var spells = sheetBridge.spellsForScrollLevel(info.level)
+            // every scroll carries a spell -- no blank ones
+            if (spells.length === 0) {
+                sheetBridge.notify("There are no spells of that level to put on a scroll.")
+            } else {
+                scrollSpellDialog.options = spells
+                scrollSpellDialog.open()
+            }
+        } else {
+            sheetBridge.addMagicItem(name)
+        }
+    }
+
+    function showItemDetail(name) {
+        Window.window.pendingItemDetail = sheetBridge.getItemDetail(name)
+        itemDetail.open()
+    }
+
+    // ── Press and hold menus (things you don't do often) ─────────────
+    property var heldItem: null
+
+    // Inventory: press and hold -> change how many you have (0 removes it).
+    // (magic ammunition uses the same dialog -- its stack has a uid)
+    function openAmountDialog(item) {
+        heldItem = item
+        amountQty.value = Math.max(1, item.qty || 1)
+        amountDialog.open()
+    }
+
+    // A weapon a monk could use with Dedicated Weapon: press and hold ->
+    //   How many / Make dedicated weapon (or Stop using as dedicated weapon)
+    // Anything else goes straight to how many you have.
+    function openInventoryHold(item) {
+        if (!item.canDedicate && !item.dedicated) {
+            openAmountDialog(item)
+            return
+        }
+        heldItem = item
+        weaponOptionsDialog.heading = item.name
+        weaponOptionsDialog.options = [
+            {key: "amount", text: "How many", icon: "package"},
+            item.dedicated
+                ? {key: "undedicate", text: "Stop using as dedicated weapon", icon: "dagger"}
+                : {key: "dedicate", text: "Make dedicated weapon", icon: "dagger"}
+        ]
+        weaponOptionsDialog.open()
+    }
+
+    MOptionsDialog {
+        id: weaponOptionsDialog
+        objectName: "weaponOptionsDialog"
+        onPicked: (key) => {
+            var it = root.heldItem
+            if (!it) return
+            if (key === "amount") root.openAmountDialog(it)
+            else if (key === "dedicate") sheetBridge.setDedicatedWeapon(it.name)
+            else if (key === "undedicate") sheetBridge.setDedicatedWeapon("")
+        }
+    }
+
+    // Magic items: press and hold -> a menu bordered in the item's rarity
+    //   Attune / End attunement -- only if it needs attunement
+    //   Study                   -- a manual or tome not yet studied
+    //   Remove                  -- always
+    // Each acts on this one copy (its uid), not every copy of the name.
+    function openMagicItemOptions(item) {
+        heldItem = item
+        var opts = []
+        if (item.needsAttunement)
+            opts.push({key: "attune", text: item.attuned ? "End attunement" : "Attune", icon: "magic"})
+        if (item.canStudy)
+            opts.push({key: "study", text: "Study", icon: "spells"})
+        if (item.baseOptions && item.baseOptions.length > 0)
+            opts.push({key: "base", text: "Which weapon is it? (now a " + item.base + ")", icon: "combat"})
+        opts.push({key: "remove", text: "Remove", icon: "trash"})
+        magicOptionsDialog.heading = item.name
+        magicOptionsDialog.accent = Theme.rarityColor(item.rarity)
+        magicOptionsDialog.options = opts
+        magicOptionsDialog.open()
+    }
+
+    MOptionsDialog {
+        id: magicOptionsDialog
+        objectName: "magicOptionsDialog"
+        onPicked: (key) => {
+            var it = root.heldItem
+            if (!it) return
+            if (key === "attune") sheetBridge.setMagicItemAttuned(it.uid, !it.attuned)
+            else if (key === "study") sheetBridge.studyAbilityManual(it.uid)
+            else if (key === "remove") sheetBridge.removeMagicItem(it.uid)
+            else if (key === "base") {
+                weaponBasePicker.dialogTitle = "Which weapon is your " + it.name + "?"
+                weaponBasePicker.options = it.baseOptions
+                weaponBasePicker.open()
+            }
+        }
+    }
+
+    // an "any sword" item: which weapon it is (its dice follow on Combat);
+    // searchable, since "any weapon" is a long list
+    MPickerDialog {
+        id: weaponBasePicker
+        objectName: "weaponBasePicker"
+        onPicked: (value) => { if (root.heldItem) sheetBridge.setWeaponBase(root.heldItem.name, value) }
+    }
+
+    // How many you have: type a number or use - / + (hold to step by 5)
+    Dialog {
+        id: amountDialog
+        objectName: "amountDialog"
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(parent ? parent.width - 32 : 340, 340)
+        padding: 16
+        background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+            Label {
+                text: root.heldItem ? root.heldItem.name : ""
+                color: Theme.gold2
+                font.pixelSize: Theme.fsHead
+                font.bold: true
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            Label {
+                text: "How many do you have?"
+                color: Theme.text2
+                font.pixelSize: Theme.fsSmall
+                Layout.fillWidth: true
+            }
+            MSpinBox {
+                id: amountQty
+                objectName: "amountQtySpin"
+                Layout.fillWidth: true
+                implicitHeight: 48
+                from: 0
+                to: 9999
+                holdStep: 5
+                // the typed number counts straight away -- no need to
+                // press Enter before tapping Save
+                live: true
+            }
+            Label {
+                text: amountQty.value === 0 ? "0 removes it from your inventory."
+                                            : "Set it to 0 to remove it."
+                color: amountQty.value === 0 ? Theme.crimson2 : Theme.text3
+                font.pixelSize: Theme.fsSmall
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                MButton {
+                    Layout.fillWidth: true
+                    primary: false
+                    text: "Cancel"
+                    onClicked: amountDialog.close()
+                }
+                MButton {
+                    objectName: "amountSave"
+                    Layout.fillWidth: true
+                    iconName: amountQty.value === 0 ? "trash" : ""
+                    text: amountQty.value === 0 ? "Remove" : "Save"
+                    onClicked: {
+                        var name = root.heldItem ? root.heldItem.name : ""
+                        var n = amountQty.value
+                        amountDialog.close()
+                        if (!name) return
+                        if (root.heldItem.uid) sheetBridge.setMagicItemQuantity(root.heldItem.uid, n)
+                        else sheetBridge.setEquipmentQuantity(name, n)
+                    }
+                }
+            }
+        }
+    }
+
     // Jump-to-section targets for the drawer's expandable sub-menu (see
     // NavDrawer.qml's sectionSelected).
     function scrollToSection(name) {
@@ -145,6 +363,24 @@ Page {
                 onPicked: (value) => sheetBridge.addMagicItemWithScrollSpell(root.pendingScrollName, value)
             }
 
+            // a blank scroll (an older save, a PDF import) being used: which
+            // spell is on it -- then it's cast
+            MPickerDialog {
+                id: scrollBindDialog
+                objectName: "scrollBindDialog"
+                property string scrollName: ""
+                dialogTitle: "Which spell is on this scroll?"
+                onPicked: (value) => sheetBridge.bindScrollSpell(scrollName, value)
+            }
+            Connections {
+                target: sheetBridge
+                function onScrollSpellNeeded(name, level) {
+                    scrollBindDialog.scrollName = name
+                    scrollBindDialog.options = sheetBridge.spellsForScrollLevel(level)
+                    scrollBindDialog.open()
+                }
+            }
+
 
             // ── Currency ────────────────────────────────────────────────
             MCard {
@@ -227,8 +463,23 @@ Page {
                                 Layout.fillWidth: true
                                 implicitHeight: invRow.implicitHeight + 14
                                 radius: 8
-                                color: Theme.surf2
-                                border.color: modelData.equipped ? Theme.teal : Theme.border
+                                color: invHold.pressed ? Theme.surf3 : Theme.surf2
+                                // border colour means rarity (magic potions/scrolls),
+                                // never "equipped" -- a green border would read as
+                                // Uncommon; equipped shows as a bright icon, bold
+                                // name and an "Equipped" tag instead
+                                border.color: modelData.rarity ? Theme.rarityColor(modelData.rarity) : Theme.border
+                                border.width: modelData.rarity ? 2 : 1
+
+                                // press and hold: change how many you have
+                                // (or, for a monk, pick the Dedicated Weapon)
+                                MouseArea {
+                                    id: invHold
+                                    objectName: "invHold_" + modelData.name
+                                    anchors.fill: parent
+                                    pressAndHoldInterval: 450
+                                    onPressAndHold: root.openInventoryHold(modelData)
+                                }
 
                                 RowLayout {
                                     id: invRow
@@ -237,14 +488,15 @@ Page {
                                     MIcon {
                                         name: modelData.icon
                                         size: 20
-                                        color: modelData.equipped ? Theme.teal2 : Theme.indigo2
+                                        color: modelData.equipped ? Theme.text : Theme.indigo2
                                     }
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         Layout.preferredWidth: 0
                                         spacing: 1
                                         Label {
-                                            text: (modelData.qty > 1 ? modelData.qty + "× " : "") + modelData.name
+                                            // a stack's count is its own button (below)
+                                            text: modelData.name
                                             color: Theme.text
                                             font.pixelSize: Theme.fsBody
                                             font.bold: modelData.equipped
@@ -252,9 +504,8 @@ Page {
                                             Layout.fillWidth: true
                                         }
                                         Label {
-                                            text: [modelData.detail,
-                                                   modelData.weight > 0 ? (modelData.weight * modelData.qty) + " lb" : "",
-                                                   modelData.cost > 0 ? (modelData.cost * modelData.qty) + " gp" : ""]
+                                            // what it is -- cut short first on a narrow row
+                                            text: [modelData.equipped ? "Equipped" : "", modelData.detail]
                                                   .filter(function(x) { return x.length > 0 }).join("  ·  ")
                                             visible: text.length > 0
                                             color: Theme.text3
@@ -262,12 +513,26 @@ Page {
                                             elide: Text.ElideRight
                                             Layout.fillWidth: true
                                         }
+                                        Label {
+                                            // what the stack weighs and is worth: its own
+                                            // line, never cut short ("3 lb  ·  15 gp")
+                                            objectName: "invWeightValue_" + modelData.name
+                                            text: modelData.weightValue
+                                            visible: text.length > 0
+                                            color: Theme.text3
+                                            font.pixelSize: Theme.fsSmall
+                                            wrapMode: Text.WordWrap
+                                            Layout.fillWidth: true
+                                        }
                                     }
-                                    // equip / wear / use, then remove -- same
-                                    // column on every row
+                                    // row buttons, right to left: View (magnifier) ·
+                                    // the stack's count (×N, opens the amount dialog) ·
+                                    // Equip/Wear. Using an item -- a potion, a scroll,
+                                    // a tinderbox -- is its card on the Actions screen.
                                     MButton {
                                         visible: modelData.equipKind !== ""
                                         primary: false
+                                        implicitWidth: 86
                                         implicitHeight: 34
                                         text: modelData.equipKind === "weapon" ? (modelData.equipped ? "Unequip" : "Equip")
                                               : (modelData.equipped ? "Take off" : (modelData.equipKind === "shield" ? "Equip" : "Wear"))
@@ -280,32 +545,39 @@ Page {
                                                 sheetBridge.toggleArmorWorn(modelData.name, !modelData.equipped)
                                         }
                                     }
+                                    // how many you have -- tap to change it
                                     MButton {
-                                        visible: modelData.isPotion
+                                        objectName: "qtyButton_" + modelData.name
+                                        visible: modelData.qty > 1
                                         primary: false
+                                        implicitWidth: Math.max(40, implicitContentWidth + 20)
                                         implicitHeight: 34
-                                        text: "Drink"
-                                        onClicked: sheetBridge.usePotion(modelData.name)
-                                    }
-                                    MButton {
-                                        visible: modelData.isScroll
-                                        primary: false
-                                        implicitHeight: 34
-                                        text: "Read"
-                                        onClicked: sheetBridge.useScroll(modelData.name)
+                                        text: "×" + modelData.qty
+                                        Accessible.name: "Quantity " + modelData.qty
+                                        onClicked: root.openAmountDialog(modelData)
                                     }
                                     MButton {
                                         primary: false
-                                        implicitWidth: 38
+                                        implicitWidth: 40
                                         implicitHeight: 34
-                                        iconName: "trash"
-                                        iconSize: 16
-                                        onClicked: sheetBridge.removeEquipmentItem(modelData.name)
+                                        iconName: "search"   // View -- a magnifying glass
+                                        iconSize: 22
+                                        Accessible.name: "View"
+                                        onClicked: root.showItemDetail(modelData.name)
                                     }
                                 }
                             }
                         }
                     }
+                }
+
+                Label {
+                    visible: sheetBridge.equipment.length > 0
+                    text: "Press and hold an item to change how many you have."
+                    color: Theme.text3
+                    font.pixelSize: Theme.fsSmall
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
                 }
             }
 
@@ -314,11 +586,23 @@ Page {
             id: addEqAnchor
             title: "Add Equipment"
             iconName: "package"
-            MTextField {
-                id: eqSearch
+            // search box across the row; category and sort live in the
+            // filter drawer behind the funnel button
+            RowLayout {
                 Layout.fillWidth: true
-                placeholderText: "Search weapons, armor, gear, tools…"
-                onTextChanged: eqAddModel.refreshResults()
+                spacing: 8
+                MTextField {
+                    id: eqSearch
+                    objectName: "eqSearchField"
+                    Layout.fillWidth: true
+                    placeholderText: "Search weapons, armor, gear, tools…"
+                    onTextChanged: eqAddModel.refreshResults()
+                }
+                MFilterButton {
+                    objectName: "eqFilterButton"
+                    count: eqFilters.activeCount
+                    onClicked: eqFilters.open()
+                }
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -326,41 +610,36 @@ Page {
                 Label { text: "Qty"; color: Theme.text3; font.pixelSize: Theme.fsSmall }
                 MSpinBox {
                     id: eqQty
-                    // MSpinBox's up/down indicators are 36px each (72px
-                    // total) -- anything narrower than ~110px leaves too
-                    // little room for the number, visually mashing the
-                    // "-" glyph against the digits (established in
-                    // MStatblockCard.qml's HP spinner).
-                    implicitWidth: 110
+                    objectName: "addQtySpin"
+                    // the whole row: the up/down indicators take 72px, so
+                    // a narrow box left the number squashed between them
+                    Layout.fillWidth: true
                     from: 1
                     to: 999
                     value: 1
-                }
-                MButton {
-                    Layout.fillWidth: true
-                    primary: false
-                    height: 36
-                    text: "+ Custom Item"
-                    enabled: eqSearch.text.trim().length > 0
-                    onClicked: {
-                        sheetBridge.addCustomEquipmentItem(eqSearch.text.trim(), eqQty.value)
-                        eqSearch.text = ""
-                    }
+                    holdStep: 5
+                    live: true
                 }
             }
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
+            MFilterDrawer {
+                id: eqFilters
+                objectName: "eqFilterDrawer"
+                title: "Equipment filters"
+                // a changed sort counts too: the list isn't in its usual order
+                activeCount: (eqCategoryFilter.currentIndex > 0) + (eqSortBy.currentIndex > 0)
+                onCleared: { eqCategoryFilter.currentIndex = 0; eqSortBy.currentIndex = 0 }
+                Label { text: "Category"; color: Theme.text2; font.pixelSize: Theme.fsSmall; font.bold: true }
                 ComboBox {
                     id: eqCategoryFilter
                     Layout.fillWidth: true
                     model: sheetBridge.equipmentCategories
                     onCurrentIndexChanged: eqAddModel.refreshResults()
                 }
+                Label { text: "Sort by"; color: Theme.text2; font.pixelSize: Theme.fsSmall; font.bold: true }
                 ComboBox {
                     id: eqSortBy
-                    Layout.preferredWidth: 120
+                    Layout.fillWidth: true
                     model: ["Name", "Cost", "Weight"]
                     onCurrentIndexChanged: eqAddModel.refreshResults()
                 }
@@ -402,28 +681,85 @@ Page {
                     anchors.margins: 4
                     clip: true
                     model: eqAddModel.results
-                    delegate: ItemDelegate {
+                    // Same layout as the spell browser: explicit View/Add
+                    // buttons rather than a whole-row tap, so browsing a
+                    // list can't add things by accident.
+                    delegate: Rectangle {
                         width: ListView.view.width
-                        height: 48
-                        contentItem: RowLayout {
+                        height: 52
+                        color: "transparent"
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            spacing: 8
                             ColumnLayout {
                                 Layout.fillWidth: true
+                                Layout.preferredWidth: 0
                                 spacing: 1
-                                Label { text: modelData.name; color: Theme.text; font.pixelSize: Theme.fsBody }
-                                Label { text: modelData.category + (modelData.detail ? "  ·  " + modelData.detail : ""); color: Theme.text3; font.pixelSize: Theme.fsSmall }
+                                Label {
+                                    text: modelData.name
+                                    color: Theme.text
+                                    font.pixelSize: Theme.fsBody
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    Label {
+                                        // what it is -- cut short first
+                                        text: modelData.category + (modelData.detail ? "  ·  " + modelData.detail : "")
+                                        color: Theme.text3
+                                        font.pixelSize: Theme.fsSmall
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+                                    Label {
+                                        // what one weighs and costs, in full
+                                        text: modelData.weightValue || ""
+                                        visible: text.length > 0
+                                        color: Theme.text3
+                                        font.pixelSize: Theme.fsSmall
+                                    }
+                                }
+                            }
+                            MButton {
+                                primary: false
+                                implicitWidth: 40
+                                height: 34
+                                iconName: "search"   // View -- a magnifying glass
+                                iconSize: 22
+                                Accessible.name: "View"
+                                onClicked: root.showItemDetail(modelData.name)
+                            }
+                            MButton {
+                                implicitWidth: 64
+                                height: 34
+                                text: "Add"
+                                // No explicit eqAddModel refresh here: the
+                                // Connections block above already refreshes
+                                // on statsChanged, and a second refresh
+                                // mid-click can destroy this delegate while
+                                // the handler is still running.
+                                onClicked: sheetBridge.addEquipmentItem(modelData.name, eqQty.value)
                             }
                         }
-                        // Refreshing eqAddModel here too (in addition to
-                        // the Connections-driven refresh on statsChanged
-                        // below) would double-refresh, and for a result
-                        // list that excludes already-added items (like
-                        // the magic item browser below), a second
-                        // refresh mid-click can destroy this very
-                        // delegate while onClicked is still running --
-                        // let the single Connections-driven refresh
-                        // handle it.
-                        onClicked: sheetBridge.addEquipmentItem(modelData.name, eqQty.value)
                     }
+                }
+            }
+
+            // nothing in the list fits? add what was typed as a custom item
+            MButton {
+                objectName: "addCustomItemButton"
+                visible: eqSearch.text.trim().length > 0
+                Layout.fillWidth: true
+                primary: false
+                wrapText: true
+                text: "+ Add \u201c" + eqSearch.text.trim() + "\u201d as a custom item"
+                onClicked: {
+                    sheetBridge.addCustomEquipmentItem(eqSearch.text.trim(), eqQty.value)
+                    eqSearch.text = ""
                 }
             }
 
@@ -443,12 +779,24 @@ Page {
             Repeater {
                 objectName: "magicItemsRepeater"
                 model: sheetBridge.magicItems
+                // Everyday: View and the Equipped box. Press and hold for the
+                // rest -- attune, study (manuals/tomes), remove.
                 delegate: Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: miCol.height + 16
                     radius: 8
-                    color: Theme.surf2
-                    border.color: modelData.attuned ? Theme.indigo2 : Theme.border
+                    color: miHold.pressed ? Theme.surf3 : Theme.surf2
+                    // border = rarity (dark grey common ... amber legendary, crimson artifact)
+                    border.color: Theme.rarityColor(modelData.rarity)
+                    border.width: 2
+
+                    MouseArea {
+                        id: miHold
+                        objectName: "magicItemHold_" + modelData.name
+                        anchors.fill: parent
+                        pressAndHoldInterval: 450
+                        onPressAndHold: root.openMagicItemOptions(modelData)
+                    }
 
                     Column {
                         id: miCol
@@ -467,15 +815,42 @@ Page {
                                 wrapMode: Text.WordWrap
                             }
                             Label {
+                                // plain text -- the card's border carries the colour
                                 text: modelData.rarity
-                                color: Theme.text3
+                                color: Theme.text2
                                 font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                            }
+                            // magic ammunition stacks: how many -- tap to change
+                            MButton {
+                                objectName: "miQtyButton_" + modelData.name
+                                visible: modelData.isAmmo
+                                primary: false
+                                implicitWidth: Math.max(40, implicitContentWidth + 20)
+                                implicitHeight: 34
+                                text: "×" + modelData.qty
+                                Accessible.name: "Quantity " + modelData.qty
+                                onClicked: root.openAmountDialog(modelData)
+                            }
+                            MButton {
+                                primary: false
+                                implicitWidth: 40
+                                implicitHeight: 34
+                                iconName: "search"   // View -- a magnifying glass
+                                iconSize: 22
+                                Accessible.name: "View"
+                                onClicked: root.showItemDetail(modelData.name)
                             }
                         }
                         Label {
-                            text: modelData.type + (modelData.needsAttunement ? "  ·  Requires Attunement" : "")
-                            color: Theme.text3
+                            width: parent.width
+                            text: modelData.type
+                                  + (modelData.studied ? "  ·  Studied (its magic is spent)" : "")
+                                  + (modelData.attuned ? "  ·  Attuned"
+                                     : (modelData.needsAttunement ? "  ·  Requires attunement" : ""))
+                            color: modelData.attuned ? Theme.indigo2 : Theme.text3
                             font.pixelSize: Theme.fsSmall
+                            wrapMode: Text.WordWrap
                         }
                         RowLayout {
                             width: parent.width
@@ -492,46 +867,21 @@ Page {
                                     modelData.name, idx === 0 ? "" : modelData.resistanceChoicePool[idx - 1])
                             }
                         }
-                        RowLayout {
-                            width: parent.width
-                            spacing: 8
-                            Flow {
-                                Layout.fillWidth: true
-                                spacing: 8
-                                MCheckBox {
-                                    visible: modelData.needsAttunement
-                                    text: "Attuned"
-                                    checked: modelData.attuned
-                                    onToggled: sheetBridge.setMagicItemAttuned(modelData.name, checked)
-                                }
-                                MCheckBox {
-                                    text: "Equipped"
-                                    checked: modelData.equipped
-                                    onToggled: sheetBridge.setMagicItemEquipped(modelData.name, checked)
-                                }
-                            }
-                            // Fixed right-hand column -- Remove always lands in the
-                            // same place regardless of how many checkboxes this card
-                            // shows, instead of trailing directly after them in a
-                            // shared wrapping Flow.
-                            MButton {
-                                primary: false
-                                height: 32
-                                visible: sheetBridge.canStudyManual(modelData.name)
-                                text: "Study"
-                                onClicked: sheetBridge.studyAbilityManual(modelData.name)
-                            }
-                            MButton {
-                                primary: false
-                                implicitWidth: 38
-                                height: 34
-                                iconName: "trash"
-                                iconSize: 16
-                                onClicked: sheetBridge.removeMagicItem(modelData.name)
-                            }
+                        MCheckBox {
+                            text: "Equipped"
+                            checked: modelData.equipped
+                            onToggled: sheetBridge.setMagicItemEquipped(modelData.uid, checked)
                         }
                     }
                 }
+            }
+            Label {
+                visible: sheetBridge.magicItems.length > 0
+                text: "Press and hold an item to attune, study or remove it."
+                color: Theme.text3
+                font.pixelSize: Theme.fsSmall
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
             }
 
             }
@@ -541,33 +891,56 @@ Page {
             id: addMiAnchor
             title: "Add a Magic Item"
             iconName: "magic"
-            MTextField {
-                id: miSearch
-                Layout.fillWidth: true
-                placeholderText: "Search magic items…"
-                onTextChanged: miAddModel.refreshResults()
-            }
+            // search box across the row; slot / rarity / attunement in the
+            // filter drawer behind the funnel button
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
+                MTextField {
+                    id: miSearch
+                    objectName: "miSearchField"
+                    Layout.fillWidth: true
+                    placeholderText: "Search magic items…"
+                    onTextChanged: miAddModel.refreshResults()
+                }
+                MFilterButton {
+                    objectName: "miFilterButton"
+                    count: miFilters.activeCount
+                    onClicked: miFilters.open()
+                }
+            }
+            MFilterDrawer {
+                id: miFilters
+                objectName: "miFilterDrawer"
+                title: "Magic item filters"
+                activeCount: (miSlotFilter.currentIndex > 0) + (miRarityFilter.currentIndex > 0)
+                             + (miAttuneFilter.currentIndex > 0)
+                onCleared: {
+                    miSlotFilter.currentIndex = 0
+                    miRarityFilter.currentIndex = 0
+                    miAttuneFilter.currentIndex = 0
+                }
+                Label { text: "Slot"; color: Theme.text2; font.pixelSize: Theme.fsSmall; font.bold: true }
                 ComboBox {
                     id: miSlotFilter
                     Layout.fillWidth: true
                     model: sheetBridge.magicItemSlots
                     onCurrentIndexChanged: miAddModel.refreshResults()
                 }
+                Label { text: "Rarity"; color: Theme.text2; font.pixelSize: Theme.fsSmall; font.bold: true }
                 ComboBox {
                     id: miRarityFilter
                     Layout.fillWidth: true
                     model: sheetBridge.magicItemRarities
                     onCurrentIndexChanged: miAddModel.refreshResults()
                 }
-            }
-            ComboBox {
-                id: miAttuneFilter
-                Layout.fillWidth: true
-                model: sheetBridge.magicItemAttunementOptions
-                onCurrentIndexChanged: miAddModel.refreshResults()
+                Label { text: "Attunement"; color: Theme.text2; font.pixelSize: Theme.fsSmall; font.bold: true }
+                ComboBox {
+                    id: miAttuneFilter
+                    Layout.fillWidth: true
+                    model: sheetBridge.magicItemAttunementOptions
+                    onCurrentIndexChanged: miAddModel.refreshResults()
+                }
             }
 
             QtObject {
@@ -602,67 +975,124 @@ Page {
                     anchors.margins: 4
                     clip: true
                     model: miAddModel.results
-                    delegate: ItemDelegate {
+                    delegate: Rectangle {
                         width: ListView.view.width
-                        height: 48
-                        contentItem: RowLayout {
-                            Label {
-                                text: modelData.name
-                                color: Theme.text
-                                font.pixelSize: Theme.fsBody
+                        height: 52
+                        color: "transparent"
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            spacing: 8
+                            // rarity as a coloured bar, not coloured text
+                            // (coloured text is hard to read)
+                            Rectangle {
+                                Layout.preferredWidth: 6
+                                Layout.fillHeight: true
+                                Layout.topMargin: 4
+                                Layout.bottomMargin: 4
+                                radius: 2
+                                color: Theme.rarityColor(modelData.rarity)
+                            }
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                elide: Text.ElideRight
-                            }
-                            Label {
-                                text: modelData.rarity
-                                color: Theme.text3
-                                font.pixelSize: Theme.fsSmall
-                            }
-                        }
-                        // See the equipment browser's onClicked above --
-                        // the Connections-driven refresh on statsChanged
-                        // already updates miAddModel; a second explicit
-                        // refresh here would destroy this delegate mid-
-                        // click (this list excludes already-added items,
-                        // so adding one always shrinks it).
-                        onClicked: {
-                            var info = sheetBridge.classifyMagicItemPick(modelData.name)
-                            if (info.kind === "enchant") {
-                                pendingEnchantKind = info.itemKind
-                                pendingEnchantBonus = info.bonus
-                                if (info.itemKind === "Shield") {
-                                    sheetBridge.applyShieldEnchant(info.bonus)
-                                } else {
-                                    var candidates = sheetBridge.enchantCandidates(info.itemKind, info.bonus)
-                                    if (candidates.length === 0) {
-                                        sheetBridge.notify("You don't own a nonmagical " + info.itemKind.toLowerCase() + " to enchant yet.")
-                                    } else {
-                                        enchantPickerDialog.dialogTitle = "Enchant which " + info.itemKind.toLowerCase() + "?"
-                                        enchantPickerDialog.options = candidates.map(function(c) {
-                                            var tag = c.equipped ? "  (equipped)" : "  (owned)"
-                                            if (c.existingBonus) tag += "  — currently +" + c.existingBonus
-                                            return c.name + tag
-                                        })
-                                        enchantPickerDialog.rawNames = candidates.map(function(c) { return c.name })
-                                        enchantPickerDialog.open()
-                                    }
+                                Layout.preferredWidth: 0
+                                spacing: 1
+                                Label {
+                                    text: modelData.name
+                                    color: Theme.text
+                                    font.pixelSize: Theme.fsBody
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
                                 }
-                            } else if (info.kind === "scroll") {
-                                pendingScrollName = modelData.name
-                                var spells = sheetBridge.spellsForScrollLevel(info.level)
-                                if (spells.length === 0) {
-                                    sheetBridge.addMagicItem(modelData.name)
-                                } else {
-                                    scrollSpellDialog.options = spells
-                                    scrollSpellDialog.open()
+                                Label {
+                                    text: modelData.rarity
+                                    color: Theme.text3
+                                    font.pixelSize: Theme.fsSmall
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
                                 }
-                            } else {
-                                sheetBridge.addMagicItem(modelData.name)
+                            }
+                            MButton {
+                                primary: false
+                                implicitWidth: 40
+                                height: 34
+                                iconName: "search"   // View -- a magnifying glass
+                                iconSize: 22
+                                Accessible.name: "View"
+                                onClicked: root.showItemDetail(modelData.name)
+                            }
+                            MButton {
+                                implicitWidth: 64
+                                height: 34
+                                text: "Add"
+                                // See the equipment browser's Add above -- the
+                                // Connections-driven refresh on statsChanged
+                                // already updates miAddModel.
+                                onClicked: root.pickMagicItem(modelData.name)
                             }
                         }
                     }
                 }
             }
+            }
+        }
+    }
+
+    // ── Item detail popup ────────────────────────────────────────────
+    // Read through Window.window.pendingItemDetail for the same reason
+    // the spell detail popup is -- see SheetSpellsScreen.qml.
+    property var itemData: Window.window.pendingItemDetail
+
+    MFullPageDialog {
+        id: itemDetail
+        dialogTitle: (root.itemData && root.itemData.name) || "Item"
+        accent: (root.itemData && root.itemData.rarity) ? Theme.rarityColor(root.itemData.rarity) : "transparent"
+
+        Flickable {
+            anchors.fill: parent
+            anchors.margins: 16
+            contentWidth: width
+            contentHeight: itemDetailCol.height
+            clip: true
+
+            ColumnLayout {
+                id: itemDetailCol
+                width: parent.width
+                spacing: 8
+
+                Label {
+                    visible: !!root.itemData.subtitle
+                    text: root.itemData.rarity && root.itemData.subtitle === "Magic item"
+                          ? root.itemData.rarity + " magic item" : (root.itemData.subtitle || "")
+                    // plain gold -- the page's frame carries the rarity colour
+                    color: Theme.gold2
+                    font.pixelSize: Theme.fsBody
+                    font.bold: true
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+                Label {
+                    visible: text.length > 0
+                    text: (root.itemData.facts || []).join("\n")
+                    color: Theme.text2
+                    font.pixelSize: Theme.fsSmall
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+                Rectangle {
+                    visible: !!root.itemData.desc
+                    Layout.fillWidth: true
+                    height: 1
+                    color: Theme.border
+                }
+                Label {
+                    text: root.itemData.desc || ""
+                    color: Theme.text
+                    font.pixelSize: Theme.fsSmall
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
             }
         }
     }

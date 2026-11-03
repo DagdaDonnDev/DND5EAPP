@@ -37,9 +37,104 @@ Flickable {
         id: loadFileDialog
         title: "Load Character"
         currentFolder: "file://" + slBridge.downloadsDir
-        nameFilters: ["Character files (*.json)", "All files (*)"]
+        // a character file, or a filled-in official 5e character sheet PDF
+        nameFilters: ["Characters (*.json *.pdf)", "Character files (*.json)",
+                      "5e character sheets (*.pdf)", "All files (*)"]
         fileMode: FileDialog.OpenFile
-        onAccepted: slBridge.loadCharacterFromUrl(selectedFile.toString())
+        onAccepted: {
+            if (slBridge.loadCharacterFromUrl(selectedFile.toString())) {
+                Window.window.showLoadedCharacter()
+                saveLoadDialog.close()
+            }
+        }
+    }
+
+    // Import… first explains what can be imported (and a PDF sheet's
+    // limits), then "Choose file…" opens the picker above.
+    Dialog {
+        id: importInfoDialog
+        objectName: "importInfoDialog"
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(parent ? parent.width - 32 : 360, 420)
+        height: Math.min(implicitHeight, parent ? parent.height - 64 : 600)
+        padding: 16
+        background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+            Label {
+                text: "Import a character"
+                color: Theme.gold2
+                font.pixelSize: Theme.fsHead
+                font.bold: true
+                Layout.fillWidth: true
+            }
+            Flickable {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.preferredHeight: infoCol.implicitHeight
+                contentHeight: infoCol.implicitHeight
+                clip: true
+                ColumnLayout {
+                    id: infoCol
+                    width: parent.width
+                    spacing: 8
+                    Label {
+                        text: "A character file (.json) saved by MIMIC on any phone or computer."
+                        color: Theme.text
+                        font.pixelSize: Theme.fsSmall
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        text: slBridge.pdfImportIntro
+                        color: Theme.text
+                        font.pixelSize: Theme.fsSmall
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        text: "Good to know about PDF sheets:"
+                        color: Theme.text2
+                        font.pixelSize: Theme.fsSmall
+                        font.bold: true
+                        Layout.fillWidth: true
+                    }
+                    Repeater {
+                        model: slBridge.pdfImportLimits
+                        delegate: Label {
+                            text: "•  " + modelData
+                            color: Theme.text3
+                            font.pixelSize: Theme.fsSmall
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+                    }
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                MButton {
+                    Layout.fillWidth: true
+                    primary: false
+                    text: "Cancel"
+                    onClicked: importInfoDialog.close()
+                }
+                MButton {
+                    objectName: "importChooseFile"
+                    Layout.fillWidth: true
+                    text: "Choose file…"
+                    onClicked: {
+                        importInfoDialog.close()
+                        loadFileDialog.open()
+                    }
+                }
+            }
+        }
     }
 
     // "Move to Folder" -- pick an existing campaign, "Uncategorized", or
@@ -442,7 +537,7 @@ Flickable {
                     iconName: "identity"
                     title: "Character file"
                     hint: ".json, opens in MIMIC"
-                    onTapped: exportFileDialog.open()
+                    onTapped: slBridge.exportJsonToFolder()
                 }
                 ExportTile {
                     objectName: "exportTextButton"
@@ -460,7 +555,7 @@ Flickable {
                 }
             }
             Label {
-                text: "You choose where the character file goes. Text and PDF copies go to:"
+                text: "Each character gets its own folder, so its sheet and character file stay together:"
                 color: Theme.text3
                 font.pixelSize: Theme.fsSmall
                 wrapMode: Text.WordWrap
@@ -468,12 +563,39 @@ Flickable {
             }
             Label {
                 objectName: "destinationDirLabel"
-                text: slBridge.documentsDir
+                text: slBridge.exportDir
                 color: Theme.text2
                 font.pixelSize: Theme.fsSmall
                 wrapMode: Text.WrapAnywhere
                 Layout.fillWidth: true
                 Layout.topMargin: -6
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                // Opens that folder in the phone's Files app
+                MButton {
+                    objectName: "openExportFolderButton"
+                    primary: false
+                    Layout.fillWidth: true
+                    implicitHeight: 40
+                    iconName: "folder"
+                    iconSize: 16
+                    text: "Open folder"
+                    onClicked: slBridge.openExportFolder()
+                }
+                // The system "save as" picker, for putting a copy of the
+                // character file anywhere else (Drive, Downloads, ...)
+                MButton {
+                    objectName: "exportElsewhereButton"
+                    primary: false
+                    Layout.fillWidth: true
+                    implicitHeight: 40
+                    iconName: "save"
+                    iconSize: 16
+                    text: "Save elsewhere…"
+                    onClicked: exportFileDialog.open()
+                }
             }
         }
 
@@ -488,13 +610,14 @@ Flickable {
                     height: 32
                     implicitWidth: 104
                     text: "Import…"
-                    onClicked: loadFileDialog.open()
+                    onClicked: importInfoDialog.open()
                 }
             ]
 
             Label {
                 visible: slBridge.savedCharacters.length === 0
-                text: "No saved characters yet. Tap Import… to open a character file from your phone."
+                text: "No saved characters yet. Tap Import… to open a character file, or a filled-in "
+                      + "5e character sheet PDF, from your phone."
                 color: Theme.text3
                 font.pixelSize: Theme.fsSmall
                 wrapMode: Text.WordWrap

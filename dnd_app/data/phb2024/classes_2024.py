@@ -402,7 +402,7 @@ ALL_CLASSES_2024 = [
         tools="Herbalism kit",
         skill_choices=["Arcana","Animal Handling","Insight","Medicine","Nature","Perception","Religion","Survival"],
         skill_count=2, spell_ability="WIS", has_spells=True,
-        spell_slots=FULL_CASTER_SLOTS_2024, subclass_level=2,
+        spell_slots=FULL_CASTER_SLOTS_2024, subclass_level=3,
         features={
             1: ["Druidic (secret language + script)","Primal Order – choose Warden (martial weapons + heavy armor) or Magician (1 Druid cantrip + Arcana/Nature expertise)","Spellcasting (WIS)"],
             2: ["Wild Shape (2/SR: become Beast of CR ≤ 1; retain INT/WIS/CHA; gain temp HP = Druid level)","Wild Companion (can expend slot for Find Familiar 1/day)"],
@@ -546,7 +546,8 @@ ALL_CLASSES_2024 = [
         },
         subclasses=['Warrior of Mercy', 'Warrior of Shadow', 'Warrior of the Elements', 'Warrior of the Open Hand'],
         resources=[
-            dict(name="Focus Points (Ki)", key="ki", formula="level", reset="SR/LR", track="current_max"),
+            dict(name="Focus Points (Ki)", key="ki", formula="level", reset="SR/LR", track="current_max",
+                 available_at=2),   # Monk's Focus is a 2nd-level feature
             dict(name="Martial Arts Die", key="martial_arts_die", track="info",
                  by_level={1:"d6",5:"d8",11:"d10",17:"d12"}),
         ],
@@ -703,11 +704,11 @@ ALL_CLASSES_2024 = [
             17: ["Subclass Feature","Cunning Strike: Knock Out (6 dice; Unconscious)","Sneak Attack (9d6)"],
             18: ["Elusive (attackers never gain Adv on you while conscious)","Sneak Attack (9d6)"],
             19: ["Epic Boon Feat","Sneak Attack (10d6)"],
-            20: ["Stroke of Luck (1/LR: fail → success; Sneak Attack (10d6))"],
+            20: ["Stroke of Luck (1/SR: fail → success; Sneak Attack (10d6))"],
         },
         subclasses=['Arcane Trickster', 'Assassin', 'Phantom', 'Scion of the Three', 'Soulknife', 'Thief'],
         resources=[
-            dict(name="Stroke of Luck", key="stroke_luck", formula="1", reset="LR", track="uses",
+            dict(name="Stroke of Luck", key="stroke_luck", formula="1", reset="SR/LR", track="uses",
                  available_at=20),
         ],
         level_choices={
@@ -854,7 +855,7 @@ ALL_CLASSES_2024 = [
         tools="None",
         skill_choices=["Arcana","History","Insight","Investigation","Medicine","Religion"],
         skill_count=2, spell_ability="INT", has_spells=True,
-        spell_slots=FULL_CASTER_SLOTS_2024, subclass_level=2,
+        spell_slots=FULL_CASTER_SLOTS_2024, subclass_level=3,
         features={
             1: ["Spellcasting (INT; spellbook with 6 spells; ritual casting from book)","Arcane Recovery (ceil(level/2) slots on SR; 1/LR)"],
             2: ["Scholar (History/Nature/Arcana/Religion bonus: add Prof even if not proficient on Int checks)"],

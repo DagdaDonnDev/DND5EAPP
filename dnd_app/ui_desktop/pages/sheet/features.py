@@ -12,7 +12,7 @@ from ...shared import *
 # aliases to h/card/hline, which ARE plain names the wildcard import above
 # already brought in).
 from ...shared import _btn, _pill
-from ...widgets import FlowLayout, FlowContainer
+from ...widgets import FlowLayout, FlowContainer, FilterSidebar
 from dnd_app.core.character import (
     ability_score, ability_mod, total_level, class_levels, subclasses,
     long_rest, short_rest, add_class
@@ -35,22 +35,22 @@ from dnd_app.core.multiclass import (
 from dnd_app.core.builder import rebuild
 from dnd_app.core.controller import CharacterController
 from dnd_app.core.magic_items import concentration_save, start_concentration, drop_concentration
-from dnd_app.core.spell_components import spell_component_block_reason
+from dnd_app.core.spellcasting import spell_component_block_reason
 from dnd_app.core.save_load import (
     save_character, load_character, list_saved_characters, character_filename, validate_character,
 )
 from dnd_app.core.character import set_subclass, get_class_entry
-from dnd_app.data.phbCommon.magic_items import ALL_MAGIC_ITEMS, has_item_effect
+from dnd_app.data.magic_items import ALL_MAGIC_ITEMS, has_item_effect
 from dnd_app.ui_desktop.dialogs.levelup_panel import LevelUpPanel
-from dnd_app.data.phb2014.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
-from dnd_app.data.phb2014.races import get_race
-from dnd_app.data.phbCommon.backgrounds import get_background
-from dnd_app.data.phbCommon.feats import get_feat
-from dnd_app.data.phbCommon.spells import get_spell, spells_for_class, ALL_SPELLS
-from dnd_app.data.phbCommon.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
+from dnd_app.data.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
+from dnd_app.data.races import get_race
+from dnd_app.data.backgrounds import get_background
+from dnd_app.data.feats import get_feat, feat_summary
+from dnd_app.data.spells import get_spell, spells_for_class, ALL_SPELLS
+from dnd_app.data.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
     ADVENTURING_GEAR, GEAR_NAMES, MOUNTS, ALL_TOOLS, SIMPLE_MELEE, SIMPLE_RANGED,
     MARTIAL_MELEE, MARTIAL_RANGED, ARTISAN_TOOLS, SPECIAL_ARMOR)
-from dnd_app.data.phbCommon.conditions import CONDITIONS
+from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
@@ -123,19 +123,10 @@ class FeaturesMixin:
         if race:
             rdata = get_race(race)
             if rdata and rdata.get("traits"):
-                display_traits = rdata["traits"]
-                # If the active subrace carries its OWN ability score bonus
-                # (Dragonmarks, etc.), it fully REPLACES the base race's ASI
-                # per builder.py's actual math — so don't show a contradictory
-                # "+1 to all six ability scores"-style line alongside it.
-                subrace_now = self.char.get("subrace", "")
-                if subrace_now:
-                    from dnd_app.core.builder import _get_subrace_asi
-                    if _get_subrace_asi(race, subrace_now):
-                        _asi_line = re.compile(
-                            r'^\s*\+\d.*\b(ability scores?|STR|DEX|CON|INT|WIS|CHA)\b',
-                            re.IGNORECASE)
-                        display_traits = [t for t in display_traits if not _asi_line.match(t)]
+                # the race's own traits, less what a dragonmark (or a
+                # subrace's own ability scores) replaces: data/races.py
+                from dnd_app.data.races import race_traits_for
+                display_traits = race_traits_for(self.char)
                 # Only add the section if there's still something left to
                 # show — the check above (rdata.get("traits")) only looked
                 # at the UNFILTERED list, so a race whose traits happened to
@@ -154,7 +145,7 @@ class FeaturesMixin:
                 anc = self.char.get("draconic_ancestry","")
                 if anc:
                     try:
-                        from dnd_app.data.phb2014.races import DRACONIC_ANCESTRY
+                        from dnd_app.data.races import DRACONIC_ANCESTRY
                         anc_data = DRACONIC_ANCESTRY.get(anc)
                         if anc_data:
                             dmg, shape, desc = anc_data
@@ -227,7 +218,7 @@ class FeaturesMixin:
 
             # Load proper subclass feature names from SUBCLASS_FEATURES
             try:
-                from dnd_app.data.phbCommon.class_features import SUBCLASS_FEATURES, CLASS_FEATURE_INDEX
+                from dnd_app.data.class_features import SUBCLASS_FEATURES, CLASS_FEATURE_INDEX
                 proper_names = SUBCLASS_FEATURES.get((cname, sub), [])
             except ImportError:
                 proper_names = []
@@ -350,14 +341,18 @@ class FeaturesMixin:
             if feats:
                 self._add_feature_section(title, color, feats, badge_color=color)
 
-        # Chosen feats
+        # Chosen feats (a DM-granted one has its own section, below)
         feat_items = []
         for fname in self.char.get("feats",[]):
+            if fname in self.char.get("dm_feats", []):
+                continue
             fd = get_feat(fname)
             if fd:
                 chosen_ab = self.char.get("_choices", {}).get(f"feat_ability_{fname.lower().replace(' ','_')}")
                 prefix = f"{chosen_ab}-based — " if chosen_ab else ""
-                summary = self._summarize_feature_text(fd.get('special', ''))
+                # a one-line headline only -- the full rules text is in the
+                # row's tooltip / Show Details, so it isn't said twice
+                summary = feat_summary(fd)
                 feat_items.append(f"{fname}: {prefix}{summary}")
         if feat_items:
             self._add_feature_section("Feats", PURP2, feat_items, badge_color=PURP2)
@@ -427,7 +422,7 @@ class FeaturesMixin:
         from dnd_app.core.character import class_levels as _cls_lvls_repl
         art_lvl = _cls_lvls_repl(self.char).get("Artificer", 0)
         if art_lvl >= 2:
-            from dnd_app.data.phb2014.classes import ARTIFICER_REPLICABLE_ITEMS
+            from dnd_app.data.classes import ARTIFICER_REPLICABLE_ITEMS
             all_replicable_names = {name for tier_items in ARTIFICER_REPLICABLE_ITEMS.values()
                                      for name, _ in tier_items}
             known_infusions = self.char.get("artificer_infusions", [])
@@ -442,7 +437,7 @@ class FeaturesMixin:
 
                 # ── Optional / Alternate Class Features (TCoE) ──────────────────────
         try:
-            from dnd_app.data.phbCommon.class_features import OPTIONAL_CLASS_FEATURES as _OPT
+            from dnd_app.data.class_features import OPTIONAL_CLASS_FEATURES as _OPT
         except ImportError:
             _OPT = {}
         _enabled = self.char.get("_choices",{}).get("optional_features",{})
@@ -467,7 +462,7 @@ class FeaturesMixin:
                 self._add_feature_section(f"✦ Optional — {_cn}",AMBER,_items,badge_color=AMBER)
 
         # ── DM-Granted Feats Browser ─────────────────────────────────────────
-        from dnd_app.data.phbCommon.feats import ALL_FEATS, get_feat as _get_feat
+        from dnd_app.data.feats import ALL_FEATS, get_feat as _get_feat
         # Show any already-granted feats
         granted = self.char.get("dm_feats", [])
         if granted:
@@ -477,7 +472,7 @@ class FeaturesMixin:
                 if ft:
                     src_tag = ft.get("source","")
                     pre = ft.get("prereq","")
-                    desc = self._summarize_feature_text(ft.get("special",""), max_len=180)
+                    desc = feat_summary(ft)   # headline; full text in Show Details
                     feat_items.append(
                         f"<b>{fname}</b>  [{src_tag}]"
                         + (f"  <i>Req: {pre}</i>" if pre else "")
@@ -491,7 +486,7 @@ class FeaturesMixin:
         # bonus features) — same pattern as DM-Granted Feats above, so a
         # granted reward actually appears on the sheet, not just as a
         # checkmark in the browser below.
-        from dnd_app.data.phbCommon.dm_rewards import get_dm_reward as _get_dm_reward
+        from dnd_app.data.dm_rewards import get_dm_reward as _get_dm_reward
         granted_rewards = self.char.get("dm_rewards", [])
         if granted_rewards:
             reward_items = []
@@ -534,7 +529,7 @@ class FeaturesMixin:
 
         # Header row
         fb_hdr = QHBoxLayout()
-        fb_hdr.addWidget(_lbl("✦  BONUS FEATURE BROWSER  —  DM Rewards", AMBER, FS_SMALL, bold=True))
+        fb_hdr.addWidget(_lbl("✦  BONUS FEATURE BROWSER  —  DM Rewards", AMBER, FS_SMALL, bold=True, wrap=False))
         fb_hdr.addStretch()
         fb_hdr.addWidget(_lbl("Double-click or click Add to grant a feat outside class progression",
                                TEXT3, FS_TINY, wrap=False))
@@ -544,23 +539,26 @@ class FeaturesMixin:
         fb_body = QHBoxLayout(); fb_body.setSpacing(8)
 
         # Left: search + category filter + list
-        fb_left = QVBoxLayout(); fb_left.setSpacing(4)
-        fb_search_row = QHBoxLayout(); fb_search_row.setSpacing(6)
+        # (in a widget of its own so the filter sidebar slides over the
+        # list, not over the preview beside it)
+        fb_left_w = QWidget(); fb_left = QVBoxLayout(fb_left_w)
+        fb_left.setContentsMargins(0, 0, 0, 0); fb_left.setSpacing(4)
         fb_search = QLineEdit(); fb_search.setPlaceholderText("Search feats…")
         fb_search.setStyleSheet(
             f"QLineEdit{{background:{SURF2};border:1px solid {BORDER2};border-radius:5px;"
             f"color:{TEXT};padding:4px 8px;font-size:{FS_SMALL}px;}}"
             f"QLineEdit:focus{{border-color:{AMBER};}}")
-        fb_search_row.addWidget(fb_search, 2)
-        from dnd_app.data.phbCommon.dm_rewards import DM_REWARD_CATEGORIES
+        from dnd_app.data.dm_rewards import DM_REWARD_CATEGORIES
         fb_type_filter = QComboBox()
         fb_type_filter.addItems(DM_REWARD_CATEGORIES)
         fb_type_filter.setStyleSheet(
             f"QComboBox{{background:{SURF2};border:1px solid {BORDER2};border-radius:5px;"
             f"color:{TEXT};padding:4px 8px;font-size:{FS_SMALL}px;}}")
         fb_type_filter.setToolTip("Filter by feature type")
-        fb_search_row.addWidget(fb_type_filter, 1)
-        fb_left.addLayout(fb_search_row)
+        # search across the row; the type filter in the funnel's sidebar
+        fb_filters = FilterSidebar(fb_left_w)
+        fb_filters.add_combo("Feature type", fb_type_filter)
+        fb_left.addLayout(fb_filters.search_row(fb_search))
 
         fb_list = QListWidget()
         fb_list.setMaximumHeight(200)
@@ -570,7 +568,7 @@ class FeaturesMixin:
             f"QListWidget::item{{padding:3px 8px;}}"
             f"QListWidget::item:selected{{background:{qa(AMBER,0x88)};color:white;}}"
             f"QListWidget::item:hover:!selected{{background:{SURF3};}}")
-        from dnd_app.data.phbCommon.feature_tooltips import FEATURE_DESCS as _FEAT_DESCS
+        from dnd_app.data.feature_tooltips import FEATURE_DESCS as _FEAT_DESCS
         for ft in ALL_FEATS:
             already = ft["name"] in self.char.get("dm_feats", [])
             item = QListWidgetItem(("✓ " if already else "") + ft["name"])
@@ -595,7 +593,7 @@ class FeaturesMixin:
         # list, distinguished by a crystal-ball icon and the second data role, since
         # these are a genuinely different kind of content (mostly narrative
         # hooks with occasional mechanical traits) than standard feats.
-        from dnd_app.data.phbCommon.dm_rewards import ALL_DM_REWARDS
+        from dnd_app.data.dm_rewards import ALL_DM_REWARDS
         for rw in ALL_DM_REWARDS:
             already_rw = rw["name"] in self.char.get("dm_rewards", [])
             item = QListWidgetItem(("✓ " if already_rw else "") + rw["name"])
@@ -628,7 +626,7 @@ class FeaturesMixin:
         fb_search.textChanged.connect(_filter_feats)
         fb_type_filter.currentTextChanged.connect(_filter_feats)
         fb_left.addWidget(fb_list)
-        fb_body.addLayout(fb_left, 3)
+        fb_body.addWidget(fb_left_w, 3)
 
         # Right: info + add/remove buttons
         fb_right = QVBoxLayout(); fb_right.setSpacing(6)
@@ -655,7 +653,7 @@ class FeaturesMixin:
             fname = item.data(Qt.UserRole) or item.text().lstrip("✓ ")
             item_type = item.data(Qt.UserRole + 1) or "feat"
             if item_type == "dm_reward":
-                from dnd_app.data.phbCommon.dm_rewards import get_dm_reward as _gdr2
+                from dnd_app.data.dm_rewards import get_dm_reward as _gdr2
                 rw = _gdr2(fname)
                 if rw:
                     pre = rw.get("prereq","")
@@ -666,8 +664,8 @@ class FeaturesMixin:
                         + (f"<br><span style='color:{AMBER};'>Requires: {pre}</span>" if pre else "")
                         + f"<br><br>{self._format_multi_para(rw.get('desc',''))}")
                 return
-            from dnd_app.data.phbCommon.feats import get_feat as _gf2
-            from dnd_app.data.phbCommon.feature_tooltips import FEATURE_DESCS as _FEAT_DESCS2
+            from dnd_app.data.feats import get_feat as _gf2
+            from dnd_app.data.feature_tooltips import FEATURE_DESCS as _FEAT_DESCS2
             ft = _gf2(fname)
             if ft:
                 pre = ft.get("prereq",""); src_tag=ft.get("source","")
@@ -680,9 +678,10 @@ class FeaturesMixin:
 
         btn_add = _btn("＋  Grant Feat", AMBER, variant="danger", border_width=1,
                         font_size=FS_SMALL, padding="6px 12px")
-        btn_rem = _btn("✕  Remove", CRIMSON, variant="danger", border_width=1,
+        btn_rem = _btn("Remove", CRIMSON, variant="danger", border_width=1,
                         bg_alpha=0x22, border_alpha=0x55, text_color=CRIM2,
                         hover_text="white", font_size=FS_SMALL, padding="6px 12px")
+        _icons.set_button_icon(btn_rem, "trash", 15, color=CRIM2)
 
         def _grant_feat(lst=fb_list):
             item = lst.currentItem()
@@ -691,8 +690,14 @@ class FeaturesMixin:
             item_type = item.data(Qt.UserRole + 1) or "feat"
             field = "dm_rewards" if item_type == "dm_reward" else "dm_feats"
             granted_list = self.char.setdefault(field, [])
+            if item_type != "dm_reward" and fname in self.char.get("feats", []) and fname not in granted_list:
+                self._toast(f"{fname} is already one of your feats")
+                return
             if fname not in granted_list:
                 granted_list.append(fname)
+                # the feat's rules, spells and free casts (core/builder.py
+                # rebuild); what it asks waits on the Choices tab
+                self.ctrl.refresh()
                 self._rebuild_features()
                 self._mark_dirty()
 
@@ -704,7 +709,12 @@ class FeaturesMixin:
             field = "dm_rewards" if item_type == "dm_reward" else "dm_feats"
             granted_list = self.char.get(field, [])
             if fname in granted_list:
-                granted_list.remove(fname)
+                if item_type == "dm_reward":
+                    granted_list.remove(fname)
+                else:
+                    from dnd_app.core.builder import revoke_dm_feat
+                    revoke_dm_feat(self.char, fname)     # and everything it gave
+                self.ctrl.refresh()
                 self._rebuild_features()
                 self._mark_dirty()
 
@@ -810,9 +820,9 @@ class FeaturesMixin:
         return '<br><br>'.join(chunks)
 
     def _add_feature_section(self, title, color, items, badge_color=None):
-        from dnd_app.data.phbCommon.feature_ui_interactions import FEATURE_CONFIG
+        from dnd_app.data.feature_ui_interactions import FEATURE_CONFIG
         try:
-            from dnd_app.data.phbCommon.feature_tooltips import FEATURE_DESCS
+            from dnd_app.data.feature_tooltips import FEATURE_DESCS
         except ImportError:
             FEATURE_DESCS = {}
         # Resolve '+STAT' placeholders into real numbers for every item —
@@ -915,13 +925,25 @@ class FeaturesMixin:
             # _tip". Fall back to the item's own text so right-click always
             # has something to display, for every feature row without
             # exception, while leaving the hover-tooltip behavior alone.
-            def _show_detail_menu(ev, _item=item, _tip=(tip or item), _raw=raw_no_paren, _row=row):
+            # The details: the name, then what it does -- once. With nothing
+            # looked up, a "Name: what it does" row (a background's feature)
+            # splits at its colon; heading and text both being the whole row
+            # showed it twice.
+            if tip:
+                detail_name, detail_body = raw_no_paren, tip
+            elif before_colon and len(before_colon) <= 60:
+                detail_name, detail_body = before_colon, after_colon
+            elif len(raw_no_paren) <= 60:
+                detail_name, detail_body = raw_no_paren, ""
+            else:
+                detail_name, detail_body = "Details", raw
+            def _show_detail_menu(ev, _name=detail_name, _body=detail_body, _row=row):
                 from PySide6.QtWidgets import QMenu
                 menu = QMenu(_row)
-                act = menu.addAction(_icons.icon("features"), f"Show Details: {_raw[:40]}")
+                act = menu.addAction(_icons.icon("features"), f"Show Details: {_name[:40]}")
                 act.triggered.connect(lambda: QMessageBox.information(
-                    _row, _raw,
-                    f"<b>{_raw}</b><br><br>{_tip}",
+                    _row, _name,
+                    f"<b>{_name}</b>" + (f"<br><br>{_body}" if _body else ""),
                 ))
                 menu.exec(ev.globalPos())
             row.mousePressEvent = lambda ev, f=_show_detail_menu: (
@@ -932,7 +954,7 @@ class FeaturesMixin:
         self._feat_tab_lay.insertWidget(self._feat_tab_lay.count()-1, grp)
 
     def _add_wild_magic_section(self, barb: bool = False):
-        from dnd_app.data.phb2014.classes import WILD_MAGIC_SURGE_TABLE, WILD_MAGIC_BARBARIAN_TABLE
+        from dnd_app.data.classes import WILD_MAGIC_SURGE_TABLE, WILD_MAGIC_BARBARIAN_TABLE
         # Determine which table to use: Barbarian=d8, Sorcerer=d100
         is_barb_wm = barb
         if is_barb_wm:

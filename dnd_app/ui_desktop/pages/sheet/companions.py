@@ -35,22 +35,22 @@ from dnd_app.core.multiclass import (
 from dnd_app.core.builder import rebuild
 from dnd_app.core.controller import CharacterController
 from dnd_app.core.magic_items import concentration_save, start_concentration, drop_concentration
-from dnd_app.core.spell_components import spell_component_block_reason
+from dnd_app.core.spellcasting import spell_component_block_reason
 from dnd_app.core.save_load import (
     save_character, load_character, list_saved_characters, character_filename, validate_character,
 )
 from dnd_app.core.character import set_subclass, get_class_entry
-from dnd_app.data.phbCommon.magic_items import ALL_MAGIC_ITEMS, has_item_effect
+from dnd_app.data.magic_items import ALL_MAGIC_ITEMS, has_item_effect
 from dnd_app.ui_desktop.dialogs.levelup_panel import LevelUpPanel
-from dnd_app.data.phb2014.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
-from dnd_app.data.phb2014.races import get_race
-from dnd_app.data.phbCommon.backgrounds import get_background
-from dnd_app.data.phbCommon.feats import get_feat
-from dnd_app.data.phbCommon.spells import get_spell, spells_for_class, ALL_SPELLS
-from dnd_app.data.phbCommon.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
+from dnd_app.data.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
+from dnd_app.data.races import get_race
+from dnd_app.data.backgrounds import get_background
+from dnd_app.data.feats import get_feat
+from dnd_app.data.spells import get_spell, spells_for_class, ALL_SPELLS
+from dnd_app.data.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
     ADVENTURING_GEAR, GEAR_NAMES, MOUNTS, ALL_TOOLS, SIMPLE_MELEE, SIMPLE_RANGED,
     MARTIAL_MELEE, MARTIAL_RANGED, ARTISAN_TOOLS, SPECIAL_ARMOR)
-from dnd_app.data.phbCommon.conditions import CONDITIONS
+from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
@@ -78,8 +78,8 @@ class CompanionsMixin:
         """Mounts get a real stat block card here instead of being treated
         as generic carried equipment — a Warhorse has an AC, HP, and attacks
         that matter in play, not just a weight and a price."""
-        from dnd_app.data.phbCommon.items import MOUNTS
-        from dnd_app.data.phbCommon.statblocks import get_mount_statblock
+        from dnd_app.data.items import MOUNTS
+        from dnd_app.data.statblocks import get_mount_statblock
 
         mc = _card(GOLD+"55")
         mcl = QVBoxLayout(mc); mcl.setContentsMargins(14,12,14,12); mcl.setSpacing(6)
@@ -101,7 +101,7 @@ class CompanionsMixin:
         # since casting either spell is summoning a mount, just one that
         # happens to be a celestial/fey/fiend spirit rather than a mundane
         # animal.
-        from dnd_app.data.phbCommon.statblocks import FIND_GREATER_STEED_OPTIONS
+        from dnd_app.data.statblocks import FIND_GREATER_STEED_OPTIONS
         steed_row = QHBoxLayout(); steed_row.setSpacing(8)
         steed_row.addWidget(_lbl("Find Steed / Find Greater Steed:", TEAL2, FS_SMALL, bold=True, wrap=False))
         steed_combo = QComboBox()
@@ -148,9 +148,9 @@ class CompanionsMixin:
         Chariot, etc.) have no official 5e combat stats in any published
         source, so they get a simpler info row instead of a fabricated
         stat block."""
-        from dnd_app.data.phbCommon.items import (VEHICLES, VEHICLES_WATER, VEHICLES_AIR, VEHICLES_LAND,
+        from dnd_app.data.items import (VEHICLES, VEHICLES_WATER, VEHICLES_AIR, VEHICLES_LAND,
                                          VEHICLES_BGDIA, VEHICLES_MAGIC, ADVENTURING_GEAR)
-        from dnd_app.data.phbCommon.statblocks import get_vehicle_statblock
+        from dnd_app.data.statblocks import get_vehicle_statblock
 
         vc = _card(TEAL+"55")
         vcl = QVBoxLayout(vc); vcl.setContentsMargins(14,12,14,12); vcl.setSpacing(6)
@@ -264,7 +264,7 @@ class CompanionsMixin:
         block card appears, and resets its tracked HP to full —
         matching a fresh summon rather than picking up mid-fight with
         whatever HP was left from a previous card render."""
-        from dnd_app.data.phbCommon.statblocks import COMPANION_STATBLOCKS
+        from dnd_app.data.statblocks import COMPANION_STATBLOCKS
         tmpl = COMPANION_STATBLOCKS.get(key)
         if not tmpl:
             return
@@ -344,7 +344,7 @@ class CompanionsMixin:
         Each entry stores (spell, cast level, form) so the stat block
         can be recomputed correctly if you look at it again (e.g. after
         leveling up your spell save DC)."""
-        from dnd_app.data.phbCommon.statblocks import SCALING_SUMMONS, resolve_scaling_summon
+        from dnd_app.data.statblocks import SCALING_SUMMONS, resolve_scaling_summon
 
         sc = _card(TEAL+"55")
         scl = QVBoxLayout(sc); scl.setContentsMargins(14,12,14,12); scl.setSpacing(6)
@@ -452,10 +452,10 @@ class CompanionsMixin:
             self._wildshape_combo = QComboBox()
             self._wildshape_combo.setAccessibleName("Choose a beast to view its Wild Shape stat block")
             def _sort_key(n):
-                from dnd_app.data.phbCommon.statblocks import WILDSHAPE_BEASTS
+                from dnd_app.data.statblocks import WILDSHAPE_BEASTS
                 return WILDSHAPE_BEASTS[n]["cr"]
             for name in sorted(beast_names, key=_sort_key):
-                from dnd_app.data.phbCommon.statblocks import WILDSHAPE_BEASTS
+                from dnd_app.data.statblocks import WILDSHAPE_BEASTS
                 cr = WILDSHAPE_BEASTS[name]["cr_label"]
                 self._wildshape_combo.addItem(f"{name}  (CR {cr})", name)
             picker_row.addWidget(self._wildshape_combo, 1)
@@ -485,7 +485,7 @@ class CompanionsMixin:
         # summoned yet (currently just Drake Companion) — shown as a
         # prompt card instead of the full stat block, since there's
         # nothing to show HP/AC for until it's actually been summoned.
-        from dnd_app.data.phbCommon.statblocks import COMPANION_STATBLOCKS
+        from dnd_app.data.statblocks import COMPANION_STATBLOCKS
         from dnd_app.core.calculator import companion_max_simultaneous, count_active_companion_instances
         for key in summonable:
             tmpl = COMPANION_STATBLOCKS.get(key, {})
@@ -526,7 +526,7 @@ class CompanionsMixin:
             item = self._wildshape_card_host.takeAt(0)
             if item.widget(): item.widget().deleteLater()
 
-        from dnd_app.data.phbCommon.statblocks import WILDSHAPE_BEASTS
+        from dnd_app.data.statblocks import WILDSHAPE_BEASTS
         name = self._wildshape_combo.currentData()
         if not name or name not in WILDSHAPE_BEASTS:
             return
@@ -596,7 +596,7 @@ class CompanionsMixin:
             hp_spin_header = QSpinBox()
             hp_spin_header.setRange(0, max_hp)
             hp_spin_header.setValue(cur_hp)
-            hp_spin_header.setFixedWidth(56)
+            hp_spin_header.setFixedWidth(84)   # "-  n  +"
             hp_spin_header.setAccessibleName(f"{sb['display_name']} current HP")
             hp_spin_header.setToolTip("Current HP for this creature — edits are saved.")
             hp_row_hdr.addWidget(hp_spin_header)
@@ -627,7 +627,7 @@ class CompanionsMixin:
                 self._mark_dirty()
                 hp_lbl_detail.setText(f"HP {v}/{max_hp}" + (f"  ({sb['hit_dice']})" if sb.get("hit_dice") else ""))
                 if v <= 0 and companion_key:
-                    from dnd_app.data.phbCommon.statblocks import COMPANION_STATBLOCKS
+                    from dnd_app.data.statblocks import COMPANION_STATBLOCKS
                     # companion_key may be an instance-suffixed "key#N" id
                     # (Dancing Item + Creative Crescendo) — look the
                     # template up by its base key, same as

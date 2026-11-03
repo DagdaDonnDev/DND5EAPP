@@ -287,7 +287,7 @@ def ability_score(char: dict, ability: str, ignore_wildshape: bool = False) -> i
     # wild shaped, you use the beast's separate HP pool instead.
     active_beast = char.get("_wildshape_active")
     if active_beast and not ignore_wildshape and ability in ("STR", "DEX", "CON"):
-        from dnd_app.data.phbCommon.statblocks import WILDSHAPE_BEASTS
+        from dnd_app.data.statblocks import WILDSHAPE_BEASTS
         beast = WILDSHAPE_BEASTS.get(active_beast)
         if beast and ability in beast.get("abilities", {}):
             return beast["abilities"][ability]
@@ -319,7 +319,7 @@ def get_class_entry(char: dict, class_name: str) -> Optional[dict]:
 def _lookup_hit_die(class_name: str, fallback: int = 8) -> int:
     """Authoritative hit die from class data — callers can't get it wrong."""
     try:
-        from dnd_app.data.phb2014.classes import CLASS_DICT
+        from dnd_app.data.classes import CLASS_DICT
         return CLASS_DICT.get(class_name, {}).get("hit_die", fallback)
     except Exception:
         return fallback
@@ -357,10 +357,183 @@ def set_class_level(char: dict, class_name: str, level: int) -> None:
         add_class(char, class_name, level)
 
 
+def level_up_block_reason(char: dict, class_name: str = "") -> str:
+    """Why the character can't gain a level (in `class_name`, if given):
+    character level 20 is the most there is, across every class combined,
+    and no single class goes past 20 either; a new class needs the
+    multiclassing ability scores (core/multiclass.py). "" when a level is
+    fine."""
+    if total_level(char) >= 20:
+        return "you're at character level 20, the maximum"
+    entry = get_class_entry(char, class_name) if class_name else None
+    if entry and entry.get("level", 0) >= 20:
+        return f"{class_name} is already at level 20"
+    if class_name and not entry:
+        from dnd_app.core.multiclass import multiclass_block_reason
+        return multiclass_block_reason(char, class_name)
+    return ""
+
+
+def _subclass_levels(char: dict) -> dict:
+    """{class: the level its subclass comes at}, for the character's edition."""
+    from dnd_app.data.classes import CLASS_DICT as _D14
+    try:
+        from dnd_app.data.phb2024.classes_2024 import CLASS_DICT_2024 as _D24
+    except Exception:
+        _D24 = {}
+    table = _D24 if char.get("edition") == "2024" else _D14
+    return {name: data.get("subclass_level", 3) for name, data in table.items()}
+
+
+def drop_subclasses_below_level(char: dict) -> list:
+    """After a level down: a class that's now below the level it gets its
+    subclass at (Fighter 3, Wizard 2, ...) can't keep one -- a "Fighter 2,
+    Champion" contradicts itself. Sets those subclasses aside and returns
+    [(class, the subclass it had, the level it comes back at)], so the
+    caller can say so. The pick stays in _choices ("Fighter_subclass"),
+    so levelling back up brings the same subclass back
+    (restore_set_aside_subclasses, run by every rebuild)."""
+    levels = _subclass_levels(char)
+    dropped = []
+    for entry in char.get("classes", []):
+        sub = entry.get("subclass", "")
+        need = levels.get(entry.get("class", ""), 3)
+        if sub and entry.get("level", 1) < need:
+            dropped.append((entry["class"], sub, need))
+            char.setdefault("_choices", {})[f"{entry['class']}_subclass"] = [sub]
+            entry["subclass"] = ""
+    return dropped
+
+
+def restore_set_aside_subclasses(char: dict) -> list:
+    """A class back at its subclass level with no subclass, whose pick is
+    still in _choices (set aside by a level down): give it back. Returns
+    [(class, subclass)] restored."""
+    levels = _subclass_levels(char)
+    restored = []
+    for entry in char.get("classes", []):
+        cn = entry.get("class", "")
+        pick = (char.get("_choices", {}).get(f"{cn}_subclass") or [""])[0]
+        if pick and not entry.get("subclass") and entry.get("level", 1) >= levels.get(cn, 3):
+            entry["subclass"] = clean_subclass_name(pick)
+            restored.append((cn, entry["subclass"]))
+    return restored
+
+
+# Classes that prepare from their whole list (rebuild() adds the list to
+# spells_known by level) -- the rest pick their spells one by one.
+FULL_LIST_CLASSES = ("Cleric", "Druid", "Paladin", "Artificer")
+
+
+def _spell_lists_of(entry: dict) -> set:
+    """The class spell lists a class entry learns spells from: its own,
+    the Wizard's for an Eldritch Knight or Arcane Trickster, and the
+    Cleric's as well for a Divine Soul sorcerer."""
+    cn = entry.get("class", "")
+    sub = (entry.get("subclass") or "").lower()
+    if cn == "Fighter":
+        return {"Wizard"} if "eldritch knight" in sub else set()
+    if cn == "Rogue":
+        return {"Wizard"} if "arcane trickster" in sub else set()
+    if cn == "Sorcerer" and "divine soul" in sub:
+        return {"Sorcerer", "Cleric"}
+    return {cn}
+
+
+def picking_spell_lists(char: dict) -> set:
+    """Spell lists of the character's classes that pick spells one by one
+    (Wizard, Sorcerer, Bard, Warlock, Ranger, Eldritch Knight...)."""
+    out = set()
+    for entry in char.get("classes", []):
+        if entry.get("class") not in FULL_LIST_CLASSES:
+            out |= _spell_lists_of(entry)
+    return out
+
+
+def protected_spells(char: dict) -> set:
+    """Spells something other than a class's own list gives the character,
+    so taking a class away (or a level of one) never takes them:
+      * granted spells -- race, feat, subclass, fighting style, invocation
+        (char["bonus_spells"])
+      * anything a race or feat lets them cast for free (core/spellcasting.py)
+      * any spell picked through a race or feat choice"""
+    out = set(char.get("bonus_spells", []))
+    from .spellcasting import free_spells_of
+    for res in char.get("resources", []):
+        out |= set(free_spells_of(char, res))
+    for key, picked in char.get("_choices", {}).items():
+        if key.startswith(("feat_", "race_", "racial_", "astral_elf_")) and isinstance(picked, list):
+            out |= {p for p in picked if isinstance(p, str)}
+    return out
+
+
+def drop_spells_of_removed_class(char: dict, removed: dict) -> list:
+    """After a class is removed from char["classes"]: the known spells that
+    came with it and that nothing left could give -- a Fighter who drops
+    their Wizard levels doesn't keep Fireball. Takes them out of
+    spells_known and returns their names (the rebuild that follows trims
+    the prepared and quick lists to match). Call it before the removed
+    class's choices are pruned, so its Magical Secrets picks still show.
+      1. Lists the removed class learned from, and the lists still left.
+         A spell on a list that's left stays (shared lists, like Fireball
+         for a Sorcerer/Wizard).
+      2. Its any-list picks (Magical Secrets) went with a removed Bard.
+      3. A Bard who stays (Magical Secrets at 10, Lore at 6) could have
+         picked a spell from any list, so nothing is taken from them.
+      4. Spells from a race, feat or subclass are never touched."""
+    from dnd_app.data.spells import get_spell
+    gone = _spell_lists_of(removed)
+    left = set()
+    for entry in char.get("classes", []):
+        left |= _spell_lists_of(entry)
+    secrets = set()
+    if removed.get("class") == "Bard":
+        secrets |= set(char.get("magical_secrets_spells", []))
+        for key, picked in char.get("_choices", {}).items():
+            if key.startswith(("bard_magical_secrets", "bard_lore_secrets")):
+                secrets |= set(picked)
+        char.pop("magical_secrets_spells", None)
+    for entry in char.get("classes", []):
+        sub = (entry.get("subclass") or "").lower()
+        lvl = entry.get("level", 0)
+        if entry.get("class") == "Bard" and (lvl >= 10 or ("lore" in sub and lvl >= 6)):
+            return []
+    keep = protected_spells(char)
+    lost = []
+    for name in char.get("spells_known", []):
+        if name in keep:
+            continue
+        sp = get_spell(name)
+        lists = set(sp.get("classes", [])) if sp else set()
+        came_with_it = bool(lists & gone) or name in secrets
+        if came_with_it and not (lists & left):
+            lost.append(name)
+    if lost:
+        char["spells_known"] = [n for n in char.get("spells_known", []) if n not in lost]
+    return lost
+
+
+def name_list(names: list, limit: int = 3) -> str:
+    """"Fireball, Shield and Sleep" / "Fireball, Shield, Sleep and 2 more"."""
+    names = list(names)
+    if not names:
+        return ""
+    if len(names) <= limit + 1:
+        return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+    return ", ".join(names[:limit]) + f" and {len(names) - limit} more"
+
+
 def set_subclass(char: dict, class_name: str, subclass: str) -> None:
     entry = get_class_entry(char, class_name)
     if entry:
         entry["subclass"] = clean_subclass_name(subclass)
+        # the pick a level down sets aside and a level up brings back --
+        # cleared with the subclass, so a cleared one stays cleared
+        choices = char.setdefault("_choices", {})
+        if entry["subclass"]:
+            choices[f"{class_name}_subclass"] = [entry["subclass"]]
+        else:
+            choices.pop(f"{class_name}_subclass", None)
 
 
 def add_feat(char: dict, feat_name: str) -> None:
@@ -373,8 +546,13 @@ def remove_feat(char: dict, feat_name: str) -> None:
 
 
 def set_skill_prof(char: dict, skill: str, level: int) -> None:
-    """0=none, 1=half, 2=proficient, 3=expertise"""
-    char["skills"][skill] = max(0, min(3, level))
+    """0=none, 1=half, 2=proficient, 3=expertise -- the player's own
+    setting, kept as an override on top of what's granted (rebuild()
+    rebuilds the rest; core/builder.set_skill_level drops an override
+    that matches the granted level)."""
+    level = max(0, min(3, level))
+    char.setdefault("skill_overrides", {})[skill] = level
+    char["skills"][skill] = level
 
 
 def add_equipment(char: dict, name: str, qty: int = 1,
@@ -410,6 +588,17 @@ def restore_spell_slot(char: dict, level: int) -> bool:
     return False
 
 
+def long_rest_block_reason(char: dict) -> str:
+    """Why a long rest can't happen right now ("" if it can). A character
+    needs at least 1 hit point when the rest starts to gain its benefits
+    (PHB p.186) -- one at 0 HP is dying or stable, not resting."""
+    if char.get("is_dead"):
+        return "you're dead"
+    if char.get("current_hp", 0) <= 0 and not char.get("_wildshape_active"):
+        return "you need at least 1 HP to start one"
+    return ""
+
+
 def long_rest(char: dict) -> None:
     """Reset all LR resources."""
     char["current_hp"] = char["max_hp"]
@@ -435,6 +624,9 @@ def long_rest(char: dict) -> None:
     for res in char.get("resources", []):
         if res.get("reset") in ("LR", "SR/LR"):
             res["current"] = res.get("current_max") or res.get("max", 0)
+    # a Diviner's Portent: the unused rolls are lost and new ones rolled
+    from dnd_app.core.action_use import roll_portent
+    roll_portent(char)
     # Restore hit dice up to half total (rounded up, min 1) — PHB p.186
     # Restore is a shared POOL distributed across all die types
     total = total_level(char)
@@ -480,3 +672,159 @@ def short_rest(char: dict) -> None:
 
 def deep_copy(char: dict) -> dict:
     return copy.deepcopy(char)
+
+
+# ── Rest options and preview (both apps' rest dialogs) ──────────────────────
+
+def rest_options(char: dict, rest_type: str) -> list:
+    """What a rest lets the character re-pick, for both apps' rest dialogs:
+    re-preparing spells, an Armorer's armour model, Arcane Recovery, an
+    Eladrin's season, a pact boon's bonded item or book... (long or short
+    rest, as each allows). [{"kind", "label", "detail"}, ...]"""
+    opts = []
+    # Unprepare all spells — any prepared caster, long rest only (this
+    # is the normal way of re-choosing prepared spells: 1 minute per
+    # spell level during a long rest, PHB p.201-202).
+    if rest_type == "long":
+        from dnd_app.core.spellcasting import spell_progression_tables
+        _, _, _, prep_ab = spell_progression_tables()
+        if any(cn in prep_ab for cn in {c["class"] for c in char.get("classes", [])}):
+            if char.get("spells_prepared"):
+                opts.append({
+                    "kind": "unprepare_all",
+                    "label": "Unprepare all spells (choose new ones afterward)",
+                    "detail": "Clears every non-bonus prepared spell so you can pick a "
+                              "different set from the Spells tab.",
+                })
+    # Armorer's Arcane Armor model is changeable on either rest type with smith's tools in hand.
+    is_armorer = any(
+        c.get("class") == "Artificer" and "armorer" in c.get("subclass", "").lower()
+        for c in char.get("classes", [])
+    )
+    if is_armorer and char.get("_choices", {}).get("armorer_model_3"):
+        opts.append({
+            "kind": "armorer_model",
+            "label": "Change Arcane Armor model (Guardian / Infiltrator)",
+            "detail": "Requires smith's tools in hand.",
+        })
+    # Arcane Recovery (Wizard 1+): short rest only (the rule triggers
+    # "when you finish a short rest"), once per day (checked via the
+    # resource added in update_all), only if there's actually
+    # something expended to recover.
+    if rest_type == "short":
+        arcane_recovery_res = next(
+            (r for r in char.get("resources", []) if r.get("key") == "arcane_recovery"), None)
+        if arcane_recovery_res and arcane_recovery_res.get("current", 0) > 0:
+            if any(char.get("spell_slots_used", [])):
+                opts.append({
+                    "kind": "arcane_recovery",
+                    "label": "Arcane Recovery — recover expended spell slots",
+                    "detail": "Once per day: recover slots totaling \u2264 half your Wizard "
+                              "level (rounded up), max slot level 5.",
+                })
+    # Eladrin season changes only on a long rest ("you can change your chosen season after a long rest").
+    race = char.get("species") or char.get("race", "")
+    if rest_type == "long" and "eladrin" in race.lower() and char.get("_choices", {}).get("eladrin_season"):
+        opts.append({
+            "kind": "eladrin_season",
+            "label": "Change Eladrin season",
+            "detail": "Changes which additional effect your Fey Step bonus action has.",
+        })
+    # Githyanki (MPMM)'s Astral Knowledge / Astral Elf's Astral Trance:
+    # both grant "proficiency in one skill and with one weapon or tool
+    # of your choice ... until the end of your next long rest" —
+    # re-chosen every long rest, not a one-time pick.
+    if rest_type == "long" and race in ("Githyanki (MPMM)", "Astral Elf") and \
+            char.get("_choices", {}).get("astral_knowledge_skill"):
+        trait_name = "Astral Knowledge" if race == "Githyanki (MPMM)" else "Astral Trance"
+        opts.append({
+            "kind": "astral_knowledge_swap",
+            "label": f"Re-choose {trait_name}'s skill and weapon/tool proficiencies",
+            "detail": "Changes which skill and which weapon or tool proficiency you currently "
+                      "have from this trait.",
+        })
+    # Pact Boon 1-hour rituals are available on short rest (and long rest), since a short rest is defined as being at least an hour.
+    pact_choice = char.get("_choices", {}).get("warlock_pact_boon", [])
+    pact_name = pact_choice[0].lower() if pact_choice else ""
+    if "blade" in pact_name:
+        opts.append({
+            "kind": "pact_blade_bond",
+            "label": "Bond a magic weapon to become your pact weapon",
+            "detail": "1-hour ritual, performable during a short rest. The weapon becomes "
+                      "your pact weapon until you die, bond a different weapon, or break "
+                      "the bond (also a 1-hour ritual).",
+        })
+    if "tome" in pact_name:
+        opts.append({
+            "kind": "pact_tome_replace",
+            "label": "Replace a lost Book of Shadows",
+            "detail": "1-hour ceremony, performable during a short or long rest. Destroys "
+                      "the previous book.",
+        })
+    if "talisman" in pact_name:
+        opts.append({
+            "kind": "pact_talisman_replace",
+            "label": "Replace a lost Talisman",
+            "detail": "1-hour ceremony, performable during a short or long rest. Destroys "
+                      "the previous amulet.",
+        })
+    # Whispers of the Dead (Rogue, Phantom) resets on either rest type.
+    if char.get("_choices", {}).get("whispers_of_the_dead_prof"):
+        opts.append({
+            "kind": "whispers_dead_swap",
+            "label": "Channel a different Whispers of the Dead proficiency",
+            "detail": "Changes which skill or tool proficiency you currently have from this feature.",
+        })
+    if rest_type == "long" and char.get("_choices", {}).get("lunar_phase"):
+        opts.append({
+            "kind": "lunar_phase_swap",
+            "label": "Change your Lunar Embodiment phase",
+            "detail": "Choose Full Moon, New Moon, or Crescent Moon.",
+        })
+    return opts
+
+
+def rest_preview_lines(rest_type: str, preview: dict) -> list:
+    """The lines a rest preview shows (HP, hit dice, slots, resources, what
+    fades), for both apps' rest dialogs."""
+    lines = []
+    if rest_type == "short":
+        if preview["hp"] >= preview["max_hp"]:
+            lines.append(f"HP: already full ({preview['max_hp']})")
+        elif preview["hit_dice_available"] > 0:
+            lines.append(f"HP: {preview['hp']}/{preview['max_hp']}  —  "
+                          f"{preview['hit_dice_available']} hit dice available, "
+                          f"you'll choose how many to spend next")
+        else:
+            lines.append(f"HP: {preview['hp']}/{preview['max_hp']}  —  no hit dice remaining")
+    else:
+        heal = preview["max_hp"] - preview["hp"]
+        if heal > 0:
+            lines.append(f"HP: {preview['hp']} → {preview['max_hp']} (full heal, +{heal})")
+        else:
+            lines.append(f"HP: already full ({preview['max_hp']})")
+        if preview["temp_hp"] > 0:
+            lines.append(f"Temporary HP: {preview['temp_hp']} → 0 (lost)")
+        if preview["hit_dice_restored"] > 0:
+            lines.append(f"Hit Dice: +{preview['hit_dice_restored']} restored")
+        if preview["exhaustion"] > 0:
+            lines.append(f"Exhaustion: level {preview['exhaustion']} → {preview['exhaustion_after']}")
+        if preview["death_reset"]:
+            lines.append("Death saves: cleared")
+        if preview["was_concentrating"]:
+            lines.append(f"Concentration on {preview['was_concentrating']}: will end")
+
+    if preview.get("slot_levels_reset"):
+        levels = ", ".join(f"Lv{lvl}" for lvl in preview["slot_levels_reset"])
+        lines.append(f"Spell slots restored: {levels}")
+    if preview.get("pact_restore"):
+        lines.append("Pact Magic slots: restored")
+    if preview.get("resets"):
+        lines.append("")
+        lines.append("Resources restored:")
+        lines.extend(f"  • {name}: {cur} → {tgt}" for name, cur, tgt in preview["resets"])
+    if preview.get("fading"):
+        lines.append("")
+        lines.append("Will fade/end:")
+        lines.extend(f"  • {n}" for n in preview["fading"])
+    return lines

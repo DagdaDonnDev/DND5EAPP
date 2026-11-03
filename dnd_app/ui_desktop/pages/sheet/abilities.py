@@ -18,7 +18,7 @@ from dnd_app.core.character import (
     long_rest, short_rest, add_class
 )
 from dnd_app.core.calculator import (
-    update_all, get_ac, get_prof_bonus, get_initiative,
+    update_all, get_ac, get_prof_bonus, get_initiative, ability_check_bonus,
     all_skill_bonuses, all_saving_throw_bonuses, get_save_advantage_status,
     get_initiative_advantage_status, get_carry_capacity,
     get_spell_save_dc, get_spell_attack_bonus,
@@ -35,22 +35,22 @@ from dnd_app.core.multiclass import (
 from dnd_app.core.builder import rebuild
 from dnd_app.core.controller import CharacterController
 from dnd_app.core.magic_items import concentration_save, start_concentration, drop_concentration
-from dnd_app.core.spell_components import spell_component_block_reason
+from dnd_app.core.spellcasting import spell_component_block_reason
 from dnd_app.core.save_load import (
     save_character, load_character, list_saved_characters, character_filename, validate_character,
 )
 from dnd_app.core.character import set_subclass, get_class_entry
-from dnd_app.data.phbCommon.magic_items import ALL_MAGIC_ITEMS, has_item_effect
+from dnd_app.data.magic_items import ALL_MAGIC_ITEMS, has_item_effect
 from dnd_app.ui_desktop.dialogs.levelup_panel import LevelUpPanel
-from dnd_app.data.phb2014.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
-from dnd_app.data.phb2014.races import get_race
-from dnd_app.data.phbCommon.backgrounds import get_background
-from dnd_app.data.phbCommon.feats import get_feat
-from dnd_app.data.phbCommon.spells import get_spell, spells_for_class, ALL_SPELLS
-from dnd_app.data.phbCommon.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
+from dnd_app.data.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
+from dnd_app.data.races import get_race
+from dnd_app.data.backgrounds import get_background
+from dnd_app.data.feats import get_feat
+from dnd_app.data.spells import get_spell, spells_for_class, ALL_SPELLS
+from dnd_app.data.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
     ADVENTURING_GEAR, GEAR_NAMES, MOUNTS, ALL_TOOLS, SIMPLE_MELEE, SIMPLE_RANGED,
     MARTIAL_MELEE, MARTIAL_RANGED, ARTISAN_TOOLS, SPECIAL_ARMOR)
-from dnd_app.data.phbCommon.conditions import CONDITIONS
+from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
@@ -69,7 +69,7 @@ class AbilitiesMixin:
         for ab in ABILITIES:
             blk = AbilityBlock(ab, ability_score(self.char, ab), editable=False)
             blk.roll_requested.connect(
-                lambda a: self._quick_roll_toast(f"{AB_FULL[a]} check", ability_mod(self.char, a)))
+                lambda a: self._quick_roll_toast(f"{AB_FULL[a]} check", ability_check_bonus(self.char, a), "check", a))
             ab_row.addWidget(blk); self._ab_blocks[ab] = blk
         ab_row.addStretch()
         abcl.addLayout(ab_row)
@@ -119,7 +119,7 @@ class AbilitiesMixin:
             _icons.set_button_icon(roll_btn, "dice", 14)
             roll_btn.clicked.connect(
                 lambda checked=False, a=ab, v=val:
-                    self._quick_roll_toast(f"{AB_FULL[a]} save", v))
+                    self._quick_roll_toast(f"{AB_FULL[a]} save", v, "save", a))
 
             rl.addWidget(dot); rl.addWidget(val_lbl); rl.addWidget(ab_lbl)
 
@@ -219,7 +219,7 @@ class AbilitiesMixin:
 
         for i, (label, val, color) in enumerate(stats):
             box = BigStatBox(label, val, color)
-            box.setFixedWidth(140)
+            box.setFixedWidth(164)   # wide enough for "Carry Capacity"
             d_grid.addWidget(box, i//4, i%4)
             self._stat_boxes[label] = box
         dcl.addLayout(d_grid); lay.addWidget(der_card)
@@ -246,14 +246,76 @@ class AbilitiesMixin:
             current.remove(ability)
         self.ctrl.update("_choices.extra_save_profs", current)
 
-    def _quick_roll_toast(self, label: str, bonus: int):
-        import random
-        d = random.randint(1, 20)
-        total = d + bonus
-        flair = ""
-        if d == 20: flair = "  NAT 20!"
-        elif d == 1: flair = "  Nat 1…"
-        self._toast(f"{label}: [{d}] {bonus:+d} = {total}{flair}", 4200)
+    def _quick_roll_toast(self, label: str, bonus: int, kind: str = "check", ability: str = ""):
+        """Roll a check, a save or initiative (core/checks.py, the same on
+        Android): one d20 with what always applies on it (Reliable
+        Talent, Bless...), what you'd decide first asked first (cast
+        Guidance, take advantage you have), and what you can add after it
+        (a superiority die, Lucky...) in the roll dialog, with its cost.
+        Advantage and disadvantage the sheet knows of are a reminder: the
+        table decides."""
+        from dnd_app.core.calculator import SKILL_ABILITY
+        skill = label[:-len(" check")] if label.endswith(" check") and label[:-len(" check")] in SKILL_ABILITY else ""
+        if label == "Initiative":
+            kind, ability = "initiative", "DEX"
+        self._roll_check({"kind": kind, "ability": ability or SKILL_ABILITY.get(skill, ""), "skill": skill,
+                          "label": label, "bonus": bonus})
+
+    def _roll_check(self, what):
+        """The roll, asking first if there's something to decide; then the
+        roll dialog when there's something to add -- each Add pays for it
+        and rolls it now, and the dialog shows the new total -- and Done.
+        Returns the last result (None if the question before the roll was
+        cancelled)."""
+        from dnd_app.core.checks import roll_check, add_to_check, finish_check
+        from dnd_app.ui_desktop.dialogs.attack import AttackDialog
+
+        def free():
+            return [b for b in ("Action", "Bonus Action", "Reaction")
+                    if self._turn_counts.get(b, 0) < self._turn_limit(b)]
+        res = self._ask_through(what["label"], lambda a: roll_check(self.char, what, a, free()))
+        if res is None:
+            return None
+        self._after_check(res)
+        if not res.get("report"):
+            return res
+        now = {"report": res["report"]}
+
+        def add(key):
+            got = self._ask_through(what["label"], lambda a: add_to_check(self.char, now["report"], key, a, free()))
+            if not got:
+                return None
+            if not got.get("ok"):
+                if got.get("toast"):
+                    self._toast(got["toast"])
+                return None
+            now["report"] = got["report"]
+            for slot in got.get("slots", []):
+                self._mark_turn_used(slot)
+            self._mark_dirty()
+            return got["report"]
+        AttackDialog(now["report"], self, on_add=add).exec()
+        # Done (or closed): a die that's spent only on a success asks
+        res = (self._ask_through(what["label"], lambda a: finish_check(self.char, now["report"], a))
+               or finish_check(self.char, now["report"], {"succeeded": "It still failed"}))
+        self._after_check(res)
+        return res
+
+    def _after_check(self, res):
+        """What the roll used: parts of the turn, a spell cast first, the
+        toast, and the sheet when something was spent."""
+        for slot in res.get("slots", []):
+            self._mark_turn_used(slot)
+        if res.get("cast"):
+            from dnd_app.data.spells import get_spell
+            spell = get_spell(res["cast"])
+            if spell:
+                self._mark_spell_cast_time(spell)
+        if res.get("toast"):
+            self._toast(res["toast"].replace(" -- ", " — "), 6000)
+        if res.get("refresh"):
+            self._mark_dirty()
+            QTimer.singleShot(0, self.ctrl.refresh)
 
     def _update_save_advantage_badge(self, ab: str):
         """Sync one saving throw's advantage indicator badge to current
@@ -308,7 +370,7 @@ class AbilitiesMixin:
             val_lbl.setText(sign(val))
             self._update_save_advantage_badge(ab)
             self._update_save_condition_badge(ab)
-            val_lbl.setStyleSheet(f"color:{color};font-size:{FS_TITLE}px;font-weight:700;background:transparent;")
+            val_lbl.setStyleSheet(f"color:{color};font-size:{FS_TITLE}px;font-weight:700;background:transparent;border:none;")
             is_p = ab in profs or self.char.get("saving_throws",{}).get(ab,False)
             dot.setChecked(is_p)
 

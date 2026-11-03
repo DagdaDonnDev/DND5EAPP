@@ -10,17 +10,130 @@ import os
 from datetime import datetime
 from .character import new_character
 
+# The app's own config folder (app_settings.json lives here). Characters
+# used to be saved here too; they now default to Documents/MIMIC
+# Characters -- see get_save_dir() -- and older saves are copied across
+# once by migrate_saves_once().
 SAVE_DIR = os.path.join(os.path.expanduser("~"), ".dnd_characters")
+LEGACY_SAVE_DIR = SAVE_DIR
+SAVES_SUBDIR = "MIMIC Characters"
 CURRENT_VERSION = "1.1"
+
+# A platform can supply its own default (the Android app picks shared
+# storage, falling back to its private folder) via set_default_save_dir().
+_default_save_dir_override = None
+
+
+def documents_dir() -> str:
+    """The user's Documents folder -- on Windows the real one (which may
+    be redirected, e.g. into OneDrive), elsewhere ~/Documents."""
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            buf = ctypes.create_unicode_buffer(wintypes.MAX_PATH)
+            # CSIDL_PERSONAL (5) = Documents, SHGFP_TYPE_CURRENT (0)
+            if ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, buf) == 0 and buf.value:
+                return buf.value
+        except Exception:
+            pass
+    return os.path.join(os.path.expanduser("~"), "Documents")
+
+
+def default_save_dir() -> str:
+    return _default_save_dir_override or os.path.join(documents_dir(), SAVES_SUBDIR)
+
+
+def set_default_save_dir(path: str) -> None:
+    global _default_save_dir_override
+    _default_save_dir_override = path or None
+
+
+def is_writable_dir(path: str) -> bool:
+    """Creates the folder if needed and checks a file can be written in it."""
+    try:
+        os.makedirs(path, exist_ok=True)
+        probe = os.path.join(path, ".mimic_write_test")
+        with open(probe, "w") as f:
+            f.write("")
+        os.remove(probe)
+        return True
+    except OSError:
+        return False
+
+
+def get_save_dir() -> str:
+    """Where characters are saved: the folder chosen in Settings, else the
+    default (Documents/MIMIC Characters); the old config folder only as
+    a last resort if neither can be written."""
+    from .app_settings import get_custom_save_dir
+    for candidate in (get_custom_save_dir(), default_save_dir()):
+        if candidate and is_writable_dir(candidate):
+            return candidate
+    os.makedirs(LEGACY_SAVE_DIR, exist_ok=True)
+    return LEGACY_SAVE_DIR
+
+
+def copy_saved_characters(src_dir: str, dst_dir: str, move: bool = False) -> int:
+    """Copy (or move) every saved character file from one folder to another,
+    leaving any that already exist at the destination alone. Returns how
+    many were copied. app_settings.json is never a character."""
+    import shutil
+    if not src_dir or not os.path.isdir(src_dir) or os.path.abspath(src_dir) == os.path.abspath(dst_dir):
+        return 0
+    os.makedirs(dst_dir, exist_ok=True)
+    n = 0
+    for fname in os.listdir(src_dir):
+        if not fname.endswith(".json") or fname == "app_settings.json":
+            continue
+        src, dst = os.path.join(src_dir, fname), os.path.join(dst_dir, fname)
+        if os.path.exists(dst):
+            continue
+        try:
+            (shutil.move if move else shutil.copy2)(src, dst)
+            n += 1
+        except OSError:
+            continue
+    return n
+
+
+def migrate_saves_once(old_dir: str, key: str) -> int:
+    """One-time copy of characters saved in an old location into the
+    current save folder (originals are left where they were). `key`
+    records in app settings that it's been done."""
+    from .app_settings import get_flag, set_flag
+    if get_flag(key):
+        return 0
+    n = copy_saved_characters(old_dir, get_save_dir())
+    set_flag(key, True)
+    return n
+
+
+def character_folder_name(char: dict) -> str:
+    """A character's own export folder name: their name, minus anything a
+    file system (Windows, Android storage) won't take."""
+    name = (char.get("name") or "").strip()
+    name = "".join(c for c in name if c not in '<>:"/\\|?*' and ord(c) >= 32).strip(" .")
+    return name or "Unnamed"
+
+
+def character_export_dir(char: dict, base: str = None) -> str:
+    """<save folder>/<name> -- one folder per character, so its PDF sheet,
+    text summary and a copy of its character file sit together. Saves
+    themselves stay at the top of the save folder (the character list
+    only reads files there), so these never show up as characters."""
+    path = os.path.join(base or get_save_dir(), character_folder_name(char))
+    os.makedirs(path, exist_ok=True)
+    return path
 
 
 def ensure_save_dir():
-    os.makedirs(SAVE_DIR, exist_ok=True)
+    os.makedirs(get_save_dir(), exist_ok=True)
 
 
 def character_filename(char: dict) -> str:
     name = char.get("name", "Unnamed").replace(" ", "_").replace("/", "-")
-    return os.path.join(SAVE_DIR, f"{name}.json")
+    return os.path.join(get_save_dir(), f"{name}.json")
 
 
 def validate_character(char: dict, *, strict: bool = True) -> tuple[bool, list[str]]:
@@ -53,8 +166,14 @@ def validate_character(char: dict, *, strict: bool = True) -> tuple[bool, list[s
 
 
 def migrate_character(data: dict) -> dict:
-    """Upgrade older character saves to current schema."""
-    return _migrate(data)
+    """Upgrade older character saves to current schema. Every save read
+    from disk comes through here, so it's also marked as just reopened:
+    the sheet then asks about effects left on (core/action_use.py
+    leftover_effects). An underscore key, so it's never saved."""
+    data = _migrate(data)
+    if isinstance(data, dict):
+        data["_reopened"] = True
+    return data
 
 
 def _make_serialisable(obj, _strip_private=True):
@@ -111,16 +230,15 @@ def load_character(filepath: str) -> dict:
 
 
 def list_saved_characters(directory: str = None) -> list[dict]:
-    """List saved characters in `directory` (default: the desktop app's
-    SAVE_DIR). ui_android passes its own platform Documents-equivalent
-    directory here instead, so both UIs share this one implementation
-    without desktop's fixed SAVE_DIR leaking into Android's file layout."""
+    """List saved characters in `directory` (default: get_save_dir())."""
     if directory is None:
-        directory = SAVE_DIR
+        directory = get_save_dir()
     os.makedirs(directory, exist_ok=True)
     results = []
     for fname in os.listdir(directory):
-        if fname.endswith(".json"):
+        # .autosave.json files are the desktop's crash backups of a
+        # character, not separate characters
+        if fname.endswith(".json") and fname != "app_settings.json" and not fname.endswith(".autosave.json"):
             fpath = os.path.join(directory, fname)
             try:
                 with open(fpath, "r", encoding="utf-8") as f:
@@ -137,6 +255,42 @@ def list_saved_characters(directory: str = None) -> list[dict]:
                 logging.getLogger("dnd_app.save_load").exception(
                     "Failed to read saved character %s", fpath)
     return sorted(results, key=lambda x: x.get("modified", ""), reverse=True)
+
+
+def _norm_name(name: str) -> str:
+    return " ".join((name or "").split()).casefold()
+
+
+def name_in_use(name: str, exclude_path: str = None, directory: str = None) -> bool:
+    """Whether another saved character already uses this name (ignoring
+    case and extra spaces) -- or would land on the same file. The
+    character's own file (exclude_path) doesn't count."""
+    directory = directory or get_save_dir()
+    target = _norm_name(name)
+    if not target:
+        return False
+    ex = os.path.abspath(exclude_path) if exclude_path else None
+    for entry in list_saved_characters(directory):
+        if ex and os.path.abspath(entry["filepath"]) == ex:
+            continue
+        if _norm_name(entry.get("name", "")) == target:
+            return True
+    path = os.path.join(directory, os.path.basename(character_filename({"name": name.strip()})))
+    return os.path.exists(path) and (not ex or os.path.abspath(path) != ex)
+
+
+def unique_character_name(name: str, directory: str = None) -> str:
+    """name, or "name 2", "name 3"... -- the first one no saved character uses."""
+    if not name_in_use(name, directory=directory):
+        return name
+    n = 2
+    while name_in_use(f"{name} {n}", directory=directory):
+        n += 1
+    return f"{name} {n}"
+
+
+NAME_IN_USE_MESSAGE = ("That name is already being used by another saved character -- "
+                       "please choose a different one.")
 
 
 def list_character_folders(directory: str = None) -> list[str]:
@@ -318,7 +472,7 @@ def export_character_text(char: dict) -> str:
     # ── Weapons ───────────────────────────────────────────────────────────────
     equipped = char.get("equipped_weapons", [])
     if equipped:
-        from dnd_app.data.phbCommon.items import WEAPON_DICT
+        from dnd_app.data.items import WEAPON_DICT
         from .magic_items import parse_magic_suffix
         add("── WEAPONS ──")
         for wname in equipped:
@@ -380,7 +534,7 @@ def export_character_text(char: dict) -> str:
     # ── Spells known / prepared ───────────────────────────────────────────────
     known = char.get("spells_known", []) + char.get("cantrips", [])
     if known:
-        from dnd_app.data.phbCommon.spells import get_spell
+        from dnd_app.data.spells import get_spell
         prepared = set(char.get("spells_prepared", []))
         by_level = {}
         for sp in known:
@@ -410,7 +564,7 @@ def export_character_text(char: dict) -> str:
 
     # ── Actions / Bonus Actions / Reactions / Passives ───────────────────────
     try:
-        from dnd_app.ui_desktop.action_abilities import build_action_abilities
+        from dnd_app.core.actions import build_action_abilities
         buckets = build_action_abilities(char)
         for bucket in ("Action", "Bonus Action", "Reaction", "Passive"):
             entries = buckets.get(bucket, [])
@@ -449,6 +603,31 @@ def export_character_text(char: dict) -> str:
         add(char["notes"])
 
     return "\n".join(lines)
+
+
+def _merge_coin_spellings(data: dict) -> None:
+    """Coins are "GP", "SP"... everywhere. Older desktop saves also kept
+    lowercase ones ("gp"): the Gear tab's edits, and the background's gold,
+    which rebuild() used to add a second time (the creation wizards already
+    add it, as "GP"). For each coin:
+      * a lowercase amount set on the Gear tab wins
+      * a lowercase "gp" equal to the background's gold is that duplicate --
+        dropped, unless it's the only gold there is"""
+    cur = data.get("currency")
+    if not isinstance(cur, dict):
+        return
+    from dnd_app.data.backgrounds import get_background
+    import re
+    bg_text = (get_background(data.get("background", "")) or {}).get("equipment", "")
+    m = re.search(r"(\d+)\s*gp", bg_text or "", re.IGNORECASE)
+    bg_gold = int(m.group(1)) if m else None
+    for coin in ("CP", "SP", "EP", "GP", "PP"):
+        low = cur.pop(coin.lower(), None)
+        if not isinstance(low, (int, float)):
+            continue
+        if coin == "GP" and low == bg_gold and cur.get("GP"):
+            continue
+        cur[coin] = int(low)
 
 
 def _migrate(data: dict) -> dict:
@@ -491,11 +670,32 @@ def _migrate(data: dict) -> dict:
     if not isinstance(data.get("equipped_weapons"), list):
         data["equipped_weapons"] = []
 
+    # A spell the catalog no longer lists twice ("Tiny Hut" beside
+    # "Leomund's Tiny Hut"): a save that stored the other name gets the one
+    # the catalog keeps, everywhere a spell name is kept. And the Unearthed
+    # Arcana spells it no longer has at all go, rather than sit unseen in a
+    # spell list taking up a slot.
+    from dnd_app.data.spells import SPELL_ALIASES, SPELL_DICT, REMOVED_SPELLS
+    renames = {old: new for old, new in SPELL_ALIASES.items() if old not in SPELL_DICT}
+
+    def _renamed(names):
+        return [renames.get(n, n) if isinstance(n, str) else n
+                for n in names if not (isinstance(n, str) and n in REMOVED_SPELLS)]
+    for key in ("spells_known", "spells_prepared", "quick_spells", "magical_secrets_spells", "bonus_spells",
+                "spells_from_full_list", "cantrips"):
+        if isinstance(data.get(key), list):
+            data[key] = _renamed(data[key])
+    for key, picks in list(data["_choices"].items()):
+        if isinstance(picks, list):
+            data["_choices"][key] = _renamed(picks)
+
     # 2024 edition is not shipped yet — coerce any saved 2024 chars to 2014
     # so incomplete data paths are never exercised at runtime.
     if data.get("edition") == "2024":
         data["edition"] = "2014"
         data["_edition_coerced_from_2024"] = True
+
+    _merge_coin_spellings(data)
 
     # Normalize magic_items entries
     normalized = []
@@ -503,12 +703,17 @@ def _migrate(data: dict) -> dict:
         if isinstance(item, str):
             normalized.append({"name": item, "attunement": False, "equipped": False, "notes": ""})
         elif isinstance(item, dict):
-            normalized.append({
+            entry = {
                 "name": item.get("name", "Unknown"),
                 "attunement": bool(item.get("attunement", False)),
                 "equipped": bool(item.get("equipped", False)),
                 "notes": item.get("notes", ""),
-            })
+            }
+            # per-copy state (see core/magic_items.owned_magic_items)
+            for key in ("uid", "attuned", "studied", "qty"):
+                if key in item:
+                    entry[key] = item[key]
+            normalized.append(entry)
     data["magic_items"] = normalized
 
     data["version"] = CURRENT_VERSION

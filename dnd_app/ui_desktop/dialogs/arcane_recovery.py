@@ -39,22 +39,22 @@ from dnd_app.core.multiclass import (
 from dnd_app.core.builder import rebuild
 from dnd_app.core.controller import CharacterController
 from dnd_app.core.magic_items import concentration_save, start_concentration, drop_concentration
-from dnd_app.core.spell_components import spell_component_block_reason
+from dnd_app.core.spellcasting import spell_component_block_reason
 from dnd_app.core.save_load import (
     save_character, load_character, list_saved_characters, character_filename, validate_character,
 )
 from dnd_app.core.character import set_subclass, get_class_entry
-from dnd_app.data.phbCommon.magic_items import ALL_MAGIC_ITEMS, has_item_effect
+from dnd_app.data.magic_items import ALL_MAGIC_ITEMS, has_item_effect
 from dnd_app.ui_desktop.dialogs.levelup_panel import LevelUpPanel
-from dnd_app.data.phb2014.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
-from dnd_app.data.phb2014.races import get_race
-from dnd_app.data.phbCommon.backgrounds import get_background
-from dnd_app.data.phbCommon.feats import get_feat
-from dnd_app.data.phbCommon.spells import get_spell, spells_for_class, ALL_SPELLS
-from dnd_app.data.phbCommon.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
+from dnd_app.data.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
+from dnd_app.data.races import get_race
+from dnd_app.data.backgrounds import get_background
+from dnd_app.data.feats import get_feat
+from dnd_app.data.spells import get_spell, spells_for_class, ALL_SPELLS
+from dnd_app.data.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
     ADVENTURING_GEAR, GEAR_NAMES, MOUNTS, ALL_TOOLS, SIMPLE_MELEE, SIMPLE_RANGED,
     MARTIAL_MELEE, MARTIAL_RANGED, ARTISAN_TOOLS, SPECIAL_ARMOR)
-from dnd_app.data.phbCommon.conditions import CONDITIONS
+from dnd_app.data.conditions import CONDITIONS
 
 
 class ArcaneRecoveryDialog(QDialog):

@@ -44,7 +44,7 @@ Page {
                     delegate: Rectangle {
                         id: abCard
                         readonly property string abName: modelData.ability
-                        readonly property int abMod: modelData.mod
+                        readonly property int abCheck: modelData.check
                         readonly property int abSave: modelData.save
                         Layout.fillWidth: true
                         Layout.preferredHeight: 96
@@ -90,7 +90,7 @@ Page {
                             anchors.left: parent.left
                             anchors.right: parent.right
                             height: parent.height - 22
-                            onClicked: sheetBridge.rollQuickCheck(abCard.abName + " Check", abCard.abMod)
+                            onClicked: sheetBridge.rollQuickCheck(abCard.abName + " Check", abCard.abCheck)
                         }
                         Rectangle {
                             anchors.bottom: parent.bottom

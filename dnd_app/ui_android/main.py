@@ -1,10 +1,7 @@
-import os as _os
-_os.environ["QML_DISABLE_DISK_CACHE"] = "1"
-
 #!/usr/bin/env python3
-"""Entry point for MIMIC's touch-first (Qt Quick/QML) UI. Scaffold --
-currently launches straight into the Race step of the creation wizard;
-see dnd_app/ui_android/README.md for the overall plan.
+"""Entry point for MIMIC's touch-first (Qt Quick/QML) UI: sets up the
+bridges over core/, then loads qml/App.qml, which opens on the Start
+Menu. See dnd_app/ui_android/README.md for how the app is put together.
 """
 import os
 import sys
@@ -39,11 +36,10 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtCore import QUrl, QMetaObject, qInstallMessageHandler, QtMsgType
 
 from dnd_app.core.character import new_character
-from dnd_app.ui_android.bridge.race_wizard import RaceWizardBridge
-from dnd_app.ui_android.bridge.ability_wizard import AbilityWizardBridge
-from dnd_app.ui_android.bridge.class_wizard import ClassWizardBridge
-from dnd_app.ui_android.bridge.equipment_wizard import EquipmentWizardBridge
-from dnd_app.ui_android.bridge.save_load_wizard import SaveLoadBridge
+from dnd_app.ui_android.bridge.wizard import (
+    RaceWizardBridge, AbilityWizardBridge, ClassWizardBridge, EquipmentWizardBridge,
+)
+from dnd_app.ui_android.bridge.save_load import SaveLoadBridge
 from dnd_app.ui_android.bridge.character_sheet import CharacterSheetBridge
 from dnd_app.ui_android.bridge.dice_roller import DiceRollerBridge
 from dnd_app.ui_android.bridge.credits import CreditsBridge
@@ -79,9 +75,55 @@ def _qt_message_handler(msg_type, context, message):
 qInstallMessageHandler(_qt_message_handler)
 
 
+def _setup_qml_disk_cache():
+    """Keep Qt's compiled-QML cache between launches, so only the first
+    launch after an install or update compiles the QML -- every later
+    one loads it precompiled, which is most of the UI's startup time.
+
+    The cache lives in a folder named after a hash of the QML files
+    themselves, so an update can never pick up stale compiled screens
+    (the reason the cache used to be switched off entirely); folders
+    left by older versions are removed."""
+    import hashlib
+    import shutil
+    from PySide6.QtCore import QStandardPaths
+    digest = hashlib.sha1()
+    for dirpath, dirnames, filenames in os.walk(_QML_DIR):
+        dirnames.sort()
+        for name in sorted(filenames):
+            if name.endswith((".qml", ".js")) or name == "qmldir":
+                path = os.path.join(dirpath, name)
+                digest.update(os.path.relpath(path, _QML_DIR).encode())
+                with open(path, "rb") as f:
+                    digest.update(f.read())
+    base = QStandardPaths.writableLocation(QStandardPaths.CacheLocation)
+    if not base:
+        os.environ["QML_DISABLE_DISK_CACHE"] = "1"
+        return
+    root = os.path.join(base, "qmlcache_mimic")
+    key = digest.hexdigest()[:16]
+    try:
+        os.makedirs(os.path.join(root, key), exist_ok=True)
+        for old in os.listdir(root):
+            if old != key:
+                shutil.rmtree(os.path.join(root, old), ignore_errors=True)
+    except OSError:
+        os.environ["QML_DISABLE_DISK_CACHE"] = "1"
+        return
+    os.environ.pop("QML_DISABLE_DISK_CACHE", None)
+    os.environ["QML_DISK_CACHE_PATH"] = os.path.join(root, key)
+
+
 def main():
     app = QGuiApplication(sys.argv)
     app.setApplicationName("MIMIC")
+    # what goes wrong is noted in mimic_error_log.txt in the save folder
+    # (core/error_log.py; the same as desktop's, next to MIMIC.exe)
+    from dnd_app.core.error_log import install as _log_errors
+    from dnd_app.core.save_load import get_save_dir
+    print(f"[MIMIC] error log: {_log_errors(get_save_dir()) or 'none'}", file=sys.stderr)
+    # before the engine exists -- Qt reads these when it's created
+    _setup_qml_disk_cache()
 
     # Diagnostics for the "QML fails to load, app silently exits"
     # failure mode -- confirms path resolution (__file__ can behave
@@ -95,6 +137,9 @@ def main():
 
     engine = QQmlApplicationEngine()
     engine.addImportPath(_IMPORT_DIR)
+    # the Immersive Exhaustion frame (bridge/immersive.py)
+    from dnd_app.ui_android.bridge.immersive import ImmersiveFrameProvider
+    engine.addImageProvider("immersive", ImmersiveFrameProvider())
 
     char = new_character()
     race_bridge = RaceWizardBridge(char)

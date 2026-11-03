@@ -35,22 +35,22 @@ from dnd_app.core.multiclass import (
 from dnd_app.core.builder import rebuild
 from dnd_app.core.controller import CharacterController
 from dnd_app.core.magic_items import concentration_save, start_concentration, drop_concentration
-from dnd_app.core.spell_components import spell_component_block_reason
+from dnd_app.core.spellcasting import spell_component_block_reason
 from dnd_app.core.save_load import (
     save_character, load_character, list_saved_characters, character_filename, validate_character,
 )
 from dnd_app.core.character import set_subclass, get_class_entry
-from dnd_app.data.phbCommon.magic_items import ALL_MAGIC_ITEMS, has_item_effect
+from dnd_app.data.magic_items import ALL_MAGIC_ITEMS, has_item_effect
 from dnd_app.ui_desktop.dialogs.levelup_panel import LevelUpPanel
-from dnd_app.data.phb2014.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
-from dnd_app.data.phb2014.races import get_race
-from dnd_app.data.phbCommon.backgrounds import get_background
-from dnd_app.data.phbCommon.feats import get_feat
-from dnd_app.data.phbCommon.spells import get_spell, spells_for_class, ALL_SPELLS
-from dnd_app.data.phbCommon.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
+from dnd_app.data.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
+from dnd_app.data.races import get_race
+from dnd_app.data.backgrounds import get_background
+from dnd_app.data.feats import get_feat
+from dnd_app.data.spells import get_spell, spells_for_class, ALL_SPELLS
+from dnd_app.data.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
     ADVENTURING_GEAR, GEAR_NAMES, MOUNTS, ALL_TOOLS, SIMPLE_MELEE, SIMPLE_RANGED,
     MARTIAL_MELEE, MARTIAL_RANGED, ARTISAN_TOOLS, SPECIAL_ARMOR)
-from dnd_app.data.phbCommon.conditions import CONDITIONS
+from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
@@ -140,7 +140,7 @@ class SkillsMixin:
             _icons.set_button_icon(roll_btn, "dice", 14)
             roll_btn.clicked.connect(
                 lambda checked=False, sk=skill_name, b=bonus:
-                    self._quick_roll_toast(f"{sk} check", b))
+                    self._quick_roll_toast(f"{sk} check", b, "check"))
 
             rl.addWidget(sym_l); rl.addWidget(val_l); rl.addWidget(name_l); rl.addWidget(ab_l)
             rl.addWidget(roll_btn)
@@ -177,14 +177,28 @@ class SkillsMixin:
         # fixed column count instead of dynamically by pixel width, an
         # acceptable trade-off since tool names are short and this list
         # rarely exceeds a handful of entries.
-        self._tool_prof_frame = QWidget(); self._tool_prof_frame.setStyleSheet("QWidget{background:transparent;}")
+        self._tool_prof_frame = QWidget(); self._tool_prof_frame.setStyleSheet("QWidget{background:transparent;border:none;}")
         self._tool_prof_lay = QGridLayout(self._tool_prof_frame)
         self._tool_prof_lay.setSpacing(4); self._tool_prof_lay.setContentsMargins(0,0,0,0)
         tcl.addWidget(self._tool_prof_frame)
         self._refresh_tool_prof_chips()
         rl2.addWidget(tool_card)
+        # anything the DM grants outside the rules (core/dm_proficiencies.py)
+        dm_btn = _btn("DM-granted proficiencies…", GOLD, variant="neutral", height=32,
+                      tooltip="Add or remove weapons, armour, tools and languages your DM gave you")
+        dm_btn.setObjectName("dmProficienciesBtn")
+        dm_btn.clicked.connect(self._open_dm_proficiencies)
+        rl2.addWidget(dm_btn)
         rl2.addStretch(); root.addWidget(right, 2)
         return tab
+
+    def _open_dm_proficiencies(self):
+        from dnd_app.ui_desktop.dialogs.dm_proficiencies import DmProficienciesDialog
+        def changed():
+            # rebuild adds them to the lists; every tab redraws
+            self.ctrl.refresh()
+            self._mark_dirty()
+        DmProficienciesDialog(self.char, changed, self).exec()
 
     # Armor/shield are now equipped exclusively from the Gear tab
     # (see _toggle_armor_worn / _toggle_shield); Combat tab just displays them.
@@ -210,7 +224,12 @@ class SkillsMixin:
         menu.exec(global_pos)
 
     def _set_skill_prof(self, skill_name, level):
-        self.ctrl.update(f"skills.{skill_name}", level)
+        # the player's own setting, kept as an override on top of what's
+        # granted (core/builder.py), so a rebuild doesn't undo it
+        from dnd_app.core.builder import set_skill_level
+        set_skill_level(self.char, skill_name, level)
+        self.ctrl.refresh()
+        self._mark_dirty()
 
     def _reset_manual_skill_changes(self):
         """Clear every skill proficiency and rebuild from scratch, keeping
@@ -227,9 +246,9 @@ class SkillsMixin:
             _QMB.Yes | _QMB.No, _QMB.No)
         if confirm != _QMB.Yes:
             return
-        from dnd_app.core.builder import rebuild
-        self.char["skills"] = {}
-        rebuild(self.char)
+        from dnd_app.core.builder import reset_skill_levels
+        reset_skill_levels(self.char)
+        self.ctrl.refresh()
         self._mark_dirty()
         self._refresh_skills()
         self._toast("↺ Skill proficiencies reset to granted baseline")
@@ -247,8 +266,8 @@ class SkillsMixin:
             sym = {0:"—",1:"½",2:"◆",3:"◈"}.get(_disp,"—")
             sym_color = {0:TEXT3,1:IND2,2:INDIGO,3:PURP2}.get(_disp,TEXT3)
             val_color = TEAL2 if bonus>0 else (CRIM2 if bonus<0 else TEXT2)
-            sym_l.setText(sym); sym_l.setStyleSheet(f"color:{sym_color};font-size:{FS_BODY}px;font-weight:700;background:transparent;")
-            val_l.setText(sign(bonus)); val_l.setStyleSheet(f"color:{val_color};font-size:{FS_LABEL}px;font-weight:700;background:transparent;")
+            sym_l.setText(sym); sym_l.setStyleSheet(f"color:{sym_color};font-size:{FS_BODY}px;font-weight:700;background:transparent;border:none;")
+            val_l.setText(sign(bonus)); val_l.setStyleSheet(f"color:{val_color};font-size:{FS_LABEL}px;font-weight:700;background:transparent;border:none;")
             row_f.setStyleSheet(f"QFrame{{background:{SURF2 if prof>0 else SURF};border:1px solid {BORDER2 if prof>0 else BORDER};border-radius:7px;}}")
 
             # Advantage / disadvantage badge, with a tooltip explaining why
@@ -297,7 +316,7 @@ class SkillsMixin:
         while self._tool_prof_lay.count():
             item = self._tool_prof_lay.takeAt(0)
             if item.widget(): item.widget().setParent(None)
-        from dnd_app.data.phbCommon.feature_tooltips import get_tool_tooltip
+        from dnd_app.data.feature_tooltips import get_tool_tooltip
         def _tool_badge(text, color, tooltip):
             b = _lbl(text, color, FS_SMALL, bold=True, wrap=False)
             b.setStyleSheet(

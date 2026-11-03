@@ -13,8 +13,8 @@ from ...shared import *
 # already brought in).
 from ...shared import _btn, _pill
 from ...widgets import FlowLayout, FlowContainer
-from dnd_app.ui_desktop.dialogs.rest import (_all_relevant_choice_ids, _prune_stale_choices,
-    RACE_SCOPED_CHOICE_IDS, BACKGROUND_SCOPED_CHOICE_IDS)
+from dnd_app.core.choices import (_all_relevant_choice_ids, _prune_stale_choices,
+    change_and_prune, RACE_SCOPED_CHOICE_IDS, BACKGROUND_SCOPED_CHOICE_IDS)
 from dnd_app.core.character import (
     ability_score, ability_mod, total_level, class_levels, subclasses,
     long_rest, short_rest, add_class
@@ -37,22 +37,22 @@ from dnd_app.core.multiclass import (
 from dnd_app.core.builder import rebuild
 from dnd_app.core.controller import CharacterController
 from dnd_app.core.magic_items import concentration_save, start_concentration, drop_concentration
-from dnd_app.core.spell_components import spell_component_block_reason
+from dnd_app.core.spellcasting import spell_component_block_reason
 from dnd_app.core.save_load import (
     save_character, load_character, list_saved_characters, character_filename, validate_character,
 )
 from dnd_app.core.character import set_subclass, get_class_entry
-from dnd_app.data.phbCommon.magic_items import ALL_MAGIC_ITEMS, has_item_effect
+from dnd_app.data.magic_items import ALL_MAGIC_ITEMS, has_item_effect
 from dnd_app.ui_desktop.dialogs.levelup_panel import LevelUpPanel
-from dnd_app.data.phb2014.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
-from dnd_app.data.phb2014.races import get_race
-from dnd_app.data.phbCommon.backgrounds import get_background
-from dnd_app.data.phbCommon.feats import get_feat
-from dnd_app.data.phbCommon.spells import get_spell, spells_for_class, ALL_SPELLS
-from dnd_app.data.phbCommon.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
+from dnd_app.data.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
+from dnd_app.data.races import get_race
+from dnd_app.data.backgrounds import get_background
+from dnd_app.data.feats import get_feat
+from dnd_app.data.spells import get_spell, spells_for_class, ALL_SPELLS
+from dnd_app.data.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
     ADVENTURING_GEAR, GEAR_NAMES, MOUNTS, ALL_TOOLS, SIMPLE_MELEE, SIMPLE_RANGED,
     MARTIAL_MELEE, MARTIAL_RANGED, ARTISAN_TOOLS, SPECIAL_ARMOR)
-from dnd_app.data.phbCommon.conditions import CONDITIONS
+from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
@@ -89,30 +89,27 @@ class ChoicesMixin:
             self._mark_dirty()
 
     def _edit_identity(self, slot: str):
-        """Edit a character identity field (race/subrace/ancestry/background)."""
+        """Edit a character identity field (race/subrace/ancestry/background/
+        alignment)."""
         from dnd_app.core.builder import rebuild
         from dnd_app.core.calculator import update_all
         if slot == "race":
-            from dnd_app.data.phb2014.races import RACE_NAMES
+            from dnd_app.data.races import RACE_NAMES
             name, ok = QInputDialog.getItem(self, "Edit Race", "Species / Race:", RACE_NAMES, 0, False)
             if ok and name:
                 old_race = self.char.get("race", "")
-                if name != old_race:
-                    # Race-scoped choice ids are keyed generically by
-                    # choice TYPE ("race_skill_profs" etc.), not by which
-                    # race — cleared before the rebuild below so a picked
-                    # skill/tool/language from the OLD race doesn't get
-                    # silently misapplied to whatever the NEW race's own
-                    # (possibly completely different) choice pool is, and
-                    # the new race's own pending choice actually re-prompts
-                    # instead of looking "already answered".
-                    _prune_stale_choices(self.char, RACE_SCOPED_CHOICE_IDS)
-                self.ctrl.update_many({"race": name, "species": name, "subrace": ""})
+                # Whatever the old race asked for and the new one doesn't goes
+                # (a High Elf's cantrip), and the generic race-scoped ids
+                # ("race_skill_profs"...) too, so an old pick isn't misapplied
+                # to the new race's pool and its own choice re-prompts.
+                change_and_prune(self.char, lambda: self.char.update(race=name, species=name, subrace=""),
+                                 RACE_SCOPED_CHOICE_IDS if name != old_race else ())
+                self.ctrl.refresh()
                 self._refresh_stat_bar()
                 self._edit_identity("subrace")
 
         elif slot == "subrace":
-            from dnd_app.data.phb2014.races import RACE_DICT
+            from dnd_app.data.races import RACE_DICT
             import re as _re
             race = self.char.get("race", "")
             rdata = RACE_DICT.get(race, {})
@@ -134,7 +131,7 @@ class ChoicesMixin:
             choice, ok = QInputDialog.getItem(self, f"Choose Subrace — {race}", "Subrace:", options, cur_idx, False)
             if ok and choice:
                 subrace_name = choice.split("(")[0].strip()
-                self.char["subrace"] = subrace_name
+                change_and_prune(self.char, lambda: self.char.update(subrace=subrace_name))
                 rebuild(self.char); update_all(self.char)
                 self.ctrl.refresh()
                 self._refresh_stat_bar()
@@ -143,7 +140,7 @@ class ChoicesMixin:
 
         elif slot == "ancestry":
             if self.char.get("race", "") != "Dragonborn": return
-            from dnd_app.data.phb2014.races import DRACONIC_ANCESTRY, ANCESTRY_BY_SUBRACE
+            from dnd_app.data.races import DRACONIC_ANCESTRY, ANCESTRY_BY_SUBRACE
             subrace = self.char.get("subrace", "Standard") or "Standard"
             avail = ANCESTRY_BY_SUBRACE.get(subrace, ANCESTRY_BY_SUBRACE.get("Standard", []))
             options = [f"{a}  –  {DRACONIC_ANCESTRY[a][0]}, {DRACONIC_ANCESTRY[a][1]}" for a in avail]
@@ -157,17 +154,15 @@ class ChoicesMixin:
                 self._mark_dirty()
 
         elif slot == "background":
-            from dnd_app.data.phbCommon.backgrounds import BACKGROUND_NAMES, get_background
+            from dnd_app.data.backgrounds import BACKGROUND_NAMES, get_background
             name, ok = QInputDialog.getItem(self, "Edit Background", "Background:", BACKGROUND_NAMES, 0, False)
             if ok and name:
                 old_bg = self.char.get("background", "")
-                if name != old_bg:
-                    # Same reasoning as the race-scoped clear above: bg_skill_profs/
-                    # bg_tool_profs/bg_languages are shared, generic ids used by
-                    # whichever background currently needs a choice, not
-                    # namespaced per background name.
-                    _prune_stale_choices(self.char, BACKGROUND_SCOPED_CHOICE_IDS)
-                self.ctrl.update("background", name)
+                # Same as the race change above: bg_skill_profs/bg_tool_profs/
+                # bg_languages are shared, generic ids, not per background.
+                change_and_prune(self.char, lambda: self.char.update(background=name),
+                                 BACKGROUND_SCOPED_CHOICE_IDS if name != old_bg else ())
+                self.ctrl.refresh()
                 # Changing background here needs the same follow-up
                 # prompts the creation wizard already runs for backgrounds
                 # that grant a choice of feat (Rewarded/Ruined and others).
@@ -183,9 +178,24 @@ class ChoicesMixin:
                             feats.append(feat_name)
                 self._mark_dirty()
 
+        elif slot == "alignment":
+            from .base import ALIGNMENTS
+            cur = self.char.get("alignment", "")
+            name, ok = QInputDialog.getItem(self, "Edit Alignment", "Alignment:", ALIGNMENTS,
+                                            ALIGNMENTS.index(cur) if cur in ALIGNMENTS else 0, False)
+            if ok and name and name != cur:
+                from dnd_app.core.builder import change_alignment
+                msg = change_alignment(self.char, name)   # Divinely Favored's spell follows it
+                self.ctrl.refresh()
+                self._refresh_stat_bar()
+                self._rebuild_features()
+                self._mark_dirty()
+                if msg:
+                    self._toast(msg.replace(" -- ", " — "))
+
     def _populate_subclass_combo(self):
         """Rebuild subclass combo boxes in the choices tab class card."""
-        from dnd_app.data.phb2014.classes import CLASS_DICT
+        from dnd_app.data.classes import CLASS_DICT
         from dnd_app.core.character import set_subclass
 
         # Target the class card layout in choices tab
@@ -239,7 +249,7 @@ class ChoicesMixin:
                 # Diff relevant choice ids before/after the subclass swap
                 # and clear anything no longer relevant — subclass-scoped
                 # choice ids (rune_knight_runes, kensei_weapons, lunar_phase,
-                # guidance_of_the_spirits_skill, ...) are each named for
+                # whispers_of_the_dead_prof, ...) are each named for
                 # their specific subclass, so switching away from Rune
                 # Knight to Battle Master, say, would otherwise leave the
                 # old chosen runes permanently stuck with no way to ever
@@ -263,21 +273,24 @@ class ChoicesMixin:
             target.addWidget(col)
 
     def _build_tab_choices(self):
-        """Choices tab: Class Manager + Identity cards in a top pane, the
-        LevelUpPanel (choices) and Optional Class Features in a bottom pane —
-        split by a draggable handle, same pattern as the Combat tab, so a
-        character with few pending choices doesn't leave a large empty
-        gap with no way to reclaim that space."""
-        tab = QWidget()
-        outer = QVBoxLayout(tab)
-        outer.setContentsMargins(12, 10, 12, 10)
-        outer.setSpacing(8)
-
-        splitter = QSplitter(Qt.Vertical)
-        splitter.setChildrenCollapsible(False)
-        splitter.setStyleSheet(f"QSplitter::handle{{background:{qa(AMBER,0x33)};height:4px;"
-                              f"border-radius:2px;margin:2px 40%;}}"
-                              f"QSplitter::handle:hover{{background:{AMBER};}}")
+        """Choices tab: one scrolling column, top to bottom --
+          1. Class & Level card (subclass picks, level up / down buttons)
+          2. Experience card (XP levelling only) and Identity card
+          3. LevelUpPanel: what's been applied automatically, the class
+             features by level, and any choices still to make
+          4. Optional Class Features (Tasha's)
+        Each section is as tall as its contents and the page scrolls, so a
+        long list of choices never squashes the others (and a character
+        with nothing left to choose doesn't get an empty gap)."""
+        tab = QScrollArea()
+        tab.setWidgetResizable(True)
+        tab.setFrameShape(QFrame.NoFrame)
+        tab.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        page = QWidget()
+        tab.setWidget(page)
+        column = QVBoxLayout(page)
+        column.setContentsMargins(12, 10, 12, 10)
+        column.setSpacing(8)
 
         top_half = QWidget()
         layout = QVBoxLayout(top_half)
@@ -300,13 +313,16 @@ class ChoicesMixin:
             ("Level Up / Multiclass", self._open_level_up_or_multiclass, GOLD,
              "Gain a level in an existing class, or add a new one", "arrow_up"),
             ("Level Down",        self._open_level_down,      CRIMSON,"Remove one level", "arrow_down"),
-            ("✕ Remove Class",    self._open_remove_class,    CRIMSON,"Remove an entire class (multiclass only)", None),
+            ("Remove Class",      self._open_remove_class,    CRIMSON,"Remove an entire class (multiclass only)", "trash"),
         ]:
             b = _btn(label, color, variant="chip", height=28, font_size=FS_TINY, tooltip=tip)
             if icon:
                 _icons.set_button_icon(b, icon, 13)
             b.clicked.connect(fn)
             title_row.addWidget(b)
+            # kept so _refresh_class_buttons() can grey out the ones that
+            # can't do anything right now (level 20, a lone level-1 class...)
+            self.__dict__.setdefault("_class_action_btns", {})[label] = (b, tip)
         cls_cl.addLayout(title_row)
 
         # Subclass selectors — one per active class
@@ -344,10 +360,9 @@ class ChoicesMixin:
         xp_add_row.addWidget(_lbl("Add XP:", TEXT2, FS_SMALL))
         self._xp_add_spin = QSpinBox()
         self._xp_add_spin.setRange(0, 999999); self._xp_add_spin.setSingleStep(50)
-        self._xp_add_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
         self._xp_add_spin.setStyleSheet(
             f"QSpinBox{{background:{SURF2};border:1px solid {BORDER};border-radius:5px;"
-            f"color:{TEXT};padding:2px 6px;min-width:70px;}}")
+            f"color:{TEXT};padding:2px 6px;min-width:70px;}}" + SPIN_NO_BUTTONS)
         xp_add_row.addWidget(self._xp_add_spin)
         xp_add_btn = _btn("+ Add", GOLD, variant="chip", text_color=GOLD2,
                            hover_bg_alpha=0x44, padding="3px 12px")
@@ -379,6 +394,7 @@ class ChoicesMixin:
             ("Subrace",    "subrace",    TEAL),
             ("Ancestry",   "ancestry",   GOLD),
             ("Background", "background", AMBER),
+            ("Alignment",  "alignment",  INDIGO),
         ]:
             b = _btn(f"✎  {label}", color, variant="chip", height=28, font_size=FS_TINY)
             b.clicked.connect(lambda checked=False, s=slot: self._edit_identity(s))
@@ -389,9 +405,8 @@ class ChoicesMixin:
         id_cl.addLayout(id_btn_row)
         layout.addWidget(id_card)
         self._refresh_identity_buttons()
-        layout.addStretch()
 
-        # ── Bottom pane: LevelUpPanel + Optional Class Features ───────────────
+        # ── LevelUpPanel + Optional Class Features ────────────────────────────
         bottom_half = QWidget()
         blay = QVBoxLayout(bottom_half)
         blay.setContentsMargins(0, 0, 0, 0)
@@ -400,7 +415,7 @@ class ChoicesMixin:
         try:
             self._levelup_panel = LevelUpPanel(self.char)
             self._levelup_panel.choices_changed.connect(self._on_choices_changed)
-            blay.addWidget(self._levelup_panel, 1)
+            blay.addWidget(self._levelup_panel)
         except Exception as e:
             import traceback; traceback.print_exc()
             blay.addWidget(_lbl(f"Error: {e}", CRIM2, FS_BODY))
@@ -414,27 +429,39 @@ class ChoicesMixin:
         opt_lay.addWidget(_lbl("Toggle alternate features for your classes. Discuss with your DM first.",
                                TEXT3, FS_SMALL))
         self._opt_feat_checks = {}
-        self._opt_inner = QWidget(); self._opt_inner.setStyleSheet("background:transparent;")
+        self._opt_inner = QWidget(); self._opt_inner.setStyleSheet("background:transparent;border:none;")
         self._opt_inner_lay = QVBoxLayout(self._opt_inner)
         self._opt_inner_lay.setSpacing(3); self._opt_inner_lay.setContentsMargins(0,4,0,0)
         opt_lay.addWidget(self._opt_inner)
         blay.addWidget(opt_card)
 
-        splitter.addWidget(top_half)
-        splitter.addWidget(bottom_half)
+        column.addWidget(top_half)
+        column.addWidget(bottom_half)
+        column.addStretch(1)   # spare height goes below the last card
         self._choices_top_half = top_half
-        # Enough for all 3 top cards (Class Manager, Experience, Identity)
-        # without initial clipping when XP leveling mode is on — a hidden
-        # Experience card (milestone mode) doesn't consume this space, it
-        # just leaves more room for the addStretch() below it, so this
-        # default doesn't cost milestone characters anything. The splitter
-        # handle can still be dragged to any ratio, same as the Combat tab.
-        splitter.setSizes([280, 460])
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-        outer.addWidget(splitter, 1)
+        self._refresh_class_buttons()
 
         return tab
+
+    def _refresh_class_buttons(self):
+        """Level Up / Level Down / Remove Class only when they can act:
+        no levelling past character level 20, no levelling down a single
+        level-1 class, no removing your only class."""
+        btns = getattr(self, "_class_action_btns", {})
+        if not btns:
+            return
+        from dnd_app.core.character import level_up_block_reason
+        classes = self.char.get("classes", [])
+        states = {
+            "Level Up / Multiclass": level_up_block_reason(self.char),
+            "Level Down": ("" if any(c.get("level", 1) > 1 for c in classes)
+                           else "Every class is at level 1 — nothing to level down"),
+            "Remove Class": "" if len(classes) > 1 else "You can't remove your only class",
+        }
+        for label, (b, tip) in btns.items():
+            why = states.get(label, "")
+            b.setEnabled(not why)
+            b.setToolTip(why[0].upper() + why[1:] if why else tip)
 
     def _on_choices_changed(self):
         """Called when choices are made in the LevelUpPanel."""
@@ -462,7 +489,7 @@ class ChoicesMixin:
         idx = self._tabs.indexOf(self._choices_tab_page)
         self._choices_pulse.set_active(n > 0 and self._tabs.currentIndex() != idx)
         self._tabs.setTabToolTip(idx,
-                                 f"{n} pending choice{'s' if n != 1 else ''}" if n else "")
+                                 f"{n} pending choice{'s' if n != 1 else ''}" if n else "Choices")
 
     # ══ TAB 4: SPELLS ══════════════════════════════════════════════════════════
     def _has_infuse_item_access(self):
@@ -540,6 +567,7 @@ class ChoicesMixin:
             "subrace": self.char.get("subrace", ""),
             "ancestry": self.char.get("draconic_ancestry", ""),
             "background": self.char.get("background", ""),
+            "alignment": self.char.get("alignment", ""),
         }
         for slot, label in getattr(self, "_identity_btn_labels", {}).items():
             btn = self._identity_btns.get(slot)

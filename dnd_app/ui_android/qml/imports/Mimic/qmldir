@@ -1,15 +1,21 @@
 module Mimic
 singleton Theme 1.0 Theme.qml
+MAttackOption 1.0 MAttackOption.qml
 MButton 1.0 MButton.qml
 MCard 1.0 MCard.qml
 MCheese 1.0 MCheese.qml
 MCheckBox 1.0 MCheckBox.qml
+MFilterButton 1.0 MFilterButton.qml
+MFilterDrawer 1.0 MFilterDrawer.qml
 MFullPageDialog 1.0 MFullPageDialog.qml
 MIcon 1.0 MIcon.qml
+MOptionsDialog 1.0 MOptionsDialog.qml
 MPickerDialog 1.0 MPickerDialog.qml
 MPulseDot 1.0 MPulseDot.qml
 MToggleButton 1.0 MToggleButton.qml
+MSlotBar 1.0 MSlotBar.qml
 MSpinBox 1.0 MSpinBox.qml
 MStatblockCard 1.0 MStatblockCard.qml
+MTextArea 1.0 MTextArea.qml
 MTextField 1.0 MTextField.qml
 SheetHeader 1.0 SheetHeader.qml

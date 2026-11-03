@@ -71,9 +71,9 @@ HALF_CASTER_SOLO_SLOTS = {
     20: [4,3,3,3,2,0,0,0,0],
 }
 
-# Solo Artificer table (spellcasting starts at Lv1, but Lv1 slots come at Lv3)
+# Solo Artificer table (TCE): spellcasting, and two 1st-level slots, from 1st level
 ARTIFICER_SOLO_SLOTS = {
-    1:  [0,0,0,0,0,0,0,0,0],
+    1:  [2,0,0,0,0,0,0,0,0],
     2:  [2,0,0,0,0,0,0,0,0],
     3:  [3,0,0,0,0,0,0,0,0],
     4:  [3,0,0,0,0,0,0,0,0],
@@ -94,6 +94,42 @@ ARTIFICER_SOLO_SLOTS = {
     19: [4,3,3,3,2,0,0,0,0],
     20: [4,3,3,3,2,0,0,0,0],
 }
+
+
+# Solo third-caster table: an Eldritch Knight's or Arcane Trickster's own
+# (the two are the same), used when it's the character's only Spellcasting
+# class -- the multiclass table at a third of the level falls short of it
+# from 4th level (an Eldritch Knight 7 has 4 1st- and 2 2nd-level slots,
+# where the multiclass table at 2 gives 3 1st-level ones)
+THIRD_CASTER_SOLO_SLOTS = {
+    1:  [0,0,0,0,0,0,0,0,0],
+    2:  [0,0,0,0,0,0,0,0,0],
+    3:  [2,0,0,0,0,0,0,0,0],
+    4:  [3,0,0,0,0,0,0,0,0],
+    5:  [3,0,0,0,0,0,0,0,0],
+    6:  [3,0,0,0,0,0,0,0,0],
+    7:  [4,2,0,0,0,0,0,0,0],
+    8:  [4,2,0,0,0,0,0,0,0],
+    9:  [4,2,0,0,0,0,0,0,0],
+    10: [4,3,0,0,0,0,0,0,0],
+    11: [4,3,0,0,0,0,0,0,0],
+    12: [4,3,0,0,0,0,0,0,0],
+    13: [4,3,2,0,0,0,0,0,0],
+    14: [4,3,2,0,0,0,0,0,0],
+    15: [4,3,2,0,0,0,0,0,0],
+    16: [4,3,3,0,0,0,0,0,0],
+    17: [4,3,3,0,0,0,0,0,0],
+    18: [4,3,3,0,0,0,0,0,0],
+    19: [4,3,3,1,0,0,0,0,0],
+    20: [4,3,3,1,0,0,0,0,0],
+}
+
+
+def _is_third_caster(cls_name: str, subclasses: dict) -> bool:
+    """An Eldritch Knight Fighter or Arcane Trickster Rogue."""
+    sub = (subclasses.get(cls_name) or "").lower()
+    return ((cls_name == "Fighter" and "eldritch knight" in sub)
+            or (cls_name == "Rogue" and "arcane trickster" in sub))
 
 
 # Warlock pact slots (tracked separately; NOT merged into spell slot table)
@@ -121,7 +157,7 @@ MULTICLASS_PREREQS_2024 = {
     "Cleric":      {"WIS": 13},
     "Druid":       {"WIS": 13},
     "Fighter":     {"STR": 13, "DEX": 13, "_or": True},
-    "Monk":        {"STR": 13, "WIS": 13},
+    "Monk":        {"DEX": 13, "WIS": 13},
     "Paladin":     {"STR": 13, "CHA": 13},
     "Ranger":      {"DEX": 13, "WIS": 13},
     "Rogue":       {"DEX": 13},
@@ -184,6 +220,39 @@ def check_multiclass_prereq(class_name: str, ability_scores: dict) -> tuple[bool
         return False, "; ".join(failures)
 
 
+_AB_WORDS = {"STR": "Strength", "DEX": "Dexterity", "CON": "Constitution",
+             "INT": "Intelligence", "WIS": "Wisdom", "CHA": "Charisma"}
+
+
+def multiclass_requirement_text(class_name: str) -> str:
+    """What a class needs, in words: "Dexterity 13 and Wisdom 13",
+    "Strength 13 or Dexterity 13". "" for a class with no requirement."""
+    reqs = MULTICLASS_PREREQS_2024.get(class_name, {})
+    plain = [f"{_AB_WORDS.get(ab, ab)} {n}" for ab, n in reqs.items() if not ab.startswith("_")]
+    if reqs.get("_or"):
+        return " or ".join(plain)
+    group = reqs.get("_or_group")
+    if group:
+        plain.append(" or ".join(f"{_AB_WORDS.get(ab, ab)} {n}" for ab, n in group.items()))
+    return " and ".join(plain)
+
+
+def multiclass_block_reason(char: dict, new_class: str) -> str:
+    """Why `char` can't take its first level in `new_class` ("" when it
+    can): the scores every class it already has needs, and the new one's
+    (PHB multiclassing). Nothing when the optional rule is off, or for a
+    character's first class."""
+    if not char.get("optional_rules", {}).get("multiclass_ability_reqs", True):
+        return ""
+    current = [c.get("class", "") for c in char.get("classes", [])]
+    if not current or new_class in current:
+        return ""
+    from dnd_app.core.character import ability_score
+    scores = {ab: ability_score(char, ab, ignore_wildshape=True) for ab in _AB_WORDS}   # your own, not a beast's
+    short = [cls for cls in current + [new_class] if not check_multiclass_prereq(cls, scores)[0]]
+    return "; ".join(f"{cls} needs {multiclass_requirement_text(cls)}" for cls in short)
+
+
 def prof_bonus(total_level: int) -> int:
     """Return proficiency bonus for a given total character level."""
     return max(2, (total_level - 1) // 4 + 2)
@@ -214,23 +283,17 @@ def compute_caster_level(class_levels: dict, subclasses: dict = None) -> int:
             combined += level
 
         elif cls_name in ARTIFICER_CLASSES:
-            # Artificer uses floor for BOTH single-class and multiclass (TCE p.12)
-            # Artificer Lv1 has no spell slots; the table starts at Lv2.
-            combined += math.floor(level / 2)
+            # TCE: "add half your levels (rounded up) in the artificer
+            # class" -- unlike a Paladin's or Ranger's, rounded down
+            combined += math.ceil(level / 2)
 
         elif cls_name in HALF_CASTERS:
             # PHB p.164: add half your level in that class, ROUNDED DOWN
             combined += math.floor(level / 2)
 
-        elif cls_name == "Fighter":
-            sub = subclasses.get("Fighter", "")
-            if sub == "Eldritch Knight":
-                combined += math.floor(level / 3)
-
-        elif cls_name == "Rogue":
-            sub = subclasses.get("Rogue", "")
-            if sub == "Arcane Trickster":
-                combined += math.floor(level / 3)
+        elif _is_third_caster(cls_name, subclasses):
+            # an Eldritch Knight or Arcane Trickster: a third, rounded down
+            combined += math.floor(level / 3)
 
         elif cls_name in PACT_MAGIC_CLASSES:
             pass  # Warlock excluded from combined caster level
@@ -266,6 +329,16 @@ def get_warlock_slots(warlock_levels: int) -> dict:
     }
 
 
+def PROFANE_SOUL_PACT_SLOTS(blood_hunter_level: int) -> tuple:
+    """(slots, slot level) for an Order of the Profane Soul blood hunter's
+    Pact Magic: one 1st-level slot at 3rd level, 2nd-level slots from 7th,
+    a second slot at 11th, 3rd-level from 13th and 4th-level from 19th."""
+    lv = blood_hunter_level
+    count = 2 if lv >= 11 else 1
+    level = 4 if lv >= 19 else 3 if lv >= 13 else 2 if lv >= 7 else 1
+    return count, level
+
+
 def compute_all_spell_slots(class_levels: dict, subclasses: dict = None) -> dict:
     """
     Full spell slot computation for a multiclassed character.
@@ -290,13 +363,16 @@ def compute_all_spell_slots(class_levels: dict, subclasses: dict = None) -> dict
     # use the class's own progression table (different from the multiclass table)
     non_warlock_casters = {c: lvl for c, lvl in class_levels.items()
                            if c != "Warlock" and lvl > 0
-                           and (c in FULL_CASTERS or c in HALF_CASTERS or c in ARTIFICER_CLASSES)}
+                           and (c in FULL_CASTERS or c in HALF_CASTERS or c in ARTIFICER_CLASSES
+                                or _is_third_caster(c, subclasses))}
     if len(non_warlock_casters) == 1:
         solo_cls, solo_lvl = next(iter(non_warlock_casters.items()))
         if solo_cls in HALF_CASTERS:
             slots = list(HALF_CASTER_SOLO_SLOTS.get(solo_lvl, [0]*9))
         elif solo_cls in ARTIFICER_CLASSES:
             slots = list(ARTIFICER_SOLO_SLOTS.get(solo_lvl, [0]*9))
+        elif _is_third_caster(solo_cls, subclasses):
+            slots = list(THIRD_CASTER_SOLO_SLOTS.get(min(solo_lvl, 20), [0]*9))
         else:
             slots = get_multiclass_spell_slots(combined_caster_level)
     else:
@@ -306,6 +382,13 @@ def compute_all_spell_slots(class_levels: dict, subclasses: dict = None) -> dict
     # Determine if any Spellcasting feature exists (for Warlock interop)
     has_spellcasting = combined_caster_level > 0
     has_pact_magic = warlock_lvl > 0
+    # Order of the Profane Soul (Blood Hunter): Pact Magic of its own,
+    # when there are no Warlock levels to give it
+    bh_lvl = class_levels.get("Blood Hunter", 0)
+    if not has_pact_magic and bh_lvl >= 3 and "profane soul" in (subclasses.get("Blood Hunter") or "").lower():
+        count, level = PROFANE_SOUL_PACT_SLOTS(bh_lvl)
+        warlock_info = {"count": count, "level": level, "reset": "SR/LR"}
+        has_pact_magic = True
 
     note = ""
     if has_spellcasting and has_pact_magic:
@@ -340,7 +423,7 @@ def aggregate_resources(class_levels: dict, ability_scores: dict,
     formula/by_level-driven class resource in the game (Rage, Wild
     Shape, Ki, Sorcery Points, Channel Divinity, Lay on Hands) depends
     on reading from the correct edition's CLASS_DICT."""
-    from dnd_app.data.phb2014.classes import CLASS_DICT as CLASS_DICT_2014
+    from dnd_app.data.classes import CLASS_DICT as CLASS_DICT_2014
     from dnd_app.data.phb2024.classes_2024 import CLASS_DICT_2024
     CLASS_DICT = CLASS_DICT_2024 if edition == "2024" else CLASS_DICT_2014
 
@@ -463,14 +546,9 @@ def aggregate_resources(class_levels: dict, ability_scores: dict,
 
             resources.append(entry)
 
-    # ── Monk Ki / Focus Points ────────────────────────────────────────────────
-    monk_lvl = class_levels.get("Monk", 0)
-    if monk_lvl >= 2:
-        resources.append({
-            "name": "Focus Points (Ki)", "key": "ki",
-            "source_class": "Monk", "source_level": monk_lvl,
-            "current_max": monk_lvl, "reset": "SR", "track": "pool"
-        })
+    # (Monk Ki / Focus Points come from the class data's own "ki" resource
+    # above -- a second hand-made entry here gave every Monk two Ki pools
+    # under the same key.)
 
     # ── Subclass-specific resources ────────────────────────────────────────────
     _add_subclass_resources(resources, class_levels, subclasses or {}, ability_mods, pb, choices or {})
@@ -775,14 +853,12 @@ def _add_subclass_resources(resources: list, class_levels: dict,
              "Animate a Large or smaller nonmagical item as a temporary ally for 1 hour; "
              "can reuse before a long rest by spending a spell slot of 3rd level or higher",
              "Bard", "College of Creation")
-    if bard_lvl > 0 and _has("Bard", "spirits"):
-        # College of Spirits: Spirit Session — uses = proficiency bonus per
-        # long rest, die scales from d6 up to d12 at 14th (Awakened Spirit).
-        # Verified not already covered by classes.py's resource_pools data
-        # (unlike Bardic Inspiration, which already was).
-        spirit_die = 12 if bard_lvl >= 14 else 10 if bard_lvl >= 10 else 8 if bard_lvl >= 6 else 6
-        _add("Spirit Session", "spirit_session", "LR", pb, "uses",
-             f"Commune with spirits for a d{spirit_die} Spirit Tale Die (heal/damage/status, story-dependent)",
+    if bard_lvl >= 6 and _has("Bard", "spirits"):
+        # College of Spirits: Spirit Session -- an hour-long ritual, once per
+        # long rest (Tales from Beyond spends Bardic Inspiration instead)
+        _add("Spirit Session", "spirit_session", "LR", 1, "uses",
+             "An hour-long ritual with up to your proficiency bonus willing creatures: learn one divination "
+             "or necromancy spell until your next long rest",
              "Bard", "College of Spirits")
 
     # ── Cleric ────────────────────────────────────────────────────────────────
@@ -1006,7 +1082,7 @@ def compute_hit_points(class_levels: dict, con_mod: int,
     First class level always gets max HD value.
     Subsequent levels get average (floor(HD/2)+1) or can be rolled.
     """
-    from dnd_app.data.phb2014.classes import CLASS_DICT
+    from dnd_app.data.classes import CLASS_DICT
 
     total_level = sum(class_levels.values())
     if total_level == 0:
@@ -1124,7 +1200,7 @@ def get_saving_throw_profs(class_levels: dict) -> set:
     char["classes"] (true for every real caller — they all build it via
     core.character.class_levels(char), a dict comprehension over that
     list in order), so its first key is reliably the starting class."""
-    from dnd_app.data.phb2014.classes import CLASS_DICT
+    from dnd_app.data.classes import CLASS_DICT
     starting_class = next(iter(class_levels), None)
     if not starting_class:
         return set()
@@ -1134,7 +1210,7 @@ def get_saving_throw_profs(class_levels: dict) -> set:
 
 def get_armor_profs(class_levels: dict) -> str:
     """Summarize armor proficiencies across all classes."""
-    from dnd_app.data.phb2014.classes import CLASS_DICT
+    from dnd_app.data.classes import CLASS_DICT
     all_profs = []
     for cls_name, level in class_levels.items():
         if level <= 0:
@@ -1149,7 +1225,7 @@ def get_armor_profs(class_levels: dict) -> str:
 
 def get_skill_choices_for_class(cls_name: str) -> tuple[list, int]:
     """Return (skill_choices_list, count) for a class."""
-    from dnd_app.data.phb2014.classes import CLASS_DICT
+    from dnd_app.data.classes import CLASS_DICT
     cls = CLASS_DICT.get(cls_name)
     if not cls:
         return [], 0

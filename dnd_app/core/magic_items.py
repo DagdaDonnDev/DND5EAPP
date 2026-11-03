@@ -8,7 +8,7 @@ Date: 2026-08-20
 
 from __future__ import annotations
 
-from dnd_app.data.phbCommon.magic_items import get_item_effect, get_magic_item
+from dnd_app.data.magic_items import get_item_effect, get_magic_item
 import re as _re
 
 
@@ -39,7 +39,7 @@ def attunement_prereq_met(char: dict, item_name: str) -> tuple[bool, str]:
     """Checks a magic item's 'requires attunement by X' restriction (a
     class, race/species, or alignment, or the catch-all 'a spellcaster')
     against the character's real data — same shape and same reasoning as
-    levelup_panel.py's feat_prereq_met(). Returns (met, reason_if_not_met);
+    core/choices.py's feat_prereq_met(). Returns (met, reason_if_not_met);
     complex/narrative requirements this can't parse (e.g. "a creature that
     has slain a dragon") are left unenforced, same as feat_prereq_met
     leaves campaign-specific feat prereqs unenforced — the requirement
@@ -189,12 +189,15 @@ def reset_magic_item_modifiers(char: dict) -> None:
     char["spell_attack_bonus"] = 0
     char["magic_ac_bonus"] = 0
     char["magic_save_bonus"] = 0
+    char["magic_check_bonus"] = 0          # every ability check (Stone of Good Luck)
+    char["magic_skill_bonus"] = {}         # {skill: bonus} (Gloves of Thievery)
     char["magic_speed_bonus"] = 0
     char["_blackrazor_spellcasting"] = False
     char["_named_weapon_bonuses"] = {}  # {item_name: bonus_value}
     # Source-tracked breakdowns, used to build tooltips
     char["_ac_bonus_sources"] = []        # [(item_name, value), ...]
     char["_save_bonus_sources"] = []      # [(item_name, value), ...]
+    char["_check_bonus_sources"] = []     # [(item_name, value), ...]
     char["_speed_bonus_sources"] = []     # [(item_name, value), ...]
     # Resistances / immunities granted by equipped+attuned items
     char["damage_resistances"] = []       # [(damage_type, item_name), ...]
@@ -309,6 +312,18 @@ def _apply_single_effect(char: dict, item_name: str, effect: dict) -> None:
         char["magic_save_bonus"] = char.get("magic_save_bonus", 0) + val
         char.setdefault("_save_bonus_sources", []).append((item_name, val))
 
+    elif etype == "check_bonus":
+        # every ability check, initiative too (calculator.py)
+        val = effect.get("value", 0)
+        char["magic_check_bonus"] = char.get("magic_check_bonus", 0) + val
+        char.setdefault("_check_bonus_sources", []).append((item_name, val))
+
+    elif etype == "skill_bonus":
+        val = effect.get("value", 0)
+        bonus = char.setdefault("magic_skill_bonus", {})
+        bonus[effect["skill"]] = bonus.get(effect["skill"], 0) + val
+        char.setdefault("_check_bonus_sources", []).append((f"{item_name} ({effect['skill']})", val))
+
     elif etype == "weapon_damage_bonus":
         char.setdefault("_weapon_damage_bonuses", []).append({
             "source": item_name,
@@ -411,7 +426,7 @@ def apply_equipment_skill_effects(char: dict) -> None:
     from mundane armor properties (PHB p.144: armor that imposes Stealth
     disadvantage does so for ANY wearer, not just magic armor).
     """
-    from dnd_app.data.phbCommon.items import ARMOR_DICT
+    from dnd_app.data.items import ARMOR_DICT
 
     armor_name = char.get("armor_worn", "No Armor")
     base_armor_name, _ = parse_magic_suffix(armor_name)
@@ -429,7 +444,7 @@ def _is_infusion_target_equipped(char: dict, target_item: str, infusion_name: st
     """Whether the specific item an infusion was applied to is actually
     equipped right now, using the correct mechanism for its slot type
     (weapon/armor/shield each track "equipped" completely differently)."""
-    from dnd_app.data.phb2014.classes import ARTIFICER_INFUSION_TARGETS
+    from dnd_app.data.classes import ARTIFICER_INFUSION_TARGETS
     target_type = ARTIFICER_INFUSION_TARGETS.get(infusion_name)
     if target_type == "weapon":
         return target_item in char.get("equipped_weapons", [])
@@ -441,6 +456,31 @@ def _is_infusion_target_equipped(char: dict, target_item: str, infusion_name: st
         return (char.get("armor_worn", "No Armor") == target_item
                 or bool(char.get("shield", False)))
     return True  # standalone infusions have no separate equip check
+
+
+_POOL_RES = (_re.compile(r"\b(?:has|have|starts with|holds|with) (\d+) charges\b", _re.I),
+             _re.compile(r"\b(\d+) charges:", _re.I),
+             _re.compile(r"\((\d+) charges\b", _re.I),
+             _re.compile(r"\b(\d+) charges \(", _re.I),
+             _re.compile(r"\bof (\d+) charges\b", _re.I),
+             _re.compile(r"^(\d+) charges\b", _re.I))
+
+
+def _described_charges(name: str) -> list:
+    """[(charges, "dawn" or "dusk")] from the item's own text, for an
+    item whose data has no charge pool ("The cube starts with 36
+    charges"); [] when the text names none."""
+    from dnd_app.data.magic_items import get_magic_item
+    effect = get_item_effect(name)
+    effects = effect if isinstance(effect, list) else ([effect] if effect else [])
+    texts = [(get_magic_item(name) or {}).get("desc", "") or ""]
+    texts += [e.get("description", "") or "" for e in effects if e.get("type") == "grant_action"]
+    for text in texts:
+        for rx in _POOL_RES:
+            m = rx.search(text)
+            if m and int(m.group(1)) > 0:
+                return [(int(m.group(1)), "dusk" if "at dusk" in text.lower() else "dawn")]
+    return []
 
 
 def sync_item_charges(char: dict) -> None:
@@ -463,30 +503,29 @@ def sync_item_charges(char: dict) -> None:
 
     for name in active:
         effect = get_item_effect(name)
-        if not effect:
+        effect_list = effect if isinstance(effect, list) else ([effect] if effect else [])
+        # charges: the item's charge pool (Staff of Power, Blackstaff...);
+        # grant_spell: a single fixed spell with its own pool (Wand of
+        # Fireballs) -- the item's pool when it has one decides the size
+        pools = [(sub.get("max", 0), sub.get("recharge", "dawn")) for sub in effect_list
+                 if sub.get("type") == "charges" and sub.get("max")]
+        pools = pools or [(sub.get("uses"), sub.get("recharge", "dawn")) for sub in effect_list
+                          if sub.get("type") == "grant_spell" and sub.get("uses")]
+        if not pools:
+            # charges its description gives ("This ring has 3 charges")
+            pools = _described_charges(name)
+        if not pools:
             continue
-        effect_list = effect if isinstance(effect, list) else [effect]
-        for sub in effect_list:
-            # grant_spell: a single fixed spell with its own charge pool
-            # (Wand of Fireballs). charges: a general charge pool for
-            # items whose reference text describes multiple charge-
-            # costed abilities that don't fit the single-spell
-            # grant_spell model (Staff of Power, Blackstaff, etc.).
-            if sub.get("type") not in ("grant_spell", "charges"):
-                continue
-            uses = sub.get("uses") if sub["type"] == "grant_spell" else sub.get("max", 0)
-            if not uses:
-                continue
-            recharge = sub.get("recharge", "dawn")
-            existing = tracked.get(name)
-            if existing:
-                existing["max"] = uses
-                existing["recharge"] = recharge
-                existing["current"] = min(existing.get("current", uses), uses)
-            else:
-                tracked[name] = {"current": uses, "max": uses, "recharge": recharge}
+        uses, recharge = max(pools)
+        existing = tracked.get(name)
+        if existing:
+            existing["max"] = uses
+            existing["recharge"] = recharge
+            existing["current"] = min(existing.get("current", uses), uses)
+        else:
+            tracked[name] = {"current": uses, "max": uses, "recharge": recharge}
 
-    from dnd_app.data.phb2014.classes import ARTIFICER_INFUSION_CHARGES
+    from dnd_app.data.classes import ARTIFICER_INFUSION_CHARGES
     infusion_charge_keys = set()
     for inf in char.get("active_infusions", []):
         name = inf.get("infusion", "")
@@ -546,40 +585,313 @@ def _apply_infusion_bonuses(char: dict) -> None:
             char["magic_ac_bonus"] = char.get("magic_ac_bonus", 0) + bonus
 
 
-def concentration_save(char: dict, damage: int) -> tuple[bool, int]:
-    """
-    Roll concentration save after taking damage.
-    Returns (maintained, roll_total).
-    """
+def concentration_save(char: dict, damage: int, rng=None) -> dict:
+    """The save to keep concentrating after taking damage: one d20 + your
+    CON save against DC 10 or half the damage. Advantage and disadvantage
+    are never applied for you (the table decides), so the sources the
+    sheet knows come back as a reminder -- and a failure with a source of
+    advantage (War Caster...) leaves the spell up: whether your second
+    d20 saves it is your call.
+    Returns {"kept": True / False / None (your call), "total", "dc",
+    "reminder"}."""
     import random
-    from .calculator import get_saving_throw_bonus
+    from .calculator import get_saving_throw_bonus, roll_reminder
 
     conc = char.get("concentration", {})
-    if not conc or not conc.get("spell"):
-        return True, 0
-
     dc = max(10, damage // 2)
-    con_save = get_saving_throw_bonus(char, "CON")
-    # War Caster: advantage on CON saves made to maintain concentration.
-    if "War Caster" in char.get("feats", []):
-        roll = max(random.randint(1, 20), random.randint(1, 20))
-    else:
-        roll = random.randint(1, 20)
-    total = roll + con_save
+    if not conc or not conc.get("spell"):
+        return {"kept": True, "total": 0, "dc": dc, "reminder": ""}
+    reminder = roll_reminder(char, "concentration")
+    total = (rng or random).randint(1, 20) + get_saving_throw_bonus(char, "CON")
     if total >= dc:
-        return True, total
-    conc["spell"] = None
-    conc["since_round"] = 0
-    return False, total
+        return {"kept": True, "total": total, "dc": dc, "reminder": reminder["text"]}
+    if reminder["advantage"]:
+        return {"kept": None, "total": total, "dc": dc, "reminder": reminder["text"]}
+    drop_concentration(char)
+    return {"kept": False, "total": total, "dc": dc, "reminder": reminder["text"]}
 
 
 def start_concentration(char: dict, spell_name: str, *, round_num: int = 0) -> None:
     char.setdefault("concentration", {"spell": None, "since_round": 0})
+    # concentrating on a new spell ends the old one, and its effect with it
+    old = char["concentration"].get("spell")
+    if old and old != spell_name:
+        _end_concentration_effects(char, old)
     char["concentration"]["spell"] = spell_name
     char["concentration"]["since_round"] = round_num
 
 
 def drop_concentration(char: dict) -> None:
     conc = char.setdefault("concentration", {"spell": None, "since_round": 0})
+    if conc.get("spell"):
+        _end_concentration_effects(char, conc["spell"])
     conc["spell"] = None
     conc["since_round"] = 0
+
+
+def _end_concentration_effects(char: dict, spell_name: str) -> None:
+    """The spell's concentration effects come off Active Effects (Divine
+    Favor's extra radiant leaves the weapon rows when it ends)."""
+    from dnd_app.core.effects import EFFECT_TABLE
+    from dnd_app.core.spell_effects import effect_names
+    ending = {n for n in effect_names(spell_name) if EFFECT_TABLE.get(n, {}).get("conc")}
+    if ending:
+        char["active_effects"] = [n for n in char.get("active_effects", []) if n not in ending]
+        for n in ending:
+            (char.get("effect_details") or {}).pop(n, None)
+
+
+# ── Owned magic items: one entry per copy ──────────────────────────────
+# Each copy you own is its own entry in char["magic_items"] with a short
+# "uid", so two Manuals of Bodily Health are two books (each studied once)
+# and removing one copy leaves the other. Only magic ammunition stacks,
+# as a "qty" on a single entry.
+import uuid as _uuid
+
+_AMMO_RE = _re.compile(r"\b(ammunition|arrows?|bolts?|bullets?|needles?)\b", _re.I)
+
+
+def is_magic_ammunition(name: str) -> bool:
+    """+1 Ammunition, Arrow of Slaying, Walloping Ammunition... -- the
+    magic items that come (and stack) by the handful."""
+    catalog = get_magic_item(name) or {}
+    return catalog.get("type") == "Weapon" and bool(_AMMO_RE.search(name or ""))
+
+
+def owned_magic_items(char: dict) -> list[dict]:
+    """char["magic_items"] as dicts, each with a uid and its own "attuned"
+    flag. Older saves (plain names, no uids, attunement only in
+    attuned_items) are upgraded in place; safe to call repeatedly.
+
+      1. every entry becomes a dict (an old save might hold a bare name)
+      2. every entry gets a uid if it hasn't one -- that's what the UIs
+         use to say WHICH copy to equip/attune/study/remove
+      3. attunement: attuned_items (names) is the source of truth, and
+         only one copy of a name can be attuned. A copy keeps its
+         "attuned" flag only if its name is still attuned and no earlier
+         copy already has it; an attuned name with no flagged copy (an
+         older save) is given to its first copy."""
+    items = []
+    for e in char.get("magic_items", []):
+        if not isinstance(e, dict):
+            e = {"name": str(e), "attunement": False, "equipped": True, "notes": ""}
+        if not e.get("uid"):
+            e["uid"] = _uuid.uuid4().hex[:10]
+        items.append(e)
+    char["magic_items"] = items
+    # attunement belongs to one copy: keep a copy's flag only while its name
+    # is attuned, then give any attuned name without a flagged copy to its
+    # first copy
+    attuned = set(char.get("attuned_items", []))
+    flagged = set()
+    for e in items:
+        n = e.get("name", "")
+        if e.get("attuned") and (n not in attuned or n in flagged):
+            e["attuned"] = False
+        if e.get("attuned"):
+            flagged.add(n)
+    for e in items:
+        n = e.get("name", "")
+        if n in attuned and n not in flagged:
+            e["attuned"] = True
+            flagged.add(n)
+    return items
+
+
+def find_magic_item(char: dict, uid: str) -> dict | None:
+    return next((e for e in owned_magic_items(char) if e.get("uid") == uid), None)
+
+
+def add_owned_magic_item(char: dict, name: str, qty: int = 1) -> dict:
+    """Add a copy (or, for ammunition, `qty` more of an existing stack)."""
+    items = owned_magic_items(char)
+    if is_magic_ammunition(name):
+        stack = next((e for e in items if e.get("name") == name), None)
+        if stack:
+            stack["qty"] = stack.get("qty", 1) + qty
+            return stack
+    entry = {"name": name, "attunement": False, "equipped": True, "notes": "",
+             "uid": _uuid.uuid4().hex[:10]}
+    if is_magic_ammunition(name):
+        entry["qty"] = max(1, qty)
+    items.append(entry)
+    return entry
+
+
+def _copies_left(char: dict, name: str) -> list[dict]:
+    return [e for e in owned_magic_items(char) if e.get("name") == name]
+
+
+def remove_owned_magic_item(char: dict, uid: str) -> dict | None:
+    """Remove one copy. Returns it (None if not found). Attunement and the
+    equipped-weapon/armor slot only go if no other copy keeps them."""
+    entry = find_magic_item(char, uid)
+    if not entry:
+        return None
+    char["magic_items"] = [e for e in char["magic_items"] if e.get("uid") != uid]
+    name = entry.get("name", "")
+    if entry.get("attuned"):
+        attuned = char.get("attuned_items", [])
+        while name in attuned:
+            attuned.remove(name)
+    if entry.get("equipped") and not any(e.get("equipped") for e in _copies_left(char, name)):
+        _unequip_slot(char, name)
+    return entry
+
+
+def set_owned_magic_item_qty(char: dict, uid: str, qty: int):
+    """Ammunition stacks: set how many; 0 removes the stack."""
+    entry = find_magic_item(char, uid)
+    if not entry:
+        return
+    if qty <= 0:
+        remove_owned_magic_item(char, uid)
+    else:
+        entry["qty"] = qty
+
+
+def _unequip_slot(char: dict, name: str):
+    itype = (get_magic_item(name) or {}).get("type", "")
+    if itype == "Weapon":
+        wpns = char.get("equipped_weapons", [])
+        if name in wpns:
+            wpns.remove(name)
+    elif itype == "Armor":
+        if char.get("armor_worn") == name:
+            char["armor_worn"] = "No Armor"
+    elif itype == "Shield":
+        char["shield"] = False
+
+
+def set_owned_magic_item_equipped(char: dict, uid: str, on: bool):
+    """Equip/unequip one copy, syncing equipped_weapons / armor_worn /
+    shield (a weapon stays in hand while any copy of it is equipped)."""
+    entry = find_magic_item(char, uid)
+    if not entry:
+        return
+    entry["equipped"] = on
+    name = entry.get("name", "")
+    itype = (get_magic_item(name) or {}).get("type", "")
+    if on:
+        if itype == "Weapon":
+            wpns = char.setdefault("equipped_weapons", [])
+            if name not in wpns:
+                wpns.append(name)
+        elif itype == "Armor":
+            char["armor_worn"] = name
+        elif itype == "Shield":
+            char["shield"] = True
+    elif not any(e.get("equipped") for e in _copies_left(char, name)):
+        _unequip_slot(char, name)
+
+
+def attunement_limit(char: dict) -> int:
+    from dnd_app.core.calculator import class_levels
+    art_lvl = class_levels(char).get("Artificer", 0)
+    limit = 6 if art_lvl >= 18 else 5 if art_lvl >= 14 else 4 if art_lvl >= 10 else 3
+    if "Mystic Conflux" in char.get("feats", []):
+        limit = max(limit, 4)
+    return limit
+
+
+def set_owned_magic_item_attuned(char: dict, uid: str, on: bool) -> str:
+    """Attune/end attunement for one copy. Returns "" on success, else the
+    reason it can't (you can't attune to two copies of the same item --
+    XGtE p.136 -- plus the prerequisite and the attunement limit)."""
+    entry = find_magic_item(char, uid)
+    if not entry:
+        return ""
+    name = entry.get("name", "")
+    attuned = char.setdefault("attuned_items", [])
+    if on:
+        if entry.get("attuned"):
+            return ""
+        if name in attuned:
+            return f"You're already attuned to another {name} -- you can't attune to two of the same item."
+        met, reason = attunement_prereq_met(char, name)
+        if not met:
+            return f"{name} requires attunement by {reason} -- this character doesn't qualify."
+        limit = attunement_limit(char)
+        if len(attuned) >= limit:
+            return f"Maximum {limit} attuned items (PHB p.138)."
+        attuned.append(name)
+        entry["attuned"] = True
+    else:
+        entry["attuned"] = False
+        while name in attuned:
+            attuned.remove(name)
+    entry["attunement"] = bool(entry.get("attuned"))
+    return ""
+
+
+def can_study_manual(entry: dict) -> bool:
+    """A manual or tome works once: after its 48 hours of study it's spent
+    (DMG: its magic is gone for a century)."""
+    return bool(entry) and entry.get("name") in ABILITY_SCORE_MANUALS and not entry.get("studied")
+
+
+def study_owned_manual(char: dict, uid: str) -> tuple[str, int] | None:
+    """Study one copy: +2 to its ability score, and that book is marked
+    studied (kept, but it can't be studied again). Returns (ability, new
+    score), or None if this copy can't be studied."""
+    entry = find_magic_item(char, uid)
+    if not can_study_manual(entry):
+        return None
+    ability = ABILITY_SCORE_MANUALS[entry["name"]]
+    abilities = char.setdefault("abilities", {})
+    abilities[ability] = abilities.get(ability, 10) + 2
+    # "...increases by 2, as does your maximum for that score" -- the
+    # builder's 20 (or 24) cap reads this, so the +2 survives a rebuild
+    max_bonus = char.setdefault("ability_max_bonus", {})
+    max_bonus[ability] = max_bonus.get(ability, 0) + 2
+    entry["studied"] = True
+    entry["equipped"] = False
+    return ability, abilities[ability]
+
+
+# ── Item charges and once-a-day uses ──────────────────────────────────────
+# char["item_charges"]: {item: {"current", "max", "recharge"}} (sync_item_charges)
+# char["item_uses"]:    {action card: {"current", "max", "recharge"}} -- an
+#                       item's once-a-day action that has no charges
+_REGAIN_RE = _re.compile(r"regains?\s+(all|\d+d\d+(?:\s*[+-]\s*\d+)?|\d+)\s+(?:of its\s+)?"
+                         r"(?:expended\s+)?charges?", _re.I)
+
+
+def _roll(expr: str, rng) -> int:
+    m = _re.fullmatch(r"(\d+)d(\d+)(?:\s*([+-])\s*(\d+))?", expr.strip())
+    if not m:
+        return int(expr) if expr.strip().isdigit() else 0
+    total = sum(rng.randint(1, int(m.group(2))) for _ in range(int(m.group(1))))
+    if m.group(3):
+        total += int(m.group(4)) * (1 if m.group(3) == "+" else -1)
+    return max(0, total)
+
+
+def charges_at_dawn(char: dict, rng=None) -> list:
+    """A long rest's dawn: each item gets its charges back the way its own
+    rules say ("regains 1d6 + 1 expended charges daily at dawn" -- rolled,
+    and the roll is in what this returns; "regains all", or nothing said,
+    fills it), and once-a-day item uses come back. Returns what came back,
+    one plain line per item, for the rest's toast."""
+    import random
+    rng = rng or random
+    out = []
+    for name, data in char.get("item_charges", {}).items():
+        mx, cur = data.get("max", 0), data.get("current", 0)
+        if data.get("recharge", "dawn") not in ("dawn", "dusk") or cur >= mx:
+            continue
+        catalog = get_magic_item(name) or {}
+        m = _REGAIN_RE.search(catalog.get("desc", "") or "")
+        if not m or m.group(1).lower() == "all":
+            data["current"] = mx
+            out.append(f"{name}: back to {mx}/{mx} charge{'s' if mx != 1 else ''}")
+            continue
+        got = _roll(m.group(1), rng)
+        data["current"] = min(mx, cur + got)
+        out.append(f"{name}: rolled {got} on {m.group(1).replace(' ', '')}, "
+                   f"{data['current']}/{mx} charges")
+    for name, data in char.get("item_uses", {}).items():
+        if data.get("current", 0) < data.get("max", 1):
+            data["current"] = data.get("max", 1)
+            out.append(f"{name}: ready again")
+    return out

@@ -4,7 +4,7 @@ Icons replace the emoji the UI used to show. Every icon is a single colour:
 the active theme's accent, IND2 (blue in Obsidian, emerald in Dragon's
 Hoard, navy in Arcane Scroll, ...). Drawn with QPainter rather than loaded
 as .svg because the Windows build deliberately excludes QtSvg (see
-packaging/windows/DnD5eCharacterCreator.spec).
+packaging/windows/MIMIC.spec).
 
 Widgets that show an icon register through set_button_icon()/
 set_tab_icon()/set_label_icon()/set_action_icon(), and theme.apply_theme()
@@ -19,7 +19,7 @@ from PySide6.QtCore import QPointF, QSize, Qt
 from PySide6.QtGui import QColor, QGuiApplication, QIcon, QImage, QPainter, QPainterPath, QPen, QPixmap
 
 import dnd_app.ui_desktop.style.theme as _theme
-from dnd_app.ui_desktop.icon_data import (CHEESE_PALETTE, CHEESE_PIXELS, CUT_WIDTH, CUT_WIDTHS, ICON_CUTS, ICON_FILLS,
+from dnd_app.data.icon_data import (CHEESE_PALETTE, CHEESE_PIXELS, CUT_WIDTH, CUT_WIDTHS, ICON_CUTS, ICON_FILLS,
                                           ICON_PATHS, STROKE)
 
 _TOKEN = re.compile(r"[MLQCZ]|-?\d*\.?\d+")
@@ -206,7 +206,7 @@ def icon_header(name: str, text_label, size: int = 15, spacing: int = 6, center:
     emoji. Left-aligned unless `center`. Returns a QWidget."""
     from PySide6.QtWidgets import QHBoxLayout, QWidget
     w = QWidget()
-    w.setStyleSheet("background:transparent;")
+    w.setStyleSheet("background:transparent;border:none;")
     row = QHBoxLayout(w)
     row.setContentsMargins(0, 0, 0, 0)
     row.setSpacing(spacing)

@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import Mimic
 
@@ -67,7 +68,114 @@ Flickable {
                     Label { Layout.fillWidth: true; text: sheetBridge.fontScale; color: Theme.text; font.pixelSize: Theme.fsBody; font.bold: true }
                     MButton { primary: false; height: 32; text: "Change"; onClicked: fontScaleDialog.open() }
                 }
+                // Immersive Health / Immersive Exhaustion (core/immersive.py)
+                Repeater {
+                    model: ["health", "exhaustion"]
+                    delegate: ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        readonly property var info: appSettingsBridge.immersiveInfo(modelData)
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label { text: info.name; color: Theme.text2; font.pixelSize: Theme.fsSmall; Layout.preferredWidth: 90; wrapMode: Text.WordWrap }
+                            Label {
+                                Layout.fillWidth: true
+                                text: modelData === "health" ? appSettingsBridge.immersiveHealth : appSettingsBridge.immersiveExhaustion
+                                color: Theme.text; font.pixelSize: Theme.fsBody; font.bold: true
+                            }
+                            MButton { primary: false; height: 32; text: "Change"; onClicked: { immersiveDialog.kind = modelData; immersiveDialog.open() } }
+                        }
+                        Label { Layout.fillWidth: true; text: info.what; color: Theme.text3; font.pixelSize: Theme.fsSmall; wrapMode: Text.WordWrap }
+                    }
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: appSettingsBridge.immersiveInfo("health").reduced
+                    color: Theme.text3; font.pixelSize: Theme.fsSmall; wrapMode: Text.WordWrap
+                }
             }
+        }
+
+        // ── Where characters are saved ──────────────────────────────────
+        Label {
+            text: "Character Folder"
+            color: Theme.gold
+            font.pixelSize: Theme.fsSmall
+            font.bold: true
+        }
+        Rectangle {
+            width: parent.width
+            height: saveFolderCol.height + 20
+            radius: 10
+            color: Theme.surf
+            border.color: Theme.border
+
+            ColumnLayout {
+                id: saveFolderCol
+                x: 12; y: 10
+                width: parent.width - 24
+                spacing: 8
+
+                Label {
+                    text: "Characters, and each one's exported sheets, are saved in:"
+                    color: Theme.text3
+                    font.pixelSize: Theme.fsSmall
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+                Label {
+                    objectName: "saveDirLabel"
+                    text: slBridge.documentsDir + (slBridge.saveDirIsDefault ? "  (default)" : "")
+                    color: Theme.text
+                    font.pixelSize: Theme.fsSmall
+                    wrapMode: Text.WrapAnywhere
+                    Layout.fillWidth: true
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    MButton {
+                        primary: false
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 0
+                        implicitHeight: 36
+                        text: "Change…"
+                        onClicked: saveFolderDialog.open()
+                    }
+                    MButton {
+                        primary: false
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 0
+                        implicitHeight: 36
+                        visible: !slBridge.saveDirIsDefault
+                        text: "Default"
+                        onClicked: slBridge.resetSaveDir()
+                    }
+                    MButton {
+                        primary: false
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 0
+                        implicitHeight: 36
+                        iconName: "folder"
+                        iconSize: 16
+                        text: "Open"
+                        onClicked: slBridge.openSaveFolder()
+                    }
+                }
+                Label {
+                    text: "Android only lets apps save inside Documents or Download -- pick a folder there."
+                    color: Theme.text3
+                    font.pixelSize: Theme.fsSmall
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+            }
+        }
+        FolderDialog {
+            id: saveFolderDialog
+            title: "Choose where characters are saved"
+            currentFolder: "file://" + slBridge.documentsDir
+            onAccepted: slBridge.setSaveDirFromUrl(selectedFolder.toString())
         }
 
         Label {
@@ -439,6 +547,13 @@ Flickable {
             }
             Theme.applyTheme(value)
         }
+    }
+    MPickerDialog {
+        id: immersiveDialog
+        property string kind: "health"
+        dialogTitle: kind === "health" ? "Immersive Health" : "Immersive Exhaustion"
+        options: appSettingsBridge.immersiveModes
+        onPicked: (value) => appSettingsBridge.setImmersive(kind, value)
     }
     MPickerDialog {
         id: fontScaleDialog

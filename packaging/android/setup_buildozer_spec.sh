@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# One-time (re-runnable) setup: finds the Android SDK/NDK, PySide6 wheels
-# and Qt Android jars, and writes their paths into
-# dnd_app/ui_android/buildozer.spec. Run from WSL, or double-click
-# setup_buildozer_spec.bat next to this file.
+# One-time (re-runnable) setup: finds the Android SDK/NDK, the PySide6
+# wheels and the Qt Android jars, and writes their paths -- and the p4a
+# recipes' and hook's -- into dnd_app/ui_android/buildozer.spec. Run from
+# WSL, or double-click setup_buildozer_spec.bat next to this file (a new
+# computer's first_time_setup.sh runs it at the end).
 #
 # Only the machine-specific path lines are touched: source.dir,
 # android.sdk_path, android.ndk_path, p4a.local_recipes, p4a.hook,
@@ -14,9 +15,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SPEC="$ROOT/dnd_app/ui_android/buildozer.spec"
 WHEELS="$ROOT/packaging/android/wheels"
+RECIPES="$ROOT/packaging/android/recipes"
+JAR_DIR="$ROOT/packaging/android/jars"
 
 PYSIDE_VER="6.11.2"
 WHEEL_TAG="cp311-cp311-android_aarch64"
+# the files in wheels/ (committed), by the names the recipes in recipes/
+# unpack -- a new PySide6 version means new wheels and those two names
+PYSIDE_WHL="pyside6-$PYSIDE_VER-$PYSIDE_VER-$WHEEL_TAG.whl"
+SHIB_WHL="shiboken6-$PYSIDE_VER-$PYSIDE_VER-$WHEEL_TAG.whl"
 PYSIDE_URL="https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-$PYSIDE_VER-$PYSIDE_VER-$WHEEL_TAG.whl"
 SHIB_URL="https://download.qt.io/official_releases/QtForPython/shiboken6/shiboken6-$PYSIDE_VER-$PYSIDE_VER-$WHEEL_TAG.whl"
 JARS=(Qt6Android.jar Qt6AndroidBindings.jar Qt6AndroidQuick.jar)
@@ -78,32 +85,30 @@ NDK="$(first_dir "$(spec_value 'android\.ndk_path')" \
     || die "Android NDK not found in the spec, ~/.pyside6_android_deploy/android-ndk/, \$ANDROIDNDK or \$ANDROID_NDK_HOME"
 echo "  $NDK"
 
-echo "[3/6] PySide6/Shiboken6 wheels ($WHEELS)"
+echo "[3/6] PySide6/Shiboken6 wheels and their p4a recipes"
 mkdir -p "$WHEELS"
-fetch() {  # fetch <glob> <url>
-    local hit
-    hit="$(ls "$WHEELS"/$1 2>/dev/null | head -1 || true)"
-    if [ -n "$hit" ]; then echo "  found $(basename "$hit")"; return; fi
-    echo "  downloading $(basename "$2")"
-    curl -fL --retry 3 -o "$WHEELS/$(basename "$2").part" "$2" \
-        && mv "$WHEELS/$(basename "$2").part" "$WHEELS/$(basename "$2")" \
-        || die "download failed: $2 -- download it manually into $WHEELS"
+fetch() {  # fetch <file in wheels/> <url> -- a missing wheel is downloaded
+    if [ -f "$WHEELS/$1" ]; then echo "  found wheels/$1"; return; fi
+    echo "  downloading $1"
+    curl -fL --retry 3 -o "$WHEELS/$1.part" "$2" && mv "$WHEELS/$1.part" "$WHEELS/$1" \
+        || die "download failed: $2 -- download it manually into $WHEELS as $1"
 }
-fetch "[Pp]y[Ss]ide6-*-android_aarch64.whl" "$PYSIDE_URL"
-fetch "shiboken6-*-android_aarch64.whl" "$SHIB_URL"
+fetch "$PYSIDE_WHL" "$PYSIDE_URL"
+fetch "$SHIB_WHL" "$SHIB_URL"
+# the recipes (they unpack the wheels rather than compile them) are in git
+# and find their wheel in wheels/ themselves; p4a.local_recipes points at them
+for NAME in PySide6 shiboken6; do
+    [ -f "$RECIPES/$NAME/__init__.py" ] || die "packaging/android/recipes/$NAME/ is missing -- it's in git"
+    echo "  found recipes/$NAME"
+done
 
 echo "[4/6] Qt Android jars (${JARS[*]})"
-CUR_JARS="$(spec_value 'android\.add_jars' | cut -d, -f1)"
-JAR_DIR=""
-for d in "${CUR_JARS%/*}" "$ROOT/deployment/jar/PySide6/jar" "$ROOT/packaging/android/jars"; do
-    if [ -n "$d" ] && has_jars "$d"; then JAR_DIR="$d"; break; fi
-done
-if [ -z "$JAR_DIR" ]; then
-    JAR_DIR="$ROOT/packaging/android/jars"
-    echo "  extracting from the PySide6 wheel into $JAR_DIR"
+if has_jars "$JAR_DIR"; then
+    echo "  found them"
+else
+    echo "  taking them out of the PySide6 wheel"
     mkdir -p "$JAR_DIR"
-    WHL="$(ls "$WHEELS"/[Pp]y[Ss]ide6-*-android_aarch64.whl | head -1)"
-    "$PY" - "$WHL" "$JAR_DIR" "${JARS[@]}" <<'EOF'
+    "$PY" - "$WHEELS/$PYSIDE_WHL" "$JAR_DIR" "${JARS[@]}" <<'EOF'
 import sys, zipfile
 from pathlib import Path
 whl, out, wanted = sys.argv[1], Path(sys.argv[2]), set(sys.argv[3:])
@@ -125,12 +130,12 @@ spec, root, sdk, ndk, jar_dir, *jars = sys.argv[1:]
 text = open(spec, encoding="utf-8", newline="").read()
 nl = "\r\n" if "\r\n" in text else "\n"
 icon = f"{root}/packaging/android/icon.png"
-hook = f"{root}/deployment/recipes/p4a_hook.py"
+hook = f"{root}/packaging/android/p4a_hook.py"
 values = {
     "source.dir": root,
     "android.sdk_path": sdk,
     "android.ndk_path": ndk,
-    "p4a.local_recipes": f"{root}/deployment/recipes",
+    "p4a.local_recipes": f"{root}/packaging/android/recipes",
     "p4a.hook": hook,
     "android.add_jars": ",".join(f"{jar_dir}/{j}" for j in jars),
     "android.icon": icon,
@@ -155,9 +160,9 @@ fi
 echo "[6/6] Verifying"
 grep -E '^(source\.dir|android\.(sdk_path|ndk_path|add_jars|icon|apptheme)|p4a\.(local_recipes|branch|hook|extra_args))[[:space:]]*=' "$SPEC" | sed 's/^/  /'
 grep -qE '^p4a\.branch[[:space:]]*=[[:space:]]*v2024\.01\.21' "$SPEC" \
-    || echo "  WARNING: p4a.branch is not v2024.01.21 -- see BUILD_APK.md before building"
-[ -f "$ROOT/deployment/recipes/p4a_hook.py" ] || echo "  WARNING: deployment/recipes/p4a_hook.py is missing"
+    || echo "  WARNING: p4a.branch is not v2024.01.21 -- see packaging/android/README.md before building"
+[ -f "$ROOT/packaging/android/p4a_hook.py" ] || echo "  WARNING: packaging/android/p4a_hook.py is missing"
 
 echo
 echo "=== Done ==="
-echo "Next: double-click installer\\android\\clean_build_android.bat"
+echo "Next: double-click packaging\\android\\clean_build_android.bat"

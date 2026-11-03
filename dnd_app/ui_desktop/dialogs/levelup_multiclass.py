@@ -39,22 +39,22 @@ from dnd_app.core.multiclass import (
 from dnd_app.core.builder import rebuild
 from dnd_app.core.controller import CharacterController
 from dnd_app.core.magic_items import concentration_save, start_concentration, drop_concentration
-from dnd_app.core.spell_components import spell_component_block_reason
+from dnd_app.core.spellcasting import spell_component_block_reason
 from dnd_app.core.save_load import (
     save_character, load_character, list_saved_characters, character_filename, validate_character,
 )
 from dnd_app.core.character import set_subclass, get_class_entry
-from dnd_app.data.phbCommon.magic_items import ALL_MAGIC_ITEMS, has_item_effect
+from dnd_app.data.magic_items import ALL_MAGIC_ITEMS, has_item_effect
 from dnd_app.ui_desktop.dialogs.levelup_panel import LevelUpPanel
-from dnd_app.data.phb2014.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
-from dnd_app.data.phb2014.races import get_race
-from dnd_app.data.phbCommon.backgrounds import get_background
-from dnd_app.data.phbCommon.feats import get_feat
-from dnd_app.data.phbCommon.spells import get_spell, spells_for_class, ALL_SPELLS
-from dnd_app.data.phbCommon.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
+from dnd_app.data.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
+from dnd_app.data.races import get_race
+from dnd_app.data.backgrounds import get_background
+from dnd_app.data.feats import get_feat
+from dnd_app.data.spells import get_spell, spells_for_class, ALL_SPELLS
+from dnd_app.data.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
     ADVENTURING_GEAR, GEAR_NAMES, MOUNTS, ALL_TOOLS, SIMPLE_MELEE, SIMPLE_RANGED,
     MARTIAL_MELEE, MARTIAL_RANGED, ARTISAN_TOOLS, SPECIAL_ARMOR)
-from dnd_app.data.phbCommon.conditions import CONDITIONS
+from dnd_app.data.conditions import CONDITIONS
 
 
 class LevelUpMulticlassDialog(QDialog):
@@ -99,7 +99,7 @@ class LevelUpMulticlassDialog(QDialog):
         self._details_lbl = _lbl("", TEXT, FS_BODY, wrap=True)
 
         # ── Left: radio list of every class ──────────────────────────────
-        from dnd_app.data.phb2014.classes import CLASS_NAMES, CLASS_DICT
+        from dnd_app.data.classes import CLASS_NAMES, CLASS_DICT
         left_card = _card(qa(INDIGO,0x44)); left_lay = QVBoxLayout(left_card)
         left_lay.setContentsMargins(10,10,10,10); left_lay.setSpacing(4)
         self._btn_group = QButtonGroup(self)
@@ -119,7 +119,7 @@ class LevelUpMulticlassDialog(QDialog):
                 ok_req, msg = self._meets_multiclass_reqs(cls_name, existing)
                 if not ok_req:
                     rb.setEnabled(False)
-                    rb.setToolTip(f"Doesn't meet multiclass prerequisites: {msg}")
+                    rb.setToolTip(f"Not yet: {msg}")
             rb.toggled.connect(lambda checked, n=cls_name: self._on_pick(n) if checked else None)
             self._btn_group.addButton(rb)
             self._radios[cls_name] = rb
@@ -283,20 +283,12 @@ class LevelUpMulticlassDialog(QDialog):
             self._on_pick(default_choice)
 
     def _meets_multiclass_reqs(self, class_name, existing_classes):
-        """Delegates to the single canonical check_multiclass_prereq()
-        function rather than keeping a second copy of the ability-score
-        requirements here, so this dialog's eligibility check and
-        multiclass.py's MULTICLASS_PREREQS_2024 can never drift apart
-        (e.g. Blood Hunter's real requirement is INT 13 AND (STR or DEX)
-        13, not STR AND INT both)."""
-        from dnd_app.core.multiclass import check_multiclass_prereq
-        if not self.char.get("optional_rules", {}).get("multiclass_ability_reqs", True):
-            return True, ""
-        base_scores = self.char.get("abilities", {})
-        bonuses = self.char.get("ability_bonuses", {})
-        scores = {ab: base_scores.get(ab, 10) + bonuses.get(ab, 0) for ab in
-                  ("STR", "DEX", "CON", "INT", "WIS", "CHA")}
-        return check_multiclass_prereq(class_name, scores)
+        """The one shared check (core/multiclass.py multiclass_block_reason,
+        Android's too): the scores your current classes need and the new
+        one's."""
+        from dnd_app.core.multiclass import multiclass_block_reason
+        why = multiclass_block_reason(self.char, class_name)
+        return not why, why
 
     def _append_level_preview(self, lines, cls_name, is_new):
         """Appends the HP/spell-slot numbers this pick would actually
@@ -339,7 +331,7 @@ class LevelUpMulticlassDialog(QDialog):
         if getattr(self, "_init_in_progress", False):
             return
         self.selected_class = cls_name
-        from dnd_app.data.phb2014.classes import CLASS_DICT
+        from dnd_app.data.classes import CLASS_DICT
         existing = {c["class"]: c["level"] for c in self.char.get("classes", [])}
         cdata = CLASS_DICT.get(cls_name, {})
         lines = []
@@ -403,7 +395,7 @@ class LevelUpMulticlassDialog(QDialog):
             or is_eldritch_knight or is_arcane_trickster
         self._swap_card.setVisible(show_swap)
         if show_swap:
-            from dnd_app.data.phbCommon.spells import ALL_SPELLS
+            from dnd_app.data.spells import ALL_SPELLS
             known = [s for s in self.char.get("spells_known", [])]
             if is_eldritch_knight or is_arcane_trickster:
                 swap_list_class = "Wizard"
@@ -485,7 +477,7 @@ class LevelUpMulticlassDialog(QDialog):
         show_cv = show_cv_versatility or show_cv_formulas
         self._cv_card.setVisible(show_cv)
         if show_cv:
-            from dnd_app.data.phbCommon.spells import ALL_SPELLS
+            from dnd_app.data.spells import ALL_SPELLS
             known_cantrips = [n for n in self.char.get("spells_known", [])
                               if any(s["name"] == n and s.get("level", 0) == 0
                                      and cls_name in s.get("classes", []) for s in ALL_SPELLS)]
@@ -520,7 +512,7 @@ class LevelUpMulticlassDialog(QDialog):
         self._ev_in_combo.clear()
         if kind is None:
             return
-        from dnd_app.data.phbCommon.spells import ALL_SPELLS, spells_for_class_at_level
+        from dnd_app.data.spells import ALL_SPELLS, spells_for_class_at_level
         if kind == "cantrip":
             known_cantrips = [n for n in self.char.get("spells_known", [])
                               if any(s["name"] == n and s.get("level", 0) == 0
@@ -562,7 +554,7 @@ class LevelUpMulticlassDialog(QDialog):
         if kind is None:
             return
         if kind == "style":
-            from dnd_app.ui_desktop.dialogs.levelup_panel import FIGHTING_STYLES as MV_FIGHTING_STYLES
+            from dnd_app.core.choices import FIGHTING_STYLES as MV_FIGHTING_STYLES
             known_styles = self.char.get("fighting_styles", [])
             for s in known_styles:
                 self._mv_out_combo.addItem(s.split(" (")[0].strip(), s)
@@ -572,7 +564,7 @@ class LevelUpMulticlassDialog(QDialog):
                 if not any(base_name.lower() == ks.split(" (")[0].strip().lower() for ks in known_styles):
                     self._mv_in_combo.addItem(base_name, s)
         elif kind == "maneuver":
-            from dnd_app.data.phb2014.classes import BATTLE_MASTER_MANEUVERS
+            from dnd_app.data.classes import BATTLE_MASTER_MANEUVERS
             known_maneuvers = self.char.get("battle_master_maneuvers", [])
             for m in known_maneuvers:
                 self._mv_out_combo.addItem(m.split(" – ")[0].strip(), m)
@@ -595,7 +587,7 @@ class LevelUpMulticlassDialog(QDialog):
             for s in proficient_only:
                 self._bv_in_combo.addItem(s, s)
         elif kind == "cantrip":
-            from dnd_app.data.phbCommon.spells import ALL_SPELLS
+            from dnd_app.data.spells import ALL_SPELLS
             known_cantrips = [n for n in self.char.get("spells_known", [])
                               if any(s["name"] == n and s.get("level", 0) == 0
                                      and "Bard" in s.get("classes", []) for s in ALL_SPELLS)]
@@ -613,7 +605,7 @@ class LevelUpMulticlassDialog(QDialog):
         if kind is None:
             return
         if kind == "metamagic":
-            from dnd_app.data.phb2014.classes import METAMAGIC
+            from dnd_app.data.classes import METAMAGIC
             known_mm = self.char.get("_choices", {}).get("sorcerer_metamagic", [])
             for m in known_mm:
                 self._sv_out_combo.addItem(m.split(" – ")[0].strip(), m)
@@ -622,7 +614,7 @@ class LevelUpMulticlassDialog(QDialog):
                 if not any(base_name.lower() == km.split(" – ")[0].strip().lower() for km in known_mm):
                     self._sv_in_combo.addItem(base_name, m)
         elif kind == "cantrip":
-            from dnd_app.data.phbCommon.spells import ALL_SPELLS
+            from dnd_app.data.spells import ALL_SPELLS
             known_cantrips = [n for n in self.char.get("spells_known", [])
                               if any(s["name"] == n and s.get("level", 0) == 0
                                      and "Sorcerer" in s.get("classes", []) for s in ALL_SPELLS)]

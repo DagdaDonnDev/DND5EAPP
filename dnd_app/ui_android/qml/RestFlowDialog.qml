@@ -45,6 +45,9 @@ MFullPageDialog {
         // resetting every property below and calling it unconditionally
         // refreshes the visible state either way, with no transition
         // race to depend on.
+        // a long rest at 0 HP gains nothing -- the bridge says why (toast)
+        if (sheetBridge.restBlockReason(type) !== "")
+            return
         restType = type
         page = 0
         selectedOptionKinds = []

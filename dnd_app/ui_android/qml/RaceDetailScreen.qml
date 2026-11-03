@@ -42,7 +42,7 @@ Page {
             // ── Subrace ──────────────────────────────────────────────
             Label {
                 visible: Window.window.raceBridge.subraceNames.length > 1
-                text: "Subrace"
+                text: Window.window.raceBridge.subraceRequired ? "Subrace (required)" : "Subrace"
                 color: Theme.gold
                 font.pixelSize: Theme.fsSmall
                 font.bold: true
@@ -53,8 +53,8 @@ Page {
                 width: parent.width
                 model: Window.window.raceBridge.subraceNames
                 onActivated: (idx) => {
-                    const v = model[idx]
-                    Window.window.raceBridge.selectSubrace(v === "(None)" ? "" : v)
+                    // entry 0 is the "(None)" / "(Choose a subrace)" placeholder
+                    Window.window.raceBridge.selectSubrace(idx === 0 ? "" : model[idx])
                 }
             }
 
@@ -132,6 +132,8 @@ Page {
         onClicked: {
             if (Window.window.raceBridge.confirmRace()) {
                 Window.window.advanceToAbilities()
+            } else if (Window.window.raceBridge.confirmBlockReason) {
+                Window.window.showToast(Window.window.raceBridge.confirmBlockReason)
             }
         }
     }

@@ -17,6 +17,39 @@ SpinBox {
     // it just never got turned on.
     editable: true
 
+    // Holding + or - steps by holdStep instead of 1 (snapping to its
+    // multiples: 1 -> 5 -> 10 ...) -- for quantities. 1 keeps Qt's own
+    // one-at-a-time repeat. While holding, stepSize drops to 0 so Qt's
+    // built-in repeat does nothing and holdTimer does the stepping.
+    property int holdStep: 1
+    property bool holding: false
+    stepSize: holding ? 0 : 1
+
+    Timer {
+        id: holdTimer
+        property int ticks: 0
+        interval: 150
+        repeat: true
+        running: control.holdStep > 1 && (control.up.pressed || control.down.pressed)
+        onRunningChanged: { ticks = 0; control.holding = false }
+        onTriggered: {
+            // first step at 300ms -- the same moment Qt's own repeat starts,
+            // so a quick tap is still +/- 1
+            if (++ticks < 2)
+                return
+            control.holding = true
+            var s = control.holdStep, v = control.value
+            var next = control.up.pressed ? (Math.floor(v / s) + 1) * s
+                                          : (Math.ceil(v / s) - 1) * s
+            next = Math.max(Math.min(control.from, control.to),
+                            Math.min(Math.max(control.from, control.to), next))
+            if (next !== v) {
+                control.value = next
+                control.valueModified()
+            }
+        }
+    }
+
     contentItem: TextInput {
         text: control.textFromValue(control.value, control.locale)
         font.pixelSize: Theme.fsBody
@@ -61,7 +94,8 @@ SpinBox {
     background: Rectangle {
         implicitHeight: 40
         color: Theme.surf
-        border.color: Theme.border
+        // gold while typing a number, like MTextField
+        border.color: control.contentItem.activeFocus ? Theme.gold : Theme.border
         radius: 6
     }
 }

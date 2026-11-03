@@ -47,13 +47,30 @@ def write_diagnostic_log(filename: str, text: str, mode: str = "w") -> str | Non
             continue
     return None
 
+# Appended to a styled spin box's sheet in place of setButtonSymbols(NoButtons):
+# the buttons stay but take no room. Qt 6.12 lays the number out 1 px wide
+# (so it can't be seen) in a spin box with a border or padding of its own
+# once its buttons are switched off.
+SPIN_NO_BUTTONS = ("QSpinBox::up-button,QSpinBox::down-button{width:0px;border:none;}"
+                   "QSpinBox::up-arrow,QSpinBox::down-arrow{image:none;width:0px;height:0px;}")
+
+
 def h(text, color=None, size=FS_BODY, bold=False, align=Qt.AlignLeft, wrap=True):
     """Quick label factory."""
     w = QLabel(text)
     c = color or TEXT
-    s = f"color:{c};font-size:{size}px;background:transparent;"
+    # border:none -- QLabel is a QFrame subclass, so without it every label
+    # inside a card picked up the card's own "QFrame{border:...}" rule and
+    # drew a box around itself. A widget's own style beats inherited ones.
+    s = f"color:{c};font-size:{size}px;background:transparent;border:none;"
     if bold: s += "font-weight:700;"
     w.setStyleSheet(s)
+    # A horizontal-only alignment (the default AlignLeft) would also drop
+    # QLabel's own vertical centring, drawing the text at the top whenever
+    # the label is taller than it (header titles, "Subrace:" beside a
+    # taller drop-down) -- so centre vertically unless told otherwise.
+    if not (align & Qt.AlignVertical_Mask):
+        align = align | Qt.AlignVCenter
     w.setAlignment(align)
     if wrap: w.setWordWrap(True)
     return w
@@ -305,10 +322,10 @@ class BigStatBox(QFrame):
         f.setPointSize(20 if len(str(value)) <= 8 else 12)
         self._val_lbl.setFont(f)
         self._val_lbl.setWordWrap(True)
-        self._val_lbl.setStyleSheet(f"color:{self._color};background:transparent;")
+        self._val_lbl.setStyleSheet(f"color:{self._color};background:transparent;border:none;")
         self._ttl_lbl = QLabel(label)
         self._ttl_lbl.setAlignment(Qt.AlignCenter)
-        self._ttl_lbl.setStyleSheet(f"color:{TEXT2};font-size:{FS_SMALL}px;font-weight:700;background:transparent;letter-spacing:1px;")
+        self._ttl_lbl.setStyleSheet(f"color:{TEXT2};font-size:{FS_SMALL}px;font-weight:700;background:transparent;border:none;letter-spacing:1px;")
         lay.addWidget(self._val_lbl); lay.addWidget(self._ttl_lbl)
 
     def set_val(self, v):
@@ -318,7 +335,7 @@ class BigStatBox(QFrame):
         self._val_lbl.setFont(f)
     def set_color(self, c):
         self._color = c
-        self._val_lbl.setStyleSheet(f"color:{c};background:transparent;")
+        self._val_lbl.setStyleSheet(f"color:{c};background:transparent;border:none;")
 
 class AbilityBlock(QFrame):
     """One ability score block: name / score / modifier."""
@@ -349,7 +366,7 @@ class AbilityBlock(QFrame):
             self._score_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
             self._score_spin.setStyleSheet(
                 f"QSpinBox{{font-size:{FS_STAT}px;font-weight:700;color:{TEXT};"
-                f"border:none;background:transparent;text-align:center;}}"
+                f"border:none;background:transparent;text-align:center;padding:0;}}"
             )
             def _on_spin_change(v, self=self):
                 mod = (v - 10) // 2
@@ -434,6 +451,99 @@ def _spell_tooltip(spell: dict) -> str:
     return "\n".join(parts)
 
 
+def details_markdown(text: str) -> str:
+    """A description (a spell's, a magic item's) as Markdown for
+    show_details(). Its own line breaks stay -- Markdown runs single lines
+    together, so a list of "• ..." lines would come out as one line -- and
+    a table gets the blank line before it that Markdown needs."""
+    lines = (text or "").replace("\r", "").split("\n")
+    out = []
+    for i, line in enumerate(lines):
+        line = line.rstrip()
+        is_row = line.lstrip("> ").startswith("|")
+        prev = out[-1] if out else ""
+        if is_row and prev.strip(" >") and not prev.lstrip("> ").startswith(("|", "#")):
+            out.append(">" if line.startswith(">") else "")
+        nxt = lines[i + 1].strip() if i + 1 < len(lines) else ""
+        if line and nxt and not is_row and not nxt.lstrip("> ").startswith("|"):
+            line += "  "    # Markdown's line break
+        out.append(line)
+    return "\n".join(out)
+
+
+def spell_details_markdown(spell: dict) -> str:
+    """A spell for show_details(): what kind of spell it is, how it's
+    cast, then what it does."""
+    lvl = spell.get("level", 0)
+    kind = ["Cantrip" if lvl == 0 else f"Level {lvl}", spell.get("school", "").title()]
+    kind += [tag for tag, on in (("Ritual", spell.get("ritual")),
+                                 ("Concentration", spell.get("concentration"))) if on]
+    facts = [("Casting time", spell.get("casting_time", spell.get("cast_time", ""))),
+             ("Range", spell.get("range", "")), ("Duration", spell.get("duration", "")),
+             ("Components", spell.get("components", ""))]
+    parts = [f"### {spell.get('name', 'Spell')}", "*" + " · ".join(k for k in kind if k) + "*",
+             "  \n".join(f"**{k}:** {v}" for k, v in facts if v),
+             details_markdown(spell.get("desc", ""))]
+    higher = spell.get("higher_levels") or spell.get("higher")
+    if higher:
+        parts.append(f"**At higher levels:** {details_markdown(higher)}")
+    if spell.get("source"):
+        parts.append(f"*Source: {spell['source']}*")
+    return "\n\n".join(p for p in parts if p)
+
+
+def item_details_markdown(detail: dict, extra: str = "") -> str:
+    """An item for show_details(), from core/item_details.py item_detail():
+    what kind of item it is, its facts a line each, then its description --
+    the same page Android's View button opens. `extra` goes before the
+    description (an owned manual's "Studied")."""
+    kind = detail.get("subtitle", "")
+    if detail.get("rarity") and kind == "Magic item":
+        kind = f"{detail['rarity']} magic item"
+    parts = [f"### {detail.get('name', '')}", f"*{kind}*" if kind else "",
+             "  \n".join(detail.get("facts") or []), extra,
+             details_markdown(detail.get("desc", ""))]
+    return "\n\n".join(p for p in parts if p)
+
+
+def show_details(parent, title: str, markdown: str):
+    """The window a magnifying glass or a Details menu entry opens: the
+    whole text, its tables, lists and line breaks as written, scrolling
+    when it's long. It belongs to the top-level window rather than the row
+    it was opened from, so that row's own style sheet doesn't reach it."""
+    from PySide6.QtGui import QTextDocument, QTextCursor
+    win = parent.window() if parent is not None else None
+    dlg = QDialog(win)
+    dlg.setWindowTitle(title)
+    lay = QVBoxLayout(dlg)
+    view = QTextBrowser()
+    view.setOpenLinks(False)   # a few item notes carry links; nothing to open here
+    lay.addWidget(view)
+    buttons = QDialogButtonBox(QDialogButtonBox.Close)
+    buttons.rejected.connect(dlg.reject)
+    lay.addWidget(buttons)
+    dlg.ensurePolished(); view.ensurePolished()   # the theme's font, before measuring
+    doc = view.document()
+    doc.setMarkdown(markdown, QTextDocument.MarkdownDialectGitHub | QTextDocument.MarkdownNoHTML)
+    # a little space after each paragraph (Markdown's come out run together),
+    # less between list items; table cells as they are
+    block = doc.begin()
+    while block.isValid():
+        cur = QTextCursor(block)
+        if cur.currentTable() is None:
+            fmt = block.blockFormat()
+            fmt.setBottomMargin(2 if block.textList() else 8)
+            cur.setBlockFormat(fmt)
+        block = block.next()
+    # as tall as the text needs, up to most of the screen
+    width = 580
+    doc.setTextWidth(width - 80)
+    screen = (win.screen() if win is not None else QApplication.primaryScreen()).availableGeometry()
+    height = int(doc.size().height()) + 130
+    dlg.resize(width, max(240, min(height, int(screen.height() * 0.8))))
+    dlg.exec()
+
+
 class SpellRow(QFrame):
     """One row in the spell list."""
     remove           = Signal(object)
@@ -442,9 +552,22 @@ class SpellRow(QFrame):
     toggle_quick     = Signal(str, bool)   # (spell_name, pinned)
     prepared_toggled = Signal(object, bool)  # (row, checked)
 
-    def __init__(self, spell, prepared=False, parent=None, locked=False, display_name=None):
+    def __init__(self, spell, prepared=False, parent=None, locked=False, display_name=None,
+                 preparable=True, removable=True):
         super().__init__(parent)
         self.spell = spell
+        # Granted outside normal choice (a domain/oath/patron spell, a racial
+        # or feat spell): always prepared, and it can't be removed -- it's
+        # part of the class/race/feat, not a pick.
+        self._locked = locked
+        # False for a spell a class knows as its whole list (a Cleric's,
+        # Druid's, Paladin's or Artificer's): no Remove, but it still
+        # prepares and unprepares like any other.
+        self._removable = removable and not locked
+        # False when none of the character's classes prepares spells from
+        # this one's list (a Warlock/Sorcerer/Bard/Ranger spell): it's just
+        # known, so there's no Prepared box to show.
+        self._preparable = preparable
         lvl = spell["level"]
         # Built fresh on every row, not a class attribute: a class-level
         # list literal is evaluated exactly once, at class-definition time
@@ -483,9 +606,15 @@ class SpellRow(QFrame):
             self._prep_cb.setToolTip(
                 "Granted outside normal preparation (feat/racial/class bonus spell) — "
                 "always available and doesn't count against your prepared spell limit.")
-        else:
+        elif preparable:
             self._prep_cb.setToolTip("Prepared")
             self._prep_cb.toggled.connect(lambda checked: self.prepared_toggled.emit(self, checked))
+        if not preparable:
+            # hidden but still taking its space, so names line up with
+            # the rows that do have a box
+            keep = self._prep_cb.sizePolicy(); keep.setRetainSizeWhenHidden(True)
+            self._prep_cb.setSizePolicy(keep)
+            self._prep_cb.setVisible(False)
         lay.addWidget(self._prep_cb)
 
         # Spell info
@@ -516,6 +645,16 @@ class SpellRow(QFrame):
         for w in (lvl_pill, self._prep_cb, detail_lbl):
             w.setToolTip(tip)
 
+        # Magnifying glass: the spell's details (right-click has them too)
+        view = QPushButton(); view.setFixedSize(28, 28)
+        view.setToolTip("Details"); view.setAccessibleName(f"Details of {spell.get('name', 'spell')}")
+        _icons.set_button_icon(view, "search", 17)
+        view.setStyleSheet(f"QPushButton{{background:transparent;border:1px solid transparent;border-radius:6px;"
+                           f"min-height:0;padding:0;}}"
+                           f"QPushButton:hover{{background:{qa(INDIGO,0x33)};border-color:{INDIGO};}}")
+        view.clicked.connect(lambda: show_details(self, self.spell["name"], spell_details_markdown(self.spell)))
+        lay.addWidget(view)
+
         # Star: pin to Quick Spells on Combat tab
         self._pinned = False
         self._star_btn = QPushButton("☆"); self._star_btn.setFixedSize(26,26)
@@ -524,10 +663,18 @@ class SpellRow(QFrame):
         self._star_btn.clicked.connect(self._on_star)
         lay.addWidget(self._star_btn)
 
-        # Remove button
-        rm = QPushButton("✕"); rm.setFixedSize(28,28)
-        rm.setStyleSheet(f"QPushButton{{background:transparent;border:none;color:{TEXT3};font-size:16px;border-radius:14px;}}QPushButton:hover{{background:{CRIMSON};color:white;}}")
+        # Remove button: a trash can
+        rm = QPushButton(); rm.setFixedSize(28,28)
+        rm.setToolTip("Remove from list"); rm.setAccessibleName(f"Remove {spell.get('name', 'spell')}")
+        _icons.set_button_icon(rm, "trash", 17)
+        rm.setStyleSheet(f"QPushButton{{background:transparent;border:none;border-radius:6px;min-height:0;padding:0;}}"
+                         f"QPushButton:hover{{background:{qa(CRIMSON,0x55)};}}")
         rm.clicked.connect(lambda: self.remove.emit(self))
+        if not self._removable:
+            # nothing to remove -- keep the gap, so the row's buttons still
+            # line up with everyone else's
+            sp_policy = rm.sizePolicy(); sp_policy.setRetainSizeWhenHidden(True); rm.setSizePolicy(sp_policy)
+            rm.setVisible(False)
         lay.addWidget(rm)
 
     def set_display_name(self, text: str):
@@ -571,7 +718,9 @@ class SpellRow(QFrame):
 
     def is_prepared(self): return self._prep_cb.isChecked()
     def set_prepared(self, v): self._prep_cb.setChecked(v)
-    def is_prepared(self): return self._prep_cb.isChecked()
+    def is_ready(self):
+        """Castable without preparing: prepared, or never needs preparing."""
+        return self._prep_cb.isChecked() or not self._preparable
     def set_can_ritual(self, v): self._can_ritual = bool(v)
 
     def contextMenuEvent(self, event):
@@ -582,36 +731,28 @@ class SpellRow(QFrame):
         detail_act = menu.addAction(_icons.icon("features"), f"Show Details: {self.spell['name']}")
         menu.addSeparator()
         cast_act  = menu.addAction(_icons.icon("spells"), f"Cast {self.spell['name']}")
+        if not self.is_ready():
+            # a prepared caster's leveled spell has to be prepared first
+            cast_act.setText(f"Cast {self.spell['name']} (prepare it first)")
+            cast_act.setEnabled(False)
         ritual_act = None
         if self.spell.get("ritual") and getattr(self, "_can_ritual", False):
             ritual_act = menu.addAction(
                 _icons.icon("features"), f"Cast {self.spell['name']} as Ritual (no slot, +10 min cast time)")
-        prep_act  = menu.addAction("✓  Toggle Prepared")
+        # cantrips and granted spells are always prepared -- nothing to toggle
+        prep_act = None
+        if self.spell.get("level", 0) > 0 and not self._locked and self._preparable:
+            prep_act = menu.addAction("✓  Toggle Prepared")
         star_act  = menu.addAction("★  Pin to Quick Spells" if not self._pinned else "☆  Unpin from Quick Spells")
-        menu.addSeparator()
-        rm_act    = menu.addAction("✕  Remove from list")
+        rm_act = None
+        if not self._locked:
+            menu.addSeparator()
+            rm_act = menu.addAction(_icons.icon("trash"), "Remove from list")
         action = menu.exec(event.globalPos())
+        if action is None:   # dismissed (and skipped entries above are None too)
+            return
         if action == detail_act:
-            from PySide6.QtWidgets import QMessageBox, QDialog, QVBoxLayout, QLabel, QScrollArea, QWidget
-            s = self.spell
-            lvl_txt = "Cantrip" if s.get("level",0)==0 else f"Level {s.get('level','?')}"
-            desc = s.get("desc") or s.get("description","")
-            higher = s.get("higher_levels","") or s.get("higher","")
-            detail = (f"<b>{s['name']}</b>  [{lvl_txt} {s.get('school','').title()}]<br>"
-                      f"<i>Casting Time:</i> {s.get('casting_time',s.get('cast_time','—'))}<br>"
-                      f"<i>Range:</i> {s.get('range','—')}  &nbsp; <i>Duration:</i> {s.get('duration','—')}<br>"
-                      f"<i>Components:</i> {s.get('components','—')}<br><br>"
-                      f"{desc}<br><br>" + (f"<i>At Higher Levels:</i> {higher}" if higher else ""))
-            dlg = QDialog(); dlg.setWindowTitle(s['name']); dlg.setMinimumWidth(500)
-            lay = QVBoxLayout(dlg)
-            lbl = QLabel(detail); lbl.setWordWrap(True); lbl.setOpenExternalLinks(False)
-            lbl.setStyleSheet("font-size:13px;padding:8px;")
-            sa = QScrollArea(); sa.setWidgetResizable(True)
-            inner = QWidget(); il = QVBoxLayout(inner); il.addWidget(lbl)
-            sa.setWidget(inner); lay.addWidget(sa)
-            from PySide6.QtWidgets import QDialogButtonBox
-            bb = QDialogButtonBox(QDialogButtonBox.Close); bb.rejected.connect(dlg.reject)
-            lay.addWidget(bb); dlg.exec()
+            show_details(self, self.spell["name"], spell_details_markdown(self.spell))
         elif action == cast_act:  self.cast.emit(self.spell)
         elif ritual_act is not None and action == ritual_act: self.cast_ritual.emit(self.spell)
         elif action == prep_act: self._prep_cb.setChecked(not self._prep_cb.isChecked())

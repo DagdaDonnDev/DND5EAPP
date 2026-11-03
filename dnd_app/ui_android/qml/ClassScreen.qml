@@ -39,6 +39,15 @@ Page {
                 text: classBridge.name
                 onEditingFinished: classBridge.setName(text)
             }
+            Label {
+                objectName: "nameInUseWarning"
+                visible: classBridge.nameInUse
+                width: parent.width
+                text: "That name is already being used by another saved character."
+                color: Theme.crimson2
+                font.pixelSize: Theme.fsSmall
+                wrapMode: Text.WordWrap
+            }
 
             // ── Alignment ──────────────────────────────────────────
             Label { text: "Alignment"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true }

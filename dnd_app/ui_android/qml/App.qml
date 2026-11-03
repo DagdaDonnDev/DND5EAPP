@@ -55,6 +55,7 @@ ApplicationWindow {
     // its own bridge, rather than a bare reference to an outer id's
     // property.
     property var pendingSpellDetail: ({})
+    property var pendingItemDetail: ({})
     property var pendingDmRewardDetail: ({})
     property var pendingFeatDetail: ({})
 
@@ -80,27 +81,58 @@ ApplicationWindow {
     // compiles without error but the pushed page silently never
     // renders any content bound to a context property (confirmed by
     // testing both paths side by side; a Component reference or a
-    // direct type instantiation both work correctly). Every screen
-    // this drawer can navigate to needs its own named Component here
-    // for that reason. Only "Race" is real today -- the rest are
-    // placeholders so the nav shape (and the drawer itself) doesn't
-    // need rebuilding as each one comes online.
-    Component { id: startMenuComp; StartMenuScreen {} }
-    Component { id: raceListComp; RaceListScreen {} }
-    Component { id: abilitiesComp; AbilitiesScreen {} }
-    Component { id: classComp; ClassScreen {} }
-    Component { id: equipmentComp; EquipmentScreen {} }
-    Component { id: sheetComp; SheetCombatScreen {} }
-    Component { id: sheetActionsComp; SheetActionsScreen {} }
-    Component { id: sheetAbilitiesComp; SheetAbilitiesScreen {} }
-    Component { id: sheetProficienciesComp; SheetProficienciesScreen {} }
-    Component { id: sheetSpellsComp; SheetSpellsScreen {} }
-    Component { id: sheetEquipmentComp; SheetEquipmentScreen {} }
-    Component { id: sheetCompanionsComp; SheetCompanionsScreen {} }
-    Component { id: sheetFeaturesComp; SheetFeaturesScreen {} }
-    Component { id: sheetInfusionsComp; SheetInfusionsScreen {} }
-    Component { id: sheetChoicesComp; SheetChoicesScreen {} }
-    Component { id: sheetNotesComp; SheetNotesScreen {} }
+    // direct type instantiation both work correctly).
+    //
+    // Screens are named by file here and only compiled the first time
+    // they're opened (screenComp() below), not all ~11k lines of them
+    // before the Start Menu can appear -- the single biggest part of
+    // startup. screenComp() still hands StackView a real Component (made
+    // with Qt.createComponent and cached), never a bare URL string, for
+    // the reason above. Once the Start Menu is up, preloadScreens()
+    // compiles the rest in the background so first visits stay quick.
+    readonly property string startMenuComp: "StartMenuScreen.qml"
+    readonly property string raceListComp: "RaceListScreen.qml"
+    readonly property string abilitiesComp: "AbilitiesScreen.qml"
+    readonly property string classComp: "ClassScreen.qml"
+    readonly property string equipmentComp: "EquipmentScreen.qml"
+    readonly property string sheetComp: "SheetCombatScreen.qml"
+    readonly property string sheetActionsComp: "SheetActionsScreen.qml"
+    readonly property string sheetAbilitiesComp: "SheetAbilitiesScreen.qml"
+    readonly property string sheetProficienciesComp: "SheetProficienciesScreen.qml"
+    readonly property string sheetSpellsComp: "SheetSpellsScreen.qml"
+    readonly property string sheetEquipmentComp: "SheetEquipmentScreen.qml"
+    readonly property string sheetCompanionsComp: "SheetCompanionsScreen.qml"
+    readonly property string sheetFeaturesComp: "SheetFeaturesScreen.qml"
+    readonly property string sheetInfusionsComp: "SheetInfusionsScreen.qml"
+    readonly property string sheetChoicesComp: "SheetChoicesScreen.qml"
+    readonly property string sheetNotesComp: "SheetNotesScreen.qml"
+
+    property var _screenCache: ({})
+    function screenComp(file) {
+        if (typeof file !== "string")
+            return file
+        var c = _screenCache[file]
+        // a background preload still in progress is replaced by a
+        // synchronous load (which just finishes the same compile)
+        if (!c || c.status !== Component.Ready) {
+            c = Qt.createComponent(Qt.resolvedUrl(file))
+            if (c.status === Component.Error)
+                console.warn("[MIMIC] " + file + ": " + c.errorString())
+            _screenCache[file] = c
+        }
+        return c
+    }
+    function preloadScreens() {
+        var files = [sheetComp, raceListComp, abilitiesComp, classComp, equipmentComp,
+                     sheetActionsComp, sheetSpellsComp, sheetEquipmentComp, sheetAbilitiesComp,
+                     sheetProficienciesComp, sheetFeaturesComp, sheetChoicesComp, sheetNotesComp,
+                     sheetCompanionsComp, sheetInfusionsComp]
+        for (var i = 0; i < files.length; ++i) {
+            if (!_screenCache[files[i]])
+                _screenCache[files[i]] = Qt.createComponent(Qt.resolvedUrl(files[i]), Component.Asynchronous)
+        }
+    }
+    Timer { interval: 400; running: true; onTriggered: window.preloadScreens() }
 
     // The drawer shows a different step list depending on whether the
     // current character is still being built or already finished --
@@ -159,7 +191,9 @@ ApplicationWindow {
         ).concat([
             { label: "Choices", screen: sheetChoicesComp, enabled: true,
               pulse: window.choicesPending },
-            { label: "Notes", screen: sheetNotesComp, enabled: true },
+            { label: "Notes", screen: sheetNotesComp, enabled: true,
+              sections: ["Personality", "Appearance", "Backstory"].concat(
+                  sheetBridge !== null ? sheetBridge.notesPages.map(p => p.title) : []) },
         ])
     readonly property var navItems: sheetMode ? sheetNavItems : wizardNavItems
 
@@ -185,7 +219,7 @@ ApplicationWindow {
         // the app's own remembered default -- same reasoning as
         // ui_desktop's _go_menu().
         Theme.applyTheme(appSettingsBridge.theme)
-        stackView.replace(startMenuComp)
+        stackView.replace(screenComp(startMenuComp))
         drawer.close()
     }
 
@@ -223,26 +257,30 @@ ApplicationWindow {
         classBridge.refresh()
         equipmentBridge.refresh()
         sheetBridge.refresh()
-        stackView.replace(raceListComp)
+        stackView.replace(screenComp(raceListComp))
     }
     function loadCharacterIntoSheet(filepath) {
         // A saved character is already complete (confirmRace()/
         // confirmClass()/etc. all require a valid state to save at
         // all), so loading one goes straight to the sheet rather than
         // back through the wizard.
-        if (saveLoadBridge.loadCharacterFrom(filepath)) {
-            sheetBridge.refresh()
-            // A save from before "theme" existed (or one that
-            // otherwise never went through finishCharacterCreation's
-            // stamp below) has no theme of its own recorded yet --
-            // stamp whatever's currently active rather than silently
-            // adopting a later app-level default change next time.
-            sheetBridge.stampThemeIfMissing(Theme.currentThemeName)
-            Theme.applyTheme(sheetBridge.theme)
-            Theme.applyFontScale(sheetBridge.fontScale)
-            characterActive = true
-            stackView.replace(sheetComp)
-        }
+        if (saveLoadBridge.loadCharacterFrom(filepath))
+            showLoadedCharacter()
+    }
+    // After a character is loaded (a save, an imported file or PDF sheet):
+    // straight to its sheet, in its own theme.
+    function showLoadedCharacter() {
+        sheetBridge.refresh()
+        // A save from before "theme" existed (or one that
+        // otherwise never went through finishCharacterCreation's
+        // stamp below) has no theme of its own recorded yet --
+        // stamp whatever's currently active rather than silently
+        // adopting a later app-level default change next time.
+        sheetBridge.stampThemeIfMissing(Theme.currentThemeName)
+        Theme.applyTheme(sheetBridge.theme)
+        Theme.applyFontScale(sheetBridge.fontScale)
+        characterActive = true
+        stackView.replace(screenComp(sheetComp))
     }
     function finishCharacterCreation() {
         if (equipmentBridge.confirmEquipment()) {
@@ -256,7 +294,7 @@ ApplicationWindow {
             Theme.applyTheme(sheetBridge.theme)
             Theme.applyFontScale(sheetBridge.fontScale)
             characterActive = true
-            stackView.replace(sheetComp)
+            stackView.replace(screenComp(sheetComp))
             saveLoadBridge.autoSave()      // a new character is saved straight away
             return true
         }
@@ -268,9 +306,9 @@ ApplicationWindow {
     // rather than popping back to a list or just sitting still. Named
     // per-destination (instead of one generic "advance" helper) so
     // each screen states in plain text which step it's headed to.
-    function advanceToAbilities() { stackView.replace(abilitiesComp) }
-    function advanceToClass() { stackView.replace(classComp) }
-    function advanceToEquipment() { stackView.replace(equipmentComp) }
+    function advanceToAbilities() { stackView.replace(screenComp(abilitiesComp)) }
+    function advanceToClass() { stackView.replace(screenComp(classComp)) }
+    function advanceToEquipment() { stackView.replace(screenComp(equipmentComp)) }
     // App-level destinations, not character-creation steps -- each
     // opens as a full-page modal dialog (see the MFullPageDialog
     // instances below) on top of whatever step screen is showing,
@@ -350,25 +388,160 @@ ApplicationWindow {
         id: settingsDialog
         objectName: "settingsDialog"
         dialogTitle: "Settings"
-        SettingsScreen {}
+        contentSource: Qt.resolvedUrl("SettingsScreen.qml")
     }
     MFullPageDialog {
         id: saveLoadDialog
         objectName: "saveLoadDialog"
         dialogTitle: "Save & Export"
-        SaveLoadScreen {}
+        contentSource: Qt.resolvedUrl("SaveLoadScreen.qml")
     }
     MFullPageDialog {
         id: diceRollerDialog
         objectName: "diceRollerDialog"
         dialogTitle: "Dice Roller"
-        DiceRollerScreen {}
+        contentSource: Qt.resolvedUrl("DiceRollerScreen.qml")
     }
     MFullPageDialog {
         id: creditsDialog
         objectName: "creditsDialog"
         dialogTitle: "Credits"
-        CreditsScreen {}
+        contentSource: Qt.resolvedUrl("CreditsScreen.qml")
+    }
+
+    // ── Effects still on from last time ─────────────────────────────
+    // A saved character opened again with effects a short rest would
+    // end (Rage, Bladesong, a potion's hour...): have they ended? The
+    // ticked ones end (core/action_use.py leftover_effects). Every way
+    // of opening a save ends in characterLoaded, and the question comes
+    // once per open.
+    function askLeftoverEffects() {
+        if (!sheetBridge)
+            return
+        var left = sheetBridge.takeLeftoverEffects()
+        if (left.length > 0) {
+            leftoverDialog.effects = left
+            leftoverDialog.open()
+        }
+    }
+    Connections {
+        target: saveLoadBridge
+        function onCharacterLoaded() { Qt.callLater(window.askLeftoverEffects) }
+    }
+    Dialog {
+        id: leftoverDialog
+        objectName: "leftoverDialog"
+        property var effects: []
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(parent ? parent.width - 32 : 360, 360)
+        padding: 16
+        background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        contentItem: ColumnLayout {
+            spacing: 10
+            Label {
+                text: "Effects still on"
+                color: Theme.gold2
+                font.pixelSize: Theme.fsHead
+                font.bold: true
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            Label {
+                text: "These were on when this character was last saved. Have they ended? Untick any that are still going."
+                color: Theme.text
+                font.pixelSize: Theme.fsBody
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            Repeater {
+                id: leftoverRepeater
+                model: leftoverDialog.effects
+                delegate: MCheckBox {
+                    objectName: "leftover_" + modelData
+                    text: modelData
+                    checked: true
+                    Layout.fillWidth: true
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                MButton {
+                    Layout.fillWidth: true
+                    primary: false
+                    text: "Keep all"
+                    onClicked: leftoverDialog.close()
+                }
+                MButton {
+                    id: leftoverEndButton
+                    objectName: "leftoverEnd"
+                    Layout.fillWidth: true
+                    text: "End ticked"
+                    onClicked: {
+                        var names = []
+                        for (var i = 0; i < leftoverRepeater.count; i++) {
+                            var box = leftoverRepeater.itemAt(i)
+                            if (box && box.checked)
+                                names.push(box.text)
+                        }
+                        sheetBridge.endEffects(names)
+                        leftoverDialog.close()
+                    }
+                }
+            }
+        }
+    }
+
+    // The one-time note the first time either immersive effect shows
+    MFullPageDialog {
+        id: immersivePrompt
+        objectName: "immersivePrompt"
+        dialogTitle: "Immersive Effects"
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 14
+            Label {
+                Layout.fillWidth: true
+                text: appSettingsBridge ? appSettingsBridge.immersiveInfo("prompt").what : ""
+                color: Theme.text; font.pixelSize: Theme.fsBody; wrapMode: Text.WordWrap
+            }
+            Repeater {
+                model: ["health", "exhaustion"]
+                delegate: ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    readonly property var info: appSettingsBridge ? appSettingsBridge.immersiveInfo(modelData) : ({})
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Label { Layout.fillWidth: true; text: info.name || ""; color: Theme.text; font.pixelSize: Theme.fsBody; font.bold: true; wrapMode: Text.WordWrap }
+                        Label {
+                            text: appSettingsBridge ? (modelData === "health" ? appSettingsBridge.immersiveHealth : appSettingsBridge.immersiveExhaustion) : ""
+                            color: Theme.text; font.pixelSize: Theme.fsBody; font.bold: true
+                        }
+                        MButton { primary: false; height: 32; text: "Change"; onClicked: { immersivePicker.kind = modelData; immersivePicker.open() } }
+                    }
+                    Label { Layout.fillWidth: true; text: info.what || ""; color: Theme.text2; font.pixelSize: Theme.fsSmall; wrapMode: Text.WordWrap }
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                text: appSettingsBridge ? appSettingsBridge.immersiveInfo("health").reduced : ""
+                color: Theme.text3; font.pixelSize: Theme.fsSmall; wrapMode: Text.WordWrap
+            }
+            MButton { text: "Done"; Layout.alignment: Qt.AlignRight; onClicked: immersivePrompt.close() }
+            Item { Layout.fillHeight: true }
+        }
+    }
+    MPickerDialog {
+        id: immersivePicker
+        property string kind: "health"
+        dialogTitle: kind === "health" ? "Immersive Health" : "Immersive Exhaustion"
+        options: appSettingsBridge ? appSettingsBridge.immersiveModes : []
+        onPicked: (value) => appSettingsBridge.setImmersive(kind, value)
     }
 
     RestFlowDialog { id: restFlowDialog; sheetBridge: window.sheetBridge }
@@ -443,14 +616,14 @@ ApplicationWindow {
         utilityItems: window.utilityNavItems
         onItemSelected: (screen) => {
             if (screen) {
-                stackView.replace(screen)
+                stackView.replace(screenComp(screen))
             }
             drawer.close()
         }
         onSectionSelected: (screen, sectionName) => {
             window.pendingScrollSection = sectionName
             if (screen) {
-                stackView.replace(screen)
+                stackView.replace(screenComp(screen))
             }
             drawer.close()
         }
@@ -459,7 +632,60 @@ ApplicationWindow {
     StackView {
         id: stackView
         anchors.fill: parent
-        initialItem: startMenuComp
+        // Immersive Exhaustion: the page moves in to fit inside the frame
+        anchors.margins: window.frameInset
+        initialItem: screenComp(startMenuComp)
+    }
+
+    // ── Immersive Health & Immersive Exhaustion (core/immersive.py) ─────
+    // Checked a few times a second while a character's sheet is open, so
+    // every way HP or exhaustion changes is picked up. Off the sheet
+    // (Start Menu, wizard) both effects are off.
+    property real frameInset: 0
+    property int frameLevel: 0
+    property string frameSetting: "Off"
+    property real healthFade: 0
+    property bool healthAnimate: true
+    Behavior on healthFade {
+        enabled: window.healthAnimate
+        NumberAnimation { duration: 500; easing.type: Easing.InOutQuad }
+    }
+    // the theme only repaints in 1/40 steps, so an easing colour change
+    // costs a dozen repaints rather than one every frame
+    onHealthFadeChanged: {
+        var q = Math.round(healthFade * 40) / 40
+        if (Math.abs(q - Theme.fade) > 0.001) Theme.fade = q
+    }
+    Timer {
+        interval: 200; running: true; repeat: true
+        onTriggered: {
+            var on = window.characterActive && window.sheetMode
+            var st = on ? sheetBridge.immersiveState() : null
+            window.healthAnimate = !st || st.health === "Full"
+            window.healthFade = st ? st.fade : 0
+            window.frameLevel = st ? st.level : 0
+            window.frameSetting = st ? st.exhaustion : "Off"
+            window.frameInset = st ? st.inset : 0
+            if (st && !st.promptSeen && (st.fade > 0 || st.level > 0)) {
+                sheetBridge.markImmersivePromptSeen()
+                immersivePrompt.open()
+            }
+        }
+    }
+    // The frame itself: drawn by the same painter as the desktop's
+    // (bridge/immersive.py), over the page area, letting every touch through.
+    Image {
+        id: immersiveFrame
+        anchors.fill: parent
+        visible: window.frameLevel > 0
+        source: visible ? "image://immersive/" + window.frameLevel + "/" + window.frameSetting + "/"
+                          + Math.round(width) + "x" + Math.round(height) + "/" + Screen.devicePixelRatio : ""
+        fillMode: Image.Stretch
+        smooth: true
+        cache: false
+        // a new frame fades in (not on Reduced)
+        onSourceChanged: if (visible && window.frameSetting === "Full") frameFadeIn.restart()
+        NumberAnimation { id: frameFadeIn; target: immersiveFrame; property: "opacity"; from: 0; to: 1; duration: 350 }
     }
 
     // Consumes pendingScrollSection once the page StackView just
@@ -489,7 +715,396 @@ ApplicationWindow {
     function showToast(message) {
         appToastLabel.text = message
         appToast.visible = true
+        // long enough to read: longer messages stay up longer
+        appToastTimer.interval = Math.min(9000, Math.max(3200, 55 * message.length))
         appToastTimer.restart()
+    }
+
+    // A shared rule needs an answer first -- how many ki, which slot, who a
+    // spell is on, which weapon -- from whichever screen it came: the pick
+    // goes back to the bridge, which carries on (Cancel leaves it undone)
+    MOptionsDialog {
+        id: actionQuestionDialog
+        objectName: "actionQuestionDialog"
+        onPicked: (key) => window.sheetBridge.answerActionQuestion(key)
+    }
+    // After an attack roll (core/attacks.py attack_report, the same as
+    // desktop's dialog), top to bottom:
+    //   the roll: a card with the total, big; a bar down its left side says
+    //   what it was (gold a critical, red a natural 1)
+    //   ON A HIT: the damage and what's on now, each with its type and where
+    //   it's from; a next-hit effect it used up can be marked here
+    //   ADD TO THE ROLL / IF IT MISSES (a check's ADD TO THIS CHECK / IF IT
+    //   FAILS): right under the roll, each with an Add button -- it's paid
+    //   for and rolled there and then (sheetBridge.addToRoll), and the roll
+    //   comes back with its new total (attackReport with "update": ticks stay)
+    //   YOU CAN ADD / ALSO THIS TURN: choices with their costs, only what you
+    //   can pay for now -- tap a row to pick it (its border turns gold). One
+    //   pick per group (a Divine Smite slot); undead or fiend needs a smite.
+    // Add pays for the picks through the bridge, which asks if there's more to choose.
+    Dialog {
+        id: attackDialog
+        objectName: "attackDialog"
+        property string heading: ""
+        property var report: ({})
+        property var options: []
+        property var ticked: ({})
+        // a check or save (core/checks.py): Done takes it, and closing the
+        // dialog any other way takes it with nothing added
+        property bool taken: false
+        readonly property bool isCheck: report.kind === "check"
+        readonly property var roll: report.roll || ({})
+        onClosed: if (isCheck && !taken) { taken = true; window.sheetBridge.takeCheckOptions([]) }
+        function optionByKey(k) {
+            for (var i = 0; i < options.length; i++) if (options[i].key === k) return options[i]
+            return null
+        }
+        function groupPicked(g) {
+            for (var k in ticked) {
+                var o = optionByKey(k)
+                if (ticked[k] && o && o.group === g) return true
+            }
+            return false
+        }
+        function isLive(o) { return !o.needs || groupPicked(o.needs) }
+        function isOn(o) { return ticked[o.key] === true && isLive(o) }
+        function toggle(o) {
+            var t = Object.assign({}, ticked)
+            var now = !t[o.key]
+            if (now && o.group)
+                for (var i = 0; i < options.length; i++)
+                    if (options[i].group === o.group) t[options[i].key] = false
+            t[o.key] = now
+            ticked = t
+        }
+        function pickedKeys() {
+            var out = []
+            for (var i = 0; i < options.length; i++)
+                if (isOn(options[i])) out.push(options[i].key)
+            return out
+        }
+        function section(name) { return options.filter(function(o) { return o.section === name }) }
+        function sectionsNow(now) {
+            return (report.sections || []).filter(function(x) { return (x.now === true) === now })
+        }
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(parent ? parent.width - 24 : 360, 400)
+        height: Math.min(attackCol.implicitHeight + 32, (parent ? parent.height : 800) - 72)
+        padding: 16
+        background: Rectangle { color: Theme.bg; radius: 12; border.color: Theme.border }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        contentItem: Flickable {
+            clip: true
+            contentHeight: attackCol.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            ColumnLayout {
+                id: attackCol
+                width: parent.width
+                spacing: 10
+                Label {
+                    text: attackDialog.heading
+                    color: Theme.gold2
+                    font.pixelSize: Theme.fsHead
+                    font.bold: true
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+                // the plain text, for anything reading the dialog
+                Label { objectName: "attackMessage"; visible: false; text: attackDialog.report.message || "" }
+
+                // the roll: the total, how it was made, what it hits
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: rollRow.implicitHeight + 22
+                    radius: 8
+                    color: Theme.surf
+                    border.color: Theme.border
+                    Rectangle {
+                        width: 4; radius: 2
+                        anchors { left: parent.left; top: parent.top; bottom: parent.bottom; margins: 1 }
+                        color: attackDialog.roll.crit ? Theme.gold : (attackDialog.roll.nat1 ? Theme.crimson2 : Theme.teal2)
+                    }
+                    RowLayout {
+                        id: rollRow
+                        anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter
+                                  leftMargin: 16; rightMargin: 12 }
+                        spacing: 14
+                        ColumnLayout {
+                            spacing: 0
+                            Label {
+                                objectName: "attackTotal"
+                                text: attackDialog.roll.total !== undefined ? String(attackDialog.roll.total) : ""
+                                color: Theme.text
+                                font.pixelSize: Theme.fsTitle + 8
+                                font.bold: true
+                                Layout.alignment: Qt.AlignHCenter
+                            }
+                            Label { text: attackDialog.report.total_label || "to hit"; color: Theme.text2
+                                    font.pixelSize: Theme.fsSmall; Layout.alignment: Qt.AlignHCenter }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 3
+                            Label {
+                                text: attackDialog.roll.line || ""
+                                color: Theme.text
+                                font.pixelSize: Theme.fsBody
+                                font.bold: true
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                            Label {
+                                visible: (attackDialog.roll.note || "") !== ""
+                                text: attackDialog.roll.note || ""
+                                color: Theme.text2
+                                font.pixelSize: Theme.fsSmall
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                            Label {
+                                objectName: "attackVerdict"
+                                text: attackDialog.roll.verdict || ""
+                                color: Theme.text
+                                font.pixelSize: Theme.fsBody
+                                font.bold: attackDialog.roll.crit === true || attackDialog.roll.nat1 === true
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+                        }
+                    }
+                }
+
+                // ADD TO THE ROLL, then IF IT MISSES: each with its Add
+                Repeater {
+                    model: attackDialog.sectionsNow(true)
+                    delegate: ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Label {
+                            text: modelData.title
+                            color: Theme.text2
+                            font.pixelSize: Theme.fsSmall
+                            font.bold: true
+                            font.letterSpacing: 1
+                        }
+                        Repeater {
+                            model: attackDialog.section(modelData.name)
+                            delegate: MAttackOption {
+                                Layout.fillWidth: true
+                                opt: modelData
+                                now: true
+                                onAdd: window.sheetBridge.addToRoll(modelData.key)
+                            }
+                        }
+                    }
+                }
+
+                // what to roll if it hits: the dice and type on the left,
+                // where it's from on the right, what else it does under it
+                Label {
+                    visible: (attackDialog.report.hit || []).length > 0
+                    text: attackDialog.report.hit_title || ""
+                    color: Theme.text2
+                    font.pixelSize: Theme.fsSmall
+                    font.bold: true
+                    font.letterSpacing: 1
+                }
+                Rectangle {
+                    visible: (attackDialog.report.hit || []).length > 0
+                    Layout.fillWidth: true
+                    implicitHeight: hitCol.implicitHeight + 20
+                    radius: 8
+                    color: Theme.surf
+                    border.color: Theme.border
+                    ColumnLayout {
+                        id: hitCol
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
+                        spacing: 8
+                        Repeater {
+                            model: attackDialog.report.hit || []
+                            delegate: ColumnLayout {
+                                objectName: "attackHitLine_" + modelData.source
+                                Layout.fillWidth: true
+                                spacing: 2
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 10
+                                    Label {
+                                        text: modelData.dice === "" ? modelData.source
+                                              : (index === 0 ? "" : (modelData.dice.charAt(0) === "-" ? "− " : "+ "))
+                                                + modelData.dice.replace(/^-/, "") + " " + modelData.type
+                                        color: Theme.text
+                                        font.pixelSize: Theme.fsBody
+                                        font.bold: true
+                                        wrapMode: Text.WordWrap
+                                        Layout.fillWidth: true
+                                    }
+                                    Label {
+                                        visible: modelData.dice !== ""
+                                        text: modelData.source
+                                        color: Theme.text2
+                                        font.pixelSize: Theme.fsSmall
+                                        horizontalAlignment: Text.AlignRight
+                                        wrapMode: Text.WordWrap
+                                        Layout.maximumWidth: hitCol.width * 0.45
+                                    }
+                                }
+                                Label {
+                                    visible: (modelData.note || "") !== ""
+                                    text: modelData.note || ""
+                                    color: Theme.text2
+                                    font.pixelSize: Theme.fsSmall
+                                    wrapMode: Text.WordWrap
+                                    Layout.fillWidth: true
+                                }
+                            }
+                        }
+                        Label {
+                            visible: (attackDialog.report.attacks || "") !== ""
+                            text: attackDialog.report.attacks || ""
+                            color: Theme.text2
+                            font.pixelSize: Theme.fsSmall
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                        }
+                    }
+                }
+
+                // ADD TO THIS HIT, then WITH YOUR BONUS ACTION
+                Repeater {
+                    model: attackDialog.sectionsNow(false)
+                    delegate: ColumnLayout {
+                        property var rows: attackDialog.section(modelData.name)
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Label {
+                            text: modelData.title
+                            color: Theme.text2
+                            font.pixelSize: Theme.fsSmall
+                            font.bold: true
+                            font.letterSpacing: 1
+                        }
+                        Repeater {
+                            model: rows
+                            delegate: ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 6
+                                // the name over a block of choices (Divine Smite)
+                                ColumnLayout {
+                                    visible: (modelData.head || "") !== ""
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: 4
+                                    spacing: 1
+                                    Label {
+                                        text: modelData.head || ""
+                                        color: Theme.text
+                                        font.pixelSize: Theme.fsBody
+                                        font.bold: true
+                                        Layout.fillWidth: true
+                                        wrapMode: Text.WordWrap
+                                    }
+                                    Label {
+                                        visible: (modelData.head_note || "") !== ""
+                                        text: modelData.head_note || ""
+                                        color: Theme.text2
+                                        font.pixelSize: Theme.fsSmall
+                                        Layout.fillWidth: true
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
+                                MAttackOption {
+                                    Layout.fillWidth: true
+                                    opt: modelData
+                                    picked: attackDialog.isOn(modelData)
+                                    live: attackDialog.isLive(modelData)
+                                    onClicked: attackDialog.toggle(modelData)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Missed (Cancel on a critical hit, which can't miss) and It hit
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    spacing: 8
+                    MButton {
+                        objectName: "attackMissed"
+                        visible: !attackDialog.isCheck
+                        text: attackDialog.report.miss_button || "Missed"
+                        primary: false
+                        Layout.fillWidth: true
+                        onClicked: {
+                            var keys = attackDialog.pickedKeys()
+                            attackDialog.close()
+                            if (!attackDialog.roll.crit) window.sheetBridge.takeAttackOptions(keys, false)
+                        }
+                    }
+                    MButton {
+                        objectName: "attackHit"
+                        visible: (attackDialog.report.hit_button || "") !== ""
+                        text: attackDialog.report.hit_button || ""
+                        Layout.fillWidth: true
+                        onClicked: {
+                            var keys = attackDialog.pickedKeys()
+                            if (attackDialog.isCheck) {
+                                attackDialog.taken = true
+                                attackDialog.close()
+                                window.sheetBridge.takeCheckOptions(keys)
+                                return
+                            }
+                            attackDialog.close()
+                            window.sheetBridge.takeAttackOptions(keys, true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // A longer message to read (Green-Flame Blade's damage)
+    MOptionsDialog {
+        id: sheetMessageDialog
+        objectName: "sheetMessageDialog"
+        cancelText: "OK"
+    }
+    Connections {
+        target: window.sheetBridge
+        function onActionQuestion(title, question, options) {
+            actionQuestionDialog.heading = title
+            actionQuestionDialog.message = question
+            actionQuestionDialog.options = options.map(function(o) { return {key: o, text: o} })
+            actionQuestionDialog.open()
+        }
+        function onAttackReport(title, report) {
+            // an Add on the roll: the same dialog, its new total; what's
+            // ticked stays ticked
+            if (report.update === true && attackDialog.visible) {
+                var keep = ({})
+                for (var i = 0; i < (report.options || []).length; i++) {
+                    var k = report.options[i].key
+                    if (attackDialog.ticked[k]) keep[k] = true
+                }
+                attackDialog.report = report
+                attackDialog.options = report.options || []
+                attackDialog.ticked = keep
+                return
+            }
+            attackDialog.heading = title
+            attackDialog.ticked = ({})
+            attackDialog.taken = false
+            attackDialog.report = report
+            attackDialog.options = report.options || []
+            attackDialog.open()
+        }
+        function onSheetMessage(title, text) {
+            sheetMessageDialog.heading = title
+            sheetMessageDialog.message = text
+            sheetMessageDialog.options = []
+            sheetMessageDialog.open()
+        }
     }
     Connections {
         target: window.sheetBridge
@@ -527,14 +1142,15 @@ ApplicationWindow {
         height: appToastLabel.implicitHeight + 20
         radius: 10
         color: Theme.surf2
-        border.color: Qt.rgba(Theme.amber.r, Theme.amber.g, Theme.amber.b, 0.53)
+        // plain text, the gold on the border (as desktop's toast)
+        border.color: Theme.gold
         z: 10000
         Label {
             id: appToastLabel
             anchors.centerIn: parent
             width: parent.width - 24
             horizontalAlignment: Text.AlignHCenter
-            color: Theme.gold
+            color: Theme.text
             font.pixelSize: Theme.fsBody
             font.bold: true
             wrapMode: Text.WordWrap

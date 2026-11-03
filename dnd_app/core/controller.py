@@ -99,8 +99,9 @@ class CharacterController:
         self._char["modified"] = datetime.now().isoformat()
         if not self._char.get("created"):
             self._char["created"] = self._char["modified"]
+        from .save_load import character_json     # same file format as every other save
         with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(self._char, f, indent=2, ensure_ascii=False)
+            f.write(character_json(self._char))
         return True, []
 
     def load(self, filepath: str) -> tuple[bool, list[str]]:

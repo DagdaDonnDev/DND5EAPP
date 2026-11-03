@@ -54,9 +54,9 @@ class DiceRollerPanel(QWidget):
             QPushButton {{ background: {SURF3}; border: 1px solid {BORDER2}; border-radius: 6px; color: {TEXT}; padding: 4px 8px; font-weight: 700; }}
             QPushButton:hover {{ background: {INDIGO}; border-color: {IND2}; color: white; }}
             QPushButton:pressed {{ background: {qa(INDIGO,0xaa)}; }}
-            QSpinBox {{ background: {SURF2}; border: 1px solid {BORDER}; border-radius: 5px; color: {TEXT}; padding: 3px 6px; }}
+            QSpinBox {{ background: {SURF2}; border: 1px solid {BORDER}; border-radius: 5px; color: {TEXT}; padding: 3px 2px; }}
             QComboBox {{ background: {SURF2}; border: 1px solid {BORDER}; border-radius: 5px; color: {TEXT}; padding: 3px 6px; }}
-            QComboBox::drop-down {{ border: none; width: 18px; background: {BORDER}; border-radius: 0 5px 5px 0; }}
+            QComboBox::drop-down {{ border: none; width: 18px; background: {BORDER}; border-top-left-radius: 0px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 0px; }}
             QComboBox QAbstractItemView {{ background: {SURF2}; border: 1px solid {BORDER2}; color: {TEXT}; selection-background-color: {INDIGO}; }}
         """)
         self._history = []   # [{"text": str, "crit": "nat20"|"nat1"|None}]
@@ -120,11 +120,11 @@ class DiceRollerPanel(QWidget):
         cvl = QVBoxLayout(custom_card); cvl.setContentsMargins(12,10,12,12); cvl.setSpacing(8)
         cvl.addWidget(_section_header("CUSTOM ROLL"))
         cg = QHBoxLayout(); cg.setSpacing(6)
-        self.num_dice = QSpinBox(); self.num_dice.setRange(1,20); self.num_dice.setValue(1); self.num_dice.setFixedWidth(52)
+        self.num_dice = QSpinBox(); self.num_dice.setRange(1,20); self.num_dice.setValue(1); self.num_dice.setFixedWidth(84)
         self.die_combo = QComboBox()
         for d in ["d4","d6","d8","d10","d12","d20","d100"]: self.die_combo.addItem(d)
         self.die_combo.setCurrentIndex(5)  # d20 default
-        self.mod_spin = QSpinBox(); self.mod_spin.setRange(-20,20); self.mod_spin.setValue(0); self.mod_spin.setPrefix("+"); self.mod_spin.setFixedWidth(62)
+        self.mod_spin = QSpinBox(); self.mod_spin.setRange(-20,20); self.mod_spin.setValue(0); self.mod_spin.setPrefix("+"); self.mod_spin.setFixedWidth(92)
         roll_btn = QPushButton("Roll!")
         roll_btn.setFixedHeight(32)
         roll_btn.setStyleSheet(

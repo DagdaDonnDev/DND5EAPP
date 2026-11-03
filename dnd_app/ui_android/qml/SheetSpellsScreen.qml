@@ -11,81 +11,6 @@ Page {
 
     Component.onCompleted: sheetBridge.refresh()
 
-    // Casting a spell with a real active_effects hook (Bless, Haste,
-    // Shield of Faith, dozens more) and a non-self-only range prompts
-    // self-vs-another -- matches desktop's _apply_spell_active_effect
-    // (self-only spells apply directly with no prompt, handled entirely
-    // bridge-side).
-    Connections {
-        target: sheetBridge
-        function onSpellEffectPromptRequested(name) {
-            effectPromptDialog.spellName = name
-            effectPromptDialog.open()
-        }
-    }
-    // A plain themed Popup with MButton actions, not a QtQuick.Controls
-    // Dialog with standardButtons -- Dialog's auto-generated buttons are
-    // flat/unstyled Material controls that don't match this app's
-    // filled MButton look used everywhere else, and (see
-    // SaveLoadScreen.qml's moveNewFolderDialog for the same fix) a bare
-    // Dialog also paints no unifying background of its own in this
-    // app's dark theme. Same shape as SheetChoicesScreen.qml's
-    // setXpDialog.
-    Popup {
-        id: effectPromptDialog
-        objectName: "effectPromptDialog"
-        property string spellName: ""
-        modal: true
-        focus: true
-        width: 300
-        parent: Overlay.overlay
-        anchors.centerIn: parent
-        background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        // Matches MFullPageDialog.qml's dimming -- the default modal
-        // overlay is a much lighter wash than this app's dark theme calls for.
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
-
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 10
-            Label {
-                text: "Who is " + effectPromptDialog.spellName + " cast on?"
-                color: Theme.gold
-                font.pixelSize: Theme.fsBody
-                font.bold: true
-                wrapMode: Text.WordWrap
-                Layout.fillWidth: true
-            }
-            Label {
-                text: "Choose “Someone Else” if you're targeting another creature -- it won't be added to your own Active Effects."
-                color: Theme.text2
-                font.pixelSize: Theme.fsSmall
-                wrapMode: Text.WordWrap
-                Layout.fillWidth: true
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                MButton {
-                    objectName: "effectPromptSomeoneElseButton"
-                    text: "Someone Else"
-                    primary: false
-                    Layout.fillWidth: true
-                    onClicked: effectPromptDialog.close()
-                }
-                MButton {
-                    objectName: "effectPromptMyselfButton"
-                    text: "Myself"
-                    Layout.fillWidth: true
-                    onClicked: {
-                        sheetBridge.applySpellActiveEffect(effectPromptDialog.spellName)
-                        effectPromptDialog.close()
-                    }
-                }
-            }
-        }
-    }
-
     // Jump-to-section targets for the drawer's expandable sub-menu (see
     // NavDrawer.qml's sectionSelected).
     function scrollToSection(name) {
@@ -173,64 +98,184 @@ Page {
             }
 
             // ── Slots ─────────────────────────────────────────────────
-            Label {
+            // Same pips as desktop's Spells tab: one row per level, blue
+            // for ordinary slots, and Pact Magic in its own purple card
+            // since it recharges on a short rest. Tap a pip to spend or
+            // restore that slot.
+            ColumnLayout {
                 id: slotsAnchor
-                visible: sheetBridge.spellSlots.length > 0 || sheetBridge.pactSlots.max > 0
-                text: "Spell Slots"
-                color: Theme.gold
-                font.pixelSize: Theme.fsSmall
-                font.bold: true
-            }
-            Flow {
                 Layout.fillWidth: true
-                spacing: 8
-                Repeater {
-                    model: sheetBridge.spellSlots
-                    delegate: Rectangle {
-                        width: 74; height: 54
-                        radius: 8
-                        color: Theme.surf
-                        border.color: Theme.border
-                        Column {
-                            anchors.centerIn: parent
-                            spacing: 2
-                            Label {
-                                text: "Lvl " + modelData.level
-                                color: Theme.text3
-                                font.pixelSize: Theme.fsSmall
-                                anchors.horizontalCenter: parent.horizontalCenter
-                            }
-                            Label {
-                                text: (modelData.max - modelData.used) + " / " + modelData.max
-                                color: Theme.teal2
-                                font.pixelSize: Theme.fsBody
-                                font.bold: true
-                                anchors.horizontalCenter: parent.horizontalCenter
-                            }
+                spacing: 10
+                visible: sheetBridge.spellSlots.length > 0 || sheetBridge.pactSlots.max > 0
+
+                MCard {
+                    visible: sheetBridge.spellSlots.length > 0
+                    title: "Spell Slots"
+                    iconName: "spells"
+                    bodySpacing: 0
+                    Repeater {
+                        model: sheetBridge.spellSlots
+                        delegate: MSlotBar {
+                            Layout.fillWidth: true
+                            label: "Level " + modelData.level
+                            max: modelData.max
+                            used: modelData.used
+                            onToggled: (n) => sheetBridge.setSlotsUsed(modelData.level, n)
                         }
                     }
                 }
-                Rectangle {
+
+                MCard {
                     visible: sheetBridge.pactSlots.max > 0
-                    width: 90; height: 54
-                    radius: 8
-                    color: Theme.surf
-                    border.color: Theme.indigo2
-                    Column {
-                        anchors.centerIn: parent
+                    title: "Pact Magic"
+                    iconName: "magic"
+                    accent: Theme.purple2
+                    border.color: Theme.purple
+                    bodySpacing: 0
+                    Label {
+                        text: "Recharges on a short rest"
+                        color: Theme.text3
+                        font.pixelSize: Theme.fsSmall
+                    }
+                    MSlotBar {
+                        Layout.fillWidth: true
+                        label: "Level " + sheetBridge.pactSlots.level
+                        max: sheetBridge.pactSlots.max
+                        used: sheetBridge.pactSlots.used
+                        fillColor: Theme.purple
+                        accentColor: Theme.purple2
+                        onToggled: (n) => sheetBridge.setSlotsUsed(-1, n)
+                    }
+                }
+            }
+
+            // ── Spellcasting: the ability, save DC and attack bonus of each
+            // class, race and feat that gives spells (desktop's Spellcasting
+            // table) -- a tiefling wizard's Hellish Rebuke is CHA, their
+            // Fireball INT
+            MCard {
+                objectName: "spellcastingCard"
+                visible: sheetBridge.spellcastingRows.length > 0
+                title: "Spellcasting"
+                iconName: "orb"
+                bodySpacing: 8
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Label { text: "From"; Layout.fillWidth: true; color: Theme.text3; font.pixelSize: Theme.fsSmall; font.bold: true }
+                    Label { text: "Ability"; Layout.preferredWidth: 52; color: Theme.text3; font.pixelSize: Theme.fsSmall; font.bold: true }
+                    Label { text: "Save DC"; Layout.preferredWidth: 60; color: Theme.text3; font.pixelSize: Theme.fsSmall; font.bold: true }
+                    Label { text: "Attack"; Layout.preferredWidth: 50; color: Theme.text3; font.pixelSize: Theme.fsSmall; font.bold: true }
+                }
+                Repeater {
+                    model: sheetBridge.spellcastingRows
+                    delegate: ColumnLayout {
+                        Layout.fillWidth: true
                         spacing: 2
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Label {
+                                text: modelData.source
+                                Layout.fillWidth: true
+                                color: Theme.text
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                                elide: Text.ElideRight
+                            }
+                            Label {
+                                visible: modelData.ability !== ""
+                                text: modelData.ability
+                                Layout.preferredWidth: 52
+                                color: Theme.text2
+                                font.pixelSize: Theme.fsSmall
+                            }
+                            Label {
+                                visible: modelData.ability !== ""
+                                text: modelData.dc
+                                Layout.preferredWidth: 60
+                                color: Theme.text
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                            }
+                            Label {
+                                visible: modelData.ability !== ""
+                                text: modelData.attack
+                                Layout.preferredWidth: 50
+                                color: Theme.text
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                            }
+                        }
+                        // which spells use it (a race's or feat's)
                         Label {
-                            text: "Pact (Lvl " + sheetBridge.pactSlots.level + ")"
+                            visible: modelData.spells.length > 0
+                            text: modelData.spells
+                            Layout.fillWidth: true
                             color: Theme.text3
                             font.pixelSize: Theme.fsSmall
-                            anchors.horizontalCenter: parent.horizontalCenter
+                            wrapMode: Text.WordWrap
                         }
                         Label {
-                            text: (sheetBridge.pactSlots.max - sheetBridge.pactSlots.used) + " / " + sheetBridge.pactSlots.max
-                            color: Theme.indigo2
-                            font.pixelSize: Theme.fsBody
-                            font.bold: true
-                            anchors.horizontalCenter: parent.horizontalCenter
+                            visible: modelData.note.length > 0
+                            text: modelData.note
+                            Layout.fillWidth: true
+                            color: Theme.text3
+                            font.pixelSize: Theme.fsSmall
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+            }
+
+            // ── Spells known / prepared: each casting class's limits ──
+            // (the same numbers as desktop's Spells Known / Prepared card)
+            Rectangle {
+                objectName: "spellLimitsCard"
+                visible: sheetBridge.spellLimits.length > 0
+                Layout.fillWidth: true
+                Layout.preferredHeight: limitsCol.implicitHeight + 20
+                radius: 10
+                color: Theme.surf
+                border.color: Theme.border
+                ColumnLayout {
+                    id: limitsCol
+                    x: 12; y: 10
+                    width: parent.width - 24
+                    spacing: 6
+                    Label {
+                        text: "SPELLS KNOWN / PREPARED"
+                        color: Theme.purple2
+                        font.pixelSize: Theme.fsSmall
+                        font.bold: true
+                    }
+                    Repeater {
+                        model: sheetBridge.spellLimits
+                        delegate: RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Label {
+                                text: modelData.label
+                                color: Theme.text
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                            }
+                            // over the limit shows in the warning colour
+                            Label {
+                                Layout.fillWidth: true
+                                text: modelData.current + " / " + modelData.max
+                                      + (modelData.kind === "prepared"
+                                         ? " prepared (" + modelData.ability + "+lvl)" : " known")
+                                color: modelData.current > modelData.max ? Theme.amber2 : Theme.text2
+                                font.pixelSize: Theme.fsSmall
+                                wrapMode: Text.WordWrap
+                            }
+                            Label {
+                                visible: modelData.cantripMax > 0
+                                text: "Cantrips " + modelData.cantrips + " / " + modelData.cantripMax
+                                color: modelData.cantrips > modelData.cantripMax ? Theme.amber2 : Theme.text3
+                                font.pixelSize: Theme.fsSmall
+                            }
                         }
                     }
                 }
@@ -246,124 +291,166 @@ Page {
             }
             Repeater {
                 model: sheetBridge.knownSpells
+                // Just the name, one line of details, and View / Cast. Press
+                // and hold the card to prepare, favourite or remove it (see
+                // spellOptionsDialog). Concentration starts by itself when
+                // cast; Cast asks "normally or as a ritual" only for spells
+                // this character can ritual-cast.
                 delegate: Rectangle {
+                    id: spellCard
                     Layout.fillWidth: true
-                    Layout.preferredHeight: knownCol.height + 16
+                    Layout.preferredHeight: knownCol.height + 20
                     radius: 10
-                    color: Theme.surf
-                    border.color: modelData.prepared ? Theme.teal : Theme.border
+                    color: holdArea.pressed ? Theme.surf2 : Theme.surf
+                    border.color: Theme.border
 
-                    Column {
+                    // behind the buttons, so they keep their own taps
+                    MouseArea {
+                        id: holdArea
+                        objectName: "spellCardHold_" + modelData.name
+                        anchors.fill: parent
+                        pressAndHoldInterval: 450
+                        onPressAndHold: root.openSpellOptions(modelData)
+                    }
+
+                    ColumnLayout {
                         id: knownCol
-                        x: 10; y: 8
-                        width: parent.width - 20
-                        spacing: 4
+                        x: 12; y: 10
+                        width: parent.width - 24
+                        spacing: 8
 
                         RowLayout {
-                            width: parent.width
-                            Label {
-                                // Immersive Spells (DM Secrets optional
-                                // rule): a purely cosmetic title-only
-                                // override (Wild Shape beast noises,
-                                // Rage's "SMASH!", a blocked-component
-                                // redaction, or a patron/domain/Oath
-                                // flavor prefix) -- displayName is just
-                                // the real name unchanged when the rule
-                                // is off, computed the same way as
-                                // ui_desktop's compute_display_spell_title().
-                                text: modelData.displayName
-                                color: Theme.text
-                                font.pixelSize: Theme.fsBody
-                                font.bold: true
+                            Layout.fillWidth: true
+                            spacing: 8
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                wrapMode: Text.WordWrap
+                                spacing: 2
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+                                    Label {
+                                        // Immersive Spells (DM Secrets optional
+                                        // rule): a purely cosmetic title-only
+                                        // override -- displayName is just the
+                                        // real name when the rule is off, same
+                                        // as ui_desktop's compute_display_spell_title().
+                                        text: modelData.displayName
+                                        color: Theme.text
+                                        font.pixelSize: Theme.fsBody
+                                        font.bold: true
+                                        wrapMode: Text.WordWrap
+                                        Layout.maximumWidth: knownCol.width - 160
+                                    }
+                                    // Ritual spell: a circled R
+                                    Rectangle {
+                                        visible: modelData.ritual
+                                        implicitWidth: 18
+                                        implicitHeight: 18
+                                        radius: 9
+                                        color: "transparent"
+                                        border.color: Theme.teal2
+                                        border.width: 1.5
+                                        Label {
+                                            anchors.centerIn: parent
+                                            text: "R"
+                                            color: Theme.teal2
+                                            font.pixelSize: 10
+                                            font.bold: true
+                                        }
+                                    }
+                                    // Favourited (starred spells show on Combat/Actions)
+                                    MIcon {
+                                        visible: modelData.pinned
+                                        name: "star_solid"
+                                        size: 14
+                                        color: Theme.gold
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                }
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: modelData.levelText + "  ·  " + modelData.school
+                                          + (modelData.concentration ? "  ·  Concentration" : "")
+                                    color: Theme.text3
+                                    font.pixelSize: Theme.fsSmall
+                                    wrapMode: Text.WordWrap
+                                }
+                                Label {
+                                    // granted by a subclass/race/feat: no prep choice, can't be removed
+                                    visible: modelData.granted
+                                    text: "Always prepared"
+                                    color: Theme.teal2
+                                    font.pixelSize: Theme.fsSmall
+                                    font.bold: true
+                                }
+                                Label {
+                                    // why Cast is greyed out (or ritual-only)
+                                    visible: modelData.needsPreparing
+                                    text: modelData.canRitual ? "Not prepared -- castable as a ritual"
+                                                              : "Not prepared -- hold to prepare it"
+                                    color: Theme.text3
+                                    font.pixelSize: Theme.fsSmall
+                                }
+                                Label {
+                                    visible: !modelData.granted && modelData.level > 0
+                                             && modelData.preparable && modelData.prepared
+                                    text: "Prepared"
+                                    color: Theme.teal2
+                                    font.pixelSize: Theme.fsSmall
+                                    font.bold: true
+                                }
                             }
-                            Label {
-                                text: modelData.levelText
-                                color: Theme.text3
-                                font.pixelSize: Theme.fsSmall
-                            }
-                        }
-                        Label {
-                            text: modelData.school
-                                  + (modelData.concentration ? "  ·  Concentration" : "")
-                                  + (modelData.ritual ? "  ·  Ritual" : "")
-                            color: Theme.text3
-                            font.pixelSize: Theme.fsSmall
-                        }
-                        // One fixed layout for every card: toggles on the
-                        // left, actions on the right with Cast always last,
-                        // so the buttons line up from card to card.
-                        RowLayout {
-                            width: parent.width
-                            spacing: 6
-                            MCheckBox {
-                                visible: modelData.level > 0   // cantrips are never prepared
-                                text: "Prepared"
-                                checked: modelData.prepared
-                                onToggled: sheetBridge.setSpellPrepared(modelData.name, checked)
-                            }
-                            // Quick spell (desktop's star): pinned spells show up
-                            // with Cast buttons on the Combat and Actions screens
                             MButton {
-                                objectName: "pinButton_" + modelData.name
                                 primary: false
                                 implicitWidth: 40
                                 implicitHeight: 34
-                                iconName: modelData.pinned ? "star_solid" : "star"
-                                iconSize: 18
-                                onClicked: sheetBridge.toggleQuickSpell(modelData.name)
-                            }
-                            Item { Layout.fillWidth: true }
-                            MButton {
-                                visible: modelData.concentration && sheetBridge.concentratingSpell !== modelData.name
-                                primary: false
-                                implicitHeight: 34
-                                text: "Conc."
-                                onClicked: sheetBridge.startConcentration(modelData.name)
+                                iconName: "search"   // View -- a magnifying glass
+                                iconSize: 22
+                                Accessible.name: "View"
+                                onClicked: {
+                                    Window.window.pendingSpellDetail = sheetBridge.getSpellDetail(modelData.name)
+                                    spellDetail.open()
+                                }
                             }
                             MButton {
-                                visible: modelData.ritual
-                                primary: false
-                                implicitHeight: 34
-                                text: "Ritual"
-                                onClicked: sheetBridge.castSpellAsRitual(modelData.name)
-                            }
-                            MButton {
-                                primary: false
-                                implicitWidth: 40
-                                implicitHeight: 34
-                                iconName: "trash"
-                                iconSize: 16
-                                onClicked: sheetBridge.removeKnownSpell(modelData.name)
-                            }
-                            MButton {
-                                implicitWidth: 68
+                                implicitWidth: 64
                                 implicitHeight: 34
                                 text: "Cast"
-                                onClicked: sheetBridge.castSpell(modelData.name)
+                                // an unprepared spell can't be cast -- except as
+                                // a ritual (a Wizard's spellbook), which Cast offers
+                                enabled: !modelData.needsPreparing || modelData.canRitual
+                                onClicked: root.castSpell(modelData)
                             }
                         }
                     }
                 }
             }
+            Label {
+                visible: sheetBridge.knownSpells.length > 0
+                text: "Press and hold a spell to prepare, favourite or remove it. Spells marked Always prepared come from your class, race or a feat and stay."
+                color: Theme.text3
+                font.pixelSize: Theme.fsSmall
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
 
             // ── Add a spell ───────────────────────────────────────────
-            // Browses every one of the character's classes' spell
-            // lists (merged, EK/AT mapped to Wizard, Mark-expanded
-            // spells included) -- matches ui_desktop's spells.py Spell
-            // Browser panel's search + level + class filters, its
-            // castable-level cap, its ritual/concentration markers shown
-            // on unknown spells too, its Homebrew toggle, and its known/
-            // cantrip/prepared cap enforcement at add-time
-            // (searchAddableSpells/addKnownSpell/setSpellPrepared in the
-            // bridge). The class filter ANDs with (doesn't replace) the
-            // character's own class-list restriction, matching desktop
-            // exactly -- mainly useful with Homebrew mode on, or to
-            // narrow a multiclass character's browser to one class.
+            // Lists what the character's classes can learn now -- on
+            // their lists (EK/AT: the Wizard's; a dragonmark's spells
+            // too), at a level each class learns, with room left in its
+            // spells or cantrips known (core/spellcasting.py SpellRoom).
+            // Matches ui_desktop's spells.py Spell Browser panel: its
+            // search + level + class filters, its ritual/concentration
+            // markers, its Ignore restrictions toggle, its note on the
+            // classes that have learned all they can, and the same rule
+            // again at add-time (searchAddableSpells/addKnownSpell/
+            // setSpellPrepared in the bridge). The class filter ANDs with
+            // that rule, matching desktop -- mainly useful with Ignore
+            // restrictions on, or to narrow a multiclass character's
+            // browser to one class.
             Label { id: addSpellAnchor; text: "Add a Spell"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true; Layout.topMargin: 6 }
             Label {
-                text: "From your class's spell list. Tap a spell to view details."
+                text: "From your class's spell list. Tap the magnifying glass for a spell's details."
                 color: Theme.text3
                 font.pixelSize: Theme.fsSmall
                 wrapMode: Text.WordWrap
@@ -374,31 +461,69 @@ Page {
                 spacing: 8
                 MTextField {
                     id: spellSearch
+                    objectName: "spellSearchField"
                     Layout.fillWidth: true
                     placeholderText: "Search spells…"
                     onTextChanged: addableModel.refreshResults()
                 }
+                // level and class filters live in the drawer behind this
+                MFilterButton {
+                    objectName: "spellFilterButton"
+                    count: spellFilters.activeCount
+                    onClicked: spellFilters.open()
+                }
+            }
+            MFilterDrawer {
+                id: spellFilters
+                objectName: "spellFilterDrawer"
+                title: "Spell filters"
+                activeCount: (levelFilter.currentIndex > 0) + (classFilter.currentIndex > 0)
+                onCleared: { levelFilter.currentIndex = 0; classFilter.currentIndex = 0 }
+                Label { text: "Level"; color: Theme.text2; font.pixelSize: Theme.fsSmall; font.bold: true }
                 ComboBox {
                     id: levelFilter
-                    Layout.preferredWidth: 130
+                    Layout.fillWidth: true
                     model: ["All Levels", "Cantrip", "Level 1", "Level 2", "Level 3", "Level 4",
                             "Level 5", "Level 6", "Level 7", "Level 8", "Level 9"]
                     onCurrentIndexChanged: addableModel.refreshResults()
                 }
-            }
-            ComboBox {
-                id: classFilter
-                Layout.fillWidth: true
-                model: sheetBridge.spellClassFilters
-                onCurrentIndexChanged: addableModel.refreshResults()
+                Label { text: "Class"; color: Theme.text2; font.pixelSize: Theme.fsSmall; font.bold: true }
+                ComboBox {
+                    id: classFilter
+                    Layout.fillWidth: true
+                    model: sheetBridge.spellClassFilters
+                    onCurrentIndexChanged: addableModel.refreshResults()
+                }
             }
             MCheckBox {
+                objectName: "ignoreRestrictionsBox"
                 Layout.fillWidth: true
-                text: "Homebrew mode (ignore class list, castable level, and known/cantrip caps)"
+                text: "Ignore restrictions (any spell, any level, no limits)"
                 checked: sheetBridge.spellHomebrewMode
                 onToggled: {
                     sheetBridge.setSpellHomebrewMode(checked)
                     addableModel.refreshResults()
+                }
+            }
+            // which classes have learned all they can -- a bar down the
+            // side marks it; the text itself stays plain
+            RowLayout {
+                Layout.fillWidth: true
+                visible: sheetBridge.spellBrowserNote !== ""
+                spacing: 8
+                Rectangle {
+                    Layout.preferredWidth: 3
+                    Layout.fillHeight: true
+                    radius: 1
+                    color: Theme.gold
+                }
+                Label {
+                    objectName: "spellBrowserNote"
+                    Layout.fillWidth: true
+                    text: sheetBridge.spellBrowserNote
+                    color: Theme.text2
+                    font.pixelSize: Theme.fsSmall
+                    wrapMode: Text.WordWrap
                 }
             }
 
@@ -474,9 +599,11 @@ Page {
                             }
                             MButton {
                                 primary: false
-                                implicitWidth: 64
+                                implicitWidth: 40
                                 height: 34
-                                text: "View"
+                                iconName: "search"   // View -- a magnifying glass
+                                iconSize: 22
+                                Accessible.name: "View"
                                 onClicked: {
                                     Window.window.pendingSpellDetail = sheetBridge.getSpellDetail(modelData.name)
                                     spellDetail.open()
@@ -500,6 +627,71 @@ Page {
                     }
                 }
             }
+        }
+    }
+
+    // ── Press-and-hold options for a known spell, and the cast choice
+    // for spells that can be cast as a ritual (both the shared menu) ──
+    property var optionsSpell: ({})
+    function openSpellOptions(sp) {
+        var opts = []
+        // cantrips are never prepared, and neither is a spell only a
+        // Warlock/Sorcerer/Bard/Ranger casts
+        // Granted spells (domain/oath/racial/feat) are always prepared and
+        // part of the character, so they get neither Prepare nor Remove;
+        // a Cleric's (Druid's, Paladin's, Artificer's) list spell prepares
+        // and unprepares but isn't removed -- the class knows them all.
+        if (sp.level > 0 && sp.preparable && !sp.granted)
+            opts.push({ key: "prepare", text: sp.prepared ? "Unprepare" : "Prepare" })
+        opts.push({ key: "favourite", icon: sp.pinned ? "star" : "star_solid",
+                    text: sp.pinned ? "Remove from favourites" : "Add to favourites" })
+        if (sp.removable)
+            opts.push({ key: "remove", icon: "trash", text: "Remove from spell list" })
+        root.optionsSpell = sp
+        spellOptionsDialog.heading = sp.displayName || sp.name
+        spellOptionsDialog.options = opts
+        spellOptionsDialog.open()
+    }
+    MOptionsDialog {
+        id: spellOptionsDialog
+        objectName: "spellOptionsDialog"
+        onPicked: (key) => {
+            var sp = root.optionsSpell
+            if (key === "prepare") sheetBridge.setSpellPrepared(sp.name, !sp.prepared)
+            else if (key === "favourite") sheetBridge.toggleQuickSpell(sp.name)
+            else if (key === "remove") sheetBridge.removeKnownSpell(sp.name)
+        }
+    }
+
+    // The card's Cast button:
+    //   a spell you can cast as a ritual -> ask: normally (a slot) or as a
+    //                                       ritual (no slot, +10 minutes)
+    //   anything else                    -> cast it (the bridge spends the
+    //       slot, starts concentration, applies its effect, uses the action)
+    function castSpell(sp) {
+        if (!sp.canRitual) {
+            sheetBridge.castSpell(sp.name)
+            return
+        }
+        // not prepared: a ritual is the only way to cast it (a Wizard's spellbook)
+        if (sp.needsPreparing) {
+            sheetBridge.castSpellAsRitual(sp.name)
+            return
+        }
+        root.optionsSpell = sp
+        castChoiceDialog.heading = "Cast " + (sp.displayName || sp.name)
+        castChoiceDialog.options = [
+            { key: "normal", text: "Cast normally (uses a spell slot)" },
+            { key: "ritual", text: "Cast as a ritual (no slot, +10 minutes)" },
+        ]
+        castChoiceDialog.open()
+    }
+    MOptionsDialog {
+        id: castChoiceDialog
+        objectName: "castChoiceDialog"
+        onPicked: (key) => {
+            if (key === "ritual") sheetBridge.castSpellAsRitual(root.optionsSpell.name)
+            else sheetBridge.castSpell(root.optionsSpell.name)
         }
     }
 
@@ -572,6 +764,7 @@ Page {
                     color: Theme.text3
                     font.pixelSize: Theme.fsSmall
                 }
+
             }
         }
     }

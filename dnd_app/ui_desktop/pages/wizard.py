@@ -21,14 +21,14 @@ from dnd_app.ui_desktop.style.theme import *
 from ..shared import *
 from ..shared import _btn
 from dnd_app.core.character import new_character, add_class, ability_score, ability_mod, get_class_entry, set_subclass
-from dnd_app.core.builder import rebuild, get_choices_needed, apply_choice
+from dnd_app.core.builder import rebuild, get_choices_needed, apply_choice, race_requires_subrace
 from dnd_app.core.multiclass import check_multiclass_prereq
-from dnd_app.data.phb2014.races import ALL_RACES, RACE_NAMES, RACE_DICT, get_race, flex_asi_desc, combined_racial_asi
-from dnd_app.data.phb2014.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
-from dnd_app.data.phbCommon.backgrounds import ALL_BACKGROUNDS, BACKGROUND_NAMES, get_background
-from dnd_app.data.phbCommon.feats import ALL_FEATS
-from dnd_app.data.phbCommon.spells import ALL_SPELLS, spells_for_class, get_spell
-from dnd_app.data.phbCommon.items import ARMOR, ALL_WEAPONS, ADVENTURING_GEAR, SIMPLE_MELEE, SIMPLE_RANGED, MARTIAL_MELEE, MARTIAL_RANGED
+from dnd_app.data.races import ALL_RACES, RACE_NAMES, RACE_DICT, get_race, flex_asi_desc, combined_racial_asi
+from dnd_app.data.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
+from dnd_app.data.backgrounds import ALL_BACKGROUNDS, BACKGROUND_NAMES, get_background
+from dnd_app.data.feats import ALL_FEATS
+from dnd_app.data.spells import ALL_SPELLS, spells_for_class, get_spell
+from dnd_app.data.items import ARMOR, ALL_WEAPONS, ADVENTURING_GEAR, SIMPLE_MELEE, SIMPLE_RANGED, MARTIAL_MELEE, MARTIAL_RANGED
 from dnd_app.ui_desktop import icons as _icons
 
 ABILITIES = ["STR","DEX","CON","INT","WIS","CHA"]
@@ -62,7 +62,10 @@ class CharacterWizard(QWidget):
 
         # ── Top header bar ────────────────────────────────────────────────────
         header = QFrame()
-        header.setStyleSheet(f"QFrame{{background:{SURF};border-bottom:2px solid {BORDER};}}")
+        # (#id selector: a bare QFrame{...} rule would also give every QLabel
+        # inside -- QLabel is a QFrame -- a bottom border, nudging the title up)
+        header.setObjectName("wizHeader")
+        header.setStyleSheet(f"QFrame#wizHeader{{background:{SURF};border-bottom:2px solid {BORDER};}}")
         header.setFixedHeight(64)
         hl = QHBoxLayout(header); hl.setContentsMargins(24,0,24,0)
         hl.addWidget(_icons.icon_label("combat", 30))
@@ -93,7 +96,8 @@ class CharacterWizard(QWidget):
 
         # ── Bottom nav bar ─────────────────────────────────────────────────────
         nav = QFrame()
-        nav.setStyleSheet(f"QFrame{{background:{SURF};border-top:2px solid {BORDER};}}")
+        nav.setObjectName("wizNav")
+        nav.setStyleSheet(f"QFrame#wizNav{{background:{SURF};border-top:2px solid {BORDER};}}")
         nav.setFixedHeight(72)
         nl = QHBoxLayout(nav); nl.setContentsMargins(24,0,24,0)
         self._back_btn = pill_btn("← Back", SURF2, TEXT)
@@ -214,7 +218,7 @@ class Step1Race(QWidget):
 
         # Subrace
         sub_row = QHBoxLayout()
-        sub_row.addWidget(_lbl("Subrace:", TEXT2, FS_BODY, bold=True))
+        sub_row.addWidget(_lbl("Subrace:", TEXT2, FS_BODY, bold=True, wrap=False))
         self._subrace_combo = QComboBox(); self._subrace_combo.addItem("(None)")
         self._subrace_combo.setMinimumWidth(240)
         sub_row.addWidget(self._subrace_combo, 1)
@@ -222,7 +226,7 @@ class Step1Race(QWidget):
 
         # Draconic Ancestry — shown only for Dragonborn
         self._anc_row = QHBoxLayout()
-        self._anc_row.addWidget(_lbl("Draconic Ancestry:", TEXT2, FS_BODY, bold=True))
+        self._anc_row.addWidget(_lbl("Draconic Ancestry:", TEXT2, FS_BODY, bold=True, wrap=False))
         self._ancestry_combo = QComboBox()
         self._ancestry_combo.setMinimumWidth(240)
         self._anc_row.addWidget(self._ancestry_combo, 1)
@@ -235,7 +239,7 @@ class Step1Race(QWidget):
         # charms, Winter frightens, Spring lets a willing creature come
         # with you, Summer burns everyone at your origin point).
         self._season_row = QHBoxLayout()
-        self._season_row.addWidget(_lbl("Eladrin Season:", TEXT2, FS_BODY, bold=True))
+        self._season_row.addWidget(_lbl("Eladrin Season:", TEXT2, FS_BODY, bold=True, wrap=False))
         self._season_combo = QComboBox()
         self._season_combo.setMinimumWidth(340)
         for season, effect in [
@@ -255,7 +259,7 @@ class Step1Race(QWidget):
         # is granted later, not at character creation, so it isn't picked
         # here (same reasoning as feats/ASIs gained on level-up).
         self._simic_row = QHBoxLayout()
-        self._simic_row.addWidget(_lbl("Animal Enhancement:", TEXT2, FS_BODY, bold=True))
+        self._simic_row.addWidget(_lbl("Animal Enhancement:", TEXT2, FS_BODY, bold=True, wrap=False))
         self._simic_combo = QComboBox()
         self._simic_combo.setMinimumWidth(340)
         for opt, desc in [
@@ -302,7 +306,7 @@ class Step1Race(QWidget):
 
         rdata = RACE_DICT.get(name, {})
         self._detail_name.setText(name)
-        self._detail_name.setStyleSheet(f"color:{GOLD2};font-size:{FS_TITLE}px;font-weight:700;background:transparent;")
+        self._detail_name.setStyleSheet(f"color:{GOLD2};font-size:{FS_TITLE}px;font-weight:700;background:transparent;border:none;")
 
         # ASI display
         asi = rdata.get("asi", {})
@@ -322,7 +326,7 @@ class Step1Race(QWidget):
 
         # Subraces
         self._subrace_combo.clear()
-        self._subrace_combo.addItem("(None)")
+        self._subrace_combo.addItem("(Choose a subrace)" if race_requires_subrace(name) else "(None)")
         for sub in rdata.get("subraces", []):
             display_name = sub.split("(")[0].strip()
             full_desc = sub[sub.find("("):]  # the parenthetical bit
@@ -333,7 +337,7 @@ class Step1Race(QWidget):
         if hasattr(self, "_anc_widget"):
             self._anc_widget.setVisible(is_dragonborn)
             if is_dragonborn:
-                from dnd_app.data.phb2014.races import DRACONIC_ANCESTRY, ANCESTRY_BY_SUBRACE
+                from dnd_app.data.races import DRACONIC_ANCESTRY, ANCESTRY_BY_SUBRACE
                 self._ancestry_combo.clear()
                 # Default to Standard types (all 10)
                 for anc in ANCESTRY_BY_SUBRACE.get("Standard", []):
@@ -350,7 +354,7 @@ class Step1Race(QWidget):
         # the chosen subrace's own bonuses, not just the base race's.
         def _on_subrace_changed(idx):
             if is_dragonborn and hasattr(self, "_anc_widget"):
-                from dnd_app.data.phb2014.races import DRACONIC_ANCESTRY, ANCESTRY_BY_SUBRACE
+                from dnd_app.data.races import DRACONIC_ANCESTRY, ANCESTRY_BY_SUBRACE
                 sub_name = self._subrace_combo.currentData() or "Standard"
                 types = ANCESTRY_BY_SUBRACE.get(sub_name, ANCESTRY_BY_SUBRACE["Standard"])
                 self._ancestry_combo.clear()
@@ -359,11 +363,14 @@ class Step1Race(QWidget):
                     shape = DRACONIC_ANCESTRY[anc][1]
                     self._ancestry_combo.addItem(f"{anc}  –  {dmg}, {shape}", anc)
             self._update_subrace_detail()
-        try:
-            self._subrace_combo.currentIndexChanged.disconnect()
-        except (TypeError, RuntimeError):
-            pass
+        prev = getattr(self, "_subrace_changed_handler", None)
+        if prev is not None:
+            try:
+                self._subrace_combo.currentIndexChanged.disconnect(prev)
+            except (TypeError, RuntimeError):
+                pass
         self._subrace_combo.currentIndexChanged.connect(_on_subrace_changed)
+        self._subrace_changed_handler = _on_subrace_changed
 
         # Also show ASI summary for the race in Step1 panel
         if rdata.get("subraces") and not asi_parts:
@@ -430,13 +437,18 @@ class Step1Race(QWidget):
         if not self._selected_race:
             QMessageBox.warning(self, "Race Required", "Please choose a race before continuing.")
             return False
+        if race_requires_subrace(self._selected_race) and self._subrace_combo.currentIndex() <= 0:
+            QMessageBox.warning(self, "Subrace Required",
+                                f"Please choose a subrace -- {'an' if self._selected_race[:1] in 'AEIOU' else 'a'} {self._selected_race}'s ability "
+                                f"score bonus comes from its subrace.")
+            return False
         char["race"] = self._selected_race
         char["species"] = self._selected_race
         sub_data = self._subrace_combo.currentData()  # stored as name only
         sub_text = self._subrace_combo.currentText()
         if sub_data:
             char["subrace"] = sub_data  # clean name like "Hill"
-        elif sub_text and sub_text != "(None)":
+        elif sub_text and not sub_text.startswith("("):
             char["subrace"] = sub_text.split("(")[0].strip().rstrip()
         else:
             char["subrace"] = ""
@@ -629,19 +641,19 @@ class Step2Abilities(QWidget):
             "Only where the ability score increases land is changed.",
             TEAL2, FS_SMALL))
         self._tashas_summary = _lbl("", TEXT2, FS_SMALL); tcl.addWidget(self._tashas_summary)
-        self._tashas_spins_frame = QWidget(); self._tashas_spins_frame.setStyleSheet("background:transparent;")
+        self._tashas_spins_frame = QWidget(); self._tashas_spins_frame.setStyleSheet("background:transparent;border:none;")
         tsf = QHBoxLayout(self._tashas_spins_frame); tsf.setSpacing(10)
         self._tashas_spins = {}; self._tashas_mod_lbls = {}
         for ab in ABILITIES:
             col = QVBoxLayout(); col.setSpacing(3)
             col.addWidget(_lbl(ab, TEXT3, FS_SMALL, bold=True, align=Qt.AlignCenter))
             sp = QSpinBox(); sp.setRange(0, 4); sp.setValue(0); sp.setFixedWidth(52)
-            sp.setButtonSymbols(QAbstractSpinBox.NoButtons)
             sp.setStyleSheet(f"QSpinBox{{color:{GOLD2};font-weight:700;font-size:{FS_BODY}px;"
-                             f"border:2px solid {qa(GOLD,0x55)};border-radius:6px;background:{SURF2};}}")
+                             f"border:2px solid {qa(GOLD,0x55)};border-radius:6px;background:{SURF2};padding:2px;}}"
+                             + SPIN_NO_BUTTONS)
             sp.valueChanged.connect(self._on_tashas_spin)
             mod_lbl = QLabel("0"); mod_lbl.setAlignment(Qt.AlignCenter)
-            mod_lbl.setStyleSheet(f"color:{TEXT3};font-size:{FS_SMALL}px;background:transparent;")
+            mod_lbl.setStyleSheet(f"color:{TEXT3};font-size:{FS_SMALL}px;background:transparent;border:none;")
             col.addWidget(sp); col.addWidget(mod_lbl); tsf.addLayout(col)
             self._tashas_spins[ab] = sp; self._tashas_mod_lbls[ab] = mod_lbl
         tsf.addStretch(); tcl.addWidget(self._tashas_spins_frame)
@@ -688,11 +700,9 @@ class Step2Abilities(QWidget):
         different +1s) — the each-style checkbox picker can represent
         neither valid distribute option, so the style must be read from
         asi_flex_style before deciding which card to show."""
-        from dnd_app.data.phb2014.races import RACE_DICT
+        from dnd_app.data.races import race_flex
         race = char.get("race", "")
-        rdata = RACE_DICT.get(race, {})
-        flex = rdata.get("asi_flex", 0)
-        style = rdata.get("asi_flex_style", "distribute")
+        flex, style = race_flex(race, char.get("subrace", ""))   # none for a dragonmark
         use_dist = flex == 2 and style == "distribute"
         if hasattr(self, '_flex_card'):
             self._flex_card.setVisible(flex > 0 and not use_dist)
@@ -739,7 +749,7 @@ class Step2Abilities(QWidget):
         color = TEAL2 if used == pool else (GOLD2 if used < pool else CRIM2)
         if hasattr(self, '_tashas_pts_lbl'):
             self._tashas_pts_lbl.setText(f"Points used: {used} / {pool}")
-            self._tashas_pts_lbl.setStyleSheet(f"color:{color};font-size:{FS_SMALL}px;font-weight:700;background:transparent;")
+            self._tashas_pts_lbl.setStyleSheet(f"color:{color};font-size:{FS_SMALL}px;font-weight:700;background:transparent;border:none;")
         for ab, sp in self._tashas_spins.items():
             base = self._ab_blocks[ab].value() if ab in self._ab_blocks else 10
             total = base + sp.value()
@@ -748,7 +758,7 @@ class Step2Abilities(QWidget):
             ml = self._tashas_mod_lbls.get(ab)
             if ml:
                 ml.setText(f"{total}\n({sign}{mod})")
-                ml.setStyleSheet(f"color:{TEAL2 if sp.value()>0 else TEXT3};font-size:{FS_SMALL}px;background:transparent;")
+                ml.setStyleSheet(f"color:{TEAL2 if sp.value()>0 else TEXT3};font-size:{FS_SMALL}px;background:transparent;border:none;")
 
     def _on_flex_changed(self, _state):
         """Enforce max selection for flex ASI checkboxes."""
@@ -809,17 +819,17 @@ class Step2Abilities(QWidget):
             rem = 27 - used
             self._pb_lbl.setText(f"Points remaining: {rem} / 27")
             color = TEAL2 if rem >= 0 else CRIM2
-            self._pb_lbl.setStyleSheet(f"color:{color};font-size:{FS_BODY}px;font-weight:700;background:transparent;")
+            self._pb_lbl.setStyleSheet(f"color:{color};font-size:{FS_BODY}px;font-weight:700;background:transparent;border:none;")
 
     def _update_race_bonuses(self, char):
         """Update the racial ASI preview label. Uses combined_racial_asi
         so it never double-counts the base race bonus."""
+        from dnd_app.data.races import race_flex
         race  = char.get("race","")
-        rdata = RACE_DICT.get(race, {})
-        flex  = rdata.get("asi_flex", 0)
+        sub_name = char.get("subrace","")
+        flex, _ = race_flex(race, sub_name)     # none for a dragonmark
         asi   = combined_racial_asi(char)
         parts = [f"{ab} +{v}" for ab, v in sorted(asi.items())]
-        sub_name = char.get("subrace","")
         if flex:
             parts.append(f"+1 to {flex} abilities of your choice")
         if hasattr(self, "_race_bonus_card"):
@@ -829,7 +839,7 @@ class Step2Abilities(QWidget):
         elif sub_name:
             self._race_bonus_lbl.setText(f"Subrace: {sub_name}")
     def _update_totals(self):
-        from dnd_app.data.phb2014.races import RACE_DICT as RD
+        from dnd_app.data.races import RACE_DICT as RD
         if "Standard Array" in self._method.currentText():
             for ab, combo in self._sa_combos.items():
                 self._ab_blocks[ab].set_score(int(combo.currentText()))
@@ -1071,16 +1081,12 @@ class Step3Class(QWidget):
                 self._bg_feat_combo.setVisible(False)
                 self._bg_feat_lbl.setVisible(False)
             return
-        from dnd_app.data.phbCommon.backgrounds import get_background
+        from dnd_app.data.backgrounds import get_background
         bg = get_background(text) or {}
         feat_choices = bg.get("feat_choices") or []
-        # Skills row
-        skills = bg.get("skill_proficiencies") or bg.get("skills") or []
-        tools  = bg.get("tools") or bg.get("tool_proficiencies") or []
-        parts  = []
-        if skills: parts.append(f"Skills: {', '.join(skills)}")
-        if tools:  parts.append(f"Tools: {', '.join(tools)}")
-        self._bg_skills_lbl.setText("  ·  ".join(parts))
+        # Skills row, with the ones to choose (the same text as Android's)
+        from dnd_app.data.backgrounds import background_proficiency_text
+        self._bg_skills_lbl.setText(background_proficiency_text(bg))
         # Full detail box: feature description, equipment, languages, origin
         # feat, and source — all untruncated, since this is meant to be the
         # actual reference a player reads before committing to a choice.
@@ -1127,7 +1133,7 @@ class Step3Class(QWidget):
 
     def _on_cls_change(self, text):
         if text.startswith("—"): self._cls_info_lbl.setText(""); return
-        from dnd_app.data.phb2014.classes import CLASS_DICT
+        from dnd_app.data.classes import CLASS_DICT
         cdata = CLASS_DICT.get(text, {})
         hd = cdata.get("hit_die", 8)
         saves = ", ".join(cdata.get("save_profs", []))
@@ -1169,6 +1175,10 @@ class Step3Class(QWidget):
         if not name:
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "Name Required", "Please enter a character name."); return False
+        from dnd_app.core.save_load import name_in_use, NAME_IN_USE_MESSAGE
+        if name_in_use(name):
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "Name Already Used", NAME_IN_USE_MESSAGE); return False
         _cur_bg = self._bg_combo.currentItem() if hasattr(self._bg_combo,'currentItem') else None
         bg_name = _cur_bg.text() if _cur_bg else (self._bg_combo.currentText() if hasattr(self._bg_combo,'currentText') else "")
         if not bg_name or bg_name.startswith("—"):
@@ -1184,7 +1194,7 @@ class Step3Class(QWidget):
         char["edition"] = "2014"
         char["background"] = bg_name
 
-        from dnd_app.data.phbCommon.backgrounds import get_background
+        from dnd_app.data.backgrounds import get_background
         bg_data = get_background(bg_name) or {}
         feat_choices = bg_data.get("feat_choices") or []
         if feat_choices:
@@ -1208,7 +1218,7 @@ class Step3Class(QWidget):
             if isinstance(char.get("_choices"), dict):
                 char["_choices"].pop("background_feat", None)
 
-        from dnd_app.data.phb2014.classes import CLASS_DICT
+        from dnd_app.data.classes import CLASS_DICT
         from dnd_app.core.character import add_class
         cdata = CLASS_DICT.get(cls_name, {})
         hd = cdata.get("hit_die", 8)
@@ -1232,13 +1242,27 @@ class Step4Spells(QWidget):
         # Left: browser
         left = QWidget(); ll = QVBoxLayout(left); ll.setSpacing(8)
         ll.addWidget(_lbl("Available Spells", GOLD, FS_BODY, bold=True))
-        top = QHBoxLayout(); top.setSpacing(8)
         self._sp_search = QLineEdit(); self._sp_search.setPlaceholderText("Search spells…")
         self._sp_lvl = QComboBox(); self._sp_lvl.addItem("All Levels")
-        self._sp_lvl.setMinimumWidth(130)
         for i in range(10): self._sp_lvl.addItem("Cantrip" if i==0 else f"Level {i}")
-        top.addWidget(self._sp_search, 2); top.addWidget(self._sp_lvl)
-        ll.addLayout(top)
+        # search across the top; the level filter in the funnel's sidebar
+        from ..widgets import FilterSidebar
+        self._sp_filters = FilterSidebar(left)
+        self._sp_filters.add_combo("Level", self._sp_lvl)
+        ll.addLayout(self._sp_filters.search_row(self._sp_search))
+        # the same rule as the sheet's Spell Browser (core/spellcasting.py
+        # SpellRoom): only what your classes can learn, until a class has
+        # learned all it can -- and the same way round it
+        self._sp_ignore = QCheckBox("Ignore restrictions — any spell, any level, no limits")
+        self._sp_ignore.setAccessibleName("Ignore restrictions: learn any spell, at any level, with no limits")
+        self._sp_ignore.setStyleSheet(f"QCheckBox{{color:{TEXT2};font-size:{FS_SMALL}px;padding:2px;}}")
+        self._sp_ignore.stateChanged.connect(lambda _s: self._filter())
+        ll.addWidget(self._sp_ignore)
+        self._sp_note = _lbl("", TEXT2, FS_SMALL)
+        self._sp_note.setStyleSheet(self._sp_note.styleSheet()
+                                    + f"border-left:3px solid {GOLD};border-radius:0px;padding:2px 0 2px 8px;")
+        self._sp_note.setVisible(False)
+        ll.addWidget(self._sp_note)
         self._browser = QListWidget(); self._browser.setMinimumWidth(300)
         ll.addWidget(self._browser, 1)
         add_btn = pill_btn("Add Selected →", INDIGO)
@@ -1310,19 +1334,37 @@ class Step4Spells(QWidget):
             if sp_name not in bonus_spells:
                 sp = get_spell(sp_name)
                 if sp: self._add_spell_row(sp, prepared=sp_name in char.get("spells_prepared",[]))
+        self._max_castable_spell_level()   # the slots the learn check needs, fresh
+        self._filter()
+
+    def _picked_char(self):
+        """The character as this step has it: its spells are the rows here
+        until collect() writes them back."""
+        tmp = dict(self.char)
+        tmp["spells_known"] = [r.spell["name"] for r in self._spell_rows]
+        tmp["spells_prepared"] = [r.spell["name"] for r in self._spell_rows if r.is_prepared()]
+        return tmp
 
     def _filter(self):
+        from dnd_app.core.spellcasting import SpellRoom
         q = self._sp_search.text().lower()
         lvl_txt = self._sp_lvl.currentText()
+        room = None if self._sp_ignore.isChecked() else SpellRoom(self._picked_char())
+        have = {r.spell["name"] for r in self._spell_rows}
         for i in range(self._browser.count()):
             item = self._browser.item(i)
             sp = item.data(Qt.UserRole)
             if not sp: continue
-            ok = not q or q in sp["name"].lower()
+            ok = (not q or q in sp["name"].lower()) and sp["name"] not in have
             if lvl_txt != "All Levels":
                 ok = ok and ((lvl_txt=="Cantrip" and sp["level"]==0) or
                              (lvl_txt.startswith("Level") and sp["level"]==int(lvl_txt[-1])))
+            if ok and room is not None:
+                ok = room.reason(sp) == ""
             item.setHidden(not ok)
+        note = room.note() if room is not None else ""
+        self._sp_note.setText(note)
+        self._sp_note.setVisible(bool(note))
 
     def _max_castable_spell_level(self) -> int:
         """Highest spell level the character can currently cast. Computes
@@ -1341,19 +1383,23 @@ class Step4Spells(QWidget):
         return max_lvl
 
     def _add_selected(self):
-        max_lvl = self._max_castable_spell_level()
+        from dnd_app.core.spellcasting import SpellRoom
+        self._max_castable_spell_level()   # fresh slots for the check below
         blocked = []
         for item in self._browser.selectedItems():
             sp = item.data(Qt.UserRole)
             if not sp or any(r.spell["name"]==sp["name"] for r in self._spell_rows):
                 continue
-            if sp.get("level", 0) > 0 and sp["level"] > max_lvl:
-                blocked.append(sp["name"])
-                continue
+            if not self._sp_ignore.isChecked():
+                why = SpellRoom(self._picked_char()).reason(sp)
+                if why:
+                    blocked.append(why)
+                    continue
             self._add_spell_row(sp)
         if blocked:
-            self._hint.setText(f"Not added (above your current max castable level {max_lvl}): "
-                                f"{', '.join(blocked)}")
+            self._hint.setText("Not added: " + "; ".join(blocked)
+                               + ". Tick Ignore restrictions to add it anyway.")
+        self._filter()
 
     def _add_spell_row(self, spell, prepared=False):
         lvl = spell["level"]
@@ -1368,7 +1414,12 @@ class Step4Spells(QWidget):
             insert_idx = self._find_header_pos(lvl)
             self._spell_lay.insertWidget(insert_idx, hdr)
 
-        row = SpellRow(spell, prepared)
+        from dnd_app.core.calculator import spell_preparing_classes
+        from dnd_app.core.spellcasting import whole_list_class
+        row = SpellRow(spell, prepared,
+                       locked=spell["name"] in self.char.get("bonus_spells", []),
+                       preparable=bool(spell_preparing_classes(self.char, spell)),
+                       removable=not whole_list_class(self.char, spell["name"]))
         row.remove.connect(self._remove_spell_row)
         insert_idx = self._find_spell_pos(lvl)
         self._spell_lay.insertWidget(insert_idx, row)
@@ -1399,6 +1450,7 @@ class Step4Spells(QWidget):
             if lvl in self._level_headers:
                 h = self._level_headers.pop(lvl)
                 self._spell_lay.removeWidget(h); h.deleteLater()
+        self._filter()   # the pick is free again, so the browser offers it
 
     def collect(self, char) -> bool:
         char["spells_known"] = [r.spell["name"] for r in self._spell_rows]
@@ -1409,7 +1461,7 @@ class Step4Spells(QWidget):
 # ═══════════════════════════════════════════════════════════════════
 #  STEP 5: EQUIPMENT
 # ═══════════════════════════════════════════════════════════════════
-from dnd_app.data.phbCommon.items import weapon_category_pool as _weapon_category_pool
+from dnd_app.data.items import weapon_category_pool as _weapon_category_pool
 
 
 class Step5Equipment(QWidget):
@@ -1468,11 +1520,11 @@ class Step5Equipment(QWidget):
             f"Choose your starting equipment ({cls_name}):" if cls_name
             else "Choose your starting equipment:", TEXT2, FS_BODY))
 
-        from dnd_app.data.phbCommon.starting_equipment import get_starting_equipment
+        from dnd_app.data.starting_equipment import get_starting_equipment
         self._groups = get_starting_equipment(cls_name)
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
-        inner = QWidget(); inner.setStyleSheet("background:transparent;")
+        inner = QWidget(); inner.setStyleSheet("background:transparent;border:none;")
         gl = QVBoxLayout(inner); gl.setSpacing(10)
 
         for gi, group in enumerate(self._groups):
@@ -1590,78 +1642,13 @@ class Step5Equipment(QWidget):
                 else:
                     chosen_items.append(item)
 
-        armor_names = {a[0] for a in ARMOR}
-        weapon_names = {w[0] for w in ALL_WEAPONS}
-        armor_dict = {a[0]: a for a in ARMOR}
-        char["armor_worn"] = "No Armor"
-        char["shield"] = False
-        # setdefault only initializes an empty list, it never clears one
-        # that's already there — so navigating back and changing class
-        # (re-triggering populate() -> collect()) would otherwise
-        # accumulate the previous class's starting equipment on top of
-        # the new class's, rather than replacing it. Safe to reset here
-        # since this method only runs during the wizard flow, before any
-        # real gameplay additions could exist.
-        char["equipped_weapons"] = []
-        char["equipment"] = []
-        from dnd_app.data.phbCommon.items import WEAPON_DICT, EQUIPMENT_PACKS
-        for item in chosen_items:
-            base = item.split(" (")[0].strip()
-            if base == "Shield":
-                char["shield"] = True
-                a = armor_dict.get("Shield")
-                # Adds a corresponding entry to the actual inventory
-                # list, not just the mechanical flag used for AC math, so
-                # the Gear tab shows starting armor/weapons as owned items.
-                char["equipment"].append({"name": "Shield", "qty": 1,
-                                          "weight": a[6] if a else 6, "cost": a[7] if a else 10})
-            elif base in armor_names:
-                char["armor_worn"] = base
-                a = armor_dict.get(base)
-                char["equipment"].append({"name": base, "qty": 1,
-                                          "weight": a[6] if a else 0, "cost": a[7] if a else 0})
-            elif base in weapon_names:
-                # Each weapon copy is added as its own row rather than
-                # skipped when a name is already present, so real
-                # multi-weapon starting equipment (e.g. a Rogue's two
-                # daggers, "two Handaxes") is fully represented.
-                char["equipped_weapons"].append(base)
-                w = WEAPON_DICT.get(base, {})
-                char["equipment"].append({"name": base, "qty": 1,
-                                          "weight": w.get("weight", 0), "cost": w.get("cost", 0)})
-            elif base in EQUIPMENT_PACKS:
-                # A chosen pack adds its real, individual contents rather than a single, opaque item.
-                for pack_item, qty in EQUIPMENT_PACKS[base]:
-                    char["equipment"].append({"name": pack_item, "qty": qty, "weight": 0, "cost": 0})
-            else:
-                char["equipment"].append({"name": item, "qty": 1, "weight": 0, "cost": 0})
-
-        # Background equipment is parsed and added to the character's
-        # real inventory/currency, not just shown as display text.
+        # into the inventory the same way Android's wizard does
+        # (core/inventory.py): each item counted once with its weight and
+        # cost, a pack as its contents, the background's gear and coins
+        from dnd_app.core.inventory import set_starting_inventory
         bg = get_background(char.get("background", ""))
-        bg_eq_text = (bg or {}).get("equipment", "")
-        if bg_eq_text and char.get("background") != "Custom Background":
-            import re
-            parts, depth, current = [], 0, ""
-            for ch in bg_eq_text:
-                if ch == '(':
-                    depth += 1; current += ch
-                elif ch == ')':
-                    depth -= 1; current += ch
-                elif ch == ',' and depth == 0:
-                    parts.append(current.strip()); current = ""
-                else:
-                    current += ch
-            if current.strip():
-                parts.append(current.strip())
-            for p in parts:
-                m = re.match(r'^(\d+)\s*(gp|sp|cp|ep|pp)$', p, re.IGNORECASE)
-                if m:
-                    cur = char.setdefault("currency", {})
-                    denom = m.group(2).upper()
-                    cur[denom] = cur.get(denom, 0) + int(m.group(1))
-                elif p:
-                    char["equipment"].append({"name": p, "qty": 1, "weight": 0, "cost": 0})
+        bg_text = "" if char.get("background") == "Custom Background" else (bg or {}).get("equipment", "")
+        set_starting_inventory(char, chosen_items, bg_text)
 
         notes = self._notes.toPlainText()
         if notes: char["notes"] = notes
