@@ -209,8 +209,7 @@ def full_list_dumped_spell_names(char: dict) -> dict:
     known-caster class's list).
     """
     from dnd_app.data.spells import spells_for_class, get_mark_expanded_spells, get_spell
-    from dnd_app.core.multiclass import (get_multiclass_spell_slots,
-                                          FULL_CASTERS, HALF_CASTERS, ARTIFICER_CLASSES)
+    from dnd_app.core.multiclass import compute_all_spell_slots
     FULL_LIST_CLASSES = ("Cleric", "Druid", "Paladin", "Artificer")
     # a dragonmark's Spells of the Mark are on each casting class's list too
     mark = {n: (get_spell(n) or {}).get("level", 0) for n in get_mark_expanded_spells(char)}
@@ -220,13 +219,10 @@ def full_list_dumped_spell_names(char: dict) -> dict:
         lvl = cl_now.get(cname, 0)
         if lvl <= 0:
             continue
-        if cname in FULL_CASTERS:
-            own_caster_lvl = lvl
-        elif cname in HALF_CASTERS or cname in ARTIFICER_CLASSES:
-            own_caster_lvl = lvl // 2
-        else:
-            own_caster_lvl = 0
-        own_slots = get_multiclass_spell_slots(own_caster_lvl)
+        # the class's own table, as if it were the only class (PHB p.164):
+        # a Paladin 5 or Artificer 5 has 2nd-level spells, where half its
+        # level on the multiclass table (2) would only reach 1st
+        own_slots = compute_all_spell_slots({cname: lvl})["spell_slots"]
         max_lvl = 0
         for i, count in enumerate(own_slots):
             if count > 0:

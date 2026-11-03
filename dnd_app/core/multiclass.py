@@ -71,9 +71,9 @@ HALF_CASTER_SOLO_SLOTS = {
     20: [4,3,3,3,2,0,0,0,0],
 }
 
-# Solo Artificer table (spellcasting starts at Lv1, but Lv1 slots come at Lv3)
+# Solo Artificer table (TCE): spellcasting, and two 1st-level slots, from 1st level
 ARTIFICER_SOLO_SLOTS = {
-    1:  [0,0,0,0,0,0,0,0,0],
+    1:  [2,0,0,0,0,0,0,0,0],
     2:  [2,0,0,0,0,0,0,0,0],
     3:  [3,0,0,0,0,0,0,0,0],
     4:  [3,0,0,0,0,0,0,0,0],
@@ -94,6 +94,42 @@ ARTIFICER_SOLO_SLOTS = {
     19: [4,3,3,3,2,0,0,0,0],
     20: [4,3,3,3,2,0,0,0,0],
 }
+
+
+# Solo third-caster table: an Eldritch Knight's or Arcane Trickster's own
+# (the two are the same), used when it's the character's only Spellcasting
+# class -- the multiclass table at a third of the level falls short of it
+# from 4th level (an Eldritch Knight 7 has 4 1st- and 2 2nd-level slots,
+# where the multiclass table at 2 gives 3 1st-level ones)
+THIRD_CASTER_SOLO_SLOTS = {
+    1:  [0,0,0,0,0,0,0,0,0],
+    2:  [0,0,0,0,0,0,0,0,0],
+    3:  [2,0,0,0,0,0,0,0,0],
+    4:  [3,0,0,0,0,0,0,0,0],
+    5:  [3,0,0,0,0,0,0,0,0],
+    6:  [3,0,0,0,0,0,0,0,0],
+    7:  [4,2,0,0,0,0,0,0,0],
+    8:  [4,2,0,0,0,0,0,0,0],
+    9:  [4,2,0,0,0,0,0,0,0],
+    10: [4,3,0,0,0,0,0,0,0],
+    11: [4,3,0,0,0,0,0,0,0],
+    12: [4,3,0,0,0,0,0,0,0],
+    13: [4,3,2,0,0,0,0,0,0],
+    14: [4,3,2,0,0,0,0,0,0],
+    15: [4,3,2,0,0,0,0,0,0],
+    16: [4,3,3,0,0,0,0,0,0],
+    17: [4,3,3,0,0,0,0,0,0],
+    18: [4,3,3,0,0,0,0,0,0],
+    19: [4,3,3,1,0,0,0,0,0],
+    20: [4,3,3,1,0,0,0,0,0],
+}
+
+
+def _is_third_caster(cls_name: str, subclasses: dict) -> bool:
+    """An Eldritch Knight Fighter or Arcane Trickster Rogue."""
+    sub = (subclasses.get(cls_name) or "").lower()
+    return ((cls_name == "Fighter" and "eldritch knight" in sub)
+            or (cls_name == "Rogue" and "arcane trickster" in sub))
 
 
 # Warlock pact slots (tracked separately; NOT merged into spell slot table)
@@ -247,23 +283,17 @@ def compute_caster_level(class_levels: dict, subclasses: dict = None) -> int:
             combined += level
 
         elif cls_name in ARTIFICER_CLASSES:
-            # Artificer uses floor for BOTH single-class and multiclass (TCE p.12)
-            # Artificer Lv1 has no spell slots; the table starts at Lv2.
-            combined += math.floor(level / 2)
+            # TCE: "add half your levels (rounded up) in the artificer
+            # class" -- unlike a Paladin's or Ranger's, rounded down
+            combined += math.ceil(level / 2)
 
         elif cls_name in HALF_CASTERS:
             # PHB p.164: add half your level in that class, ROUNDED DOWN
             combined += math.floor(level / 2)
 
-        elif cls_name == "Fighter":
-            sub = subclasses.get("Fighter", "")
-            if sub == "Eldritch Knight":
-                combined += math.floor(level / 3)
-
-        elif cls_name == "Rogue":
-            sub = subclasses.get("Rogue", "")
-            if sub == "Arcane Trickster":
-                combined += math.floor(level / 3)
+        elif _is_third_caster(cls_name, subclasses):
+            # an Eldritch Knight or Arcane Trickster: a third, rounded down
+            combined += math.floor(level / 3)
 
         elif cls_name in PACT_MAGIC_CLASSES:
             pass  # Warlock excluded from combined caster level
@@ -333,13 +363,16 @@ def compute_all_spell_slots(class_levels: dict, subclasses: dict = None) -> dict
     # use the class's own progression table (different from the multiclass table)
     non_warlock_casters = {c: lvl for c, lvl in class_levels.items()
                            if c != "Warlock" and lvl > 0
-                           and (c in FULL_CASTERS or c in HALF_CASTERS or c in ARTIFICER_CLASSES)}
+                           and (c in FULL_CASTERS or c in HALF_CASTERS or c in ARTIFICER_CLASSES
+                                or _is_third_caster(c, subclasses))}
     if len(non_warlock_casters) == 1:
         solo_cls, solo_lvl = next(iter(non_warlock_casters.items()))
         if solo_cls in HALF_CASTERS:
             slots = list(HALF_CASTER_SOLO_SLOTS.get(solo_lvl, [0]*9))
         elif solo_cls in ARTIFICER_CLASSES:
             slots = list(ARTIFICER_SOLO_SLOTS.get(solo_lvl, [0]*9))
+        elif _is_third_caster(solo_cls, subclasses):
+            slots = list(THIRD_CASTER_SOLO_SLOTS.get(min(solo_lvl, 20), [0]*9))
         else:
             slots = get_multiclass_spell_slots(combined_caster_level)
     else:

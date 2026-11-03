@@ -435,18 +435,19 @@ Page {
             }
 
             // ── Add a spell ───────────────────────────────────────────
-            // Browses every one of the character's classes' spell
-            // lists (merged, EK/AT mapped to Wizard, Mark-expanded
-            // spells included) -- matches ui_desktop's spells.py Spell
-            // Browser panel's search + level + class filters, its
-            // castable-level cap, its ritual/concentration markers shown
-            // on unknown spells too, its Homebrew toggle, and its known/
-            // cantrip/prepared cap enforcement at add-time
-            // (searchAddableSpells/addKnownSpell/setSpellPrepared in the
-            // bridge). The class filter ANDs with (doesn't replace) the
-            // character's own class-list restriction, matching desktop
-            // exactly -- mainly useful with Homebrew mode on, or to
-            // narrow a multiclass character's browser to one class.
+            // Lists what the character's classes can learn now -- on
+            // their lists (EK/AT: the Wizard's; a dragonmark's spells
+            // too), at a level each class learns, with room left in its
+            // spells or cantrips known (core/spellcasting.py SpellRoom).
+            // Matches ui_desktop's spells.py Spell Browser panel: its
+            // search + level + class filters, its ritual/concentration
+            // markers, its Ignore restrictions toggle, its note on the
+            // classes that have learned all they can, and the same rule
+            // again at add-time (searchAddableSpells/addKnownSpell/
+            // setSpellPrepared in the bridge). The class filter ANDs with
+            // that rule, matching desktop -- mainly useful with Ignore
+            // restrictions on, or to narrow a multiclass character's
+            // browser to one class.
             Label { id: addSpellAnchor; text: "Add a Spell"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true; Layout.topMargin: 6 }
             Label {
                 text: "From your class's spell list. Tap the magnifying glass for a spell's details."
@@ -495,12 +496,34 @@ Page {
                 }
             }
             MCheckBox {
+                objectName: "ignoreRestrictionsBox"
                 Layout.fillWidth: true
-                text: "Homebrew mode (ignore class list, castable level, and known/cantrip caps)"
+                text: "Ignore restrictions (any spell, any level, no limits)"
                 checked: sheetBridge.spellHomebrewMode
                 onToggled: {
                     sheetBridge.setSpellHomebrewMode(checked)
                     addableModel.refreshResults()
+                }
+            }
+            // which classes have learned all they can -- a bar down the
+            // side marks it; the text itself stays plain
+            RowLayout {
+                Layout.fillWidth: true
+                visible: sheetBridge.spellBrowserNote !== ""
+                spacing: 8
+                Rectangle {
+                    Layout.preferredWidth: 3
+                    Layout.fillHeight: true
+                    radius: 1
+                    color: Theme.gold
+                }
+                Label {
+                    objectName: "spellBrowserNote"
+                    Layout.fillWidth: true
+                    text: sheetBridge.spellBrowserNote
+                    color: Theme.text2
+                    font.pixelSize: Theme.fsSmall
+                    wrapMode: Text.WordWrap
                 }
             }
 
@@ -615,12 +638,14 @@ Page {
         // cantrips are never prepared, and neither is a spell only a
         // Warlock/Sorcerer/Bard/Ranger casts
         // Granted spells (domain/oath/racial/feat) are always prepared and
-        // part of the character, so they get neither Prepare nor Remove.
+        // part of the character, so they get neither Prepare nor Remove;
+        // a Cleric's (Druid's, Paladin's, Artificer's) list spell prepares
+        // and unprepares but isn't removed -- the class knows them all.
         if (sp.level > 0 && sp.preparable && !sp.granted)
             opts.push({ key: "prepare", text: sp.prepared ? "Unprepare" : "Prepare" })
         opts.push({ key: "favourite", icon: sp.pinned ? "star" : "star_solid",
                     text: sp.pinned ? "Remove from favourites" : "Add to favourites" })
-        if (!sp.granted)
+        if (sp.removable)
             opts.push({ key: "remove", icon: "trash", text: "Remove from spell list" })
         root.optionsSpell = sp
         spellOptionsDialog.heading = sp.displayName || sp.name

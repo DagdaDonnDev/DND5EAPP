@@ -1721,6 +1721,13 @@ def get_bonus_spells(char: dict) -> list[str]:
         if c.get("class") == "Bard" and c.get("level", 0) >= 3 and "spirits" in (c.get("subclass") or "").lower():
             out.append("Guidance")
 
+    # Arcane Trickster (Rogue 3rd level): of its three cantrips, Mage Hand
+    # comes with the subclass and the other two are picks (a fourth at 10th)
+    for c in char.get("classes", []):
+        if (c.get("class") == "Rogue" and c.get("level", 0) >= 3
+                and "arcane trickster" in (c.get("subclass") or "").lower()):
+            out.append("Mage Hand")
+
     return list(dict.fromkeys(out))  # dedupe, preserve order
 
 

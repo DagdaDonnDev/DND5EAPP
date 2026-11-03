@@ -1250,6 +1250,19 @@ class Step4Spells(QWidget):
         self._sp_filters = FilterSidebar(left)
         self._sp_filters.add_combo("Level", self._sp_lvl)
         ll.addLayout(self._sp_filters.search_row(self._sp_search))
+        # the same rule as the sheet's Spell Browser (core/spellcasting.py
+        # SpellRoom): only what your classes can learn, until a class has
+        # learned all it can -- and the same way round it
+        self._sp_ignore = QCheckBox("Ignore restrictions — any spell, any level, no limits")
+        self._sp_ignore.setAccessibleName("Ignore restrictions: learn any spell, at any level, with no limits")
+        self._sp_ignore.setStyleSheet(f"QCheckBox{{color:{TEXT2};font-size:{FS_SMALL}px;padding:2px;}}")
+        self._sp_ignore.stateChanged.connect(lambda _s: self._filter())
+        ll.addWidget(self._sp_ignore)
+        self._sp_note = _lbl("", TEXT2, FS_SMALL)
+        self._sp_note.setStyleSheet(self._sp_note.styleSheet()
+                                    + f"border-left:3px solid {GOLD};border-radius:0px;padding:2px 0 2px 8px;")
+        self._sp_note.setVisible(False)
+        ll.addWidget(self._sp_note)
         self._browser = QListWidget(); self._browser.setMinimumWidth(300)
         ll.addWidget(self._browser, 1)
         add_btn = pill_btn("Add Selected →", INDIGO)
@@ -1321,19 +1334,37 @@ class Step4Spells(QWidget):
             if sp_name not in bonus_spells:
                 sp = get_spell(sp_name)
                 if sp: self._add_spell_row(sp, prepared=sp_name in char.get("spells_prepared",[]))
+        self._max_castable_spell_level()   # the slots the learn check needs, fresh
+        self._filter()
+
+    def _picked_char(self):
+        """The character as this step has it: its spells are the rows here
+        until collect() writes them back."""
+        tmp = dict(self.char)
+        tmp["spells_known"] = [r.spell["name"] for r in self._spell_rows]
+        tmp["spells_prepared"] = [r.spell["name"] for r in self._spell_rows if r.is_prepared()]
+        return tmp
 
     def _filter(self):
+        from dnd_app.core.spellcasting import SpellRoom
         q = self._sp_search.text().lower()
         lvl_txt = self._sp_lvl.currentText()
+        room = None if self._sp_ignore.isChecked() else SpellRoom(self._picked_char())
+        have = {r.spell["name"] for r in self._spell_rows}
         for i in range(self._browser.count()):
             item = self._browser.item(i)
             sp = item.data(Qt.UserRole)
             if not sp: continue
-            ok = not q or q in sp["name"].lower()
+            ok = (not q or q in sp["name"].lower()) and sp["name"] not in have
             if lvl_txt != "All Levels":
                 ok = ok and ((lvl_txt=="Cantrip" and sp["level"]==0) or
                              (lvl_txt.startswith("Level") and sp["level"]==int(lvl_txt[-1])))
+            if ok and room is not None:
+                ok = room.reason(sp) == ""
             item.setHidden(not ok)
+        note = room.note() if room is not None else ""
+        self._sp_note.setText(note)
+        self._sp_note.setVisible(bool(note))
 
     def _max_castable_spell_level(self) -> int:
         """Highest spell level the character can currently cast. Computes
@@ -1352,19 +1383,23 @@ class Step4Spells(QWidget):
         return max_lvl
 
     def _add_selected(self):
-        max_lvl = self._max_castable_spell_level()
+        from dnd_app.core.spellcasting import SpellRoom
+        self._max_castable_spell_level()   # fresh slots for the check below
         blocked = []
         for item in self._browser.selectedItems():
             sp = item.data(Qt.UserRole)
             if not sp or any(r.spell["name"]==sp["name"] for r in self._spell_rows):
                 continue
-            if sp.get("level", 0) > 0 and sp["level"] > max_lvl:
-                blocked.append(sp["name"])
-                continue
+            if not self._sp_ignore.isChecked():
+                why = SpellRoom(self._picked_char()).reason(sp)
+                if why:
+                    blocked.append(why)
+                    continue
             self._add_spell_row(sp)
         if blocked:
-            self._hint.setText(f"Not added (above your current max castable level {max_lvl}): "
-                                f"{', '.join(blocked)}")
+            self._hint.setText("Not added: " + "; ".join(blocked)
+                               + ". Tick Ignore restrictions to add it anyway.")
+        self._filter()
 
     def _add_spell_row(self, spell, prepared=False):
         lvl = spell["level"]
@@ -1380,8 +1415,11 @@ class Step4Spells(QWidget):
             self._spell_lay.insertWidget(insert_idx, hdr)
 
         from dnd_app.core.calculator import spell_preparing_classes
+        from dnd_app.core.spellcasting import whole_list_class
         row = SpellRow(spell, prepared,
-                       preparable=bool(spell_preparing_classes(self.char, spell)))
+                       locked=spell["name"] in self.char.get("bonus_spells", []),
+                       preparable=bool(spell_preparing_classes(self.char, spell)),
+                       removable=not whole_list_class(self.char, spell["name"]))
         row.remove.connect(self._remove_spell_row)
         insert_idx = self._find_spell_pos(lvl)
         self._spell_lay.insertWidget(insert_idx, row)
@@ -1412,6 +1450,7 @@ class Step4Spells(QWidget):
             if lvl in self._level_headers:
                 h = self._level_headers.pop(lvl)
                 self._spell_lay.removeWidget(h); h.deleteLater()
+        self._filter()   # the pick is free again, so the browser offers it
 
     def collect(self, char) -> bool:
         char["spells_known"] = [r.spell["name"] for r in self._spell_rows]

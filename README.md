@@ -143,11 +143,11 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 <details>
 <summary><b>Spells</b></summary>
 
-- **Preparing:** tick the spell in My Spells. Spells your class, race or a feat gives you are always prepared, and can't be removed.
+- **Preparing:** tick the spell in My Spells. Spells your class, race or a feat gives you are always prepared, and can't be removed. Nor can a Cleric's, Druid's, Paladin's or Artificer's own list spells — the class knows them all — but they prepare and unprepare like any other.
 - **Where to cast:** cantrips and bonus-action and reaction spells always have a card on the Combat tab. A leveled spell that takes an action only shows there once you pin it with ☆ (on Android, press and hold → Add to favourites), so a long spell list doesn't bury your Action tab. Anything slower is cast from My Spells: right-click → Cast, or Cast as Ritual.
 - **The Spellcasting table** lists each class, your race and each feat that gives you spells, with its own ability, save DC and attack. A racial spell uses its own row, not your class's.
 - **Free casts** from your race or a feat have their own counter, and Cast spends it before a slot. A spell a feat gives at will (Drow High Magic's Detect Magic) never takes one, and Strixhaven Mascot's Find Familiar is cast as a ritual.
-- **The Spell Browser** shows the spells on your classes' lists that you can cast now. **Homebrew mode** shows every spell and lifts the limits, if your DM allows it.
+- **The Spell Browser** shows the spells your classes can learn now: on their lists, at a level each class learns, and with room left. Once a class has learned all its spells or cantrips, the browser says so and stops offering them; remove one (a misclick, say) and that pick is free again. A spell two of your classes share counts for whichever has room, and a Wizard's spellbook never fills up. **Ignore restrictions** shows every spell and lifts the limits, if your DM allows it.
 - **Spell scrolls** are read from their card on the Combat tab (Actions on Android), like any other action.
 
 </details>
@@ -183,7 +183,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 
 - **DM-granted proficiencies…** (Skills & Proficiencies): any weapon, armour, tool or language, picked from the list or typed in.
 - **The Features tab** grants a feat outside a level-up, with all its rules (its +1 and any spells to pick wait on Choices; Remove takes it all back), or a DM reward: a Character Secret, Supernatural Gift, Dark Gift or replacement background feature.
-- **Homebrew mode** in the Spell Browser: learn any spell, with no spells-known limit.
+- **Ignore restrictions** in the Spell Browser: learn any spell, at any level, with no limits.
 - **A custom race**, in the race list.
 - **Table rules**, in Settings and saved with each character: feat prerequisites, multiclass ability requirements, the DMG and Xanathar's optional actions (Disarm, Overrun, Tumble…), maximum hit points every level, component restrictions, and Tasha's optional class features (Eldritch, Martial, Cantrip, Bardic and Sorcerous Versatility, and Harness Divine Power).
 

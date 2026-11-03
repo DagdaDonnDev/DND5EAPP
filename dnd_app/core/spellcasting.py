@@ -5,7 +5,8 @@
     attack bonus
   * Spell scrolls -- reading one, and binding a spell to a blank scroll
   * Immersive Spells (optional rule) -- flavour titles for the spell list
-  * Spell limits -- how many spells each class knows or prepares, per class
+  * Spell limits -- how many spells each class knows or prepares, per class,
+    and what each still has room to learn (SpellRoom, the Spell Browser's rule)
 """
 from __future__ import annotations
 
@@ -1132,14 +1133,15 @@ def spell_progression_tables():
         "Ranger":   {1:0,2:2,3:3,4:3,5:4,6:4,7:5,8:5,9:6,10:6,11:7,12:7,
                      13:8,14:8,15:9,16:9,17:10,18:10,19:11,20:11},
     }
+    # cantrips known: {class level reached: how many}
     CANTRIPS = {
         "Wizard":   {1:3,4:4,10:5},
-        "Cleric":   {1:3},
-        "Druid":    {1:2,6:3,11:4},
+        "Cleric":   {1:3,4:4,10:5},
+        "Druid":    {1:2,4:3,10:4},
         "Bard":     {1:2,4:3,10:4},
         "Sorcerer": {1:4,4:5,10:6},
         "Warlock":  {1:2,4:3,10:4},
-        "Artificer":{1:2},
+        "Artificer":{1:2,10:3,14:4},
     }
     EK_AT = {3:3,4:4,7:5,8:6,10:7,11:8,13:9,14:10,16:11,19:12,20:13}
     PREPARE_AB = {"Wizard":"INT","Cleric":"WIS","Druid":"WIS","Paladin":"CHA","Artificer":"INT"}
@@ -1211,93 +1213,319 @@ def known_spell_classes(char: dict):
             if l is not None}
 
 
-def attribute_known_spells(char: dict):
-    """Partition char['spells_known'] into per-class buckets.
+def _own_spell_level(cname: str, lvl: int) -> int:
+    """The highest level of spell a class learns at its own level, as if it
+    were the character's only class: multiclassing works out what each
+    class knows that way (PHB p.164), so a Wizard 1 / Sorcerer 5 learns no
+    3rd-level Wizard spells, 3rd-level slots or not. From the class's own
+    slot table -- the one a Cleric's, Druid's, Paladin's or Artificer's
+    known spells come from too (builder.full_list_dumped_spell_names)."""
+    from dnd_app.core.multiclass import WARLOCK_PACT_LEVEL, compute_all_spell_slots
+    if lvl <= 0:
+        return 0
+    if cname == "Warlock":
+        return WARLOCK_PACT_LEVEL.get(min(lvl, 20), 0)
+    if cname in ("Fighter", "Rogue"):   # an Eldritch Knight's or Arcane Trickster's own table
+        return 0 if lvl < 3 else 1 + (lvl >= 7) + (lvl >= 13) + (lvl >= 19)
+    slots = compute_all_spell_slots({cname: lvl})["spell_slots"]
+    return max((i + 1 for i, n in enumerate(slots) if n > 0), default=0)
 
-    5e multiclass spellcasting (PHB p.164): each class's spells-known
-    is a COMPLETELY SEPARATE pool — a Sorcerer/Warlock doesn't share
-    one combined list, and spell slots being shared (multiclass slot
-    table) doesn't change that, so a pooled total shown against EACH
-    class's own cap would both mis-split multiclass casters and let
-    one class's spells count against another's limit. Cantrips are
-    attributed across EVERY casting class (prepared casters included,
-    since cantrips are
-    always "known" regardless of prepared/known spellcasting style);
-    leveled spells are only attributed across classes with a genuine
-    known-spells pool.
 
-    When a known spell is on more than one of the character's own
-    eligible class lists (a genuine overlap), it's assigned to
-    whichever eligible class currently has the most room left
-    relative to its own cap, keeping the split balanced rather than
-    one class eating the other's allowance by list order alone.
+def spell_learners(char: dict) -> dict:
+    """{key: {...}} for each of the character's classes that learns spells,
+    keyed as all_caster_classes() has them (the class, or "Fighter (EK)" /
+    "Rogue (AT)"):
+      label     its name in messages ("Bard", "Eldritch Knight")
+      lists     the class spell lists it learns from -- the Wizard's for an
+                Eldritch Knight or Arcane Trickster, the Sorcerer's and the
+                Cleric's for a Divine Soul
+      level     the highest spell level it learns at its own level (never
+                past what the character can cast)
+      cantrips  how many cantrips it can know (0: none)
+      spells    how many leveled spells it can know; None for no limit: a
+                Wizard's spellbook takes any number of Wizard spells, and a
+                Cleric, Druid, Paladin or Artificer knows its whole list"""
+    from dnd_app.core.character import _spell_lists_of
+    caster = all_caster_classes(char)
+    top = max_castable_spell_level(char)
+    out = {}
+    for entry in char.get("classes", []):
+        cn, lvl = entry.get("class", ""), entry.get("level", 0)
+        sub = (entry.get("subclass") or "").lower()
+        if cn == "Fighter" and "eldritch knight" in sub:
+            key, label = "Fighter (EK)", "Eldritch Knight"
+        elif cn == "Rogue" and "arcane trickster" in sub:
+            key, label = "Rogue (AT)", "Arcane Trickster"
+        else:
+            key, label = cn, cn
+        if key not in caster:
+            continue
+        cant_max, lvl_max = caster[key]
+        out[key] = {"label": label, "lists": _spell_lists_of(entry),
+                    "level": min(top, _own_spell_level(cn, lvl)),
+                    "cantrips": cant_max, "spells": lvl_max}
+    return out
 
-    Returns: {class_name: {'cantrips': [...], 'leveled': [...]}}
-    """
-    from dnd_app.data.spells import get_spell as _gs
-    all_classes = all_caster_classes(char)
-    known_classes = known_spell_classes(char)
-    buckets = {cn: {"cantrips": [], "leveled": []} for cn in all_classes}
-    if not all_classes:
-        return buckets
 
-    def _real_name(cn):
-        return "Wizard" if cn in ("Fighter (EK)", "Rogue (AT)") else cn
+def _learner_keys(learners: dict, sp: dict, marked: bool, cantrip: bool,
+                  by_level: bool = True) -> list:
+    """The learners this spell could belong to: it's on one of their lists
+    (a dragonmark's spells are on all of them), and it's a cantrip for a
+    class that learns cantrips, or -- by_level -- a level the class learns."""
+    sp_lists = set(sp.get("classes", []))
+    n = sp.get("level", 0)
+    out = []
+    for key, ln in learners.items():
+        if not (marked or ln["lists"] & sp_lists):
+            continue
+        if cantrip:
+            if ln["cantrips"] <= 0:
+                continue
+        elif by_level and n > ln["level"]:
+            continue
+        out.append(key)
+    return out
 
-    # Racial/subclass bonus spells (Fairy's Druidcraft, a Cleric
-    # domain spell, etc.) are merged into spells_known so they're
-    # castable, but they're always-known freebies, not a pick that
-    # should eat into a class's own known-spells/cantrip cap — so
-    # this loop excludes anything in char["bonus_spells"] before
-    # counting entries against a class's cap.
-    bonus = set(char.get("bonus_spells", []))
-    # A prepared caster's (Cleric/Druid/Paladin/Artificer) own
-    # full-list access dumps its entire available spell list into the
-    # same flat spells_known — a leveled spell there belongs to that
-    # class, not to a known-caster class's own pick, even when the
-    # name also happens to be on that known-caster's spell list (e.g.
-    # "Silence" is both Cleric and Bard). Without this exclusion a
-    # Cleric's own domain access got silently counted as "Bard
-    # learned it", inflating the Bard's known-spell count/cap.
+
+def _learn_items(char: dict, learners: dict):
+    """The character's own picks that take up a class's cantrips or spells
+    known: (cantrips, leveled), each [(name, [learner keys])]. Left out, as
+    they aren't picks against a limit: granted spells (race, feat,
+    subclass), the spells a Cleric, Druid, Paladin or Artificer knows as its
+    whole list, and a spell a Wizard (or other preparing class) has
+    prepared -- that one is the Wizard's. A spell no class fits any more (a
+    level down, Ignore restrictions, an any-list Magical Secrets pick) still
+    takes up a limited class's room."""
+    from dnd_app.data.spells import get_spell as _gs, get_mark_expanded_spells
     from dnd_app.core.builder import full_list_dumped_spell_names
+    bonus = set(char.get("bonus_spells", []))
     full_dumped = set()
     for names in full_list_dumped_spell_names(char).values():
-        full_dumped.update(names)
-    # A leveled spell a prepared caster (Wizard/Cleric/...) can prepare
-    # belongs to that class rather than a known-spells pool when it's
-    # actually prepared, or when no known-spells class could have it
-    # at all -- a Wizard/Warlock preparing Charm Person as a Wizard
-    # spell, or keeping Shield in the spellbook, shouldn't use up one
-    # of the Warlock's spells known.
-    from dnd_app.core.calculator import spell_preparing_classes
-    prepared_set = set(char.get("spells_prepared", []))
+        full_dumped |= set(names)
+    mark = set(get_mark_expanded_spells(char))
+    prepared = set(char.get("spells_prepared", []))
+    unlimited = {k for k, ln in learners.items() if ln["spells"] is None}
+    cantrips, leveled = [], []
     for name in char.get("spells_known", []):
         if name in bonus:
             continue
         sp = _gs(name)
-        if not sp: continue
-        is_cantrip = sp.get("level", 1) == 0
+        if not sp:
+            continue
+        is_cantrip = sp.get("level", 0) == 0
         if not is_cantrip and name in full_dumped:
             continue
-        sp_classes = set(sp.get("classes", []))
-        if not is_cantrip and spell_preparing_classes(char, sp):
-            if name in prepared_set or not any(_real_name(cn) in sp_classes for cn in known_classes):
-                continue
-        pool = all_classes if is_cantrip else known_classes
-        eligible = [cn for cn in pool if _real_name(cn) in sp_classes]
-        eligible = list(dict.fromkeys(eligible)) or list(pool.keys())
-        if not eligible:
+        keys = _learner_keys(learners, sp, name in mark, is_cantrip)
+        if not is_cantrip and name in prepared and unlimited & set(keys):
+            keys = [k for k in keys if k in unlimited]
+        if not keys:
+            keys = (_learner_keys(learners, sp, name in mark, is_cantrip, by_level=False)
+                    or [k for k, ln in learners.items()
+                        if (ln["cantrips"] > 0 if is_cantrip else ln["spells"] is not None)])
+        if keys:
+            (cantrips if is_cantrip else leveled).append((name, keys))
+    return cantrips, leveled
+
+
+def _room(caps: dict, load: dict, over: dict, key) -> float:
+    cap = caps[key]
+    return float("inf") if cap is None else cap - len(load[key]) - len(over.get(key, ()))
+
+
+def _fit_one(items: list, caps: dict, load: dict, over: dict, i: int, seen: set) -> bool:
+    """Put item i with one of its keys that has room -- or make room, by
+    moving an item already with a full key to another of its own keys
+    (an augmenting path). Changes load; True if it fit. `seen` is the keys
+    this search is already making room in: the place moved out of one is
+    kept for the item it was made for, so nothing deeper takes it."""
+    keys = [k for k in items[i][1] if k in caps and k not in seen]
+    free = [k for k in keys if _room(caps, load, over, k) > 0]
+    if free:
+        # the limited class with the most room, then one with no limit
+        k = min(free, key=lambda k: (caps[k] is None, -_room(caps, load, over, k)))
+        load[k].append(i)
+        return True
+    for k in keys:
+        # a class already past its limit has no room to make
+        if k in seen or _room(caps, load, over, k) < 0:
             continue
-        if len(eligible) == 1:
-            target = eligible[0]
+        seen.add(k)
+        for j in list(load[k]):
+            load[k].remove(j)
+            if _fit_one(items, caps, load, over, j, seen):
+                load[k].append(i)
+                return True
+            load[k].append(j)
+    return False
+
+
+def _share_out(items: list, caps: dict):
+    """Share items [(name, keys)] out among their keys, none past its cap
+    (None: no limit), fitting in as many as can be: a spell two classes
+    share counts for whichever has room, and moves across to make room for
+    one only the other can take. Returns (load, over), each {key: [item
+    index]}: over holds the items that fit nowhere, under the key with the
+    most room (past its limit, so the count shows it)."""
+    load = {k: [] for k in caps}
+    over = {k: [] for k in caps}
+    missed = [i for i in range(len(items)) if not _fit_one(items, caps, load, {}, i, set())]
+    for i in missed:
+        keys = [k for k in items[i][1] if k in caps]
+        k = max(keys, key=lambda k: _room(caps, load, over, k))
+        over[k].append(i)
+    return load, over
+
+
+class SpellRoom:
+    """What the character's classes still have room to learn, worked out
+    once so the Spell Browser can ask about every spell (both apps):
+
+      reason(spell)  why they can't add it to their spell list now, or ""
+                     if they can -- the browser lists only the spells this
+                     allows, and the Add buttons refuse with its reason
+      note()         a line saying which classes have learned all they
+                     can, for the top of the browser ("" if none has)
+
+    A spell they can add is:
+      1. on one of their classes' spell lists (or one a dragonmark adds)
+      2. a cantrip, or a level one of those classes learns -- each class
+         on its own, as multiclassing works (PHB p.164)
+      3. one there's room for: a cantrip needs one of those classes to
+         have a cantrip left to learn, a leveled spell one with a spell
+         known left. A Wizard's spellbook always has room, and a spell two
+         classes share counts for whichever has room, moving one already
+         learned across if that's what makes room.
+    Without a spellcasting class, any cantrip (a race or feat may give
+    one) and any spell they have the slots for."""
+
+    def __init__(self, char: dict):
+        from dnd_app.data.spells import get_mark_expanded_spells
+        self.learners = spell_learners(char)
+        self.mark = set(get_mark_expanded_spells(char))
+        self.known = set(char.get("spells_known", []))
+        self.top = max_castable_spell_level(char)
+        self._pools = {}
+        for cantrip, items in zip((True, False), _learn_items(char, self.learners)):
+            caps = {k: (ln["cantrips"] if cantrip else ln["spells"])
+                    for k, ln in self.learners.items()}
+            load, over = _share_out(items, caps)
+            self._pools[cantrip] = (items, caps, load, over)
+        self._fits = {}
+
+    def fits(self, cantrip: bool, keys) -> bool:
+        """Whether one more cantrip (or leveled spell) these classes could
+        take fits."""
+        sig = (cantrip, frozenset(keys))
+        if sig not in self._fits:
+            items, caps, load, over = self._pools[cantrip]
+            trial = items + [("", list(keys))]
+            self._fits[sig] = _fit_one(trial, caps, {k: list(v) for k, v in load.items()},
+                                       over, len(items), set())
+        return self._fits[sig]
+
+    def _past_slots(self, name: str, n: int) -> str:
+        if self.top <= 0:
+            return f"{name} is a level {n} spell, and you have no spell slots yet"
+        return f"{name} is a level {n} spell; you can cast up to level {self.top} right now"
+
+    def reason(self, sp: dict) -> str:
+        name, n = sp.get("name", ""), sp.get("level", 0)
+        if name in self.known:
+            return f"You already know {name}"
+        if not self.learners:
+            return self._past_slots(name, n) if n > self.top else ""
+        listed = _learner_keys(self.learners, sp, name in self.mark, cantrip=False, by_level=False)
+        if not listed:
+            return f"{name} isn't on your classes' spell lists"
+        if n == 0:
+            keys = [k for k in listed if self.learners[k]["cantrips"] > 0]
+            if not keys:
+                return f"None of your classes with {name} on their list learns cantrips"
         else:
-            def _room(cn):
-                cant_max, lvl_max = all_classes[cn]
-                bucket = buckets[cn]["cantrips"] if is_cantrip else buckets[cn]["leveled"]
-                cap = cant_max if is_cantrip else (lvl_max if lvl_max is not None else 999)
-                return cap - len(bucket)
-            target = max(eligible, key=_room)
-        buckets[target]["cantrips" if is_cantrip else "leveled"].append(name)
+            if n > self.top:
+                return self._past_slots(name, n)
+            keys = [k for k in listed if n <= self.learners[k]["level"]]
+            if not keys:
+                best = self.learners[max(listed, key=lambda k: self.learners[k]["level"])]
+                return (f"{name} is a level {n} spell; your {best['label']} spells "
+                        f"go up to level {best['level']}")
+        if self.fits(n == 0, keys):
+            return ""
+        what = "cantrips" if n == 0 else "spells"
+        full = [self.learners[k] for k in keys]
+        if len(full) == 1:
+            cap = full[0]["cantrips"] if n == 0 else full[0]["spells"]
+            return f"{full[0]['label']} has learned all {cap} of its {what}"
+        names = [ln["label"] for ln in full]
+        return f"{', '.join(names[:-1])} and {names[-1]} have learned all their {what}"
+
+    def note(self) -> str:
+        parts = []
+        for key, ln in self.learners.items():
+            spells = (ln["spells"] is not None and ln["spells"] > 0 and ln["level"] > 0
+                      and not self.fits(False, [key]))
+            cantrips = ln["cantrips"] > 0 and not self.fits(True, [key])
+            if spells and cantrips:
+                parts.append(f"{ln['label']} has learned all {ln['spells']} of its spells "
+                             f"and all {ln['cantrips']} of its cantrips.")
+            elif spells:
+                parts.append(f"{ln['label']} has learned all {ln['spells']} of its spells.")
+            elif cantrips:
+                parts.append(f"{ln['label']} has learned all {ln['cantrips']} of its cantrips.")
+        if not parts:
+            return ""
+        return " ".join(parts) + " Remove one from your spell list to pick another."
+
+
+def spell_learn_block(char: dict, sp: dict) -> str:
+    """Why the character can't add this spell to their list now, "" if
+    they can (SpellRoom.reason) -- the Add buttons' check."""
+    return SpellRoom(char).reason(sp)
+
+
+def whole_list_class(char: dict, name: str) -> str:
+    """The class that knows this spell as part of its whole list -- a
+    Cleric, Druid, Paladin or Artificer knows every spell of its list it can
+    cast -- or "" if none does. Such a spell isn't a pick, so it isn't
+    removed (it would only come back); it can be unprepared."""
+    from dnd_app.core.builder import full_list_dumped_spell_names
+    for cname, names in full_list_dumped_spell_names(char).items():
+        if name in names:
+            return cname
+    return ""
+
+
+def attribute_known_spells(char: dict):
+    """Partition char['spells_known'] into per-class buckets.
+
+    5e multiclass spellcasting (PHB p.164): each class's spells known is a
+    pool of its own -- a Sorcerer/Warlock doesn't share one combined list
+    -- so each pick counts against one class only. Cantrips are counted
+    for every casting class (prepared casters too: cantrips are always
+    learned); leveled spells for the classes with a spells-known limit,
+    and for a Wizard's spellbook, which has none. Granted spells, and a
+    Cleric's, Druid's, Paladin's or Artificer's whole list, count for
+    nobody (see _learn_items).
+
+    A spell on more than one of the character's lists goes to whichever
+    limited class has the most room, and moves to another when that's
+    what makes room for a spell only the first could learn -- so the
+    counts always fit the limits when the picks can fit them at all (a
+    pick that can't is counted where it overfills least).
+
+    Returns: {class_name: {'cantrips': [...], 'leveled': [...]}}
+    """
+    all_classes = all_caster_classes(char)
+    buckets = {cn: {"cantrips": [], "leveled": []} for cn in all_classes}
+    if not all_classes:
+        return buckets
+    learners = spell_learners(char)
+    for cantrip, items in zip((True, False), _learn_items(char, learners)):
+        caps = {k: (ln["cantrips"] if cantrip else ln["spells"]) for k, ln in learners.items()}
+        load, over = _share_out(items, caps)
+        for k in caps:
+            picks = sorted(load[k] + over[k])
+            buckets[k]["cantrips" if cantrip else "leveled"] = [items[i][0] for i in picks]
     return buckets
 
 

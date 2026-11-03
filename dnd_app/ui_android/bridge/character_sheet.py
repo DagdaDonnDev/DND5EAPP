@@ -69,7 +69,7 @@ from dnd_app.core.spellcasting import (
     spell_progression_tables, char_spell_classes, max_castable_spell_level,
     all_caster_classes, known_spell_classes, attribute_known_spells,
     prepared_caster_caps, attribute_prepared_spells, spell_limits,
-    spellcasting_rows,
+    spellcasting_rows, SpellRoom, whole_list_class,
 )
 from dnd_app.core.actions import build_action_abilities
 from dnd_app.core.action_use import portent_rolls, spend_portent
@@ -265,9 +265,10 @@ class CharacterSheetBridge(QObject):
         self._turn_counts = {"Action": 0, "Bonus Action": 0, "Reaction": 0}
         self._action_spell_is_cantrip = None
         self._bonus_action_spell_is_cantrip = None
-        # Session-only, like _turn_counts -- matches ui_desktop's
-        # _sp_homebrew checkbox, which is also plain UI state never
-        # saved into the character file.
+        # Ignore restrictions (the spell browser's toggle; _spell_homebrew
+        # is its old name). Session-only, like _turn_counts -- matches
+        # ui_desktop's _sp_homebrew checkbox, which is also plain UI state
+        # never saved into the character file.
         self._spell_homebrew = False
         # DC of the concentration save the last hit is waiting on (0 = none)
         # -- desktop asks for it straight after the damage; here the
@@ -2350,6 +2351,10 @@ class CharacterSheetBridge(QObject):
                 # granted by a subclass/race/feat: always prepared, can't
                 # be removed (the hold menu leaves those options out)
                 "granted": name in granted,
+                # False too for a spell a class knows as its whole list (a
+                # Cleric's, Druid's, Paladin's or Artificer's): it can be
+                # unprepared, not removed
+                "removable": name not in granted and not whole_list_class(self.char, name),
                 "prepared": name in prepared or name in granted,
                 "concentration": bool(sp.get("concentration")),
                 "ritual": bool(sp.get("ritual")),
@@ -2441,48 +2446,25 @@ class CharacterSheetBridge(QObject):
 
     @Slot(str, int, str, result=list)
     def searchAddableSpells(self, query: str, level_filter: int = -1, class_filter: str = "All Classes"):
-        """Spells from every one of the character's classes' spell
-        lists (merged, deduplicated by name, EK/AT correctly mapped to
-        Wizard's list) not already known, plus any Mark-expanded spells
-        -- matches desktop's browser with Homebrew mode off. With
-        Homebrew mode on, every spell in the game is shown and the
-        castable-level cap below doesn't apply, matching desktop's
-        browser with its Homebrew checkbox on. Ritual/concentration
-        markers shown here match desktop's browser (which shows them on
-        unknown spells too, not just known ones). level_filter: -1 for
-        all levels, 0 for cantrips, 1-9 for that spell level. class_filter
-        is an ADDITIONAL filter on top of the class-list/castable-level
-        gating below (matches desktop's _filter_spell_browser, where the
-        class combo is ANDed with the "mine" restriction, not a
-        replacement for it) -- mainly useful with Homebrew mode on, or to
-        narrow a multiclass character's browser to one class's list.
-        Known/prepared count caps are enforced at add-time
-        (addKnownSpell), not here -- matches desktop's own split between
-        the browser's castable-level filter and the "+ Add" button's cap
-        gate.
-        """
-        homebrew = self._spell_homebrew
-        if homebrew:
-            pool = dict(SPELL_DICT)
-        else:
-            my_classes = char_spell_classes(self.char)
-            mark_spells = get_mark_expanded_spells(self.char)
-            pool = {}
-            for cn in my_classes:
-                for sp in spells_for_class(cn):
-                    pool[sp.get("name", "")] = sp
-            for name in mark_spells:
-                sp = get_spell(name)
-                if sp:
-                    pool[name] = sp
-            if not pool:
-                pool = dict(SPELL_DICT)
-            max_castable = max_castable_spell_level(self.char)
+        """The spells the character can add now, not already known --
+        desktop's Spell Browser exactly: with Ignore restrictions off, only
+        what core/spellcasting.py SpellRoom allows (on one of their classes'
+        lists, or a dragonmark's; a level that class learns; room left in
+        its spells or cantrips known, so a class that has learned all it
+        can drops out until one is removed). With it on, every spell.
+        Ritual/concentration markers shown here match desktop's browser.
+        level_filter: -1 for all levels, 0 for cantrips, 1-9 for that spell
+        level. class_filter narrows to one class's list on top of that
+        (desktop's class combo) -- mainly useful with Ignore restrictions
+        on, or to narrow a multiclass character's browser to one class.
+        addKnownSpell asks SpellRoom again, so the list and the Add button
+        always agree."""
+        room = None if self._spell_homebrew else SpellRoom(self.char)
         known = set(self.char.get("spells_known", []))
         q = (query or "").strip().lower()
         class_filter = class_filter or "All Classes"
         out = []
-        for name, sp in pool.items():
+        for name, sp in SPELL_DICT.items():
             if name in known:
                 continue
             if q and q not in name.lower():
@@ -2492,7 +2474,7 @@ class CharacterSheetBridge(QObject):
             lvl = sp.get("level", 0)
             if level_filter >= 0 and lvl != level_filter:
                 continue
-            if not homebrew and lvl > 0 and lvl > max_castable:
+            if room is not None and room.reason(sp):
                 continue
             out.append({
                 "name": name,
@@ -2504,6 +2486,18 @@ class CharacterSheetBridge(QObject):
             })
         out.sort(key=lambda s: (s["level"], s["name"].casefold()))   # level, then name
         return out
+
+    @Property(str, notify=statsChanged)
+    def spellBrowserNote(self):
+        """Which classes have learned all they can (SpellRoom.note) -- the
+        line above the spell browser; "" while all have room, or with
+        Ignore restrictions on."""
+        if self._spell_homebrew:
+            return ""
+        try:
+            return SpellRoom(self.char).note()
+        except Exception:
+            return ""
 
     # ── Immersive Health / Immersive Exhaustion (core/immersive.py) ──
     @Slot(result="QVariant")
@@ -2554,12 +2548,9 @@ class CharacterSheetBridge(QObject):
 
     @Slot(str)
     def addKnownSpell(self, name: str):
-        # Matches desktop's _add_spell_from_browser gates exactly (class-
-        # list/Mark membership, castable spell level, per-class known-
-        # spell/cantrip cap), each bypassable via Homebrew mode -- see
-        # searchAddableSpells' docstring for why the pool itself doesn't
-        # also enforce these (the "+ Add" gate is the actual authority,
-        # the browser's own filtering is just a head start).
+        # The browser's own rule (SpellRoom, the same as desktop's "+ Add"):
+        # on your classes' lists, a level they learn, room left in their
+        # spells or cantrips known -- bypassed by Ignore restrictions.
         char = self.char
         known = char.setdefault("spells_known", [])
         if name in known:
@@ -2571,47 +2562,10 @@ class CharacterSheetBridge(QObject):
             return
         my_classes = char_spell_classes(char)
         if not self._spell_homebrew:
-            mark_spells = get_mark_expanded_spells(char)
-            if my_classes and name not in mark_spells and not (set(sp.get("classes", [])) & my_classes):
-                self.toastRequested.emit(f"{name} isn't on your class spell lists "
-                                          f"-- enable Homebrew mode to learn it")
+            why = SpellRoom(char).reason(sp)
+            if why:
+                self.toastRequested.emit(f"{why} -- turn on Ignore restrictions to add it anyway")
                 return
-            sp_level = sp.get("level", 0)
-            if sp_level > 0:
-                max_lvl = max_castable_spell_level(char)
-                if sp_level > max_lvl:
-                    self.toastRequested.emit(
-                        f"{name} is a level {sp_level} spell -- you can only "
-                        f"cast up to level {max_lvl} right now -- enable Homebrew mode to exceed it")
-                    return
-
-            def _real_name(cn):
-                return "Wizard" if cn in ("Fighter (EK)", "Rogue (AT)") else cn
-
-            all_classes = all_caster_classes(char)
-            is_cantrip = sp_level == 0
-            sp_classes = set(sp.get("classes", []))
-            pool = all_classes if is_cantrip else known_spell_classes(char)
-            eligible = [cn for cn in pool if _real_name(cn) in sp_classes]
-            if eligible:
-                attributed = attribute_known_spells(char)
-
-                def _room(cn):
-                    cant_max, lvl_max = all_classes[cn]
-                    bucket = attributed.get(cn, {"cantrips": [], "leveled": []})
-                    used = len(bucket["cantrips"]) if is_cantrip else len(bucket["leveled"])
-                    cap = cant_max if is_cantrip else lvl_max
-                    return (cap if cap is not None else 999) - used
-
-                best_cn = max(eligible, key=_room)
-                if _room(best_cn) <= 0:
-                    cap_shown = all_classes[best_cn][0 if is_cantrip else 1]
-                    used_shown = cap_shown - _room(best_cn) if cap_shown is not None else "?"
-                    kind = "Cantrip" if is_cantrip else "Spells-known"
-                    self.toastRequested.emit(
-                        f"{kind} limit reached for {_real_name(best_cn)} "
-                        f"({used_shown}/{cap_shown}) -- enable Homebrew mode to exceed it")
-                    return
         known.append(name)
         # Full-list prepared casters (Cleric/Druid/Paladin/Artificer) have
         # no separate "learn a spell" step in the real rules -- their
@@ -2636,6 +2590,13 @@ class CharacterSheetBridge(QObject):
             # a domain/oath/racial/feat spell is part of the character, not a pick
             self.toastRequested.emit(f"{name} comes from your class, race or a feat -- it can't be removed")
             return
+        whole = whole_list_class(char, name)
+        if whole:
+            # a Cleric (Druid, Paladin, Artificer) knows its whole list: it
+            # would only come back
+            self.toastRequested.emit(f"Every {whole} spell comes with the class, so {name} "
+                                      f"can't be removed -- unprepare it instead")
+            return
         if name in char.get("spells_known", []):
             char["spells_known"].remove(name)
         if name in char.get("spells_prepared", []):
@@ -2649,7 +2610,7 @@ class CharacterSheetBridge(QObject):
         # Matches desktop's _on_prep_toggled: each prepared-caster class
         # gets its own separate prepared-spell cap (ability mod + level,
         # or +half-level for Paladin/Artificer) -- never pooled, and
-        # bypassable via Homebrew mode. Cantrips and bonus/domain/circle
+        # bypassed by Ignore restrictions. Cantrips and bonus/domain/circle
         # spells are always prepared, no cap check.
         char = self.char
         prepped = char.setdefault("spells_prepared", [])

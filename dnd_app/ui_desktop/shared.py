@@ -553,13 +553,17 @@ class SpellRow(QFrame):
     prepared_toggled = Signal(object, bool)  # (row, checked)
 
     def __init__(self, spell, prepared=False, parent=None, locked=False, display_name=None,
-                 preparable=True):
+                 preparable=True, removable=True):
         super().__init__(parent)
         self.spell = spell
         # Granted outside normal choice (a domain/oath/patron spell, a racial
         # or feat spell): always prepared, and it can't be removed -- it's
         # part of the class/race/feat, not a pick.
         self._locked = locked
+        # False for a spell a class knows as its whole list (a Cleric's,
+        # Druid's, Paladin's or Artificer's): no Remove, but it still
+        # prepares and unprepares like any other.
+        self._removable = removable and not locked
         # False when none of the character's classes prepares spells from
         # this one's list (a Warlock/Sorcerer/Bard/Ranger spell): it's just
         # known, so there's no Prepared box to show.
@@ -666,7 +670,7 @@ class SpellRow(QFrame):
         rm.setStyleSheet(f"QPushButton{{background:transparent;border:none;border-radius:6px;min-height:0;padding:0;}}"
                          f"QPushButton:hover{{background:{qa(CRIMSON,0x55)};}}")
         rm.clicked.connect(lambda: self.remove.emit(self))
-        if locked:
+        if not self._removable:
             # nothing to remove -- keep the gap, so the row's buttons still
             # line up with everyone else's
             sp_policy = rm.sizePolicy(); sp_policy.setRetainSizeWhenHidden(True); rm.setSizePolicy(sp_policy)

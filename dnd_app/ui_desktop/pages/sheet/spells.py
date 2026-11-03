@@ -38,7 +38,7 @@ from dnd_app.core.spellcasting import (
     spell_progression_tables, char_spell_classes, max_castable_spell_level,
     all_caster_classes, known_spell_classes, attribute_known_spells,
     prepared_caster_caps, attribute_prepared_spells, spell_limits,
-    spellcasting_rows,
+    spellcasting_rows, SpellRoom, whole_list_class,
 )
 from dnd_app.core.controller import CharacterController
 from dnd_app.core.magic_items import concentration_save, start_concentration, drop_concentration
@@ -468,24 +468,32 @@ class SpellsMixin:
         self._sp_filters.add_combo("Class", self._sp_cls_f)
         self._sp_filters.add_combo("Level", self._sp_lvl_f)
         brcl.addLayout(self._sp_filters.search_row(self._sp_search))
-        # ── Homebrew toggle: OFF = class-list only + known-spell limits enforced
-        self._sp_homebrew = QCheckBox("Homebrew mode — learn any spell, ignore spell limits")
-        self._sp_homebrew.setAccessibleName("Homebrew mode: allow learning any spell and ignore spell limits")
+        # ── Ignore restrictions: OFF = only what your classes can learn now
+        # (_sp_homebrew is its old name)
+        self._sp_homebrew = QCheckBox("Ignore restrictions — any spell, any level, no limits")
+        self._sp_homebrew.setAccessibleName("Ignore restrictions: learn any spell, at any level, with no limits")
         self._sp_homebrew.setToolTip(
-            "Unchecked (default): the browser shows only spells on your classes' lists,\n"
-            "and adding is blocked once you reach your spells-known / cantrip limits.\n"
-            "Checked: every spell is visible and learnable with no cap.")
+            "Off (default): the browser lists only the spells your classes can learn now --\n"
+            "on their lists, at a level they learn, with spells or cantrips known left to learn.\n"
+            "On: every spell is listed and can be added, and prepared, with no limits.")
         self._sp_homebrew.setStyleSheet(
-            f"QCheckBox{{color:{AMBE2};font-size:{FS_SMALL}px;font-weight:700;padding:2px;}}"
+            f"QCheckBox{{color:{TEXT2};font-size:{FS_SMALL}px;font-weight:700;padding:2px;}}"
             f"QCheckBox::indicator{{width:16px;height:16px;border:2px solid {AMBER};"
             f"border-radius:4px;background:{SURF2};}}"
             f"QCheckBox::indicator:checked{{background:{AMBER};}}"
             f"QCheckBox:focus{{border:2px solid {TEAL2};border-radius:4px;}}")
         self._sp_homebrew.stateChanged.connect(lambda s: (
             self._filter_spell_browser(),
-            self._toast("Homebrew learning ON — any spell, no limits" if s
-                        else "Class lists & spell limits enforced")))
+            self._toast("Ignore restrictions on — any spell, no limits" if s
+                        else "Spell lists and limits apply again")))
         brcl.addWidget(self._sp_homebrew)
+        # which classes have learned all they can (SpellRoom.note) -- a bar
+        # down the side marks it; the text itself stays plain
+        self._sp_limit_note = _lbl("", TEXT2, FS_SMALL)
+        self._sp_limit_note.setStyleSheet(self._sp_limit_note.styleSheet()
+                                          + f"border-left:3px solid {GOLD};border-radius:0px;padding:2px 0 2px 8px;")
+        self._sp_limit_note.setVisible(False)
+        brcl.addWidget(self._sp_limit_note)
         self._sp_browser = QListWidget()  # no height limit — tab gives full space
         self._sp_browser.setStyleSheet(f"QListWidget{{background:{BG};border:1px solid {BORDER};}}QListWidget::item{{padding:6px 10px;border-bottom:1px solid {BORDER};font-size:{FS_BODY}px;}}QListWidget::item:selected{{background:{INDIGO};color:white;}}")
         # a magnifying glass on every row: the spell's details
@@ -882,8 +890,13 @@ class SpellsMixin:
         q  = self._sp_search.text().lower()
         cl = self._sp_cls_f.currentText()
         lv = self._sp_lvl_f.currentText()
-        homebrew = self._sp_homebrew.isChecked()
-        max_castable = None if homebrew else max_castable_spell_level(self.char)
+        ignore = self._sp_homebrew.isChecked()
+        # what your classes can learn now (core/spellcasting.py SpellRoom,
+        # the same rule as Android's browser and both Add buttons): on
+        # their lists, at a level they learn, and with room left -- once a
+        # class has learned all its spells (or cantrips) they drop out,
+        # and come back when one is removed
+        room = None if ignore else SpellRoom(self.char)
         # spells already on your list aren't offered again (same as Android)
         known = set(self.char.get("spells_known", []))
         for i in range(self._sp_browser.count()):
@@ -891,28 +904,21 @@ class SpellsMixin:
             if not sp: continue
             ok = (not q or q in sp["name"].lower()) and sp["name"] not in known
             if cl != "All Classes": ok = ok and cl in sp.get("classes",[])
-            if not homebrew:
-                mine = char_spell_classes(self.char)
-                if mine: ok = ok and bool(set(sp.get("classes",[])) & mine)
-                # Hide leveled spells above what the character can currently
-                # cast — unless Homebrew mode is on, matching the "+ Add"
-                # button's own castable-level gate so the browser doesn't
-                # show spells it would then refuse to add.
-                if max_castable is not None and sp.get("level", 0) > max_castable:
-                    ok = False
             if lv != "All Levels":
                 ok = ok and ((lv=="Cantrip" and sp["level"]==0) or
                              (lv.startswith("Lv") and sp["level"]==int(lv[3:])))
+            if ok and room is not None:
+                ok = room.reason(sp) == ""
             item.setHidden(not ok)
+        if hasattr(self, "_sp_limit_note"):
+            note = room.note() if room is not None else ""
+            self._sp_limit_note.setText(note)
+            self._sp_limit_note.setVisible(bool(note))
 
 
     def _add_spell_from_browser(self):
-        homebrew = self._sp_homebrew.isChecked()
+        homebrew = self._sp_homebrew.isChecked()   # Ignore restrictions
         my_classes = char_spell_classes(self.char)
-        from dnd_app.data.spells import get_spell as _gs
-
-        def _real_name(cn):
-            return "Wizard" if cn in ("Fighter (EK)", "Rogue (AT)") else cn
 
         for item in self._sp_browser.selectedItems():
             sp = item.data(Qt.UserRole)
@@ -920,61 +926,14 @@ class SpellsMixin:
                 continue
             name = sp["name"]
             if not homebrew:
-                # Gate 1: must be on one of your classes' lists — OR added
-                # to that list by a racial Mark (Mark of Shadow/Detection/
-                # Storm expand the spell list itself, per their real text,
-                # rather than granting a spell directly).
-                from dnd_app.data.spells import get_mark_expanded_spells
-                mark_spells = get_mark_expanded_spells(self.char)
-                if my_classes and name not in mark_spells and not (set(sp.get("classes",[])) & my_classes):
-                    self._toast(f"{name} isn't on your class spell lists "
-                                f"— enable Homebrew mode to learn it")
+                # the browser's own rule (SpellRoom: on your classes' lists,
+                # a level they learn, room left in their spells or cantrips
+                # known) -- asked again for each spell, so one just added
+                # counts against the next
+                why = SpellRoom(self.char).reason(sp)
+                if why:
+                    self._toast(f"{why} — turn on Ignore restrictions to add it anyway")
                     continue
-                # Gate 2: spell level can't exceed what you can actually
-                # cast yet — a 1st-level Wizard has no business learning a
-                # 3rd-level spell just because it's on the Wizard list.
-                # Cantrips (level 0) are always castable, so this only
-                # applies to leveled spells.
-                sp_level = sp.get("level", 0)
-                if sp_level > 0:
-                    max_lvl = max_castable_spell_level(self.char)
-                    if sp_level > max_lvl:
-                        self._toast(f"{name} is a level {sp_level} spell — you can only "
-                                    f"cast up to level {max_lvl} right now "
-                                    f"— enable Homebrew mode to exceed it")
-                        continue
-                # Gate 3: per-class spells-known / cantrip caps. Recomputed
-                # fresh each spell (not hoisted out of the loop) so adding
-                # spell N correctly affects the room-check for spell N+1 —
-                # multiclass casters have SEPARATE pools per class, so a
-                # Sorcerer/Warlock can't "borrow" the other's headroom.
-                all_classes = all_caster_classes(self.char)
-                is_cantrip = sp.get("level", 0) == 0
-                sp_classes = set(sp.get("classes", []))
-                pool = all_classes if is_cantrip else known_spell_classes(self.char)
-                eligible = [cn for cn in pool if _real_name(cn) in sp_classes]
-                if pool and not eligible:
-                    # On your class list overall (Gate 1 passed) but none of
-                    # your KNOWN-spell classes can take it — e.g. a spell
-                    # that's only on a prepared caster's list for this
-                    # character. No "known" cap applies to that; let it through.
-                    eligible = []
-                if eligible:
-                    attributed = attribute_known_spells(self.char)
-                    def _room(cn):
-                        cant_max, lvl_max = all_classes[cn]
-                        bucket = attributed.get(cn, {"cantrips":[], "leveled":[]})
-                        used = len(bucket["cantrips"]) if is_cantrip else len(bucket["leveled"])
-                        cap = cant_max if is_cantrip else lvl_max
-                        return (cap if cap is not None else 999) - used
-                    best_cn = max(eligible, key=_room)
-                    if _room(best_cn) <= 0:
-                        cap_shown = all_classes[best_cn][0 if is_cantrip else 1]
-                        used_shown = cap_shown - _room(best_cn) if cap_shown is not None else "?"
-                        kind = "Cantrip" if is_cantrip else "Spells-known"
-                        self._toast(f"{kind} limit reached for {_real_name(best_cn)} "
-                                    f"({used_shown}/{cap_shown}) — enable Homebrew mode to exceed it")
-                        continue
             if name not in self.char.get("spells_known", []):
                 self.char.setdefault("spells_known",[]).append(name)
             row = self._add_spell_row(sp)
@@ -1077,7 +1036,9 @@ class SpellsMixin:
         # Cantrips and class-granted bonus spells (domain/oath/circle
         # spells) don't count against any prepared cap — only ordinary
         # leveled spells the player is actively choosing to prepare do.
-        if row.spell.get("level", 0) > 0 and name not in self.char.get("bonus_spells", []):
+        # Ignore restrictions lifts the cap too (as on Android).
+        if (row.spell.get("level", 0) > 0 and name not in self.char.get("bonus_spells", [])
+                and not self._sp_homebrew.isChecked()):
             caps = prepared_caster_caps(self.char)
             sp_classes = set(row.spell.get("classes", []))
             eligible = [cn for cn in caps if cn in sp_classes]
@@ -1133,7 +1094,8 @@ class SpellsMixin:
         from dnd_app.core.calculator import spell_preparing_classes
         row = SpellRow(spell, prepared, locked=is_bonus,
                         display_name=compute_display_spell_title(self.char, spell),
-                        preparable=bool(spell_preparing_classes(self.char, spell)))
+                        preparable=bool(spell_preparing_classes(self.char, spell)),
+                        removable=not whole_list_class(self.char, spell["name"]))
         from dnd_app.core.calculator import can_ritual_cast
         row.set_can_ritual(can_ritual_cast(self.char, spell))
         row.remove.connect(self._remove_spell_row)
@@ -1184,6 +1146,12 @@ class SpellsMixin:
         # the row has no remove button, this is the backstop
         if name in self.char.get("bonus_spells", []):
             self._toast(f"{name} comes from your class, race or a feat — it can't be removed")
+            return
+        # a Cleric's (Druid's, Paladin's, Artificer's) list spell isn't a
+        # pick: the class knows them all, so it would only come back
+        whole = whole_list_class(self.char, name)
+        if whole:
+            self._toast(f"Every {whole} spell comes with the class, so {name} can't be removed — unprepare it instead")
             return
         self._spell_rows.remove(row)
         self._my_spells_lay.removeWidget(row); row.setParent(None); row.deleteLater()
