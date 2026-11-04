@@ -71,9 +71,9 @@ class ChoiceWidget(QFrame):
 
         # Header row
         head = QHBoxLayout(); head.setSpacing(8)
-        src_badge = _lbl(choice_info.get("source","").upper(), "white", bold=True, size=FS_TINY, wrap=False)
+        src_badge = _lbl(choice_info.get("source","").upper(), on_fill(bg), bold=True, size=FS_TINY, wrap=False)
         src_badge.setFixedHeight(18)
-        src_badge.setStyleSheet(f"color:white;font-size:{FS_TINY}px;font-weight:700;background:{bg};"
+        src_badge.setStyleSheet(f"color:{on_fill(bg)};font-size:{FS_TINY}px;font-weight:700;background:{bg};"
                                  f"border-radius:8px;padding:2px 7px;")
         head.addWidget(src_badge)
         src_name = choice_info.get("source_name","")
@@ -355,14 +355,14 @@ class ChoiceWidget(QFrame):
             minus.setStyleSheet(
                 f"QPushButton{{background:{SURF2};border:1px solid {BORDER2};"
                 f"border-radius:4px;color:{TEXT2};font-size:15px;font-weight:700;padding:0;}}"
-                f"QPushButton:hover{{background:{qa(CRIMSON,0x55)};color:{CRIM2};}}"
-                f"QPushButton:pressed{{background:{CRIMSON};color:white;}}")
+                f"QPushButton:hover{{background:{qa(CRIMSON,0x55)};color:{readable(CRIM2, tint(SURF2, CRIMSON, 0x55))};}}"
+                f"QPushButton:pressed{{background:{CRIMSON};color:{on_fill(CRIMSON)};}}")
             plus = QPushButton("+"); plus.setFixedSize(26, 28)
             plus.setStyleSheet(
                 f"QPushButton{{background:{SURF2};border:1px solid {BORDER2};"
                 f"border-radius:4px;color:{TEXT2};font-size:15px;font-weight:700;padding:0;}}"
-                f"QPushButton:hover{{background:{qa(TEAL,0x55)};color:{TEAL2};}}"
-                f"QPushButton:pressed{{background:{TEAL};color:white;}}")
+                f"QPushButton:hover{{background:{qa(TEAL,0x55)};color:{readable(TEAL2, tint(SURF2, TEAL, 0x55))};}}"
+                f"QPushButton:pressed{{background:{TEAL};color:{on_fill(TEAL)};}}")
 
             ctrl_w = QWidget(); ctrl_w.setStyleSheet("background:transparent;border:none;")
             ctrl_lay = QHBoxLayout(ctrl_w)
@@ -414,7 +414,7 @@ class ChoiceWidget(QFrame):
             f"QListWidget{{background:{SURF2};border:1px solid {BORDER};border-radius:5px;"
             f"color:{TEXT};font-size:{FS_SMALL}px;}}"
             f"QListWidget::item{{padding:3px 8px;}}"
-            f"QListWidget::item:selected{{background:{INDIGO};color:white;}}"
+            f"QListWidget::item:selected{{background:{INDIGO};color:{on_fill(INDIGO)};}}"
             f"QListWidget::item:hover:!selected{{background:{SURF3};}}")
         for ft in ALL_FEATS:
             item = QListWidgetItem(ft["name"])
@@ -502,7 +502,7 @@ class ChoiceWidget(QFrame):
             b.setStyleSheet(
                 f"QPushButton{{background:{SURF2};border:1px solid {BORDER2};"
                 f"border-radius:6px;color:{TEXT};font-size:{FS_BODY}px;font-weight:700;padding:0;}}"
-                f"QPushButton:hover{{background:{INDIGO};color:white;}}")
+                f"QPushButton:hover{{background:{INDIGO};color:{on_fill(INDIGO)};}}")
             def _pick(checked=False, a=ab):
                 chosen["value"] = a
                 dlg.accept()
@@ -802,7 +802,7 @@ class ChoiceWidget(QFrame):
         self._ms_list.setStyleSheet(
             f"QListWidget{{background:{BG};border:1px solid {BORDER};}}"
             f"QListWidget::item{{padding:4px 8px;border-bottom:1px solid {BORDER};color:{TEXT};}}"
-            f"QListWidget::item:selected{{background:{INDIGO};color:white;}}")
+            f"QListWidget::item:selected{{background:{INDIGO};color:{on_fill(INDIGO)};}}")
 
         for s in spell_list:
             lvl_txt = "Ctrp" if s["level"]==0 else f"L{s['level']}"
@@ -967,9 +967,9 @@ class GrantsSummaryWidget(QFrame):
         for source, desc, color in rows:
             row_frame = QFrame(); row_frame.setStyleSheet("background:transparent;border:none;")
             rl = QHBoxLayout(row_frame); rl.setContentsMargins(0,0,0,0); rl.setSpacing(8)
-            badge = _lbl(source, "white", bold=True, size=FS_TINY, align=Qt.AlignCenter, wrap=False)
+            badge = _lbl(source, on_fill(color), bold=True, size=FS_TINY, align=Qt.AlignCenter, wrap=False)
             badge.setFixedHeight(16)
-            badge.setStyleSheet(f"color:white;font-size:{FS_TINY}px;font-weight:700;background:{color};"
+            badge.setStyleSheet(f"color:{on_fill(color)};font-size:{FS_TINY}px;font-weight:700;background:{color};"
                                 f"border-radius:8px;padding:1px 6px;")
             rl.addWidget(badge)
             # the description takes the rest of the row (wrapping only when
@@ -987,6 +987,11 @@ class LevelUpPanel(QWidget):
     # "PENDING CHOICES (N remaining)" header shows) -- drives the
     # character sheet's pulsing Choices tab.
     pending_count_changed = Signal(int)
+    # the Spells to learn card's button: the sheet opens its Spell Browser
+    open_spell_browser = Signal()
+    # whether a class has spells left to learn -- the sheet pulses its
+    # Spells tab and Spell Browser while one does
+    spells_to_learn_changed = Signal(bool)
 
     def __init__(self, char_ref, parent=None):
         super().__init__(parent)
@@ -1028,6 +1033,11 @@ class LevelUpPanel(QWidget):
         self._choices_vl.setSpacing(8)
         self._choices_vl.setContentsMargins(8, 8, 8, 8)
         self._outer.addWidget(self._choices_inner)
+        # first in the box, kept across refreshes: refresh_spells_to_learn()
+        # updates it as spells are learned on the Spells tab
+        self._spells_card = self._build_spells_to_learn_card()
+        self._n_unfinished = self._n_choices = 0
+        self.has_spells_to_learn = False
 
         self._no_choices = _lbl("✓  No pending choices — character fully configured.", TEAL2, size=FS_BODY)
         self._outer.addWidget(self._no_choices)
@@ -1097,6 +1107,8 @@ class LevelUpPanel(QWidget):
         while self._choices_vl.count():
             item = self._choices_vl.takeAt(0)
             w = item.widget()
+            if w is self._spells_card:
+                continue
             if w:
                 w.setParent(None)   # detach immediately so findChildren won't see it
                 w.deleteLater()
@@ -1116,16 +1128,10 @@ class LevelUpPanel(QWidget):
         pending += _get_optional_feature_choices(self.char)
 
         unfinished = [p for p in pending if len(p.get("already_chosen",[])) < p.get("count",1)]
-
-        self._no_choices.setVisible(not unfinished)
-        self._pending_hdr.setVisible(bool(unfinished))
-        if unfinished:
-            self._pending_hdr.setText(f"PENDING CHOICES  ({len(unfinished)} remaining)")
-        if len(unfinished) != self.pending_count:
-            self.pending_count = len(unfinished)
-            self.pending_count_changed.emit(self.pending_count)
-
-        self._choices_inner.setVisible(bool(pending))
+        self._n_unfinished = len(unfinished)
+        self._n_choices = len(pending)
+        self._choices_vl.addWidget(self._spells_card)
+        self.refresh_spells_to_learn()
         # the features list: as tall as it needs, up to its 340px cap
         self._feat_inner.adjustSize()
         self._feat_scroll.setMinimumHeight(min(340, self._feat_inner.sizeHint().height() + 4))
@@ -1137,6 +1143,64 @@ class LevelUpPanel(QWidget):
             self._choices_vl.addWidget(w)
             self._choice_widgets.append(w)
         self._choices_vl.addStretch()
+
+    def _build_spells_to_learn_card(self):
+        """The pending card for the spells a class still has room to learn
+        -- styled as a class's ChoiceWidget, with a button to the Spell
+        Browser, where they're learned."""
+        card = QFrame()
+        card.setObjectName("spellsToLearnCard")
+        card.setStyleSheet(
+            f"QFrame#spellsToLearnCard{{background:{SURF2};border:1px solid {qa(IND2,0x44)};"
+            f"border-left:3px solid {IND2};border-radius:6px;}}"
+            f"QLabel{{background:transparent;border:none;}}")
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(10, 8, 10, 10)
+        lay.setSpacing(6)
+        head = QHBoxLayout(); head.setSpacing(8)
+        badge = _lbl("SPELLS", on_fill(IND2), bold=True, size=FS_TINY, wrap=False)
+        badge.setFixedHeight(18)
+        badge.setStyleSheet(f"color:{on_fill(IND2)};font-size:{FS_TINY}px;font-weight:700;background:{IND2};"
+                            f"border-radius:8px;padding:2px 7px;")
+        head.addWidget(badge)
+        head.addWidget(_lbl("Spells to learn", TEXT, bold=True, size=FS_LABEL), 1)
+        lay.addLayout(head)
+        self._spells_lines = _lbl("", TEXT2, size=FS_BODY)
+        self._spells_lines.setObjectName("spellsToLearnLines")
+        lay.addWidget(self._spells_lines)
+        btn = _btn("Open the Spell Browser", IND2, variant="cta", height=36, radius=8,
+                   bg_alpha=0x22, hover_text="white", font_size=FS_BODY, padding="6px 14px")
+        btn.setObjectName("openSpellBrowserBtn")
+        btn.clicked.connect(self.open_spell_browser.emit)
+        row = QHBoxLayout(); row.addWidget(btn); row.addStretch()
+        lay.addLayout(row)
+        card.hide()
+        return card
+
+    def refresh_spells_to_learn(self):
+        """Update the Spells to learn card and the pending count -- after a
+        refresh, and whenever spells are learned or removed (the Spells
+        tab calls it), which needs no rebuild of the other cards."""
+        from dnd_app.core.spellcasting import spells_to_learn_lines
+        try:
+            lines = spells_to_learn_lines(self.char)
+        except Exception:
+            import traceback; traceback.print_exc()
+            lines = []
+        self._spells_lines.setText("\n".join(lines))
+        self._spells_card.setVisible(bool(lines))
+        n = self._n_unfinished + (1 if lines else 0)
+        self._no_choices.setVisible(not n)
+        self._pending_hdr.setVisible(bool(n))
+        if n:
+            self._pending_hdr.setText(f"PENDING CHOICES  ({n} remaining)")
+        self._choices_inner.setVisible(bool(self._n_choices or lines))
+        if n != self.pending_count:
+            self.pending_count = n
+            self.pending_count_changed.emit(self.pending_count)
+        if bool(lines) != self.has_spells_to_learn:
+            self.has_spells_to_learn = bool(lines)
+            self.spells_to_learn_changed.emit(self.has_spells_to_learn)
 
     def _on_confirmed(self, choice_id, selected):
         """Apply the choice to char dict and refresh."""

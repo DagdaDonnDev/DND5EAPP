@@ -72,12 +72,14 @@ class GearMixin:
         root.setContentsMargins(16,16,16,16); root.setSpacing(8)
 
         # ── Currency tracker ─────────────────────────────────────────────────
-        money_card = _card(GOLD+"55")
+        money_card = _card(qa(GOLD, 0x55))
         mcl = QHBoxLayout(money_card); mcl.setContentsMargins(14,10,14,10); mcl.setSpacing(16)
         mcl.addWidget(_icons.icon_header("coins", _lbl("CURRENCY", GOLD2, FS_SMALL, bold=True, wrap=False)))
         self._currency_spins = {}
         for coin, color in [("PP","#b0a0e0"),("GP","#f5c518"),("EP","#a0c8a0"),
                              ("SP","#d0d0d0"),("CP","#c87941")]:
+            # each coin's colour, darker on a light theme so it still reads
+            color = readable(color, SURF, SURF2)
             col = QVBoxLayout(); col.setSpacing(2)
             col.addWidget(_lbl(coin, color, FS_TINY, bold=True, align=Qt.AlignCenter))
             sp = QSpinBox(); sp.setRange(0,999999); sp.setMinimumWidth(72)
@@ -268,7 +270,7 @@ class GearMixin:
         self._md_list.customContextMenuRequested.connect(self._on_mundane_browser_ctx)
         mdt.addWidget(self._md_list,1)
         add_selected = pill_btn("Add Selected to Inventory", TEAL)
-        _icons.set_button_icon(add_selected, "arrow_left", 16, color="white")
+        _icons.set_button_icon(add_selected, "arrow_left", 16, color=on_fill(TEAL))
         add_selected.clicked.connect(lambda: self._add_mundane_from_browser(self._md_list.currentItem(),0))
         mdt.addWidget(add_selected)
         right_tabs.addTab(mundane_tab, "Equipment")
@@ -320,7 +322,7 @@ class GearMixin:
         mgt.addWidget(self._mi_browser,1)
 
         mi_add_btn = pill_btn("Add Selected to Inventory", INDIGO)
-        _icons.set_button_icon(mi_add_btn, "arrow_left", 16, color="white")
+        _icons.set_button_icon(mi_add_btn, "arrow_left", 16, color=on_fill(INDIGO))
         mi_add_btn.clicked.connect(self._add_magic_from_browser)
         mgt.addWidget(mi_add_btn)
         right_tabs.addTab(magic_tab, "Magic Items")
@@ -405,7 +407,10 @@ class GearMixin:
         for section_name, items, kind in sections:
             parent = QTreeWidgetItem([section_name])
             parent.setForeground(0, __import__('PySide6.QtGui',fromlist=['QColor']).QColor(GOLD2))
-            parent.setFont(0, __import__('PySide6.QtGui',fromlist=['QFont']).QFont("", -1, 700))
+            # the list's own font in bold, as the carried-items list's groups
+            # (QFont("") picked a serif stand-in)
+            _sec_font = self._md_list.font(); _sec_font.setBold(True)
+            parent.setFont(0, _sec_font)
             parent.setData(0, Qt.UserRole, "__section__")
             added = 0
             for row in items:
@@ -467,6 +472,7 @@ class GearMixin:
 
             if added > 0:
                 self._md_list.addTopLevelItem(parent)
+                parent.setFirstColumnSpanned(True)   # the whole name, across the columns
                 parent.setExpanded(True)
 
     def _on_mundane_browser_ctx(self, pos):

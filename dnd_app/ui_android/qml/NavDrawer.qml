@@ -154,8 +154,9 @@ Drawer {
                         readonly property bool hasSections: itemSections.length > 0
                         property bool expanded: false
 
-                        // An item with `pulse: true` (Choices, while level-up
-                        // choices are pending) gets a breathing accent bar on
+                        // An item with `pulse: true` (Choices, while choices
+                        // are pending; Spells, while a class has spells left
+                        // to learn) gets a breathing accent bar on
                         // its left edge, a faint accent tint and a pulsing dot
                         // after its label. The tint stays faint: a stronger
                         // fill turns grey on light themes whose accent is the

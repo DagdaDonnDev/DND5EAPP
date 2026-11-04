@@ -77,7 +77,7 @@ class LevelUpMulticlassDialog(QDialog):
         root = QVBoxLayout(self); root.setContentsMargins(20,18,20,18); root.setSpacing(12)
         # setChecked(True) in the radio loop below fires the toggled signal
         # synchronously (Qt behavior), which would call _on_pick() before
-        # several attributes it needs (_details_lbl, _SWAP_CLASSES, etc.)
+        # several attributes it needs (_details_lbl, _swap_card, etc.)
         # are constructed, crashing for any character with an existing
         # class. __init__ already calls _on_pick(default_choice)
         # explicitly at the end regardless, so this guard just prevents
@@ -139,25 +139,46 @@ class LevelUpMulticlassDialog(QDialog):
 
         root.addLayout(body)
 
-        # ── Known-spell swap — Bard/Sorcerer/Warlock only ────────────────
-        # Per the real rule ("whenever you gain a level in this class, you
-        # can replace one spell you know with another from the class
-        # list"), shown/hidden based on which class is currently selected.
-        self._SWAP_CLASSES = {"Bard", "Sorcerer", "Warlock", "Ranger"}
+        # ── Known-spell swap (PHB): a Bard, Sorcerer, Warlock, Ranger,
+        # Eldritch Knight or Arcane Trickster gaining a level in that class
+        # can replace one of its spells known with another it can learn
+        # (core/spellcasting.py level_up_swap_out/_in). Shown for the
+        # selected class when it has a spell to give up.
         self._swap_card = _card(qa(PURPLE, 0x44))
         swap_lay = QVBoxLayout(self._swap_card)
         swap_lay.setContentsMargins(10, 10, 10, 10)
         swap_lay.addWidget(_lbl("SWAP A KNOWN SPELL (OPTIONAL)", PURPLE, FS_SMALL, bold=True))
         swap_row = QHBoxLayout()
         self._swap_out_combo = QComboBox()
+        self._swap_out_combo.setAccessibleName("Spell to replace")
         self._swap_in_combo = QComboBox()
-        swap_row.addWidget(_lbl("Remove:", TEXT2, FS_SMALL))
+        self._swap_in_combo.setAccessibleName("Spell to learn instead")
+        swap_row.addWidget(_lbl("Replace:", TEXT2, FS_SMALL))
         swap_row.addWidget(self._swap_out_combo, 1)
-        swap_row.addWidget(_lbl("Learn:", TEXT2, FS_SMALL))
+        swap_row.addWidget(_lbl("With:", TEXT2, FS_SMALL))
         swap_row.addWidget(self._swap_in_combo, 1)
         swap_lay.addLayout(swap_row)
+        self._swap_out_combo.currentIndexChanged.connect(self._on_swap_out_changed)
         self._swap_card.setVisible(False)
         root.addWidget(self._swap_card)
+
+        # ── A Wizard's two free spellbook spells (PHB: "each time you gain
+        # a wizard level, you can add two wizard spells ... to your
+        # spellbook") -- of a level it can cast at the new level
+        self._book_card = _card(qa(PURPLE, 0x44))
+        book_lay = QVBoxLayout(self._book_card)
+        book_lay.setContentsMargins(10, 10, 10, 10)
+        book_lay.addWidget(_lbl("ADD TWO SPELLS TO YOUR SPELLBOOK", PURPLE, FS_SMALL, bold=True))
+        book_lay.addWidget(_lbl("Each Wizard level adds two Wizard spells to your spellbook, free "
+                                "— or leave them for later, from the Spell Browser.", TEXT2, FS_SMALL))
+        book_row = QHBoxLayout()
+        self._book_combos = [QComboBox(), QComboBox()]
+        for i, cb in enumerate(self._book_combos):
+            cb.setAccessibleName(f"Spellbook spell {i + 1}")
+            book_row.addWidget(cb, 1)
+        book_lay.addLayout(book_row)
+        self._book_card.setVisible(False)
+        root.addWidget(self._book_card)
 
         # ── Eldritch Versatility (Warlock, TCoE, optional) ────────────────
         # Gated behind the Settings toggle since it's titled "(Optional)"
@@ -312,6 +333,15 @@ class LevelUpMulticlassDialog(QDialog):
         pact_before, pact_after = preview["pact_before"], preview["pact_after"]
         if pact_after and pact_after != pact_before:
             lines.append(f"Pact Magic: {pact_after['count']} slot(s) at level {pact_after['level']}")
+        # what the level adds to learn -- the Choices tab's Spells to learn
+        # card keeps count of it afterwards
+        from dnd_app.core.spellcasting import level_up_learn_gain
+        try:
+            gain = level_up_learn_gain(self.char, cls_name, is_new)
+        except Exception:
+            gain = []
+        if gain:
+            lines.append("Spells: " + ", ".join(gain))
 
     def _append_xp_surplus_note(self, lines):
         """If the character is in XP leveling mode and already has enough
@@ -378,48 +408,29 @@ class LevelUpMulticlassDialog(QDialog):
         self._append_xp_surplus_note(lines)
         self._details_lbl.setText("\n".join(lines))
 
-        # Known-spell swap — standard casters (Bard/Sorcerer/Warlock/
-        # Ranger) swap from their own list; Eldritch Knight (Fighter) and
-        # Arcane Trickster (Rogue) instead swap a WIZARD spell (they have
-        # no spell list of their own), restricted to specific schools per
-        # the exact rule text: abjuration/evocation for Eldritch Knight,
-        # enchantment/illusion for Arcane Trickster. Only for an EXISTING
-        # character leveling up — a brand new multiclass addition starts
-        # fresh with its own spell choices, so there's nothing yet to
-        # swap out.
-        my_subclass = existing.get(cls_name) and next(
-            (c.get("subclass", "") for c in self.char.get("classes", []) if c["class"] == cls_name), "")
-        is_eldritch_knight = cls_name == "Fighter" and "eldritch knight" in (my_subclass or "").lower()
-        is_arcane_trickster = cls_name == "Rogue" and "arcane trickster" in (my_subclass or "").lower()
-        show_swap = (cls_name in self._SWAP_CLASSES and cls_name in existing) \
-            or is_eldritch_knight or is_arcane_trickster
-        self._swap_card.setVisible(show_swap)
-        if show_swap:
-            from dnd_app.data.spells import ALL_SPELLS
-            known = [s for s in self.char.get("spells_known", [])]
-            if is_eldritch_knight or is_arcane_trickster:
-                swap_list_class = "Wizard"
-                allowed_schools = {"Abjuration", "Evocation"} if is_eldritch_knight else {"Enchantment", "Illusion"}
-            else:
-                swap_list_class = cls_name
-                allowed_schools = None  # no school restriction for standard known-spell casters
-            class_spell_names = {s["name"] for s in ALL_SPELLS
-                                  if swap_list_class in s.get("classes", []) and s.get("level", 0) > 0}
-            known_of_class = [n for n in known if n in class_spell_names]
-            self._swap_out_combo.clear()
-            self._swap_out_combo.addItem("— don't swap —", None)
-            for n in sorted(known_of_class):
-                self._swap_out_combo.addItem(n, n)
-            self._swap_in_combo.clear()
-            self._swap_in_combo.addItem("— choose a spell —", None)
-            for s in sorted(ALL_SPELLS, key=lambda s: (s.get("level", 0), s["name"])):
-                if swap_list_class not in s.get("classes", []) or s["name"] in known:
-                    continue
-                if s.get("level", 0) == 0:
-                    continue
-                if allowed_schools is not None and s.get("school") not in allowed_schools:
-                    continue
-                self._swap_in_combo.addItem(f"{s['name']} (Lv{s.get('level',0)})", s["name"])
+        # Known-spell swap, and a Wizard's spellbook spells -- for a class
+        # the character already has, at the level it's about to reach (a
+        # new class starts with its own picks, nothing to swap yet)
+        from dnd_app.core.spellcasting import level_up_swap_out, level_up_spellbook, get_spell_level
+        self._swap_class = cls_name
+        self._swap_level = existing.get(cls_name, 0) + 1
+        swap_out = level_up_swap_out(self.char, cls_name) if cls_name in existing else []
+        self._swap_card.setVisible(bool(swap_out))
+        self._swap_out_combo.blockSignals(True)
+        self._swap_out_combo.clear()
+        self._swap_out_combo.addItem("— don't swap —", None)
+        for n in swap_out:
+            self._swap_out_combo.addItem(f"{n} (Lv{get_spell_level(n)})", n)
+        self._swap_out_combo.blockSignals(False)
+        self._on_swap_out_changed()
+        book = (level_up_spellbook(self.char, level=self._swap_level)
+                if cls_name == "Wizard" and cls_name in existing else [])
+        self._book_card.setVisible(bool(book))
+        for cb in self._book_combos:
+            cb.clear()
+            cb.addItem("— none —", None)
+            for n in book:
+                cb.addItem(f"{n} (Lv{get_spell_level(n)})", n)
 
         # Eldritch Versatility (Warlock, TCoE, optional) — only shown
         # when the Settings toggle is on and the character is an
@@ -625,10 +636,35 @@ class LevelUpMulticlassDialog(QDialog):
                         and s["name"] not in known_cantrips):
                     self._sv_in_combo.addItem(s["name"], s["name"])
 
+    def _on_swap_out_changed(self, _index=None):
+        """What can be learned in place of the spell picked to give up."""
+        from dnd_app.core.spellcasting import level_up_swap_in, get_spell_level
+        out = self._swap_out_combo.currentData()
+        self._swap_in_combo.clear()
+        if not out:
+            self._swap_in_combo.addItem("— pick one to replace first —", None)
+            self._swap_in_combo.setEnabled(False)
+            return
+        self._swap_in_combo.setEnabled(True)
+        self._swap_in_combo.addItem("— choose a spell —", None)
+        for n in level_up_swap_in(self.char, self._swap_class, out, level=self._swap_level):
+            self._swap_in_combo.addItem(f"{n} (Lv{get_spell_level(n)})", n)
+
+    def get_spellbook_adds(self):
+        """The spells picked for a Wizard's spellbook ([] if none)."""
+        if self._book_card.isHidden():
+            return []
+        out = []
+        for cb in self._book_combos:
+            name = cb.currentData()
+            if name and name not in out:
+                out.append(name)
+        return out
+
     def get_spell_swap(self):
         """Returns (old_spell_name, new_spell_name) or (None, None) if no
         swap was requested."""
-        if not self._swap_card.isVisible():
+        if self._swap_card.isHidden():
             return None, None
         old = self._swap_out_combo.currentData()
         new = self._swap_in_combo.currentData()
@@ -640,7 +676,7 @@ class LevelUpMulticlassDialog(QDialog):
         """Returns a dict {'kind': 'cantrip'|'pact_boon'|'arcanum', 'old':
         ..., 'new': ...} describing the requested Eldritch Versatility
         swap, or None if not used/not applicable."""
-        if not self._ev_card.isVisible():
+        if self._ev_card.isHidden():
             return None
         kind = self._ev_what_combo.currentData()
         if kind is None:
@@ -655,7 +691,7 @@ class LevelUpMulticlassDialog(QDialog):
 
     def get_martial_versatility(self):
         """Returns (kind, old, new) or (None, None, None) if not used."""
-        if not self._mv_card.isVisible():
+        if self._mv_card.isHidden():
             return None, None, None
         kind = self._mv_what_combo.currentData()
         old = self._mv_out_combo.currentData()
@@ -666,7 +702,7 @@ class LevelUpMulticlassDialog(QDialog):
 
     def get_cantrip_versatility(self):
         """Returns (old_cantrip, new_cantrip) or (None, None) if not used."""
-        if not self._cv_card.isVisible():
+        if self._cv_card.isHidden():
             return None, None
         old = self._cv_out_combo.currentData()
         new = self._cv_in_combo.currentData()
@@ -676,7 +712,7 @@ class LevelUpMulticlassDialog(QDialog):
 
     def get_bardic_versatility(self):
         """Returns (kind, old, new) or (None, None, None) if not used."""
-        if not self._bv_card.isVisible():
+        if self._bv_card.isHidden():
             return None, None, None
         kind = self._bv_what_combo.currentData()
         old = self._bv_out_combo.currentData()
@@ -687,7 +723,7 @@ class LevelUpMulticlassDialog(QDialog):
 
     def get_sorcerous_versatility(self):
         """Returns (kind, old, new) or (None, None, None) if not used."""
-        if not self._sv_card.isVisible():
+        if self._sv_card.isHidden():
             return None, None, None
         kind = self._sv_what_combo.currentData()
         old = self._sv_out_combo.currentData()

@@ -115,7 +115,7 @@ class CharacterWizard(QWidget):
     def _update_pills(self):
         for i, pill in enumerate(self._step_pills):
             if i == self._step:
-                pill.setStyleSheet(f"background:{INDIGO};color:white;border-radius:15px;font-size:{FS_SMALL}px;font-weight:700;padding:0 12px;")
+                pill.setStyleSheet(f"background:{INDIGO};color:{on_fill(INDIGO)};border-radius:15px;font-size:{FS_SMALL}px;font-weight:700;padding:0 12px;")
             elif i < self._step:
                 pill.setStyleSheet(f"background:{qa(TEAL,0x55)};color:{TEAL2};border-radius:15px;font-size:{FS_SMALL}px;padding:0 12px;")
             else:
@@ -1008,7 +1008,7 @@ class Step3Class(QWidget):
             f"QListWidget{{background:{SURF2};border:1px solid {BORDER};border-radius:5px;"
             f"color:{TEXT};font-size:{FS_SMALL}px;}}"
             f"QListWidget::item{{padding:4px 8px;}}"
-            f"QListWidget::item:selected{{background:{INDIGO};color:white;}}"
+            f"QListWidget::item:selected{{background:{INDIGO};color:{on_fill(INDIGO)};}}"
             f"QListWidget::item:hover:!selected{{background:{SURF3};}}")
         self._all_bg_names = list(BACKGROUND_NAMES)
         for b in self._all_bg_names: self._bg_list.addItem(b)
@@ -1255,7 +1255,11 @@ class Step4Spells(QWidget):
         # learned all it can -- and the same way round it
         self._sp_ignore = QCheckBox("Ignore restrictions — any spell, any level, no limits")
         self._sp_ignore.setAccessibleName("Ignore restrictions: learn any spell, at any level, with no limits")
-        self._sp_ignore.setStyleSheet(f"QCheckBox{{color:{TEXT2};font-size:{FS_SMALL}px;padding:2px;}}")
+        self._sp_ignore.setStyleSheet(
+            f"QCheckBox{{color:{AMBE2};font-size:{FS_SMALL}px;font-weight:700;padding:2px;}}"
+            f"QCheckBox::indicator{{width:16px;height:16px;border:2px solid {AMBER};"
+            f"border-radius:4px;background:{SURF2};}}"
+            f"QCheckBox::indicator:checked{{background:{AMBER};}}")
         self._sp_ignore.stateChanged.connect(lambda _s: self._filter())
         ll.addWidget(self._sp_ignore)
         self._sp_note = _lbl("", TEXT2, FS_SMALL)

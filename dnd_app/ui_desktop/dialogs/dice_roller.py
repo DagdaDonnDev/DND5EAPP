@@ -52,7 +52,7 @@ class DiceRollerPanel(QWidget):
         self.setStyleSheet(f"""
             QWidget {{ background: {BG}; color: {TEXT}; font-size: {FS_TINY}px; font-family: 'Segoe UI', sans-serif; }}
             QPushButton {{ background: {SURF3}; border: 1px solid {BORDER2}; border-radius: 6px; color: {TEXT}; padding: 4px 8px; font-weight: 700; }}
-            QPushButton:hover {{ background: {INDIGO}; border-color: {IND2}; color: white; }}
+            QPushButton:hover {{ background: {INDIGO}; border-color: {IND2}; color: {on_fill(INDIGO)}; }}
             QPushButton:pressed {{ background: {qa(INDIGO,0xaa)}; }}
             QSpinBox {{ background: {SURF2}; border: 1px solid {BORDER}; border-radius: 5px; color: {TEXT}; padding: 3px 2px; }}
             QComboBox {{ background: {SURF2}; border: 1px solid {BORDER}; border-radius: 5px; color: {TEXT}; padding: 3px 6px; }}
@@ -79,7 +79,7 @@ class DiceRollerPanel(QWidget):
             f"QFrame{{background:{SURF};border:2px solid {BORDER2};border-radius:10px;}}")
         rf_lay = QVBoxLayout(self.result_frame); rf_lay.setContentsMargins(10,10,10,8); rf_lay.setSpacing(2)
 
-        self.crit_badge = lbl("", "white", bold=True, size=FS_TINY, align=Qt.AlignCenter)
+        self.crit_badge = lbl("", on_fill(TEAL), bold=True, size=FS_TINY, align=Qt.AlignCenter)
         self.crit_badge.setFixedHeight(20)
         self.crit_badge.hide()
         rf_lay.addWidget(self.crit_badge)
@@ -108,8 +108,8 @@ class DiceRollerPanel(QWidget):
             if die == "d20":
                 btn.setStyleSheet(
                     f"QPushButton{{background:{INDIGO};border:1px solid {IND2};border-radius:6px;"
-                    f"color:white;font-weight:700;font-size:{FS_SMALL}px;}}"
-                    f"QPushButton:hover{{background:{IND2};}}")
+                    f"color:{on_fill(INDIGO)};font-weight:700;font-size:{FS_SMALL}px;}}"
+                    f"QPushButton:hover{{background:{IND2};color:{on_fill(IND2)};}}")
             btn.clicked.connect(lambda _, d=die: self._quick_roll(d))
             row.addWidget(btn)
         qg.addLayout(row1); qg.addLayout(row2)
@@ -129,7 +129,8 @@ class DiceRollerPanel(QWidget):
         roll_btn.setFixedHeight(32)
         roll_btn.setStyleSheet(
             f"QPushButton{{background:{INDIGO};border:1px solid {IND2};border-radius:6px;"
-            f"color:white;font-weight:700;padding:4px 14px;}}QPushButton:hover{{background:{IND2};}}")
+            f"color:{on_fill(INDIGO)};font-weight:700;padding:4px 14px;}}"
+            f"QPushButton:hover{{background:{IND2};color:{on_fill(IND2)};}}")
         roll_btn.clicked.connect(self._custom_roll)
         cg.addWidget(self.num_dice); cg.addWidget(lbl("×")); cg.addWidget(self.die_combo)
         cg.addWidget(lbl("+")); cg.addWidget(self.mod_spin); cg.addStretch(); cg.addWidget(roll_btn)
@@ -170,7 +171,7 @@ class DiceRollerPanel(QWidget):
             f"QListWidget{{background:{BG};border:1px solid {BORDER};border-radius:6px;"
             f"font-size:{FS_TINY}px;color:{TEXT2};}}"
             f"QListWidget::item{{padding:3px 6px;border-radius:3px;}}"
-            f"QListWidget::item:selected{{background:{INDIGO};color:white;}}")
+            f"QListWidget::item:selected{{background:{INDIGO};color:{on_fill(INDIGO)};}}")
         hl.addWidget(self.history_list)
         outer.addWidget(hist_card)
 
@@ -253,14 +254,14 @@ class DiceRollerPanel(QWidget):
             color, border_color = TEAL2, TEAL2
             self.crit_badge.setText("NATURAL 20")
             self.crit_badge.setStyleSheet(
-                f"background:{TEAL};color:white;font-size:{FS_TINY}px;font-weight:700;"
+                f"background:{TEAL};color:{on_fill(TEAL)};font-size:{FS_TINY}px;font-weight:700;"
                 f"border-radius:4px;padding:2px 8px;")
             self.crit_badge.show()
         elif nat1:
             color, border_color = CRIM2, CRIM2
             self.crit_badge.setText("NATURAL 1")
             self.crit_badge.setStyleSheet(
-                f"background:{CRIMSON};color:white;font-size:{FS_TINY}px;font-weight:700;"
+                f"background:{CRIMSON};color:{on_fill(CRIMSON)};font-size:{FS_TINY}px;font-weight:700;"
                 f"border-radius:4px;padding:2px 8px;")
             self.crit_badge.show()
         else:

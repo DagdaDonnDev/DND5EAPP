@@ -310,7 +310,7 @@ class CombatMixin:
         from dnd_app.data.statblocks import WILDSHAPE_BEASTS
         from dnd_app.core.calculator import get_available_wildshape_beasts
 
-        card = _card(PURPLE+"55")
+        card = _card(qa(PURPLE, 0x55))
         cl = QVBoxLayout(card); cl.setContentsMargins(12,10,12,10); cl.setSpacing(6)
         cl.addWidget(_lbl("WILD SHAPE", GOLD, FS_SMALL, bold=True))
 
@@ -333,7 +333,7 @@ class CombatMixin:
                 slots_max = slot_data.get("spell_slots") or [0]*9
                 has_slot = any(slots_max[i] - (slots_used[i] if i < len(slots_used) else 0) > 0 for i in range(9))
                 heal_btn = QPushButton("Combat Wild Shape: Spend Slot to Heal")
-                _icons.set_button_icon(heal_btn, "magic", 16, color="white")
+                _icons.set_button_icon(heal_btn, "magic", 16, color=on_fill(GOLD))
                 heal_btn.setEnabled(has_slot and cur_hp < beast["hp"])
                 heal_btn.setToolTip("Bonus action: expend a spell slot to regain 1d8 HP per level of the slot.")
                 heal_btn.setStyleSheet(pill_btn("", GOLD).styleSheet())
@@ -365,7 +365,7 @@ class CombatMixin:
 
             fire_btn = QPushButton("Transform" if uses_left is None
                                     else f"Transform ({uses_left} left)")
-            _icons.set_button_icon(fire_btn, "paw", 16, color="white")
+            _icons.set_button_icon(fire_btn, "paw", 16, color=on_fill(PURPLE))
             fire_btn.setEnabled((uses_left is None or uses_left > 0) and combo.count() > 0)
             fire_btn.setStyleSheet(pill_btn("", PURPLE).styleSheet())
             fire_btn.clicked.connect(lambda checked=False, cb=combo: self._wildshape_transform(cb.currentData()))
@@ -493,7 +493,7 @@ class CombatMixin:
         top_lay = QHBoxLayout(top_strip); top_lay.setContentsMargins(0,0,0,0); top_lay.setSpacing(8)
 
         # ── HP card ───────────────────────────────────────────────────────────
-        hp_card = _card(GREEN+"55"); hp_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        hp_card = _card(qa(GREEN, 0x55)); hp_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         hpcl = QVBoxLayout(hp_card); hpcl.setContentsMargins(12,10,12,10)
         hpcl.addWidget(_lbl("HIT POINTS", GOLD, FS_SMALL, bold=True))
         hp_row = QHBoxLayout(); hp_row.setSpacing(8)

@@ -55,7 +55,7 @@ SpinBox {
         font.pixelSize: Theme.fsBody
         color: Theme.text
         selectionColor: Theme.indigo
-        selectedTextColor: "white"
+        selectedTextColor: Theme.onFill(Theme.indigo)
         horizontalAlignment: Qt.AlignHCenter
         verticalAlignment: Qt.AlignVCenter
         readOnly: !control.editable

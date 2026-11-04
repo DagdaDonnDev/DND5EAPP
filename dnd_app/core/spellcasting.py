@@ -1231,6 +1231,13 @@ def _own_spell_level(cname: str, lvl: int) -> int:
     return max((i + 1 for i, n in enumerate(slots) if n > 0), default=0)
 
 
+# An Eldritch Knight's spells are abjuration or evocation, an Arcane
+# Trickster's enchantment or illusion -- apart from one from any school at
+# 3rd level and one more at each of 8th, 14th and 20th (PHB)
+_SCHOOL_BOUND = {"Fighter (EK)": ("Abjuration", "Evocation"),
+                 "Rogue (AT)": ("Enchantment", "Illusion")}
+
+
 def spell_learners(char: dict) -> dict:
     """{key: {...}} for each of the character's classes that learns spells,
     keyed as all_caster_classes() has them (the class, or "Fighter (EK)" /
@@ -1244,7 +1251,9 @@ def spell_learners(char: dict) -> dict:
       cantrips  how many cantrips it can know (0: none)
       spells    how many leveled spells it can know; None for no limit: a
                 Wizard's spellbook takes any number of Wizard spells, and a
-                Cleric, Druid, Paladin or Artificer knows its whole list"""
+                Cleric, Druid, Paladin or Artificer knows its whole list
+      schools, any_school   an Eldritch Knight's or Arcane Trickster's two
+                schools, and how many of its spells can be from any school"""
     from dnd_app.core.character import _spell_lists_of
     caster = all_caster_classes(char)
     top = max_castable_spell_level(char)
@@ -1264,7 +1273,41 @@ def spell_learners(char: dict) -> dict:
         out[key] = {"label": label, "lists": _spell_lists_of(entry),
                     "level": min(top, _own_spell_level(cn, lvl)),
                     "cantrips": cant_max, "spells": lvl_max}
+        if key in _SCHOOL_BOUND and lvl_max is not None:
+            out[key]["schools"] = _SCHOOL_BOUND[key]
+            out[key]["any_school"] = min(lvl_max, 1 + (lvl >= 8) + (lvl >= 14) + (lvl >= 20))
     return out
+
+
+def _pool_keys(learners: dict, keys: list, sp: dict) -> list:
+    """A leveled spell's learner keys as the spell pools have them. An
+    Eldritch Knight's or Arcane Trickster's spells are two pools: its two
+    schools' ("Fighter (EK)") and its picks from any school
+    ("Fighter (EK)|any") -- a spell of another school only fits the second."""
+    out = []
+    for k in keys:
+        schools = learners[k].get("schools")
+        if schools:
+            if sp.get("school") in schools:
+                out.append(k)
+            out.append(k + "|any")
+        else:
+            out.append(k)
+    return out
+
+
+def _pool_caps(learners: dict, cantrip: bool) -> dict:
+    """How many each pool takes (None: no limit) -- see _pool_keys."""
+    caps = {}
+    for k, ln in learners.items():
+        if cantrip:
+            caps[k] = ln["cantrips"]
+        elif ln.get("schools"):
+            caps[k] = ln["spells"] - ln["any_school"]
+            caps[k + "|any"] = ln["any_school"]
+        else:
+            caps[k] = ln["spells"]
+    return caps
 
 
 def _learner_keys(learners: dict, sp: dict, marked: bool, cantrip: bool,
@@ -1323,7 +1366,10 @@ def _learn_items(char: dict, learners: dict):
                     or [k for k, ln in learners.items()
                         if (ln["cantrips"] > 0 if is_cantrip else ln["spells"] is not None)])
         if keys:
-            (cantrips if is_cantrip else leveled).append((name, keys))
+            if is_cantrip:
+                cantrips.append((name, keys))
+            else:
+                leveled.append((name, _pool_keys(learners, keys, sp)))
     return cantrips, leveled
 
 
@@ -1406,8 +1452,7 @@ class SpellRoom:
         self.top = max_castable_spell_level(char)
         self._pools = {}
         for cantrip, items in zip((True, False), _learn_items(char, self.learners)):
-            caps = {k: (ln["cantrips"] if cantrip else ln["spells"])
-                    for k, ln in self.learners.items()}
+            caps = _pool_caps(self.learners, cantrip)
             load, over = _share_out(items, caps)
             self._pools[cantrip] = (items, caps, load, over)
         self._fits = {}
@@ -1428,13 +1473,20 @@ class SpellRoom:
             return f"{name} is a level {n} spell, and you have no spell slots yet"
         return f"{name} is a level {n} spell; you can cast up to level {self.top} right now"
 
-    def reason(self, sp: dict) -> str:
+    def reason(self, sp: dict, only=None) -> str:
+        """Why the spell can't be added, "" if it can. only: a learner key
+        -- whether that one class can take it (a level-up swap)."""
         name, n = sp.get("name", ""), sp.get("level", 0)
         if name in self.known:
             return f"You already know {name}"
         if not self.learners:
             return self._past_slots(name, n) if n > self.top else ""
         listed = _learner_keys(self.learners, sp, name in self.mark, cantrip=False, by_level=False)
+        if only is not None:
+            if only not in listed:
+                label = self.learners[only]["label"] if only in self.learners else only
+                return f"{name} isn't on the {label} spell list"
+            listed = [only]
         if not listed:
             return f"{name} isn't on your classes' spell lists"
         if n == 0:
@@ -1442,28 +1494,42 @@ class SpellRoom:
             if not keys:
                 return f"None of your classes with {name} on their list learns cantrips"
         else:
-            if n > self.top:
+            if n > self.top and only is None:
                 return self._past_slots(name, n)
             keys = [k for k in listed if n <= self.learners[k]["level"]]
             if not keys:
                 best = self.learners[max(listed, key=lambda k: self.learners[k]["level"])]
                 return (f"{name} is a level {n} spell; your {best['label']} spells "
                         f"go up to level {best['level']}")
-        if self.fits(n == 0, keys):
+        if self.fits(n == 0, keys if n == 0 else _pool_keys(self.learners, keys, sp)):
             return ""
         what = "cantrips" if n == 0 else "spells"
-        full = [self.learners[k] for k in keys]
+        school, full = [], []
+        for k in keys:
+            ln = self.learners[k]
+            # room for one of its two schools, just not for this one
+            if (n and ln.get("schools") and sp.get("school") not in ln["schools"]
+                    and self.fits(False, [k, k + "|any"])):
+                a, b = (s.lower() for s in ln["schools"])
+                school.append(f"{ln['label']} spells must be {a} or {b} now "
+                              f"(its picks from any school are used)")
+            else:
+                full.append(ln)
+        out = []
         if len(full) == 1:
             cap = full[0]["cantrips"] if n == 0 else full[0]["spells"]
-            return f"{full[0]['label']} has learned all {cap} of its {what}"
-        names = [ln["label"] for ln in full]
-        return f"{', '.join(names[:-1])} and {names[-1]} have learned all their {what}"
+            out.append(f"{full[0]['label']} has learned all {cap} of its {what}")
+        elif full:
+            names = [ln["label"] for ln in full]
+            out.append(f"{', '.join(names[:-1])} and {names[-1]} have learned all their {what}")
+        return "; ".join(out + school)
 
     def note(self) -> str:
         parts = []
         for key, ln in self.learners.items():
+            pools = [key, key + "|any"] if ln.get("schools") else [key]
             spells = (ln["spells"] is not None and ln["spells"] > 0 and ln["level"] > 0
-                      and not self.fits(False, [key]))
+                      and not self.fits(False, pools))
             cantrips = ln["cantrips"] > 0 and not self.fits(True, [key])
             if spells and cantrips:
                 parts.append(f"{ln['label']} has learned all {ln['spells']} of its spells "
@@ -1472,6 +1538,13 @@ class SpellRoom:
                 parts.append(f"{ln['label']} has learned all {ln['spells']} of its spells.")
             elif cantrips:
                 parts.append(f"{ln['label']} has learned all {ln['cantrips']} of its cantrips.")
+            # its picks from any school are used, though there's room for more
+            # of its own two schools
+            if (not spells and ln.get("schools") and ln["level"] > 0 and ln["any_school"] > 0
+                    and not self.fits(False, [key + "|any"])):
+                a, b = (s.lower() for s in ln["schools"])
+                parts.append(f"{ln['label']} has used its picks from any school; "
+                             f"the rest of its spells must be {a} or {b}.")
         if not parts:
             return ""
         return " ".join(parts) + " Remove one from your spell list to pick another."
@@ -1481,6 +1554,221 @@ def spell_learn_block(char: dict, sp: dict) -> str:
     """Why the character can't add this spell to their list now, "" if
     they can (SpellRoom.reason) -- the Add buttons' check."""
     return SpellRoom(char).reason(sp)
+
+
+# ── Level-up spell swaps (PHB): a Bard, Sorcerer, Warlock, Ranger, Eldritch
+# Knight or Arcane Trickster, gaining a level in that class, can replace
+# one of its spells known with another it can learn; a Wizard adds two
+# Wizard spells to its spellbook, free. Both apps' level-ups ask these.
+_SWAPPERS = ("Bard", "Sorcerer", "Warlock", "Ranger", "Fighter (EK)", "Rogue (AT)")
+
+
+def learner_key(char: dict, cls_name: str) -> str:
+    """The key spell_learners() has for this class ("Fighter (EK)" for an
+    Eldritch Knight), or "" if it learns no spells."""
+    for entry in char.get("classes", []):
+        if entry.get("class") != cls_name:
+            continue
+        sub = (entry.get("subclass") or "").lower()
+        if cls_name == "Fighter":
+            return "Fighter (EK)" if "eldritch knight" in sub else ""
+        if cls_name == "Rogue":
+            return "Rogue (AT)" if "arcane trickster" in sub else ""
+        return cls_name
+    return ""
+
+
+def _at_level(char: dict, cls_name: str, level) -> dict:
+    """A copy of the character with cls_name at `level` (as it is if None),
+    worked out again -- slots, granted spells -- without touching `char`."""
+    import copy
+    c = copy.deepcopy(char)
+    if level is not None:
+        for entry in c.get("classes", []):
+            if entry.get("class") == cls_name:
+                entry["level"] = level
+    from dnd_app.core.builder import rebuild
+    from dnd_app.core.calculator import update_all
+    rebuild(c)
+    update_all(c)
+    return c
+
+
+def level_up_swap_out(char: dict, cls_name: str) -> list:
+    """The spells a class can give up as it gains a level: its own leveled
+    picks -- not granted spells, nor another class's. [] for a class that
+    doesn't swap (only a Bard, Sorcerer, Warlock, Ranger, Eldritch Knight or
+    Arcane Trickster does)."""
+    key = learner_key(char, cls_name)
+    if key not in _SWAPPERS:
+        return []
+    return sorted(attribute_known_spells(char).get(key, {}).get("leveled", []),
+                  key=lambda n: ((get_spell_level(n)), n.casefold()))
+
+
+def level_up_swap_in(char: dict, cls_name: str, out_name: str, level=None) -> list:
+    """What the class can learn in out_name's place, at `level` (its level
+    now if None): a spell of its own list, of a level it learns, not known
+    -- an Eldritch Knight's or Arcane Trickster's of its two schools, unless
+    the spell going was one of its picks from any school (in effect: while
+    it has one to spare without it). Spell level, then name."""
+    c = _at_level(char, cls_name, level)
+    for field in ("spells_known", "spells_prepared"):
+        if out_name in c.get(field, []):
+            c[field].remove(out_name)
+    key = learner_key(c, cls_name)
+    if key not in _SWAPPERS:
+        return []
+    room = SpellRoom(c)
+    from dnd_app.data.spells import ALL_SPELLS
+    return [s["name"] for s in sorted(ALL_SPELLS, key=lambda s: (s.get("level", 0), s["name"].casefold()))
+            if s.get("level", 0) > 0 and s["name"] != out_name and room.reason(s, only=key) == ""]
+
+
+def level_up_spellbook(char: dict, level=None) -> list:
+    """The Wizard spells a Wizard can add to its spellbook as it gains a
+    level (two of them, free), at `level` (its Wizard level now if None):
+    on the Wizard list, of a level it can cast, not known."""
+    if not learner_key(char, "Wizard"):
+        return []
+    c = _at_level(char, "Wizard", level)
+    room = SpellRoom(c)
+    from dnd_app.data.spells import ALL_SPELLS
+    return [s["name"] for s in sorted(ALL_SPELLS, key=lambda s: (s.get("level", 0), s["name"].casefold()))
+            if s.get("level", 0) > 0 and room.reason(s, only="Wizard") == ""]
+
+
+# ── Spells to learn: what each class still has room for (both apps'
+# Choices pages show it as a pending card, and the level-up preview what a
+# level adds) ──
+def wizard_book_size(level: int) -> int:
+    """The spells a Wizard's spellbook gets free: six at 1st level and two
+    more each Wizard level after (PHB). It can copy in any number more."""
+    return 4 + 2 * level if level > 0 else 0
+
+
+def spells_to_learn(char: dict) -> list:
+    """What each of the character's classes still has room to learn, in
+    class order: [{key, label, level, cantrips, spells, book}] for each
+    with anything left --
+      cantrips  cantrips it can still learn
+      spells    spells known it can still learn, up to spell level `level`
+      book      a Wizard's free spellbook spells (wizard_book_size) it
+                doesn't have yet
+    A Cleric, Druid, Paladin or Artificer knows its whole list, so only its
+    cantrips count. A spell two classes share counts for whichever has
+    room, as in the Spell Browser (SpellRoom), so the totals agree with it;
+    a spell learned past a limit (Ignore restrictions, a level down) leaves
+    that class nothing."""
+    learners = spell_learners(char)
+    if not learners:
+        return []
+    wiz_level = next((e.get("level", 0) for e in char.get("classes", [])
+                      if e.get("class") == "Wizard"), 0)
+    left = {}
+    for cantrip, items in zip((True, False), _learn_items(char, learners)):
+        caps = _pool_caps(learners, cantrip)
+        if not cantrip and "Wizard" in caps:
+            caps["Wizard"] = wizard_book_size(wiz_level)   # its free spells, for counting
+        load, over = _share_out(items, caps)
+        for k, cap in caps.items():
+            if cap is None:   # a whole-list class: nothing to pick
+                continue
+            # an Eldritch Knight's two pools are one class's room
+            base = (k.split("|")[0], cantrip)
+            left[base] = left.get(base, 0) + cap - len(load[k]) - len(over[k])
+    out = []
+    for k, ln in learners.items():
+        cantrips = max(0, left.get((k, True), 0)) if ln["cantrips"] > 0 else 0
+        spells = book = 0
+        if ln["level"] > 0:
+            n = max(0, left.get((k, False), 0))
+            if k == "Wizard":
+                book = n
+            elif ln["spells"]:
+                spells = n
+        if cantrips or spells or book:
+            out.append({"key": k, "label": ln["label"], "level": ln["level"],
+                        "cantrips": cantrips, "spells": spells, "book": book})
+    return out
+
+
+def _count(n: int, what: str) -> str:
+    return f"{n} {what}{'' if n == 1 else 's'}"
+
+
+def spells_to_learn_lines(char: dict, minus_book: int = 0) -> list:
+    """spells_to_learn() as a line per class, worded the same on both apps:
+    "Bard: 1 cantrip and 2 spells (up to level 2)", "Wizard: 2 spells for
+    your spellbook (up to level 1)". minus_book: free spellbook spells
+    already offered elsewhere (Android's level-up spellbook card), left
+    out here so they aren't asked for twice."""
+    lines = []
+    for row in spells_to_learn(char):
+        parts = []
+        if row["cantrips"]:
+            parts.append(_count(row["cantrips"], "cantrip"))
+        if row["spells"]:
+            parts.append(_count(row["spells"], "spell") + f" (up to level {row['level']})")
+        book = max(0, row["book"] - minus_book)
+        if book:
+            parts.append(_count(book, "spell") + f" for your spellbook (up to level {row['level']})")
+        if parts:
+            lines.append(f"{row['label']}: {' and '.join(parts)}")
+    return lines
+
+
+def level_up_learn_gain(char: dict, cls_name: str, is_new: bool = False) -> list:
+    """What gaining a level in cls_name adds to what that class learns, for
+    the level-up preview (both apps): ["1 more cantrip", "1 more spell (up
+    to level 2)"], a Wizard's "2 spells for your spellbook", a Cleric's
+    "every level 3 Cleric spell"; [] for nothing new. is_new: a class
+    being multiclassed into, at level 1."""
+    import copy
+    from dnd_app.core.builder import rebuild
+    from dnd_app.core.calculator import update_all
+    from dnd_app.core.character import add_class
+    after = copy.deepcopy(char)
+    entry = next((e for e in after.get("classes", []) if e.get("class") == cls_name), None)
+    if entry is None:
+        add_class(after, cls_name, 1)
+        is_new = True
+    else:
+        entry["level"] = min(20, entry.get("level", 0) + 1)
+    rebuild(after)
+    update_all(after)
+    key = learner_key(after, cls_name)
+    now = spell_learners(after).get(key)
+    if not now:
+        return []
+    was = {} if is_new else spell_learners(char).get(key, {})
+
+    def more(what):   # "1 more spell" when it had some already
+        return ("more " if was.get(what) else "") + what[:-1]
+    out = []
+    rose = now["level"] > was.get("level", 0)
+    cantrips = now["cantrips"] - was.get("cantrips", 0)
+    if cantrips > 0:
+        out.append(_count(cantrips, more("cantrips")))
+    up_to = f" (up to level {now['level']})" if rose and now["level"] > 0 else ""
+    if key == "Wizard":
+        if now["level"] > 0:
+            out.append(_count(6 if is_new else 2, "spell") + " for your spellbook" + up_to)
+    elif now["spells"] is None:   # knows its whole list
+        if rose and now["level"] > 0:
+            out.append(f"every level {now['level']} {now['label']} spell")
+    else:
+        spells = now["spells"] - was.get("spells", 0)
+        if spells > 0 and now["level"] > 0:
+            out.append(_count(spells, more("spells")) + up_to)
+        elif rose and now["level"] > 0:
+            out.append(f"spells up to level {now['level']}")
+    return out
+
+
+def get_spell_level(name: str) -> int:
+    from dnd_app.data.spells import get_spell as _gs
+    return (_gs(name) or {}).get("level", 0)
 
 
 def whole_list_class(char: dict, name: str) -> str:
@@ -1521,11 +1809,13 @@ def attribute_known_spells(char: dict):
         return buckets
     learners = spell_learners(char)
     for cantrip, items in zip((True, False), _learn_items(char, learners)):
-        caps = {k: (ln["cantrips"] if cantrip else ln["spells"]) for k, ln in learners.items()}
+        caps = _pool_caps(learners, cantrip)
         load, over = _share_out(items, caps)
-        for k in caps:
-            picks = sorted(load[k] + over[k])
-            buckets[k]["cantrips" if cantrip else "leveled"] = [items[i][0] for i in picks]
+        picks = {}
+        for k in caps:   # an Eldritch Knight's two pools are one class
+            picks.setdefault(k.split("|")[0], []).extend(load[k] + over[k])
+        for k, idx in picks.items():
+            buckets[k]["cantrips" if cantrip else "leveled"] = [items[i][0] for i in sorted(idx)]
     return buckets
 
 

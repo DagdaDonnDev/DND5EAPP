@@ -183,12 +183,14 @@ class InspectButtonDelegate(QStyledItemDelegate):
     BTN_W, BTN_H, ICON = 28, 24, 18
     RARITY_BAR = False   # RarityInspectDelegate: RarityBarDelegate's bar on the left too
 
-    def __init__(self, view, on_inspect, selected_icon="white", column=0, has_details=None):
+    def __init__(self, view, on_inspect, selected_icon=None, column=0, has_details=None):
         from PySide6.QtCore import QPersistentModelIndex
         super().__init__(view)
         self._view = view
         self._on_inspect = on_inspect
-        self._selected_icon = selected_icon
+        # the selected row's text colour on its indigo highlight (theme.py)
+        from dnd_app.ui_desktop.style import theme as _theme
+        self._selected_icon = selected_icon or _theme.on_fill(_theme.INDIGO)
         self._column = column
         self._has_details = has_details or (lambda data: data is not None)
         self._hot = QPersistentModelIndex()       # the button the mouse is over

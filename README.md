@@ -92,7 +92,7 @@ The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Androi
 
 1. Press **Create New Character** on the start screen (or **File → New Character**). The wizard goes race, ability scores (point buy, standard array or your own), background, class, spells and equipment, and shows each option in full as you pick.
 2. When it finishes, the sheet opens and the character is saved.
-3. Anything the wizard didn't ask — a background's extra skill or tool, a racial language, which ability a feat raises, the spells a feat lets you pick — waits on the **Choices** tab. On Android, the Choices tab pulses until you're done.
+3. Anything the wizard didn't ask — a background's extra skill or tool, a racial language, which ability a feat raises, the spells a feat lets you pick — waits on the **Choices** tab, with any spells you still have room to learn. The Choices tab pulses until you're done.
 
 Playing a character from paper? **Import PDF Sheet** on the start screen turns a filled-in official character sheet into a full character (see *Saving, sharing and PDFs*).
 
@@ -147,7 +147,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **Where to cast:** cantrips and bonus-action and reaction spells always have a card on the Combat tab. A leveled spell that takes an action only shows there once you pin it with ☆ (on Android, press and hold → Add to favourites), so a long spell list doesn't bury your Action tab. Anything slower is cast from My Spells: right-click → Cast, or Cast as Ritual.
 - **The Spellcasting table** lists each class, your race and each feat that gives you spells, with its own ability, save DC and attack. A racial spell uses its own row, not your class's.
 - **Free casts** from your race or a feat have their own counter, and Cast spends it before a slot. A spell a feat gives at will (Drow High Magic's Detect Magic) never takes one, and Strixhaven Mascot's Find Familiar is cast as a ritual.
-- **The Spell Browser** shows the spells your classes can learn now: on their lists, at a level each class learns, and with room left. Once a class has learned all its spells or cantrips, the browser says so and stops offering them; remove one (a misclick, say) and that pick is free again. A spell two of your classes share counts for whichever has room, and a Wizard's spellbook never fills up. **Ignore restrictions** shows every spell and lifts the limits, if your DM allows it.
+- **The Spell Browser** shows the spells your classes can learn now: on their lists, at a level each class learns, and with room left. Once a class has learned all its spells or cantrips, the browser says so and stops offering them; remove one (a misclick, say) and that pick is free again. A spell two of your classes share counts for whichever has room, and a Wizard's spellbook never fills up. An Eldritch Knight's spells are abjuration or evocation (an Arcane Trickster's enchantment or illusion), apart from one from any school at 3rd level and one more at 8th, 14th and 20th. **Ignore restrictions** shows every spell and lifts the limits, if your DM allows it.
 - **Spell scrolls** are read from their card on the Combat tab (Actions on Android), like any other action.
 
 </details>
@@ -170,7 +170,9 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 <details>
 <summary><b>Levelling up, and changing your mind</b></summary>
 
-- **Level Up / Multiclass** is on the Choices tab: pick the class to level or add, then make that level's choices. A new class needs the multiclassing scores, for your current classes and the new one (Monk: Dexterity 13 and Wisdom 13; Fighter: Strength 13 or Dexterity 13). One you can't take yet is greyed, with what it needs.
+- **Level Up / Multiclass** is on the Choices tab: pick the class to level or add (it shows what the level adds: hit points, spell slots, spells to learn), then make that level's choices. A new class needs the multiclassing scores, for your current classes and the new one (Monk: Dexterity 13 and Wisdom 13; Fighter: Strength 13 or Dexterity 13). One you can't take yet is greyed, with what it needs.
+- **Swapping a spell:** a Bard, Sorcerer, Warlock, Ranger, Eldritch Knight or Arcane Trickster gaining a level can replace one of its spells with another it can learn at the new level, right in the level-up (on Android, on the Choices tab once the level is gained). A **Wizard** adds two spells to its spellbook there, free, or later from the Spell Browser.
+- **Spells to learn:** while a class has cantrips or spells left to learn (a Wizard's free spellbook spells too), a card on the Choices tab says how many, with a button to the Spell Browser. It counts as a pending choice until they're learned.
 - **Level Down** and **Remove Class** take a level or a whole class away, with everything it brought: invocations, maneuvers, the spells it alone gave. Level back up and you're asked again.
 - Change your race, subrace, background, alignment or a feat later and the same clean-up happens. Anything new to pick waits on Choices (a new alignment asks for Divinely Favored's spell again).
 - Your own edits on the Skills tab stay until you press **↺ Reset Manual Changes**.
@@ -214,7 +216,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 
 Open them with **Ctrl+,** on desktop, or from the menu on Android.
 
-- **Appearance:** 26 themes (16 dark, 10 light), and the text size (Small, Medium or Large).
+- **Appearance:** 26 themes (16 dark, 10 light), every one with readable text (WCAG AA contrast, coloured text included), and the text size (Small, Medium or Large).
 - **Immersion:** Immersive Health drains the colour from the sheet as you lose hit points; Immersive Exhaustion closes a dark frame in from the screen's edges with each level of exhaustion. Each is Full, Reduced or Off. The numbers never change, and Reduced never covers any text.
 - **Character Folder:** where characters are saved.
 - **Saved with each character:** levelling by milestone or XP, the table rules (see *For DMs and house rules*), and **DM Secrets**: purely cosmetic surprises, off by default. Try them and see.

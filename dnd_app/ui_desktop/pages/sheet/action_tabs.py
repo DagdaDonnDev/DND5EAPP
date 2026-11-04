@@ -592,12 +592,15 @@ class ActionTabsMixin:
                     f"QFrame:hover{{background:{qa(src_color,0x1e)};border-color:{qa(src_color,0x77)};}}")
                 cl = QHBoxLayout(card); cl.setContentsMargins(10,7,8,7); cl.setSpacing(8)
 
-                src_badge = _lbl(source[:9], src_color, FS_TINY, bold=True, wrap=False)
+                # the tag's colour where it reads on its tint over the card's
+                ink = readable(src_color, *(tint(tint(u, src_color, 0x1e), src_color, 0x22)
+                                            for u in (SURF, SURF2)))
+                src_badge = _lbl(source[:9], ink, FS_TINY, bold=True, wrap=False)
                 # wide enough for 9-letter tags ("Universal", "Barbarian") in bold
                 src_badge.setFixedWidth(76); src_badge.setAlignment(Qt.AlignCenter)
                 src_badge.setStyleSheet(
                     f"background:{qa(src_color,0x22)};border:1px solid {qa(src_color,0x55)};"
-                    f"border-radius:4px;color:{src_color};font-size:{FS_TINY}px;"
+                    f"border-radius:4px;color:{ink};font-size:{FS_TINY}px;"
                     f"font-weight:700;padding:2px 3px;")
 
                 text_col = QVBoxLayout(); text_col.setSpacing(1)

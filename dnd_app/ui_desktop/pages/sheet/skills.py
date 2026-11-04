@@ -153,22 +153,22 @@ class SkillsMixin:
         # Right: languages + proficiencies
         right = QWidget(); rl2 = QVBoxLayout(right); rl2.setSpacing(10)
 
-        lang_card = _card(TEAL+"55"); lcl = QVBoxLayout(lang_card); lcl.setContentsMargins(14,12,14,14)
+        lang_card = _card(qa(TEAL, 0x55)); lcl = QVBoxLayout(lang_card); lcl.setContentsMargins(14,12,14,14)
         lcl.addWidget(_lbl("LANGUAGES", TEAL2, FS_SMALL, bold=True))
         self._lang_lbl = _lbl("", TEXT2, FS_BODY, wrap=True)
         lcl.addWidget(self._lang_lbl); rl2.addWidget(lang_card)
 
-        armor_card = _card(GOLD+"55"); acl = QVBoxLayout(armor_card); acl.setContentsMargins(14,12,14,14)
+        armor_card = _card(qa(GOLD, 0x55)); acl = QVBoxLayout(armor_card); acl.setContentsMargins(14,12,14,14)
         acl.addWidget(_lbl("ARMOR PROFICIENCIES", GOLD, FS_SMALL, bold=True))
         self._armor_prof_lbl = _lbl("", TEXT2, FS_BODY); acl.addWidget(self._armor_prof_lbl)
         rl2.addWidget(armor_card)
 
-        wpn_card = _card(IND2+"55"); wcl = QVBoxLayout(wpn_card); wcl.setContentsMargins(14,12,14,14)
+        wpn_card = _card(qa(IND2, 0x55)); wcl = QVBoxLayout(wpn_card); wcl.setContentsMargins(14,12,14,14)
         wcl.addWidget(_lbl("WEAPON PROFICIENCIES", IND2, FS_SMALL, bold=True))
         self._wpn_prof_lbl = _lbl("", TEXT2, FS_BODY); wcl.addWidget(self._wpn_prof_lbl)
         rl2.addWidget(wpn_card)
 
-        tool_card = _card(AMBE2+"55"); tcl = QVBoxLayout(tool_card); tcl.setContentsMargins(14,12,14,14)
+        tool_card = _card(qa(AMBE2, 0x55)); tcl = QVBoxLayout(tool_card); tcl.setContentsMargins(14,12,14,14)
         tcl.addWidget(_lbl("TOOL PROFICIENCIES", AMBE2, FS_SMALL, bold=True))
         # Plain QWidget + QGridLayout, not FlowContainer/FlowLayout —
         # avoids FlowContainer.resizeEvent()'s setMinimumHeight()-inside-
@@ -318,17 +318,18 @@ class SkillsMixin:
             if item.widget(): item.widget().setParent(None)
         from dnd_app.data.feature_tooltips import get_tool_tooltip
         def _tool_badge(text, color, tooltip):
-            b = _lbl(text, color, FS_SMALL, bold=True, wrap=False)
+            ink = readable(color, tint(SURF, color, 0x33), tint(SURF2, color, 0x33))   # on its tint
+            b = _lbl(text, ink, FS_SMALL, bold=True, wrap=False)
             b.setStyleSheet(
                 f"background:{qa(color,0x33)};border:1.5px solid {qa(color,0x99)};"
-                f"border-radius:5px;padding:3px 8px;color:{color};"
+                f"border-radius:5px;padding:3px 8px;color:{ink};"
                 f"font-size:{FS_SMALL}px;font-weight:700;"
             )
             b.setToolTip(tooltip)
             return b
         tools = self.char.get("tool_proficiencies", [])
         if not tools:
-            self._tool_prof_lay.addWidget(_tool_badge("None", TEXT3, ""), 0, 0)
+            self._tool_prof_lay.addWidget(_tool_badge("None", TEXT3, ""), 0, 0, Qt.AlignLeft)
             return
         cols = 4
         for i, tool in enumerate(sorted(set(tools))):

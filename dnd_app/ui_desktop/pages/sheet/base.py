@@ -1051,7 +1051,7 @@ class BaseSheetMixin:
         _add_tab(self._build_tab_skills(),       "Skills && Proficiencies", "skills")
         _add_tab(self._build_tab_combat(),       "Combat",                  "combat")
         _add_tab(self._build_tab_gear(),         "Gear && Items",           "gear")
-        _add_tab(self._build_tab_spells(),       "Spells",                  "spells")
+        self._spells_tab_page = _add_tab(self._build_tab_spells(), "Spells", "spells")
         if self._has_infuse_item_access():
             _add_tab(self._build_tab_infusions(), "Infusions",              "infusions")
         self._choices_tab_page = _add_tab(self._build_tab_choices(), "Choices", "choices")
@@ -1086,15 +1086,18 @@ class BaseSheetMixin:
             # outline, and a stronger tint so the card still reads as it
             faint = needs_outline(col, SURF)
             edge = qa(TEXT3, 0xaa) if faint else qa(col, 0xaa)
+            alpha = 0x66 if faint else 0x26
             card.setStyleSheet(
-                f"QFrame#classCard{{background:{qa(col, 0x66 if faint else 0x26)};"
+                f"QFrame#classCard{{background:{qa(col, alpha)};"
                 f"border:1px solid {edge};border-left:4px solid {col};border-radius:8px;}}")
             card.setMinimumHeight(50)
             cl = QVBoxLayout(card)
             cl.setContentsMargins(10 if compact else 16, 4, 10 if compact else 16, 4); cl.setSpacing(0)
-            cl.addWidget(_lbl(title, TEXT, FS_LABEL + 1, bold=True, align=Qt.AlignCenter, wrap=False))
+            # the text colours, kept readable (4.5:1) on the class's tint
+            tinted = tint(SURF, col, alpha)
+            cl.addWidget(_lbl(title, readable(TEXT, tinted), FS_LABEL + 1, bold=True, align=Qt.AlignCenter, wrap=False))
             if sub:
-                cl.addWidget(_lbl(sub, TEXT2, FS_SMALL, align=Qt.AlignCenter, wrap=False))
+                cl.addWidget(_lbl(sub, readable(TEXT2, tinted), FS_SMALL, align=Qt.AlignCenter, wrap=False))
             card.setToolTip(tip)
             return card
 
@@ -1130,6 +1133,9 @@ class BaseSheetMixin:
         while lay.count():
             w = lay.takeAt(0).widget()
             if w is not None:
+                # detached now: left in place until it's deleted, the old
+                # card shows through the new one's tint
+                w.setParent(None)
                 w.deleteLater()
         for cd in cards:
             lay.addWidget(cd)
@@ -1297,6 +1303,7 @@ class BaseSheetMixin:
         if not cls_name:
             return
         swap_old, swap_new = dlg.get_spell_swap()
+        book_adds = dlg.get_spellbook_adds()
         eldritch_versatility = dlg.get_eldritch_versatility()
 
         if is_new:
@@ -1324,6 +1331,13 @@ class BaseSheetMixin:
                 if swap_old in lst:
                     lst.remove(swap_old)
             self._toast(f"Swapped {swap_old} for {swap_new}")
+
+        if book_adds:   # a Wizard's two free spellbook spells
+            known = self.char.setdefault("spells_known", [])
+            added = [n for n in book_adds if n not in known]
+            known.extend(added)
+            if added:
+                self._toast(f"Added to your spellbook: {', '.join(added)}")
 
         if eldritch_versatility:
             kind = eldritch_versatility["kind"]

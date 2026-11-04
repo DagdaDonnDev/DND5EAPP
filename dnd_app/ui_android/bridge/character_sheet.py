@@ -4135,6 +4135,7 @@ class CharacterSheetBridge(QObject):
             self.toastRequested.emit(f"Can't gain a level -- {why}")
             return
         entry = get_class_entry(self.char, class_name)
+        had_entry = entry is not None
         had_sub = entry.get("subclass", "") if entry else ""
         if entry:
             set_class_level(self.char, class_name, entry["level"] + 1)
@@ -4142,14 +4143,154 @@ class CharacterSheetBridge(QObject):
             add_class(self.char, class_name, level=1)
         self.ctrl.refresh()
         entry = get_class_entry(self.char, class_name)
+        # a Bard/Sorcerer/Warlock/Ranger/EK/AT may now swap one of its
+        # spells, a Wizard add two to its spellbook (PHB) -- kept on the
+        # character, tied to this class at this level (see _levelup_picks)
+        from dnd_app.core.spellcasting import level_up_swap_out
+        picks = {"class": class_name, "level": entry["level"],
+                 "swap": bool(had_entry and level_up_swap_out(self.char, class_name)),
+                 "book": 2 if (had_entry and class_name == "Wizard") else 0}
+        if picks["swap"] or picks["book"]:
+            self.char["_levelup_spell_picks"] = picks
+        else:
+            self.char.pop("_levelup_spell_picks", None)
+        # what's new to pick is shown by the pulsing Choices tab and menu
+        # entry, not said here
         msg = f"{class_name} is now level {entry['level']}"
         if entry.get("subclass") and not had_sub and entry["level"] > 1:   # set aside by a level down
             msg += f" -- {entry['subclass']} is back"
-        if self.hasPendingChoices:
-            msg += " -- go to Choices to pick your new options"
         self.toastRequested.emit(msg)
         self._changed()
         self.autosaveRequested.emit()
+
+    # ── Level-up spell picks (PHB): a swap, a Wizard's spellbook spells ──
+    def _levelup_picks(self) -> dict:
+        """What the last level gained still offers, while that class is
+        still at that level: {"class", "level", "swap": bool, "book": n}."""
+        p = self.char.get("_levelup_spell_picks") or {}
+        entry = get_class_entry(self.char, p.get("class", "")) if p else None
+        if not entry or entry.get("level") != p.get("level"):
+            return {}
+        return p
+
+    def _levelup_picks_done(self, what: str):
+        p = dict(self._levelup_picks())
+        if not p:
+            return
+        p[what] = 0 if what == "book" else False
+        if p["swap"] or p["book"]:
+            self.char["_levelup_spell_picks"] = p
+        else:
+            self.char.pop("_levelup_spell_picks", None)
+
+    @Property("QVariant", notify=statsChanged)
+    def levelUpSpellSwap(self):
+        """The swap the class just levelled may make -- one of its spells
+        for another it can learn now (core/spellcasting.py level_up_swap_out/
+        _in, desktop's level-up dialog's too): {} if none, else className,
+        label ("Eldritch Knight"), level, out (the spells it can give up,
+        each {name, level})."""
+        p = self._levelup_picks()
+        if not p.get("swap"):
+            return {}
+        from dnd_app.core.spellcasting import level_up_swap_out, learner_key, spell_learners
+        out = level_up_swap_out(self.char, p["class"])
+        if not out:
+            return {}
+        label = spell_learners(self.char).get(learner_key(self.char, p["class"]), {}).get("label", p["class"])
+        return {"className": p["class"], "label": label, "level": p["level"],
+                "out": [self._spell_pick(n) for n in out]}
+
+    @staticmethod
+    def _spell_pick(name: str) -> dict:
+        from dnd_app.core.spellcasting import get_spell_level
+        return {"name": name, "level": get_spell_level(name)}
+
+    @Slot(str, result=list)
+    def levelUpSwapChoices(self, out_name: str):
+        """What can be learned in out_name's place: [{name, level}]."""
+        p = self._levelup_picks()
+        if not p.get("swap"):
+            return []
+        from dnd_app.core.spellcasting import level_up_swap_in
+        return [self._spell_pick(n) for n in level_up_swap_in(self.char, p["class"], out_name)]
+
+    @Slot(str, str)
+    def applyLevelUpSpellSwap(self, out_name: str, in_name: str):
+        p = self._levelup_picks()
+        if not p.get("swap"):
+            return
+        from dnd_app.core.spellcasting import level_up_swap_out, level_up_swap_in
+        if (out_name not in level_up_swap_out(self.char, p["class"])
+                or in_name not in level_up_swap_in(self.char, p["class"], out_name)):
+            self.toastRequested.emit(f"{in_name} can't take {out_name}'s place")
+            return
+        known = self.char.setdefault("spells_known", [])
+        known.remove(out_name)
+        known.append(in_name)
+        for field in ("spells_prepared", "quick_spells"):
+            if out_name in self.char.get(field, []):
+                self.char[field].remove(out_name)
+        self._levelup_picks_done("swap")
+        self.ctrl.refresh()
+        self.toastRequested.emit(f"Swapped {out_name} for {in_name}")
+        self._changed()
+        self.autosaveRequested.emit()
+
+    @Slot()
+    def skipLevelUpSpellSwap(self):
+        self._levelup_picks_done("swap")
+        self._changed()
+
+    @Property("QVariant", notify=statsChanged)
+    def levelUpSpellbook(self):
+        """A Wizard's free spellbook spells for the level just gained:
+        {} if none, else left (how many more) and choices (spell names)."""
+        p = self._levelup_picks()
+        if not p.get("book"):
+            return {}
+        from dnd_app.core.spellcasting import level_up_spellbook
+        return {"left": p["book"], "choices": [self._spell_pick(n) for n in level_up_spellbook(self.char)]}
+
+    @Slot(str)
+    def addLevelUpSpellbookSpell(self, name: str):
+        p = self._levelup_picks()
+        if not p.get("book"):
+            return
+        from dnd_app.core.spellcasting import level_up_spellbook
+        if name not in level_up_spellbook(self.char):
+            self.toastRequested.emit(f"{name} can't go in your spellbook now")
+            return
+        self.char.setdefault("spells_known", []).append(name)
+        left = p["book"] - 1
+        if left > 0:
+            self.char["_levelup_spell_picks"] = dict(p, book=left)
+        else:
+            self._levelup_picks_done("book")
+        self.ctrl.refresh()
+        self.toastRequested.emit(f"Added {name} to your spellbook"
+                                  + (f" -- {left} more to add" if left else ""))
+        self._changed()
+        self.autosaveRequested.emit()
+
+    @Slot()
+    def skipLevelUpSpellbook(self):
+        self._levelup_picks_done("book")
+        self._changed()
+
+    @Property("QVariantList", notify=statsChanged)
+    def spellsToLearn(self):
+        """The Choices screen's Spells to learn card: a line per class with
+        cantrips or spells it still has room to learn ("Bard: 1 cantrip and
+        2 spells (up to level 2)"), as desktop's Choices tab has them --
+        [] for none. A Wizard's free spellbook spells the level-up
+        spellbook card is offering aren't asked for twice."""
+        from dnd_app.core.spellcasting import spells_to_learn_lines
+        try:
+            return spells_to_learn_lines(self.char, minus_book=self._levelup_picks().get("book", 0))
+        except Exception:
+            import traceback; traceback.print_exc()
+            return []
 
     @Property(bool, notify=statsChanged)
     def hasPendingChoices(self):
@@ -4158,7 +4299,9 @@ class CharacterSheetBridge(QObject):
         # choices -- desktop's own unfinished-filter skips them too.
         # Counting them kept this true forever for those subclasses,
         # which would leave the Choices pulse running with nothing to do.
-        return any(c["type"] != "info" for c in self._raw_choices_needed())
+        # Spells still to learn count, as one, like desktop's.
+        return (any(c["type"] != "info" for c in self._raw_choices_needed())
+                or bool(self.spellsToLearn))
 
     def _raw_choices_needed(self):
         # _get_subclass_choices is the single biggest source here despite

@@ -261,6 +261,17 @@ class SpellsMixin:
                 self._add_spell_row(sp, prepared=(name in prepared_set))
                 shown.add(name)
 
+    def _open_spell_browser(self):
+        """The Spells tab's Spell Browser, where the Choices tab's Spells to
+        learn card sends the player -- it lists only what they can learn."""
+        page = getattr(self, "_spells_tab_page", None)
+        if page is not None:
+            self._tabs.setCurrentWidget(page)
+        tabs = getattr(self, "_sp_right_tabs", None)
+        if tabs is not None:
+            tabs.setCurrentWidget(self._sp_browser_page)
+            self._sp_search.setFocus()
+
     def _build_tab_spells(self):
         tab = QWidget(); root = QHBoxLayout(tab); root.setContentsMargins(16,16,16,16); root.setSpacing(16)
 
@@ -268,7 +279,7 @@ class SpellsMixin:
         left = QWidget(); ll = QVBoxLayout(left); ll.setSpacing(8)
 
         # Per-class DC table
-        dc_card = _card(PURPLE+"55"); dccl = QVBoxLayout(dc_card); dccl.setContentsMargins(14,12,14,14)
+        dc_card = _card(qa(PURPLE, 0x55)); dccl = QVBoxLayout(dc_card); dccl.setContentsMargins(14,12,14,14)
         dccl.addWidget(_lbl("SPELLCASTING", PURP2, FS_SMALL, bold=True))
         self._dc_table_lay = QGridLayout(); self._dc_table_lay.setSpacing(6)
         for col, head in enumerate(("From", "Ability", "Save DC", "Attack")):
@@ -277,7 +288,7 @@ class SpellsMixin:
         dccl.addLayout(self._dc_table_lay); ll.addWidget(dc_card)
 
         # Spell count summary card
-        count_card = _card(PURPLE+"22"); cccl = QVBoxLayout(count_card)
+        count_card = _card(qa(PURPLE, 0x22)); cccl = QVBoxLayout(count_card)
         cccl.setContentsMargins(12,8,12,8); cccl.setSpacing(4)
         cccl.addWidget(_lbl("SPELLS KNOWN / PREPARED", PURP2, FS_SMALL, bold=True))
         self._spell_count_lbl = _lbl("", TEXT2, FS_SMALL, wrap=True)
@@ -298,7 +309,7 @@ class SpellsMixin:
         # slots are the same level, recharge on a SHORT rest not long rest),
         # so it gets its own purple-accented card rather than blending into
         # the blue "SPELL SLOTS" list above.
-        self._pact_card = _card(PURPLE+"55")
+        self._pact_card = _card(qa(PURPLE, 0x55))
         pccl = QVBoxLayout(self._pact_card); pccl.setContentsMargins(14,12,14,14)
         pccl.addWidget(_lbl("PACT MAGIC  (recharges on a short rest)", PURP2, FS_SMALL, bold=True))
         self._pact_bar = SlotBar(-1, color=PURPLE); self._pact_bar.changed.connect(self._on_slot_change)
@@ -310,7 +321,7 @@ class SpellsMixin:
         # to apply to their NEXT spell cast and spend the right Sorcery
         # Points, rather than only ever seeing Metamagic listed passively
         # in the Features tab with no way to actually use it.
-        self._metamagic_card = _card(PURPLE+"55")
+        self._metamagic_card = _card(qa(PURPLE, 0x55))
         mmcl = QVBoxLayout(self._metamagic_card); mmcl.setContentsMargins(14,12,14,14)
         mmcl.addWidget(_lbl("METAMAGIC — apply to next cast", PURP2, FS_SMALL, bold=True))
         self._metamagic_cbs = {}
@@ -477,7 +488,7 @@ class SpellsMixin:
             "on their lists, at a level they learn, with spells or cantrips known left to learn.\n"
             "On: every spell is listed and can be added, and prepared, with no limits.")
         self._sp_homebrew.setStyleSheet(
-            f"QCheckBox{{color:{TEXT2};font-size:{FS_SMALL}px;font-weight:700;padding:2px;}}"
+            f"QCheckBox{{color:{AMBE2};font-size:{FS_SMALL}px;font-weight:700;padding:2px;}}"
             f"QCheckBox::indicator{{width:16px;height:16px;border:2px solid {AMBER};"
             f"border-radius:4px;background:{SURF2};}}"
             f"QCheckBox::indicator:checked{{background:{AMBER};}}"
@@ -495,7 +506,7 @@ class SpellsMixin:
         self._sp_limit_note.setVisible(False)
         brcl.addWidget(self._sp_limit_note)
         self._sp_browser = QListWidget()  # no height limit — tab gives full space
-        self._sp_browser.setStyleSheet(f"QListWidget{{background:{BG};border:1px solid {BORDER};}}QListWidget::item{{padding:6px 10px;border-bottom:1px solid {BORDER};font-size:{FS_BODY}px;}}QListWidget::item:selected{{background:{INDIGO};color:white;}}")
+        self._sp_browser.setStyleSheet(f"QListWidget{{background:{BG};border:1px solid {BORDER};}}QListWidget::item{{padding:6px 10px;border-bottom:1px solid {BORDER};font-size:{FS_BODY}px;}}QListWidget::item:selected{{background:{INDIGO};color:{on_fill(INDIGO)};}}")
         # a magnifying glass on every row: the spell's details
         self._sp_browser.setItemDelegate(InspectButtonDelegate(self._sp_browser, self._show_spell_details))
         self._populate_spell_browser(); brcl.addWidget(self._sp_browser)
@@ -505,6 +516,7 @@ class SpellsMixin:
         self._sp_browser.setContextMenuPolicy(Qt.CustomContextMenu)
         self._sp_browser.customContextMenuRequested.connect(self._on_spell_browser_ctx)
         right.addTab(browser_w, "Spell Browser")
+        self._sp_right_tabs, self._sp_browser_page = right, browser_w
         _icons.set_tab_icon(right, browser_w, "search", 15)
 
         self._sp_search.textChanged.connect(self._filter_spell_browser)
@@ -744,7 +756,11 @@ class SpellsMixin:
 
     def _refresh_spell_count_labels(self):
         """Show how many spells and cantrips each class can currently
-        know/prepare (see _spell_limits)."""
+        know/prepare (see _spell_limits) -- and keep the Choices tab's
+        Spells to learn card in step."""
+        panel = getattr(self, "_levelup_panel", None)
+        if panel is not None:
+            panel.refresh_spells_to_learn()
         if not hasattr(self, "_spell_count_lbl"): return
         lines = []
         for r in spell_limits(self.char):

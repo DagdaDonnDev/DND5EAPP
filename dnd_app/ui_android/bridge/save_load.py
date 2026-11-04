@@ -420,7 +420,7 @@ class SaveLoadBridge(QObject):
         self.characterSaved.emit()
         self.savedListChanged.emit()
         # Auto-saves stay silent: they follow a level-up/choice whose own
-        # toast ("...go to Choices") shouldn't be replaced, and the Save
+        # toast ("Bard is now level 5") shouldn't be replaced, and the Save
         # screen's "All changes saved" status already shows it happened.
         if not quiet:
             self.toastRequested.emit(f"Saved to {os.path.basename(filepath)}")

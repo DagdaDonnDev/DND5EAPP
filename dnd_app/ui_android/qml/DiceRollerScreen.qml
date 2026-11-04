@@ -39,7 +39,7 @@ Flickable {
                 Label {
                     visible: drBridge.isNat20 || drBridge.isNat1
                     text: drBridge.isNat20 ? "NATURAL 20" : "NATURAL 1"
-                    color: "white"
+                    color: Theme.onFill(drBridge.isNat20 ? Theme.teal : Theme.crimson)
                     font.pixelSize: Theme.fsSmall
                     font.bold: true
                     horizontalAlignment: Text.AlignHCenter

@@ -56,7 +56,7 @@ Item {
         font.pixelSize: Theme.fsBody
         color: control.color
         selectionColor: Theme.indigo
-        selectedTextColor: "white"
+        selectedTextColor: Theme.onFill(Theme.indigo)
         onEditingFinished: control.editingFinished()
     }
 
