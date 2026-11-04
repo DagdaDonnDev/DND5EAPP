@@ -12,9 +12,9 @@ from ...shared import *
 # aliases to h/card/hline, which ARE plain names the wildcard import above
 # already brought in).
 from ...shared import _btn, _pill
-from ...widgets import FlowLayout, FlowContainer
+from ...widgets import FlowLayout, FlowContainer, FillTabBar
 from dnd_app.ui_desktop.dialogs.arcane_recovery import ArcaneRecoveryDialog
-from dnd_app.ui_desktop.dialogs.rest import RestOptionsDialog, RestPreviewDialog
+from dnd_app.ui_desktop.dialogs.rest import RestDialog
 from dnd_app.core.choices import _all_relevant_choice_ids, _prune_stale_choices
 from dnd_app.ui_desktop.dialogs.levelup_multiclass import LevelUpMulticlassDialog
 from dnd_app.core.character import (
@@ -361,34 +361,43 @@ class BaseSheetMixin:
             "was_concentrating": was_concentrating, "fading": fading,
         }
 
+    def _rest(self, rest_type: str = "short"):
+        """The Rest button (and Tools → Short Rest / Long Rest): one dialog
+        to pick a short or long rest, see what it will restore, choose the
+        hit dice to spend, and tick what to change on it -- then the rest."""
+        from dnd_app.core.character import long_rest_block_reason
+        dlg = RestDialog(self.char, {"short": self._preview_short_rest(),
+                                     "long": self._preview_long_rest()},
+                         rest_type, long_rest_block_reason(self.char) or "", self)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        if dlg.rest_type == "long":
+            self._do_long_rest(dlg.get_selected())
+        else:
+            self._do_short_rest(dlg.get_selected(), dlg.dice_to_spend())
+
     def _short_rest(self):
-        """Short rest: preview what it'll restore/reset, then optionally
-        spend hit dice to heal, reset SR resources."""
+        self._rest("short")
+
+    def _long_rest(self):
+        self._rest("long")
+
+    def _do_short_rest(self, selected_options: list, dice: int = 0):
+        """A short rest, as chosen in the Rest dialog: spend `dice` hit dice
+        to heal (the biggest first), reset SR resources, and apply what
+        was ticked."""
         from dnd_app.core.calculator import update_all
         import random
         char = self.char
 
-        preview = self._preview_short_rest()
-        options = rest_options(char, "short")
-        dlg = RestPreviewDialog("short", preview, options, self)
-        if dlg.exec() != QDialog.Accepted:
-            return
-        selected_options = dlg.get_selected()
-
-        # Offer hit-dice spending if any remain and HP is below max
         hd_model = char.get("hit_dice", {})
         total_remaining = sum(d.get("remaining", 0) for d in hd_model.values())
         cur, mx = char.get("current_hp", 0), char.get("max_hp", 0)
         healed = 0; dice_spent = 0
         if total_remaining > 0 and cur < mx:
-            n, ok = QInputDialog.getInt(
-                self, "Short Rest — Spend Hit Dice",
-                f"HP: {cur}/{mx}   |   Hit dice remaining: {total_remaining}\n"
-                f"How many hit dice do you want to spend?\n"
-                f"(each heals 1 die + {ability_mod(char,'CON'):+d} CON)",
-                0, 0, total_remaining)
-            if ok and n > 0:
-                con = ability_mod(char, "CON")
+            n = max(0, min(dice, total_remaining))
+            if n > 0:
+                from dnd_app.core.character import hit_die_heal
                 rolls = []
                 for _ in range(n):
                     # Spend from the largest die first
@@ -396,9 +405,10 @@ class BaseSheetMixin:
                         d = hd_model[die_key]
                         if d.get("remaining", 0) > 0:
                             sides = int(die_key[1:])
-                            r = random.randint(1, sides)
+                            # (Durable, a Periapt of Wound Closure... as the Spend button)
+                            r, heal = hit_die_heal(char, sides, random.randint(1, sides))
                             rolls.append(f"{die_key}:{r}")
-                            healed += max(0, r + con)
+                            healed += heal
                             d["remaining"] -= 1
                             dice_spent += 1
                             break
@@ -439,24 +449,17 @@ class BaseSheetMixin:
         if expired:
             self._toast(f"Faded: {', '.join(expired)}")
 
-    def _long_rest(self):
-        """Long rest: preview what it'll restore/reset, then full HP,
-        all resources reset, reduce exhaustion by 1."""
+    def _do_long_rest(self, selected_options: list):
+        """A long rest, as chosen in the Rest dialog: full HP, all
+        resources reset, a level of exhaustion off, and what was ticked."""
         from dnd_app.core.calculator import update_all
         from dnd_app.core.builder import rebuild
         from dnd_app.core.character import long_rest_block_reason
         char = self.char
-        why = long_rest_block_reason(char)   # e.g. at 0 HP
+        why = long_rest_block_reason(char)   # e.g. at 0 HP (the dialog won't offer it)
         if why:
             QMessageBox.information(self, "Long Rest", f"Can't take a long rest — {why}.")
             return
-
-        preview = self._preview_long_rest()
-        options = rest_options(char, "long")
-        dlg = RestPreviewDialog("long", preview, options, self)
-        if dlg.exec() != QDialog.Accepted:
-            return
-        selected_options = dlg.get_selected()
 
         # Restore HP
         char["current_hp"] = char.get("max_hp", 0)
@@ -547,7 +550,7 @@ class BaseSheetMixin:
 
     def _apply_rest_options(self, selected: list):
         """Applies whichever rest-changeable options the player checked
-        in RestPreviewDialog's "ALSO RECONFIGURE?" section (built from
+        in the Rest dialog's "ALSO ON THIS REST" section (built from
         core/character.py's rest_options()). Folded into the single
         preview-and-confirm dialog shown BEFORE the rest applies, so
         confirming a rest is only ever one dialog, not two back to back.
@@ -595,22 +598,27 @@ class BaseSheetMixin:
                 self._toast(f"Arcane Armor model changed to {choice.split(' – ')[0]}")
                 changed_anything = True
 
-        if "arcane_recovery" in selected:
+        # Arcane Recovery (Wizard) and Natural Recovery (Circle of the Land):
+        # the same choice -- which expended slots, up to half the class's
+        # level, none above 5th
+        for kind, cls, title, res_key in (("arcane_recovery", "Wizard", "Arcane Recovery", "arcane_recovery"),
+                                          ("natural_recovery", "Druid", "Natural Recovery", "use_natural_recovery")):
+            if kind not in selected:
+                continue
             from math import ceil
             from dnd_app.core.calculator import class_levels
             from dnd_app.core.character import restore_spell_slot
-            wiz_lvl = class_levels(char).get("Wizard", 0)
-            budget = ceil(wiz_lvl / 2)
-            dlg2 = ArcaneRecoveryDialog(char, budget, self)
+            budget = ceil(class_levels(char).get(cls, 0) / 2)
+            dlg2 = ArcaneRecoveryDialog(char, budget, self, title=title)
             if dlg2.exec() == QDialog.Accepted:
                 to_recover = dlg2.get_recovered_levels()  # list of slot-level ints
                 for lvl in to_recover:
                     restore_spell_slot(char, lvl)
                 if to_recover:
-                    res = next((r for r in char.get("resources", []) if r.get("key") == "arcane_recovery"), None)
+                    res = next((r for r in char.get("resources", []) if r.get("key") == res_key), None)
                     if res:
                         res["current"] = 0
-                    self._toast(f"Arcane Recovery: recovered {len(to_recover)} slot(s) "
+                    self._toast(f"{title}: recovered {len(to_recover)} slot(s) "
                                 f"(levels {', '.join(map(str, sorted(to_recover)))})")
                     changed_anything = True
 
@@ -887,20 +895,36 @@ class BaseSheetMixin:
         hl = QHBoxLayout(header); hl.setContentsMargins(16,0,16,0); hl.setSpacing(10)
 
         # ← Menu
-        back_btn = _btn("← Menu", variant="neutral", width=90, radius=7, font_size=FS_SMALL)
+        # Everything in the header is the class cards' height (50px)
+        back_btn = _btn("← Menu", variant="neutral", width=90, height=50, radius=8,
+                        font_size=FS_SMALL, min_height0=True)
         back_btn.clicked.connect(self._on_back_clicked)
-        hl.addWidget(back_btn, 0, Qt.AlignVCenter)
+        # (no alignment flag: with one, the layout shrinks a button to its
+        # text's height; without, it's its fixed 50px, centred all the same)
+        hl.addWidget(back_btn)
 
-        # Character name
+        # Character name -- it goes on the window's menu bar, at the right
+        # (main_window.py puts it there), still editable: a rename
         self._name_edit = QLineEdit(self.char.get("name",""))
-        self._name_edit.setStyleSheet(f"QLineEdit{{font-size:{FS_HEAD}px;font-weight:700;color:{GOLD2};border:none;background:transparent;padding:0;}}")
-        self._name_edit.setMinimumWidth(180)
-        self._name_edit.setMaximumWidth(320)
+        self._name_edit.setAccessibleName("Character name")
+        self._name_edit.setToolTip("Your character's name: click to rename")
+        self._name_color = GOLD2
+        self._style_name_edit()
+        # as wide as the name
+        self._name_edit.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self._name_edit.textChanged.connect(self._fit_name_edit)
+        self._fit_name_edit()
         self._name_edit.textChanged.connect(self._on_name_changed)
         # A rename that clashes with another saved character is refused
         self._accepted_name = self.char.get("name", "")
         self._name_edit.editingFinished.connect(self._check_name_unique)
-        hl.addWidget(self._name_edit)
+        # what goes on the menu bar: a box around the field, so the bar
+        # makes room for the whole name (it sizes a corner by its widget's
+        # size hint, and a line edit's ignores its fixed width)
+        self._name_box = QWidget(self); self._name_box.setStyleSheet("background:transparent;border:none;")
+        _nbl = QHBoxLayout(self._name_box); _nbl.setContentsMargins(0, 0, 8, 0); _nbl.setSpacing(0)
+        _nbl.addWidget(self._name_edit, 0, Qt.AlignVCenter)
+        self._name_box.hide()   # (until the main window puts it on the menu bar)
 
         # (Race/Subrace/Ancestry/Background edit buttons live in the Choices tab)
 
@@ -922,33 +946,61 @@ class BaseSheetMixin:
 
         hl.addStretch()
 
+        # Proficiency bonus, XP and Rest are wanted on every tab, so
+        # they're up here. (AC, Initiative and Speed are combat things: the
+        # Combat tab has them: _build_ac_box, _build_init_speed_card.)
+        self._sb_prof = self._make_stat_pill("Prof Bonus", "—", IND2)
+        self._sb_prof.setFixedHeight(50)
+        hl.addWidget(self._sb_prof, 0, Qt.AlignVCenter)
+        # XP pill — only shown when Settings → Advancement is set to
+        # "Experience Points"; hidden (not removed) for milestone
+        # characters so toggling the setting doesn't need a UI rebuild.
+        # Clickable to jump straight to Level Up once eligible (see
+        # _refresh_xp_tracker, which wires/unwires the click handler).
+        self._sb_xp = self._make_xp_pill()
+        self._sb_xp.setFixedHeight(50)
+        hl.addWidget(self._sb_xp, 0, Qt.AlignVCenter)
+        # Rest: one button -- the dialog asks short or long, the hit dice
+        # to spend, and what to change on it
+        rest_btn = QPushButton("Rest")
+        _icons.set_button_icon(rest_btn, "long_rest", 18)
+        rest_btn.setToolTip("Take a short or long rest (Ctrl+R / Ctrl+Shift+R)")
+        rest_btn.setAccessibleName("Rest: a short or long rest")
+        rest_btn.setStyleSheet(_btn("", INDIGO, variant="cta", radius=8, border_alpha=0x88,
+                                    text_color=TEXT, hover_text="white", min_height0=True,
+                                    font_size=FS_SMALL, padding="0px 18px").styleSheet())
+        rest_btn.setFixedHeight(50)
+        rest_btn.clicked.connect(lambda: self._rest())
+        hl.addWidget(rest_btn)
+
         # Manual refresh — fail-safe in case a future edit reintroduces a
         # stale-tab bug. Forces every tab to repaint from current char data.
         refresh_btn = QPushButton()
-        _icons.set_button_icon(refresh_btn, "refresh", 17)
+        _icons.set_button_icon(refresh_btn, "refresh", 20)
         refresh_btn.setToolTip("Refresh — repaint every tab from current character data")
         refresh_btn.setAccessibleName("Refresh all tabs")
-        refresh_btn.setFixedSize(32,32)
         refresh_btn.setStyleSheet(
-            f"QPushButton{{background:{SURF2};border:1px solid {BORDER};border-radius:7px;"
-            f"color:{TEXT2};font-size:15px;padding:0;}}"
+            f"QPushButton{{background:{SURF2};border:1px solid {BORDER};border-radius:8px;"
+            f"color:{TEXT2};font-size:15px;padding:0;min-height:0px;}}"
             f"QPushButton:hover{{background:{qa(TEAL,0x33)};border-color:{TEAL};color:{TEAL2};}}")
         refresh_btn.clicked.connect(self._force_full_refresh)
+        refresh_btn.setFixedSize(50, 50)
         hl.addWidget(refresh_btn)
 
         # Inspiration toggle
         self._insp_btn = QPushButton()
-        _icons.set_button_icon(self._insp_btn, "inspiration", 19)
-        self._insp_btn.setToolTip("Inspiration")
+        _icons.set_button_icon(self._insp_btn, "inspiration", 22)
+        self._insp_btn.setToolTip("Inspiration — your DM gives it; spend it for advantage on one roll")
+        self._insp_btn.setAccessibleName("Inspiration")
         self._insp_btn.setCheckable(True)
         self._insp_btn.setChecked(self.char.get("inspiration", False))
         self._insp_btn.toggled.connect(self._on_inspiration_toggled)
-        self._insp_btn.setFixedSize(32,32)
         self._insp_btn.setStyleSheet(
-            f"QPushButton{{background:{SURF2};border:1px solid {BORDER};border-radius:7px;"
-            f"color:{TEXT3};font-size:14px;padding:0;}}"
+            f"QPushButton{{background:{SURF2};border:1px solid {BORDER};border-radius:8px;"
+            f"color:{TEXT3};font-size:14px;padding:0;min-height:0px;}}"
             f"QPushButton:checked{{background:{qa(GOLD,0x44)};border-color:{GOLD};color:{GOLD2};}}"
             f"QPushButton:hover{{border-color:{GOLD};color:{GOLD2};}}")
+        self._insp_btn.setFixedSize(50, 50)
         hl.addWidget(self._insp_btn)
 
         # Save/Load/Export live only in the File menu; no duplicate icon
@@ -956,65 +1008,9 @@ class BaseSheetMixin:
 
         root.addWidget(header)
 
-        # ── Status bar (AC, HP, Prof, Speed always visible) ───────────────────
-        stat_bar = QFrame(); stat_bar.setStyleSheet(f"QFrame{{background:{SURF2};border-bottom:1px solid {BORDER};}}")
-        stat_bar.setFixedHeight(64)
-        sl = QHBoxLayout(stat_bar); sl.setContentsMargins(20,0,20,0); sl.setSpacing(24)
-
-        self._sb_ac   = self._make_stat_pill("AC", "—", GOLD2)
-        self._sb_hp   = self._make_stat_pill("HP", "—", GREEN2)
-        self._sb_init = self._make_stat_pill("Initiative", "—", TEAL2)
-        # advantage / disadvantage die beside the initiative number
-        _init_lay = self._sb_init.layout()
-        _init_val = self._sb_init._val
-        _idx = _init_lay.indexOf(_init_val)
-        _init_lay.removeWidget(_init_val)
-        _init_row = QWidget(); _init_row.setStyleSheet("background:transparent;border:none;")
-        _irl = QHBoxLayout(_init_row); _irl.setContentsMargins(0, 0, 0, 0); _irl.setSpacing(4)
-        self._sb_init_adv = QLabel(); self._sb_init_adv.setStyleSheet("background:transparent;border:none;")
-        self._sb_init_adv.hide()
-        _irl.addStretch(); _irl.addWidget(_init_val); _irl.addWidget(self._sb_init_adv); _irl.addStretch()
-        _init_lay.insertWidget(_idx, _init_row)
-        self._sb_prof = self._make_stat_pill("Prof Bonus", "—", IND2)
-        self._sb_spd  = self._make_stat_pill("Speed", "—", TEXT)
-        for pill in [self._sb_ac, self._sb_hp, self._sb_init, self._sb_prof, self._sb_spd]:
-            sl.addWidget(pill)
-        # XP pill — only shown when Settings → Advancement is set to
-        # "Experience Points"; hidden (not removed) for milestone
-        # characters so toggling the setting doesn't need a UI rebuild.
-        # Clickable to jump straight to Level Up once eligible (see
-        # _refresh_xp_tracker, which wires/unwires the click handler).
-        self._sb_xp = self._make_xp_pill()
-        sl.addWidget(self._sb_xp)
-        # Right-click AC / Speed for a breakdown of what contributes to them
-        self._sb_ac.contextMenuEvent = lambda e: self._show_breakdown_popup(
-            "Armor Class", get_ac_breakdown(self.char), str(get_ac(self.char)), e.globalPos())
-        self._sb_spd.contextMenuEvent = lambda e: self._show_breakdown_popup(
-            "Speed",
-            [(lbl, val) for lbl, val in get_speed_breakdown(self.char)],
-            f"{get_effective_speed(self.char)['walk']} ft", e.globalPos())
-        # Initiative pill: click to roll
-        self._sb_init.setToolTip("Click to roll initiative (d20 + Initiative bonus)")
-        self._sb_init.setCursor(Qt.PointingHandCursor)
-        self._sb_init.mousePressEvent = lambda e: self._roll_initiative()
-        sl.addStretch()
-
-        # Rest buttons in stat bar
-        sr_btn = QPushButton("Short Rest")
-        lr_btn = QPushButton("Long Rest")
-        _icons.set_button_icon(sr_btn, "short_rest", 16)
-        _icons.set_button_icon(lr_btn, "long_rest", 16)
-        for btn, fn, c in [(sr_btn, self._short_rest, TEAL),(lr_btn, self._long_rest, INDIGO)]:
-            btn.setFixedHeight(40)
-            btn.setStyleSheet(_btn("", c, variant="cta", radius=8, border_alpha=0x88,
-                                    text_color=TEXT, hover_text="white",
-                                    font_size=FS_SMALL, padding="6px 14px").styleSheet())
-            btn.clicked.connect(fn); sl.addWidget(btn)
-
-        root.addWidget(stat_bar)
-
         # ── Tabs ──────────────────────────────────────────────────────────────
         self._tabs = QTabWidget()
+        self._tabs.setTabBar(FillTabBar())   # the tabs span the whole width
         # QTabWidget paints its own custom background by default and
         # ignores a plain QSS "background" rule on it unless this
         # attribute is set -- true for compound/complex widgets
@@ -1157,7 +1153,8 @@ class BaseSheetMixin:
             if w is self._class_summary:
                 continue
             if w is not None and not w.isHidden():
-                room -= w.sizeHint().width() + hl.spacing()
+                # (the item's hint: it keeps to a fixed width, the name's)
+                room -= item.sizeHint().width() + hl.spacing()
         return max(0, room - 24)   # a little air either side
 
     def _fit_tab_names(self):
@@ -1183,6 +1180,7 @@ class BaseSheetMixin:
             self._fit_tab_names()
         elif obj is getattr(self, "_sheet_header", None) and event.type() == QEvent.Resize:
             self._refresh_class_cards()
+
         return super().eventFilter(obj, event)
 
     def _show_breakdown_popup(self, title: str, parts, total_str: str, global_pos):
@@ -1219,6 +1217,68 @@ class BaseSheetMixin:
     def _make_stat_pill(self, label, value, color):
         return _pill(label, value, color)
 
+    def _stat_box(self, color, value="—"):
+        """A read-only number in the HP boxes' look -- the card's raised
+        surface, a coloured edge -- for AC, Initiative and Speed. Returns
+        the frame, with ._val (the number's label) and ._row (its layout,
+        for anything beside the number)."""
+        box = QFrame(); box.setObjectName("statBox")
+        box.setStyleSheet(f"QFrame#statBox{{background:{SURF2};border:2px solid {qa(color,0x55)};"
+                          f"border-radius:8px;}}")
+        box.setFixedHeight(36)   # (the HP boxes' height)
+        row = QHBoxLayout(box); row.setContentsMargins(4, 0, 4, 0); row.setSpacing(4)
+        val = _lbl(value, color, FS_TITLE, bold=True, align=Qt.AlignCenter, wrap=False)
+        row.addStretch(1); row.addWidget(val); row.addStretch(1)
+        box._val, box._row = val, row
+        return box
+
+    def _build_ac_box(self):
+        """AC, for the Combat tab's HP card (right-click: what makes it up)."""
+        self._sb_ac = self._stat_box(GOLD2)
+        self._sb_ac.contextMenuEvent = lambda e: self._show_breakdown_popup(
+            "Armor Class", get_ac_breakdown(self.char), str(get_ac(self.char)), e.globalPos())
+        return self._sb_ac
+
+    def _build_init_speed_card(self):
+        """Initiative and Speed, a card of their own on the Combat tab, in
+        one row: click Initiative to roll it; right-click Speed for what
+        makes it up. Any other speed (fly 60, swim 30...) shows under the
+        Speed caption."""
+        card = _card(); card.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        row = QHBoxLayout(card); row.setContentsMargins(12, 8, 12, 8); row.setSpacing(8)
+
+        def _cap(text):
+            col = QVBoxLayout(); col.setSpacing(0); col.setContentsMargins(0, 0, 0, 0)
+            lbl = _lbl(text, TEXT2, FS_TINY, bold=True, wrap=False)
+            col.addStretch(1); col.addWidget(lbl)
+            return col, lbl
+        icap, _ = _cap("Initiative")
+        icap.addStretch(1)   # (centred on its box)
+        row.addLayout(icap)
+        self._sb_init = self._stat_box(TEAL2)
+        # advantage / disadvantage die beside the initiative number
+        self._sb_init_adv = QLabel(); self._sb_init_adv.setStyleSheet("background:transparent;border:none;")
+        self._sb_init_adv.hide()
+        self._sb_init._row.insertWidget(2, self._sb_init_adv)
+        self._sb_init.setToolTip("Click to roll initiative (d20 + Initiative bonus)")
+        self._sb_init.setCursor(Qt.PointingHandCursor)
+        self._sb_init.mousePressEvent = lambda e: self._roll_initiative()
+        row.addWidget(self._sb_init, 1)
+        row.addSpacing(4)
+        scap, _ = _cap("Speed")
+        self._sb_spd_more = _lbl("", TEXT3, FS_TINY, wrap=False)
+        self._sb_spd_more.hide()
+        scap.addWidget(self._sb_spd_more)
+        scap.addStretch(1)
+        row.addLayout(scap)
+        self._sb_spd = self._stat_box(TEXT)
+        self._sb_spd.contextMenuEvent = lambda e: self._show_breakdown_popup(
+            "Speed",
+            [(lbl, val) for lbl, val in get_speed_breakdown(self.char)],
+            f"{get_effective_speed(self.char)['walk']} ft", e.globalPos())
+        row.addWidget(self._sb_spd, 1)
+        return card
+
     def _make_xp_pill(self):
         """Wider gold pill for the header: "XP" title, a "2,450 / 6,500"
         value line, and a slim progress bar underneath tracking distance
@@ -1251,6 +1311,28 @@ class BaseSheetMixin:
         # ...and the exhaustion frame (redrawn once the resize settles)
         if getattr(self, "_immersion", None) is not None:
             self._immersion.resized()
+
+    def _style_name_edit(self):
+        """The name's look on the menu bar: bold, in a colour that reads on
+        the health bar under it (main_window.py picks it: set_name_color)."""
+        self._name_edit.setStyleSheet(
+            f"QLineEdit{{font-size:{FS_LABEL}px;font-weight:700;color:{self._name_color};"
+            f"border:none;background:transparent;padding:0px 6px;}}")
+
+    def set_name_color(self, color: str):
+        if color != getattr(self, "_name_color", None):
+            self._name_color = color
+            self._style_name_edit()
+
+    def _fit_name_edit(self, *_):
+        """The name field is as wide as the name (within reason): it sits
+        at the right of the menu bar, so the bar makes room for all of it."""
+        ed = self._name_edit
+        ed.ensurePolished()   # the stylesheet's font
+        text = ed.text() or ed.placeholderText() or "Unnamed"
+        width = max(80, min(360, ed.fontMetrics().horizontalAdvance(text) + 20))
+        if width != ed.width() or ed.minimumWidth() != width:
+            ed.setFixedWidth(width)
 
     def _on_name_changed(self, text: str):
         self.char["name"] = text.strip() or "Unnamed"
@@ -1642,6 +1724,7 @@ class BaseSheetMixin:
         self._name_edit.blockSignals(True)
         self._name_edit.setText(char.get("name", ""))
         self._name_edit.blockSignals(False)
+        self._fit_name_edit()
         self._populate_subclass_combo()
         if total_level(char) == 0:
             QMessageBox.warning(
@@ -1675,8 +1758,6 @@ class BaseSheetMixin:
     def _refresh_stat_bar(self):
         update_all(self.char)
         ac = get_ac(self.char)
-        cur_hp = self.char.get("current_hp", self.char.get("max_hp",0))
-        max_hp = self.char.get("max_hp",0)
         pb = get_prof_bonus(self.char)
         ini = get_initiative(self.char)
         from dnd_app.core.calculator import get_effective_speed
@@ -1686,7 +1767,6 @@ class BaseSheetMixin:
         swim = _spds["swim"]
         clmb = _spds["climb"]
         self._sb_ac._val.setText(str(ac))
-        self._sb_hp._val.setText(f"{cur_hp}/{max_hp}")
         init_adv = get_initiative_advantage_status(self.char)
         # QLabel auto-detects HTML in setText() -- rich text so "Adv"/
         # "Disadv" can be colored independently of the plain-text
@@ -1718,10 +1798,7 @@ class BaseSheetMixin:
         from dnd_app.core.calculator import get_ac_breakdown
         ac_parts = get_ac_breakdown(self.char)
         ac_lines = "\n".join(f"  {label}: {'+' if val>=0 else ''}{val}" for label, val in ac_parts)
-        self._sb_ac.setToolTip(f"AC {ac} breakdown:\n{ac_lines}")
-        if hasattr(self, "_armor_card_ac_lbl"):
-            self._armor_card_ac_lbl.setText(f"AC {ac}")
-            self._armor_card_ac_lbl.setToolTip(f"AC {ac} breakdown:\n{ac_lines}")
+        self._sb_ac.setToolTip(f"AC {ac} breakdown:\n{ac_lines}\n\nRight-click for the breakdown")
 
         # ── Speed tooltip: note any magic source ───────────────────────────────
         spd_sources = self.char.get("_speed_bonus_sources", [])
@@ -1740,11 +1817,11 @@ class BaseSheetMixin:
                 btn.setVisible(self.char.get("race","") == "Dragonborn")
         self._refresh_identity_buttons()
         self._sb_prof._val.setText(sign(pb))
-        _spd_parts = [f"{spd} ft"]
-        if fly:  _spd_parts.append(f"fly {fly}")
-        if swim: _spd_parts.append(f"swim {swim}")
-        if clmb: _spd_parts.append(f"climb {clmb}")
-        self._sb_spd._val.setText(" / ".join(_spd_parts))
+        # the walking speed, with any other (fly 60, swim 30...) under it
+        _more = [f"{k} {v}" for k, v in (("fly", fly), ("swim", swim), ("climb", clmb)) if v]
+        self._sb_spd._val.setText(f"{spd} ft")
+        self._sb_spd_more.setText(" · ".join(_more))
+        self._sb_spd_more.setVisible(bool(_more))
+        self._refresh_xp_tracker()     # (first: whether it shows decides the class cards' room)
         self._refresh_class_cards()
-        self._refresh_xp_tracker()
 

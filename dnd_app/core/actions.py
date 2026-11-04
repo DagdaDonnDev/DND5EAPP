@@ -2408,13 +2408,16 @@ def build_action_abilities(char):
             buckets['Passive'].append((f"Compose a Tune ({inst})",
                 "As part of a long rest, compose a new tune and lyrics.", 'Tool'))
     from dnd_app.core.calculator import get_prof_bonus, ability_mod
-    _grapple_shove_dc = 8 + get_prof_bonus(char) + ability_mod(char, "STR")
+    # (the 2014 rules: a contested check that takes the place of one of the
+    # Attack action's attacks -- not the 2024 rules' saving throw)
     buckets['Action'].append(('Grapple',
-        f"Unarmed Strike option: target (no more than one size larger) makes a STR or DEX save "
-        f"(its choice) vs. DC {_grapple_shove_dc}, or is grappled. Requires a free hand.", 'Universal'))
+        "In place of one of your attacks, with a free hand: STR (Athletics) check contested by "
+        "the target's STR (Athletics) or DEX (Acrobatics), its choice. It must be no more than "
+        "one size larger than you. Win, and it's grappled.", 'Universal'))
     buckets['Action'].append(('Shove',
-        f"Unarmed Strike option: target (no more than one size larger) makes a STR or DEX save "
-        f"(its choice) vs. DC {_grapple_shove_dc}, or is pushed 5 ft. or knocked prone (your choice).", 'Universal'))
+        "In place of one of your attacks: STR (Athletics) check contested by the target's "
+        "STR (Athletics) or DEX (Acrobatics), its choice. It must be no more than one size "
+        "larger than you. Win, and you knock it prone or push it 5 ft. away.", 'Universal'))
     # Telekinetic: bonus-action telekinetic shove — only shown if the
     # character actually has the feat. DC uses the highest of INT/WIS/CHA
     # as a stand-in for "the ability increased by this feat," since the

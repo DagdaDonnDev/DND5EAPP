@@ -48,7 +48,7 @@ from dnd_app.core.magic_items import (
 )
 from dnd_app.core.effects import EFFECT_TABLE, INSTANT_POTION_EFFECTS
 from dnd_app.core.riders import base_weapon_options as _base_weapon_options, weapon_base_of as _weapon_base_of
-from dnd_app.core.spellcasting import spell_component_block_reason
+from dnd_app.core.spellcasting import spell_component_block_reason, is_caster_resource
 from dnd_app.core.ammo import ammo_kind, ammo_label, ammo_count, spend_ammo, set_ammo
 from dnd_app.core.dying import (
     take_damage, heal, heal_block_reason, set_death_saves,
@@ -543,16 +543,9 @@ class CharacterSheetBridge(QObject):
         if not hd or hd.get("remaining", 0) <= 0:
             return
         sides = int(die_key[1:])
-        roll = random.randint(1, sides)
-        con = ability_mod(self.char, "CON")
-        feats = self.char.get("feats", [])
-        if "Durable" in feats:
-            roll = max(roll, 2 * con, 2)
-        heal = max(0, roll + con)
-        if "Dwarven Fortitude" in feats:
-            heal = max(heal, 1)
-        if "Vigor of the Hill Giant" in feats:
-            heal += con + get_prof_bonus(self.char)
+        # (Durable, a Periapt of Wound Closure... core, the same as desktop)
+        from dnd_app.core.character import hit_die_heal
+        _roll, heal = hit_die_heal(self.char, sides, random.randint(1, sides))
         hd["remaining"] -= 1
         max_hp = self.char.get("max_hp", 0)
         self.char["current_hp"] = min(max_hp, self.char.get("current_hp", 0) + heal)
@@ -1851,6 +1844,9 @@ class CharacterSheetBridge(QObject):
                 "toggleActive": bool(toggle_effect) and toggle_effect in self.char.get("active_effects", []),
                 # Portent: the foretelling rolls themselves (core/action_use.py)
                 "rolls": portent_rolls(self.char) if res.get("key") == "portent" else [],
+                # on the Spells screen too: a caster's pool, or a free cast
+                # (core/spellcasting.py, the same test as desktop's Spells tab)
+                "isCaster": is_caster_resource(self.char, res),
             })
         # magic item charges (desktop lists them under Resources & Charges too)
         for name, data in self.char.get("item_charges", {}).items():
@@ -1861,7 +1857,7 @@ class CharacterSheetBridge(QObject):
                 "current": data.get("current", 0), "currentMax": data.get("max", 0),
                 "unlimited": False, "sourceClass": "Magic item",
                 "reset": {"dawn": "Dawn", "dusk": "Dusk"}.get(data.get("recharge", "dawn"), "Never"),
-                "toggleEffect": "", "toggleActive": False, "rolls": [],
+                "toggleEffect": "", "toggleActive": False, "rolls": [], "isCaster": False,
             })
         return out
 
@@ -3847,6 +3843,20 @@ class CharacterSheetBridge(QObject):
     def restOptions(self, rest_type: str):
         return list(rest_options(self.char, rest_type))
 
+    @Slot(str, result=list)
+    def restActivities(self, rest_type: str):
+        """Everything else the character can do on this rest -- their own
+        features', feats', race's and items', and the rules everyone has
+        (core/character.py, the same list as desktop's Rest dialog)."""
+        from dnd_app.core.character import rest_activities
+        return rest_activities(self.char, rest_type)
+
+    @Property(str, notify=statsChanged)
+    def hitDiceNotes(self):
+        """What changes this character's Hit Dice (Durable...), in words."""
+        from dnd_app.core.character import hit_die_notes
+        return "; ".join(hit_die_notes(self.char))
+
     @Property(int, notify=statsChanged)
     def hitDiceAvailableForRest(self):
         return sum(d.get("remaining", 0) for d in self.char.get("hit_dice", {}).values())
@@ -3874,21 +3884,13 @@ class CharacterSheetBridge(QObject):
         cur, mx = char.get("current_hp", 0), char.get("max_hp", 0)
         healed = 0
         dice_spent = 0
-        con = ability_mod(char, "CON")
-        feats = char.get("feats", [])
+        from dnd_app.core.character import hit_die_heal
         for _ in range(max(0, hit_dice_to_spend)):
             for die_key in sorted(hd_model, key=lambda k: -int(k[1:])):
                 d = hd_model[die_key]
                 if d.get("remaining", 0) > 0:
                     sides = int(die_key[1:])
-                    roll = random.randint(1, sides)
-                    if "Durable" in feats:
-                        roll = max(roll, 2 * con, 2)
-                    heal = max(0, roll + con)
-                    if "Dwarven Fortitude" in feats:
-                        heal = max(heal, 1)
-                    if "Vigor of the Hill Giant" in feats:
-                        heal += con + get_prof_bonus(char)
+                    _roll, heal = hit_die_heal(char, sides, random.randint(1, sides))
                     healed += heal
                     d["remaining"] -= 1
                     dice_spent += 1
@@ -4047,6 +4049,12 @@ class CharacterSheetBridge(QObject):
         self._changed()
 
     @Slot()
+    def applyNaturalRecovery(self):
+        """Natural Recovery (Circle of the Land): the same as Arcane
+        Recovery, for the Druid's levels and their own use."""
+        self._apply_slot_recovery("Druid", "use_natural_recovery", "Natural Recovery")
+
+    @Slot()
     def applyArcaneRecovery(self):
         """Desktop lets you manually pick which expended slot levels to
         recover (any combination totaling <= the level budget, via a
@@ -4057,10 +4065,12 @@ class CharacterSheetBridge(QObject):
         an equivalent budget-constrained multi-select control isn't
         worth the added complexity for a single-class, single-feature
         edge case."""
+        self._apply_slot_recovery("Wizard", "arcane_recovery", "Arcane Recovery")
+
+    def _apply_slot_recovery(self, cls: str, res_key: str, title: str):
         from math import ceil
         char = self.char
-        wiz_lvl = class_levels(char).get("Wizard", 0)
-        budget = ceil(wiz_lvl / 2)
+        budget = ceil(class_levels(char).get(cls, 0) / 2)
         slots_used = char.get("spell_slots_used", [0] * 9)
         recovered = []
         for lvl in range(5, 0, -1):
@@ -4071,11 +4081,11 @@ class CharacterSheetBridge(QObject):
                     budget -= lvl
                 slots_used = char.get("spell_slots_used", [0] * 9)
         if recovered:
-            res = next((r for r in char.get("resources", []) if r.get("key") == "arcane_recovery"), None)
+            res = next((r for r in char.get("resources", []) if r.get("key") == res_key), None)
             if res:
                 res["current"] = 0
             self.toastRequested.emit(
-                f"Arcane Recovery: recovered {len(recovered)} slot(s) (levels {', '.join(map(str, sorted(recovered)))})")
+                f"{title}: recovered {len(recovered)} slot(s) (levels {', '.join(map(str, sorted(recovered)))})")
         self.ctrl.refresh()
         self._changed()
 

@@ -1281,7 +1281,8 @@ OPTIONAL_CLASS_FEATURES: dict[str, dict[int, list[dict]]] = {
                     "Canny (Lv1): Expertise in one skill from the Ranger list. "
                     "Roving (Lv6): Speed +5 ft; gain climb speed and swim speed equal to walking speed. "
                     "Tireless (Lv10): As an action, gain 1d8 + WIS modifier temporary HP. "
-                    "Uses = Proficiency Bonus / Long Rest."
+                    "Uses = Proficiency Bonus / Long Rest. Whenever you finish a short rest, "
+                    "your exhaustion level, if any, drops by 1."
                 ),
             },
         ],

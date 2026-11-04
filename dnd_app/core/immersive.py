@@ -2,8 +2,8 @@
 how the character is doing, the same way on both apps.
 
   Immersive Health      colour drains from the sheet as hit points drop:
-                        none at full HP, most of it (never all) near 0,
-                        and it comes back as they heal.
+                        none at full HP, barely any after a scratch, about
+                        half of it near 0, and it comes back as they heal.
   Immersive Exhaustion  a dark frame closes in from the edges of the
                         screen, one step per level of exhaustion, and the
                         page shrinks to fit inside it. (Level 6 is death,
@@ -23,9 +23,10 @@ rest of core never needs Qt) -- both apps show the identical frame.
 
 MODES = ("Full", "Reduced", "Off")
 
-# Near 0 HP, 85% of the colour is gone -- never all of it, so the
-# colour-coded markers (rarity, the HP bar...) can still be told apart.
-MAX_FADE = 0.85
+# Near 0 HP, 55% of the colour is gone -- never most of it, so the sheet
+# stays easy to read and its colour-coded markers (rarity, the HP bar...)
+# can still be told apart.
+MAX_FADE = 0.55
 
 # How far the page moves in from each edge, per exhaustion level 0-5.
 _FRAME_PX = {"desktop": (0, 14, 22, 30, 40, 50), "phone": (0, 8, 12, 16, 20, 24)}
@@ -101,15 +102,15 @@ def health_fade(char: dict, setting: str = None) -> float:
     """How much colour to take away: 0 at full HP, MAX_FADE at 0 HP.
       1. the fraction of hit points left (temp HP doesn't count -- the page
          never gets brighter than normal)
-      2. eased (to the power 0.8) so a scratch barely shows and the last few
-         hit points count most
+      2. eased (to the power 1.5) so a scratch barely shows and the last few
+         hit points count most: a fifth of it at half HP
       3. halved when the setting is Reduced, nothing when it's Off"""
     setting = setting or mode("health")
     cur, mx = shown_hp(char)
     if setting == "Off" or mx <= 0:
         return 0.0
     left = max(0.0, min(1.0, cur / mx))
-    fade = MAX_FADE * (1.0 - left) ** 0.8
+    fade = MAX_FADE * (1.0 - left) ** 1.5
     return fade / 2 if setting == "Reduced" else fade
 
 

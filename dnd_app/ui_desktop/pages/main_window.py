@@ -344,6 +344,22 @@ class SettingsDialog(QDialog):
         self._font_combo.currentTextChanged.connect(self._on_font_scale_changed)
         font_row.addWidget(self._font_combo, 1)
         acl.addLayout(font_row)
+        from dnd_app.core.app_settings import get_menu_health_bar, set_menu_health_bar
+        self._health_bar_cb = QCheckBox("Health bar on the menu bar")
+        self._health_bar_cb.setChecked(get_menu_health_bar())
+        self._health_bar_cb.setToolTip(
+            "With a character open, the menu bar fills with their hit points, "
+            "temp HP after them")
+
+        def _on_health_bar(on):
+            set_menu_health_bar(on)     # (app-wide, saved at once, like the theme)
+            last = getattr(app_window, "_last_health", None)
+            if last is not None:
+                app_window._set_health_bar(*last)
+        self._health_bar_cb.toggled.connect(_on_health_bar)
+        acl.addWidget(self._health_bar_cb)
+        acl.addWidget(_lbl("With a character open, the menu bar fills with their hit points.",
+                           TEXT3, FS_TINY))
         body.addWidget(app_card)
 
         # ── Immersion: Immersive Health / Immersive Exhaustion ────────────
@@ -891,8 +907,70 @@ class CharacterCreatorApp(QMainWindow):
         so this override survives later theme switches without needing
         to be re-applied from _set_theme()."""
         name = (char.get("name") or "").strip().lower()
-        self.menuBar().setStyleSheet(
-            self._GOLDEN_MENU_QSS if name == "ethan o'brien" else "")
+        self._golden_menu = name == "ethan o'brien"
+        self.menuBar().setStyleSheet(self._GOLDEN_MENU_QSS if self._golden_menu else "")
+
+    def _set_health_bar(self, cur=None, mx=0, tmp=0, beast=False):
+        """While a character sheet is open the menu bar is its health bar:
+        it fills from the left with current HP -- green, amber below half,
+        red below a quarter, purple for a beast form's own -- then temp HP
+        in teal. (The numbers are on the sheet, and on hover here.)
+        cur=None puts it back to a plain menu bar (the start menu, the
+        wizard)."""
+        from dnd_app.ui_desktop.style import theme as T
+        from dnd_app.core.app_settings import get_menu_health_bar
+        mb = self.menuBar()
+        golden = getattr(self, "_golden_menu", False)
+        plain = self._GOLDEN_MENU_QSS if golden else ""
+        self._last_health = (cur, mx, tmp, beast)   # (for the Settings toggle)
+        sheet = getattr(self, "_sheet", None)
+        name_ink = "#f5cc50" if golden else T.GOLD2
+        if cur is None or mx <= 0 or not get_menu_health_bar():
+            if mb.styleSheet() != plain:
+                mb.setStyleSheet(plain)
+            mb.setToolTip("")
+            if sheet is not None and cur is not None:
+                sheet.set_name_color(T.readable(name_ink, "#3a2e05" if golden else T.SURF))
+            return
+        cur, tmp = max(0, cur), max(0, tmp)
+        whole = max(mx, cur + tmp)          # (temp HP can run past the max)
+        f_cur, f_tmp = cur / whole, tmp / whole
+        pct = cur * 100 / mx
+        col = T.PURPLE if beast else (T.GREEN if pct > 50 else T.AMBER if pct > 25 else T.CRIMSON)
+        base = "#3a2e05" if golden else T.SURF
+        fill, tfill = T.tint(base, col, 0x66), T.tint(base, T.TEAL, 0x66)
+        # the menu's words stay readable (4.5:1) over the fill and the rest
+        ink = T.readable("#f5cc50" if golden else T.TEXT, base, fill, tfill)
+        stops, pos = [], 0.0
+        for colour, width in ((fill, f_cur), (tfill, f_tmp), (base, 1.0 - f_cur - f_tmp)):
+            if width <= 0.0005:
+                continue
+            start = pos if not stops else min(1.0, pos + 0.0005)   # (a hard edge)
+            pos = min(1.0, pos + width)
+            stops += [f"stop:{start:.4f} {colour}", f"stop:{max(start, pos):.4f} {colour}"]
+        qss = plain + (
+            f"QMenuBar{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,{','.join(stops)});"
+            f"color:{ink};}}"
+            f"QMenuBar::item{{color:{ink};}}")
+        if mb.styleSheet() != qss:   # (every refresh sends it; a new sheet re-polishes the bar)
+            mb.setStyleSheet(qss)
+        mb.setToolTip(f"Health{' (beast form)' if beast else ''}: {cur} of {mx} HP"
+                      + (f", +{tmp} temp" if tmp else ""))
+        if sheet is not None:   # the name, at the bar's right, reads on it too
+            sheet.set_name_color(T.readable(name_ink, base, fill, tfill))
+
+    def _set_menu_corner(self, widget):
+        """The menu bar's right-hand corner: the open character's name (an
+        editable field the sheet owns), or nothing. The bar takes the
+        widget over, so the last one is deleted here -- it goes with its
+        sheet."""
+        mb = self.menuBar()
+        old = mb.cornerWidget(Qt.TopRightCorner)
+        if old is not None and old is not widget:
+            old.hide(); old.setParent(None); old.deleteLater()
+        mb.setCornerWidget(widget, Qt.TopRightCorner)
+        if widget is not None:
+            widget.show()
 
     def _build_menu(self):
         mb = self.menuBar()
@@ -1038,6 +1116,8 @@ class CharacterCreatorApp(QMainWindow):
             self._switching_theme = False
 
     def _go_wizard(self):
+        self._set_health_bar(None)   # (no character's HP to show)
+        self._set_menu_corner(None)
         if self._wizard:
             self._stack.removeWidget(self._wizard); self._wizard.deleteLater()
         self._wizard = CharacterWizard(self)
@@ -1155,11 +1235,21 @@ class CharacterCreatorApp(QMainWindow):
             # same explicit parent, for the same reason.
             self._sheet = CharacterSheet(char, self, save_path=save_path)
             self._sheet.back_to_menu.connect(self._sheet_back_to_menu)
+            # the menu bar has this sheet's name on it, and is its health
+            # bar from here on
+            self._set_menu_corner(self._sheet._name_box)
+            self._sheet.health_changed.connect(self._set_health_bar)
+            self._sheet._update_hp_bar()
             self._stack.addWidget(self._sheet)
             self._stack.setCurrentWidget(self._sheet)
         except Exception:
             # Safety net: surface the real failure to the player and log
             # it, instead of letting sheet construction fail silently.
+            # (The menu bar loses the old sheet's name and health bar: that
+            # sheet is gone.)
+            self._sheet = None
+            self._set_menu_corner(None)
+            self._set_health_bar(None)
             import traceback
             from dnd_app.ui_desktop.shared import write_diagnostic_log
             tb = traceback.format_exc()
@@ -1192,6 +1282,8 @@ class CharacterCreatorApp(QMainWindow):
         if self._sheet:
             self._stack.removeWidget(self._sheet); self._sheet.deleteLater()
             self._sheet = None
+        self._set_health_bar(None)   # a plain menu bar again
+        self._set_menu_corner(None)
         self._stack.removeWidget(self._start); self._start.deleteLater()
         # Revert away from that character's theme to the app's own
         # remembered default (Settings changes made with no character

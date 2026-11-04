@@ -149,6 +149,30 @@ Page {
                 }
             }
 
+            // ── Spell Resources: what a caster spends or tracks beside their
+            // slots -- Sorcery Points, Arcane Ward, Bardic Inspiration,
+            // Channel Divinity, Portent, free casts... (core/spellcasting.py's
+            // is_caster_resource, the same as desktop's Spells tab). The
+            // same cards as the Actions screen's Resources.
+            ColumnLayout {
+                id: spellResources
+                objectName: "spellResourcesCard"
+                readonly property var rows: sheetBridge.resources.filter(function(r) { return r.isCaster })
+                visible: rows.length > 0
+                Layout.fillWidth: true
+                spacing: 8
+                Label {
+                    text: "Spell Resources"
+                    color: Theme.gold
+                    font.pixelSize: Theme.fsSmall
+                    font.bold: true
+                }
+                Repeater {
+                    model: spellResources.rows
+                    delegate: ResourceCard { res: modelData; Layout.fillWidth: true }
+                }
+            }
+
             // ── Spellcasting: the ability, save DC and attack bonus of each
             // class, race and feat that gives spells (desktop's Spellcasting
             // table) -- a tiefling wizard's Hellish Rebuke is CHA, their

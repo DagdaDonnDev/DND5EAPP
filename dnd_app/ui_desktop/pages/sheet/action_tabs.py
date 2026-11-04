@@ -76,6 +76,12 @@ def _resource_row_qss(row, color) -> str:
             f"border-radius:6px;margin:1px;}}")
 
 
+def _filler() -> QWidget:
+    """An empty cell, so a lone card in a two-column grid keeps to its half."""
+    w = QWidget(); w.setStyleSheet("background:transparent;border:none;")
+    return w
+
+
 def _center_row(layout) -> None:
     """Every control in a resource row on the row's centre line (a layout
     item with no alignment of its own sits at the top of its cell)."""
@@ -85,13 +91,19 @@ def _center_row(layout) -> None:
             layout.setAlignment(w, Qt.AlignVCenter)
 
 class ActionTabsMixin:
-    def _build_resource_rows(self, bl):
+    def _build_resource_rows(self, bl, only=None, view="other"):
         """
         Populate the top of the 'Other' tab with live resource pools: class
         features tracked in char['resources'] (Ki, Lay on Hands, Channel
         Divinity, Sorcery Points, Healing Light, etc.), magic item charges,
         and a few feat-granted pools that aren't otherwise tracked.
+
+        only: a test on each char['resources'] entry -- just those rows, no
+        item charges or hit dice (the Spells tab's Spell Resources card:
+        view="spells"). A change in one view updates the other. Returns how
+        many rows it made.
         """
+        made = 0
         def _pool_row(name, current, maximum, reset_label, tooltip_extra="",
                       res_key=None, is_item=False, item_name=None, toggle_effect=None):
             """Interactive resource row with a spinbox to track uses.
@@ -116,14 +128,15 @@ class ActionTabsMixin:
 
             # Spinbox for current value — editable in-place
             sp = QSpinBox(); sp.setRange(0, maximum); sp.setValue(current)
-            sp.setFixedSize(72, _ROW_CONTROL_H); sp.setAlignment(Qt.AlignCenter)   # "-  n  +"
+            sp.setFixedSize(44, _ROW_CONTROL_H); sp.setAlignment(Qt.AlignCenter)   # "− [n] +"
             sp.setToolTip(f"Current uses of {name}")
             sp.setStyleSheet(
                 f"QSpinBox{{background:{SURF2};border:1px solid {qa(bar_color,0x66)};"
                 f"border-radius:4px;color:{bar_color};font-size:{FS_TINY}px;"
                 f"font-weight:700;padding:1px;min-height:{_ROW_CONTROL_H - 4}px;"
                 f"max-height:{_ROW_CONTROL_H - 4}px;}}"
-                f"QSpinBox::up-button,QSpinBox::down-button{{width:17px;background:{BORDER};}}")
+                # (no −/+ of its own: the row's − and + buttons sit either side)
+                + SPIN_NO_BUTTONS)
             max_l = _lbl(f"/{maximum}", TEXT3, FS_TINY, wrap=False)
 
             def _save_res(val, _key=res_key, _iname=item_name, _is_item=is_item):
@@ -135,6 +148,9 @@ class ActionTabsMixin:
                         if res.get("key") == _key or res.get("name") == _key:
                             res["current"] = val; break
                 self._mark_dirty()
+                # the same pool shown in the other view follows (after this
+                # change: never rebuild the row being changed)
+                QTimer.singleShot(0, self, lambda: self._sync_resource_views(view))
             sp.valueChanged.connect(_save_res)
             self._resource_widgets.append(row)
 
@@ -294,6 +310,8 @@ class ActionTabsMixin:
         for r in self.char.get('resources', []):
             if r.get('track') not in ('current_max','uses','pool'):
                 continue
+            if only is not None and not only(r):
+                continue
             key = r.get('key','') + r.get('name','')
             if key in seen_keys:
                 continue
@@ -306,6 +324,7 @@ class ActionTabsMixin:
             if r.get('key') == 'portent':       # the rolls, not a counter
                 _portent_row(r, reset_label)
                 has_any = True
+                made += 1
                 continue
             TOGGLE_KEY_MAP = {
                 "hybrid_form": "Hybrid Transformation",
@@ -345,6 +364,10 @@ class ActionTabsMixin:
                       res_key=r.get('key') or r.get('name'),
                       toggle_effect=TOGGLE_KEY_MAP.get(r.get('key')))
             has_any = True
+            made += 1
+
+        if only is not None:
+            return made   # (just the pools asked for)
 
         # Lucky, Martial Adept, and Metamagic Adept are now properly wired
         # through the standard feat-resource system in calculator.py
@@ -403,6 +426,15 @@ class ActionTabsMixin:
         if has_any:
             sep = _lbl("— Passive Features —", TEXT3, FS_TINY, bold=True, wrap=False, align=Qt.AlignCenter)
             bl.insertWidget(bl.count()-1, sep)
+        return made
+
+    def _sync_resource_views(self, changed_in: str):
+        """A pool changed in one view: the other shows it too, so it's
+        rebuilt (the Spells tab's Spell Resources, the Combat tab's Other)."""
+        if changed_in == "spells":
+            self._refresh_action_tabs()
+        elif hasattr(self, "_refresh_caster_resources"):
+            self._refresh_caster_resources()
 
     def _ask_through(self, title, call):
         """Run one of the shared rules that can ask the player something
@@ -544,6 +576,15 @@ class ActionTabsMixin:
             # actually present.
             present_cats = {self._classify_action_entry(e) for e in rows}
             self._action_filter_rows[bucket_name].setVisible(len(present_cats) > 1)
+            # ...and only the categories it has
+            cat_btns = self._action_cat_btns_by_bucket.get(bucket_name, {})
+            for cat, b in cat_btns.items():
+                b.setVisible(cat == "All" or cat in present_cats)
+            if self._action_cat_filters.get(bucket_name, "All") not in present_cats | {"All"}:
+                self._action_cat_filters[bucket_name] = "All"   # (its last one went)
+                for cat, b in cat_btns.items():
+                    b.setStyleSheet(self._action_cat_btn_style(cat == "All"))
+                self._action_level_filter_rows[bucket_name].setVisible(False)
 
             cat_filter = self._action_cat_filters.get(bucket_name, "All")
             if cat_filter != "All":
@@ -566,8 +607,36 @@ class ActionTabsMixin:
             grid.setHorizontalSpacing(8); grid.setVerticalSpacing(6)
             grid.setColumnStretch(0, 1); grid.setColumnStretch(1, 1)
 
+            # The character's own actions first (class, race, feats, items,
+            # spells), then the basic ones anyone can take, then the
+            # optional rules, each group under its own heading -- so the
+            # basic ones don't need a "Universal" tag on every card.
+            def _group(e):
+                if e[2] != "Universal":
+                    return 0
+                return 2 if "(optional rule" in e[0] else 1
+            rows = sorted(rows, key=_group)   # (stable: each group keeps its order)
+            _HEADS = {1: {"Passive": "GENERAL"}.get(bucket_name, "BASIC ACTIONS"),
+                      2: "OPTIONAL RULES — if your DM uses them"}
+            grid_row, col, last_group = 0, 0, 0
             for idx, entry in enumerate(rows):
                 display, desc, source = entry[0], entry[1], entry[2]
+                group = _group(entry)
+                if group != last_group:
+                    if col:   # an odd card out keeps to its half
+                        grid.addWidget(_filler(), grid_row, 1)
+                        grid_row += 1; col = 0
+                    head = _lbl(_HEADS[group], GOLD, FS_TINY, bold=True, wrap=False)
+                    head.setContentsMargins(2, 6 if grid_row else 0, 0, 0)
+                    grid.addWidget(head, grid_row, 0, 1, 2)
+                    grid_row += 1
+                    last_group = group
+                shown_name = display
+                book = ""
+                if group == 2:   # "Disarm (optional rule, DMG)" -> "Disarm", tagged DMG
+                    m = re.match(r"^(.*?) \(optional rule, ([^)]+)\)$", display)
+                    if m:
+                        shown_name, book = m.group(1), m.group(2)
                 spell = entry[3] if len(entry) > 3 else None
                 is_spell = spell is not None
                 if not is_spell:
@@ -603,8 +672,10 @@ class ActionTabsMixin:
                     f"border-radius:4px;color:{ink};font-size:{FS_TINY}px;"
                     f"font-weight:700;padding:2px 3px;")
 
+                if group == 2 and book:
+                    src_badge.setText(book)   # the book it's from, in place of "Universal"
                 text_col = QVBoxLayout(); text_col.setSpacing(1)
-                lbl_name = _lbl(display, GOLD, FS_SMALL, bold=True, wrap=False)
+                lbl_name = _lbl(shown_name, GOLD, FS_SMALL, bold=True, wrap=False)
                 lbl_desc = _lbl(desc[:170] + ("…" if len(desc)>170 else ""),
                                 TEXT2, FS_TINY, wrap=True)
                 text_col.addWidget(lbl_name); text_col.addWidget(lbl_desc)
@@ -635,18 +706,21 @@ class ActionTabsMixin:
                 for w in (card, lbl_name, lbl_desc, src_badge):
                     w.setToolTip(tooltip_text)
 
+                if group == 1:
+                    src_badge.hide()   # (the heading says what they are)
                 cl.addWidget(src_badge, 0, Qt.AlignTop)
                 cl.addLayout(text_col, 1)
                 cl.addWidget(use_btn, 0, Qt.AlignTop)
                 if bucket_name in ('Action','Bonus Action','Reaction'):
                     self._bucket_use_btns[bucket_name].append(use_btn)
-                grid.addWidget(card, idx // 2, idx % 2)
+                grid.addWidget(card, grid_row, col)
+                col += 1
+                if col == 2:
+                    grid_row += 1; col = 0
 
             if rows:
-                # Balance odd counts so the last card doesn't stretch full width
-                if len(rows) % 2 == 1:
-                    filler = QWidget(); filler.setStyleSheet("background:transparent;border:none;")
-                    grid.addWidget(filler, (len(rows)-1)//2, 1)
+                if col:   # balance an odd last card, so it doesn't stretch full width
+                    grid.addWidget(_filler(), grid_row, 1)
                 bl.insertWidget(bl.count()-1, grid_host)
             else:
                 hint = {"Action": "Universal actions apply — see any missing? "

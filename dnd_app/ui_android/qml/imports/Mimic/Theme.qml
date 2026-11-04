@@ -120,7 +120,7 @@ QtObject {
     }
 
     // ── Immersive Health (core/immersive.py) ───────────────────────────
-    // How much colour is taken out of the theme: 0 at full HP, up to 0.85
+    // How much colour is taken out of the theme: 0 at full HP, up to 0.55
     // near 0 HP (App.qml eases it). The theme's colours fade towards grey;
     // the three text colours never change, so text keeps its contrast.
     // The grey is the one Qt's desaturation filter uses on desktop

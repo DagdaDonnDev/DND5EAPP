@@ -590,16 +590,21 @@ ApplicationWindow {
             // emoji glyphs elsewhere in this app, which ride Android's
             // universal Noto Color Emoji font). Three plain bars can
             // never fail to render since they don't depend on any font.
-            contentItem: Column {
-                anchors.centerIn: parent
-                spacing: 4
-                Repeater {
-                    model: 3
-                    Rectangle {
-                        width: 22
-                        height: 2
-                        radius: 1
-                        color: Theme.text
+            // (The button sizes its contentItem to fill it, so the bars are
+            // centred inside an Item -- a bare Column sat top-left, above
+            // the title's centre line.)
+            contentItem: Item {
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 4
+                    Repeater {
+                        model: 3
+                        Rectangle {
+                            width: 22
+                            height: 2
+                            radius: 1
+                            color: Theme.text
+                        }
                     }
                 }
             }

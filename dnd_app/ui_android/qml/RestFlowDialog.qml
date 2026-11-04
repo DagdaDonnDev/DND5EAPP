@@ -56,6 +56,7 @@ MFullPageDialog {
         pendingAstralSkill = ""
         previewLabel.text = sheetBridge.restPreviewLines(type).join("\n")
         optionsRepeater.model = sheetBridge.restOptions(type)
+        activitiesRepeater.model = sheetBridge.restActivities(type)
         hitDiceSpin.to = sheetBridge.hitDiceAvailableForRest
         hitDiceSpin.value = 0
         open()
@@ -94,8 +95,10 @@ MFullPageDialog {
         optionQueueIndex++
         pendingOptionKind = kind
         if (kind === "unprepare_all" || kind === "pact_tome_replace" ||
-            kind === "pact_talisman_replace" || kind === "arcane_recovery") {
+            kind === "pact_talisman_replace" || kind === "arcane_recovery" ||
+            kind === "natural_recovery") {
             if (kind === "arcane_recovery") sheetBridge.applyArcaneRecovery()
+            else if (kind === "natural_recovery") sheetBridge.applyNaturalRecovery()
             else sheetBridge.applyRestOptionSimple(kind)
             processNextOption()
         } else if (kind === "astral_knowledge_swap") {
@@ -160,10 +163,10 @@ MFullPageDialog {
                         x: 14; y: 12
                         width: parent.width - 28
                         spacing: 6
-                        Label { text: "ALSO RECONFIGURE?"; color: Theme.indigo2; font.bold: true; font.pixelSize: Theme.fsSmall }
+                        Label { text: "ALSO ON THIS REST"; color: Theme.indigo2; font.bold: true; font.pixelSize: Theme.fsSmall }
                         Label {
                             Layout.fillWidth: true; wrapMode: Text.WordWrap
-                            text: "Check anything you'd like to change as part of this rest."
+                            text: "Tick anything you'd like to change as part of it."
                             color: Theme.text3; font.pixelSize: Theme.fsSmall
                         }
                         Repeater {
@@ -174,6 +177,39 @@ MFullPageDialog {
                                 property string optKind: modelData.kind
                                 property bool optChecked: checked
                                 text: modelData.label
+                            }
+                        }
+                    }
+                }
+
+                // Everything else the character can do on this rest: their
+                // own features', feats', race's and items', and the rules
+                // everyone has (core's rest_activities, as desktop's Rest)
+                Rectangle {
+                    objectName: "restActivitiesCard"
+                    Layout.fillWidth: true
+                    visible: activitiesRepeater.count > 0
+                    radius: 10
+                    color: Theme.surf
+                    border.color: Theme.gold
+                    implicitHeight: actCol.height + 24
+                    ColumnLayout {
+                        id: actCol
+                        x: 14; y: 12
+                        width: parent.width - 28
+                        spacing: 8
+                        Label { text: "YOU CAN ALSO"; color: Theme.gold2; font.bold: true; font.pixelSize: Theme.fsSmall }
+                        Repeater {
+                            id: activitiesRepeater
+                            objectName: "restActivitiesRepeater"
+                            delegate: Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                textFormat: Text.StyledText
+                                color: Theme.text
+                                font.pixelSize: Theme.fsSmall
+                                text: "<b>" + modelData.source.replace(/&/g, "&amp;").replace(/</g, "&lt;") + "</b> — "
+                                      + modelData.text.replace(/&/g, "&amp;").replace(/</g, "&lt;")
                             }
                         }
                     }
@@ -202,6 +238,7 @@ MFullPageDialog {
                     text: "HP: " + sheetBridge.currentHp + "/" + sheetBridge.maxHp +
                           "   |   Hit dice remaining: " + sheetBridge.hitDiceAvailableForRest +
                           "\nHow many hit dice do you want to spend? (each heals 1 die + CON modifier)"
+                          + (sheetBridge.hitDiceNotes ? "\n" + sheetBridge.hitDiceNotes : "")
                 }
                 MSpinBox {
                     id: hitDiceSpin

@@ -722,6 +722,18 @@ def rest_options(char: dict, rest_type: str) -> list:
                     "detail": "Once per day: recover slots totaling \u2264 half your Wizard "
                               "level (rounded up), max slot level 5.",
                 })
+    # Natural Recovery (Circle of the Land 2+): the same, for a Druid --
+    # "during a short rest", once a day, slots totaling <= half your Druid
+    # level (rounded up), none 6th level or higher.
+    if rest_type == "short":
+        nr = next((r for r in char.get("resources", []) if r.get("key") == "use_natural_recovery"), None)
+        if nr and nr.get("current", 0) > 0 and any(char.get("spell_slots_used", [])[:5]):
+            opts.append({
+                "kind": "natural_recovery",
+                "label": "Natural Recovery — recover expended spell slots",
+                "detail": "Once per day: recover slots totaling \u2264 half your Druid level "
+                          "(rounded up), none 6th level or higher.",
+            })
     # Eladrin season changes only on a long rest ("you can change your chosen season after a long rest").
     race = char.get("species") or char.get("race", "")
     if rest_type == "long" and "eladrin" in race.lower() and char.get("_choices", {}).get("eladrin_season"):
@@ -784,9 +796,306 @@ def rest_options(char: dict, rest_type: str) -> list:
     return opts
 
 
-def rest_preview_lines(rest_type: str, preview: dict) -> list:
+def _has_trait(char: dict, name: str) -> bool:
+    """The character's race has this trait (its traits start with their name)."""
+    from dnd_app.data.races import race_traits_for
+    return any(str(t).startswith(name) for t in race_traits_for(char))
+
+
+def hit_die_heal(char: dict, sides: int, roll: int, rng=None) -> tuple:
+    """One Hit Die spent, for both apps (a rest's dice, the Spend button):
+    (the roll as it counts, the HP it heals) -- the roll plus your CON
+    modifier, never below 0, and what changes that:
+      Black Blood Healing        (Verdan) a 1 or 2 is rolled again, once
+      Durable                    the roll is at least twice your CON modifier (min 2)
+      Dwarven Fortitude          at least 1 HP
+      Vigor of the Hill Giant    + your CON modifier and proficiency bonus
+      Periapt of Wound Closure   (attuned) the hit points it restores, doubled
+    rng: what rolls a die again (the random module unless a test gives one)."""
+    import random as _random
+    con = ability_mod(char, "CON")
+    feats = char.get("feats", [])
+    if roll <= 2 and _has_trait(char, "Black Blood Healing"):
+        roll = (rng or _random).randint(1, sides)
+    if "Durable" in feats:
+        roll = max(roll, 2 * con, 2)
+    heal = max(0, roll + con)
+    if "Dwarven Fortitude" in feats:
+        heal = max(heal, 1)
+    if "Vigor of the Hill Giant" in feats:
+        from dnd_app.core.calculator import get_prof_bonus
+        heal += con + get_prof_bonus(char)
+    if "Periapt of Wound Closure" in char.get("attuned_items", []):
+        heal *= 2
+    return roll, heal
+
+
+def hit_die_notes(char: dict) -> list:
+    """What changes this character's Hit Dice (hit_die_heal), in words, for
+    the rest dialogs: ["Durable: each die counts as at least 4", ...]."""
+    con = ability_mod(char, "CON")
+    feats = char.get("feats", [])
+    notes = []
+    if _has_trait(char, "Black Blood Healing"):
+        notes.append("Black Blood Healing: a 1 or 2 is rolled again")
+    if "Durable" in feats:
+        notes.append(f"Durable: each die counts as at least {max(2 * con, 2)}")
+    if "Dwarven Fortitude" in feats:
+        notes.append("Dwarven Fortitude: at least 1 HP each")
+    if "Vigor of the Hill Giant" in feats:
+        from dnd_app.core.calculator import get_prof_bonus
+        notes.append(f"Vigor of the Hill Giant: +{con + get_prof_bonus(char)} each")
+    if "Periapt of Wound Closure" in char.get("attuned_items", []):
+        notes.append("Periapt of Wound Closure: doubled")
+    return notes
+
+
+def _celestial_resilience(char: dict) -> str:
+    lvl = class_levels(char).get("Warlock", 0)
+    cha = ability_mod(char, "CHA")
+    return (f"When you finish the rest, you gain {max(0, lvl + cha)} temporary hit points, and up to five "
+            f"creatures you can see gain {max(0, lvl // 2 + cha)} each.")
+
+
+# ── What a character can do on a rest, besides what it gives back ─────────
+# The class features' own (their descriptions here are short summaries,
+# so these are written out from the books): feature name -> [(the rests
+# it's on, what you can do)]. "both" = a short or a long rest; the text can
+# be a function of the character, for its numbers.
+_CLASS_REST_ACTIVITIES = {
+    "Song of Rest": [("short", "Perform during the rest: anyone friendly who hears it (you too) and spends "
+                               "Hit Dice at its end regains an extra 1d6 HP (1d8 at 9th level, 1d10 at "
+                               "13th, 1d12 at 17th).")],
+    "Hearth of Moonlight and Shadow": [("both", "At the start of the rest, touch a point to make an invisible "
+                                                "30-foot-radius sphere: inside it you and your allies get +5 to "
+                                                "Stealth and Perception checks, and light from open flames can't "
+                                                "be seen from outside. It ends with the rest, or when you leave it.")],
+    "Walker in Dreams": [("short", "When you finish the rest, cast Dream (as the messenger), Scrying or "
+                                   "Teleportation Circle (to where you last finished a long rest, on this "
+                                   "plane) without a spell slot or material components. Once a long rest.")],
+    "Star Map": [("both", "If you've lost your star map, a 1-hour ceremony during the rest makes a new one "
+                          "(the old one is destroyed).")],
+    "Cosmic Omen": [("long", "When you finish the rest, consult your star map and roll a die for your omen "
+                             "until your next long rest: even is Weal (your reaction adds a d6 to a roll), "
+                             "odd is Woe (it takes a d6 off).")],
+    "Blessing of the Forge": [("long", "At the end of the rest, touch a nonmagical suit of armour or a simple "
+                                       "or martial weapon: until the end of your next long rest it's a +1 "
+                                       "magic item (+1 AC, or +1 to attack and damage rolls).")],
+    "Infuse Item": [("long", "When you finish the rest, touch nonmagical objects and infuse them, up to "
+                             "your number of infused items (the Infusions tab).")],
+    "Spell-Storing Item": [("long", "When you finish the rest, store a 1st- or 2nd-level artificer spell "
+                                    "with a casting time of 1 action in a weapon or spellcasting focus you "
+                                    "touch (uses: twice your INT modifier, at least 2).")],
+    "Experimental Elixir": [("long", "When you finish the rest, with alchemist's supplies on you, produce an "
+                                     "experimental elixir in an empty flask you touch (two at 6th level, three "
+                                     "at 15th): roll a d6 for each one's effect.")],
+    "The Right Tool for the Job": [("both", "With thieves' or artisan's tools in hand, make one set of "
+                                            "artisan's tools: an hour's work, which can be done during the "
+                                            "rest. The last set you made vanishes.")],
+    "Steel Defender": [("long", "At the end of the rest, with smith's tools, make a new steel defender "
+                                "(the old one, if any, dies).")],
+    "Weapon Bond": [("short", "Bond with a weapon (up to two): a 1-hour ritual, which can be done during "
+                              "a short rest.")],
+    "Rune Carver": [("long", "When you finish the rest, inscribe each rune you know on a different weapon, "
+                             "armour, shield, piece of jewellery or other thing you wear or hold, until "
+                             "your next long rest.")],
+    "Ranger's Companion": [("long", "If your companion is a primal beast, you can summon a different one "
+                                    "when you finish the rest (the old one vanishes).")],
+    "Death's Friend": [("long", "If you have no soul trinkets, one appears in your hand when you finish "
+                                "the rest.")],
+    "Hex Warrior": [("long", "Whenever you finish a long rest, touch a weapon you're proficient with that "
+                             "isn't two-handed: you use CHA for its attack and damage rolls (any pact "
+                             "weapon, too).")],
+    "Genie's Vessel": [("both", "If your vessel is lost or destroyed, a 1-hour ceremony during the rest gets "
+                                "you a new one from your patron (the old one is destroyed).")],
+    "Celestial Resilience": [("both", _celestial_resilience)],
+    "Master Scrivener": [("long", "When you finish the rest, touch your Wizardly Quill to blank paper to copy "
+                                  "a 1st- or 2nd-level spell (1 action to cast) from your Awakened Spellbook, "
+                                  "within 5 feet, onto a scroll. It's cast a level higher, and lasts until "
+                                  "you use it or finish your next long rest.")],
+    "Mutagencraft": [("both", "When you finish the rest, concoct mutagens from the formulas you know "
+                              "(more as your level grows).")],
+}
+
+# Invocations' own (a warlock's chosen ones)
+_INVOCATION_REST_ACTIVITIES = {
+    "Aspect of the Moon": [("long", "You don't need to sleep: all 8 hours can be light activity, such as "
+                                    "reading your Book of Shadows and keeping watch.")],
+}
+
+# the features already offered as an option to tick (rest_options): not
+# listed again
+_OPTION_SOURCES = {
+    "arcane_recovery": ("Arcane Recovery",), "natural_recovery": ("Natural Recovery",),
+    "pact_blade_bond": ("Pact of the Blade", "Pact Boon"), "pact_tome_replace": ("Pact of the Tome",),
+    "pact_talisman_replace": ("Pact of the Talisman",), "eladrin_season": ("Fey Step", "Eladrin"),
+    "whispers_dead_swap": ("Whispers of the Dead",), "lunar_phase_swap": ("Lunar",),
+    "armorer_model": ("Armor Model", "Arcane Armor"), "astral_knowledge_swap": ("Astral Knowledge", "Astral Trance"),
+}
+
+# what the Hit Dice already do for you (hit_die_heal): not listed again
+_APPLIED_ON_HIT_DICE = ("Black Blood Healing", "Vigor of the Hill Giant", "Durable", "Dwarven Fortitude",
+                        "Periapt of Wound Closure")
+
+_REST_WORDS = r"(short or long|short/long|short|long|sr|lr) rest"
+# what makes a sentence about a rest something you do on it: you can, may
+# or must do something, or choose
+_YOU_DO = r"\byou (?:can|may|must)\b(?!['’]t|not)|\bchoose\b|\byour choice\b|\byou spend\b"
+
+
+def _rest_sentences(text: str, rest_type: str) -> list:
+    """The sentences in a rules text that say what you can do on `rest_type`
+    ("When you finish a long rest, you can...", "During a short rest...",
+    "As part of a short rest...", "Whenever you finish a long rest, choose...",
+    how a rest goes for you: "you can finish a long rest in 4 hours"), not the
+    ones that only say when a use comes back."""
+    import re as _re
+    # (pattern, whether what follows it in the clause must be something you do)
+    pats = [
+        (rf"\b(?:when|whenever|after|once) you finish (?:a|your|each) {_REST_WORDS}\b", True),
+        (rf"\b(?:on|upon) finishing (?:a|your) {_REST_WORDS}\b", True),
+        (rf"\bat the end of (?:a|your|each) {_REST_WORDS}\b", True),
+        (rf"\bafter each {_REST_WORDS}\b", True),
+        (rf"(?<!before )\b(?:take|takes|taking) a {_REST_WORDS}\b", True),
+        (rf"\b(?:as part of|during) (?:a|your) {_REST_WORDS}\b", False),
+        (rf"\bspend(?:s|ing)? (?:a|one) {_REST_WORDS}\b", False),
+        (rf"\bfinish a {_REST_WORDS} in \d+ hours\b", False),
+    ]
+    out = []
+    for sentence in _re.split(r"(?<=[.!?])\s+", text or ""):
+        low = sentence.strip().lower()
+        for pat, needs_doing in pats:
+            m = _re.search(pat, low)
+            if not m:
+                continue
+            if needs_doing and not _re.search(_YOU_DO, _re.split(r"[;.]", low[m.end():])[0]):
+                continue
+            which = m.group(1)
+            if which not in ("short or long", "short/long") and not which.startswith(rest_type[0]):
+                continue        # the other rest (the sentence may name both)
+            # (on its own, without the text around it: no "Additionally, ...")
+            s = _re.sub(r"^(?:additionally|in addition|also|however),\s*", "",
+                        sentence.strip(), flags=_re.I).rstrip(" ;,")
+            out.append(s[:1].upper() + s[1:] + ("" if s[-1:] in ".!?" else "."))
+            break
+    return out
+
+
+def _trait_parts(trait: str) -> tuple:
+    """A race trait's (name, text): "Cunning Artisan – as part of..." ->
+    ("Cunning Artisan", "as part of..."); ("", trait) if it has no name."""
+    import re as _re
+    m = _re.match(r"\s*([^–:;(]{2,48}?)\s*(?:–|:| - )\s*(.+)$", trait, _re.S)
+    return (m.group(1).strip(), m.group(2)) if m else ("", trait)
+
+
+def rest_activities(char: dict, rest_type: str) -> list:
+    """Everything this character can do on a short or long rest, besides
+    what it gives back (the preview) and what can be ticked to do now
+    (rest_options) -- for both apps' rest dialogs. [{"source", "text"}]:
+      1. their class features' and invocations' (_CLASS_REST_ACTIVITIES...)
+      2. what their feats, race and subrace traits and magic items' own
+         texts say they can do on it (a Chef's food, a Deck of Oracles'
+         omen, a warforged's Sentry's Rest...)
+      3. the rules everyone has: attuning to a magic item (a short rest
+         focused on it), ending an attunement, identifying an item"""
+    out, seen = [], set()
+
+    def add(source, text):
+        if (source, text) not in seen:
+            seen.add((source, text)); out.append({"source": source, "text": text})
+
+    def add_catalogued(source, entries):
+        for which, text in entries:
+            if which in ("both", rest_type):
+                add(source, text(char) if callable(text) else text)
+
+    covered = [w for kind in (o["kind"] for o in rest_options(char, rest_type))
+               for w in _OPTION_SOURCES.get(kind, ())]
+    skip = lambda name: any(w in name for w in covered) or any(w in name for w in _APPLIED_ON_HIT_DICE)
+
+    # class features, invocations, and the optional class features this
+    # table uses (Tasha's Cantrip Formulas, Deft Explorer's Tireless)
+    from dnd_app.data.class_features import get_class_features
+    for cls, names in get_class_features(char).items():
+        for name in names:
+            if not skip(name):
+                add_catalogued(name, _CLASS_REST_ACTIVITIES.get(name, ()))
+    for inv in char.get("eldritch_invocations", []):
+        for name, entries in _INVOCATION_REST_ACTIVITIES.items():
+            if str(inv).startswith(name):
+                add_catalogued(name, entries)
+    levels = class_levels(char)
+    rules = char.get("optional_rules", {})
+    if rules.get("cantrip_formulas") and levels.get("Wizard", 0) >= 3:
+        add_catalogued("Cantrip Formulas", [("long", "When you finish the rest, replace one wizard cantrip "
+                                                     "you know with another from the wizard spell list.")])
+    if levels.get("Ranger", 0) >= 10:
+        from dnd_app.core.actions import _optional_feature_enabled
+        if _optional_feature_enabled(char, "Deft Explorer"):
+            add_catalogued("Tireless", [("short", "When you finish the rest, take a level of exhaustion "
+                                                  "off, if you have any.")])
+
+    # feats: their description, or the feat list's own summary
+    from dnd_app.data.feature_tooltips import FEATURE_DESCS
+    from dnd_app.data.feats import get_feat
+    for feat in char.get("feats", []):
+        if skip(feat):
+            continue
+        text = FEATURE_DESCS.get(feat) or (get_feat(feat) or {}).get("special", "")
+        for sentence in _rest_sentences(text, rest_type):
+            add(f"{feat} (feat)", sentence)
+
+    # race and subrace traits (a subrace's are "Name (+X 2; Trait: text; ...)")
+    from dnd_app.data.races import race_traits_for, RACE_DICT
+    traits = [str(t) for t in race_traits_for(char)]
+    race = char.get("species") or char.get("race", "")
+    sub = char.get("subrace") or ""
+    sub_str = next((s for s in RACE_DICT.get(race, {}).get("subraces", [])
+                    if sub and s.split("(")[0].strip() == sub), "")
+    if "(" in sub_str:
+        traits += [p.strip() for p in sub_str[sub_str.find("(") + 1:sub_str.rfind(")")].split(";")[1:]]
+    for trait in traits:
+        name, text = _trait_parts(trait)
+        if skip(name or trait):
+            continue
+        if name == "Trance" and rest_type == "long" and "rest" not in text.lower():
+            add("Trance", "Meditate for 4 hours instead of sleeping, aware of your surroundings (the "
+                          "rest still takes 8 hours).")
+        # a trait is a run of clauses: each one on its own
+        for clause in text.split(";"):
+            for sentence in _rest_sentences(clause.strip(), rest_type):
+                add(name or "Your race", sentence)
+
+    # the magic items you have
+    from dnd_app.data.magic_items import ALL_MAGIC_ITEMS
+    owned = {m.get("name") for m in char.get("magic_items", [])}
+    for item in ALL_MAGIC_ITEMS:
+        if item["name"] in owned and not skip(item["name"]):
+            for sentence in _rest_sentences(item.get("desc", ""), rest_type):
+                add(item["name"], sentence)
+
+    if rest_type == "short":
+        from dnd_app.core.magic_items import attunement_limit
+        limit = attunement_limit(char)
+        attuned = set(char.get("attuned_items", []))
+        needing = [m["name"] for m in ALL_MAGIC_ITEMS
+                   if m["name"] in owned and m.get("attunement") and m["name"] not in attuned]
+        if needing and len(attuned) < limit:
+            add("Attunement", f"Spend the rest focused on one item that needs attuning, touching it, to "
+                              f"attune to it: {', '.join(sorted(needing))} (you have {limit - len(attuned)} "
+                              f"of {limit} attunement slots free).")
+        if attuned:
+            add("Attunement", "Spend the rest focused on an item you're attuned to, to end its attunement.")
+        add("Identify an item", "Spend the rest focused on one magic item, touching it, to learn its "
+                                "properties and how to use them.")
+    return out
+
+
+def rest_preview_lines(rest_type: str, preview: dict, dice_below: bool = False) -> list:
     """The lines a rest preview shows (HP, hit dice, slots, resources, what
-    fades), for both apps' rest dialogs."""
+    fades), for both apps' rest dialogs. dice_below: the dialog has its own
+    hit dice picker, under the preview (the desktop's Rest dialog)."""
     lines = []
     if rest_type == "short":
         if preview["hp"] >= preview["max_hp"]:
@@ -794,7 +1103,8 @@ def rest_preview_lines(rest_type: str, preview: dict) -> list:
         elif preview["hit_dice_available"] > 0:
             lines.append(f"HP: {preview['hp']}/{preview['max_hp']}  —  "
                           f"{preview['hit_dice_available']} hit dice available, "
-                          f"you'll choose how many to spend next")
+                          + ("spend them below" if dice_below else
+                             "you'll choose how many to spend next"))
         else:
             lines.append(f"HP: {preview['hp']}/{preview['max_hp']}  —  no hit dice remaining")
     else:

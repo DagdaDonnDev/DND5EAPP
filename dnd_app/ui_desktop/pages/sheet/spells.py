@@ -212,6 +212,7 @@ class SpellsMixin:
             self._refresh_concentration()
         except Exception:
             pass
+        self._refresh_caster_resources()
         try:
             # Re-apply the browser's castable-level/class-list filter,
             # since the character's max castable spell level (and class
@@ -219,6 +220,22 @@ class SpellsMixin:
             self._filter_spell_browser()
         except Exception:
             pass
+
+    def _refresh_caster_resources(self):
+        """The Spell Resources card: a row for each caster pool the
+        character has (the Other list's own rows: −/+, how many, when they
+        come back), hidden if there are none."""
+        lay = getattr(self, "_caster_res_lay", None)
+        if lay is None:
+            return
+        while lay.count() > 1:   # (all but the trailing stretch)
+            w = lay.takeAt(0).widget()
+            if w is not None:
+                w.setParent(None); w.deleteLater()
+        from dnd_app.core.spellcasting import is_caster_resource
+        made = self._build_resource_rows(lay, only=lambda r: is_caster_resource(self.char, r),
+                                         view="spells")
+        self._caster_res_card.setVisible(bool(made))
 
     def _remove_stale_spell_rows(self):
         """Remove any spell row whose spell is no longer in
@@ -275,8 +292,16 @@ class SpellsMixin:
     def _build_tab_spells(self):
         tab = QWidget(); root = QHBoxLayout(tab); root.setContentsMargins(16,16,16,16); root.setSpacing(16)
 
-        # Left: slot tracker + spellcasting info
-        left = QWidget(); ll = QVBoxLayout(left); ll.setSpacing(8)
+        # Left: slot tracker + spellcasting info. It scrolls: a multiclass
+        # caster can have more cards (and taller ones) than fit
+        left = QWidget(); left.setStyleSheet("background:transparent;")
+        ll = QVBoxLayout(left); ll.setSpacing(8); ll.setContentsMargins(0, 0, 8, 0)
+        left_scroll = QScrollArea(); left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.NoFrame)
+        left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        left_scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
+        left_scroll.setWidget(left)
+        self._spells_left_scroll = left_scroll
 
         # Per-class DC table
         dc_card = _card(qa(PURPLE, 0x55)); dccl = QVBoxLayout(dc_card); dccl.setContentsMargins(14,12,14,14)
@@ -317,27 +342,41 @@ class SpellsMixin:
         ll.addWidget(self._pact_card)
         self._pact_card.setVisible(False)   # hidden until refresh confirms Warlock levels
 
+        # Spell resources: what a caster spends or tracks beside their slots
+        # -- Sorcery Points, Arcane Ward, Bardic Inspiration, Channel
+        # Divinity, Portent, free casts... (core/spellcasting.py's
+        # is_caster_resource). The same rows as the Combat tab's Other list.
+        self._caster_res_card = _card(qa(PURPLE, 0x55))
+        crl = QVBoxLayout(self._caster_res_card); crl.setContentsMargins(14,12,14,14); crl.setSpacing(6)
+        crl.addWidget(_lbl("SPELL RESOURCES", PURP2, FS_SMALL, bold=True))
+        self._caster_res_lay = QVBoxLayout(); self._caster_res_lay.setSpacing(4)
+        self._caster_res_lay.setContentsMargins(0, 0, 0, 0)
+        self._caster_res_lay.addStretch()   # (the rows go in above it)
+        crl.addLayout(self._caster_res_lay)
+        ll.addWidget(self._caster_res_card)
+        self._caster_res_card.setVisible(False)   # shown once there's one to show
+
         # Metamagic quick-apply — lets a Sorcerer pick which known option(s)
         # to apply to their NEXT spell cast and spend the right Sorcery
         # Points, rather than only ever seeing Metamagic listed passively
         # in the Features tab with no way to actually use it.
         self._metamagic_card = _card(qa(PURPLE, 0x55))
-        mmcl = QVBoxLayout(self._metamagic_card); mmcl.setContentsMargins(14,12,14,14)
-        mmcl.addWidget(_lbl("METAMAGIC — apply to next cast", PURP2, FS_SMALL, bold=True))
+        mmcl = QVBoxLayout(self._metamagic_card); mmcl.setContentsMargins(14,12,14,14); mmcl.setSpacing(10)
+        mmcl.addWidget(_lbl("METAMAGIC — apply to your next cast", PURP2, FS_SMALL, bold=True))
         self._metamagic_cbs = {}
-        self._metamagic_box = QVBoxLayout(); self._metamagic_box.setSpacing(4)
+        # a row for each option you know: tick it, its cost, what it does
+        self._metamagic_box = QVBoxLayout(); self._metamagic_box.setSpacing(10)
         mmcl.addLayout(self._metamagic_box)
-        mm_btn_row = QHBoxLayout()
         self._mm_apply_btn = QPushButton("Spend SP && Mark Active")
+        self._mm_apply_btn.setMinimumHeight(34)
         self._mm_apply_btn.setStyleSheet(
-            _btn("", PURPLE, variant="danger", radius=5, border_width=1,
+            _btn("", PURPLE, variant="danger", radius=6, border_width=1,
                  text_color=PURP2, hover_text="white", font_size=FS_SMALL,
-                 padding="4px 10px").styleSheet())
+                 padding="4px 12px").styleSheet())
         self._mm_apply_btn.clicked.connect(self._apply_metamagic_selection)
-        mm_btn_row.addWidget(self._mm_apply_btn)
+        mmcl.addWidget(self._mm_apply_btn)
         self._mm_active_lbl = _lbl("", TEAL2, FS_SMALL, bold=True, wrap=True)
-        mm_btn_row.addWidget(self._mm_active_lbl, 1)
-        mmcl.addLayout(mm_btn_row)
+        mmcl.addWidget(self._mm_active_lbl)
         ll.addWidget(self._metamagic_card)
         self._metamagic_card.setVisible(False)   # shown only if character knows any Metamagic
 
@@ -382,7 +421,7 @@ class SpellsMixin:
         self._soul_artifice_btn.clicked.connect(self._use_soul_of_artifice)
         self._soul_artifice_btn.setVisible(False)  # shown only for 20th-level Artificers
         ll.addWidget(self._soul_artifice_btn)
-        ll.addStretch(); root.addWidget(left, 2)
+        ll.addStretch(); root.addWidget(left_scroll, 2)
 
         # Right: two tabs — My Spells | Spell Browser
         right = QTabWidget()
@@ -801,16 +840,29 @@ class SpellsMixin:
             self._soul_artifice_btn.setVisible(class_levels(self.char).get("Artificer", 0) >= 20)
         while self._metamagic_box.count():
             item = self._metamagic_box.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
+            w = item.widget()
+            if w is not None:
+                # detached now: left until it's deleted, an old row shows
+                # through the card at its top-left
+                w.setParent(None)
+                w.deleteLater()
         self._metamagic_cbs = {}
         for opt in known:
-            name = opt.split("–")[0].strip()
+            name, _, what = opt.partition("–")
+            name, what = name.strip(), what.strip()
             cost, per_level = self._parse_sp_cost(opt)
             cost_str = "SP = spell level" if per_level else f"{cost} SP"
-            cb = QCheckBox(f"{name}  ({cost_str})")
-            cb.setStyleSheet(f"QCheckBox{{color:{TEXT};font-size:{FS_SMALL}px;}}")
+            row = QWidget(); row.setStyleSheet("background:transparent;border:none;")
+            rl = QVBoxLayout(row); rl.setContentsMargins(0, 0, 0, 0); rl.setSpacing(2)
+            cb = QCheckBox(f"{name}  ·  {cost_str}")
+            cb.setStyleSheet(f"QCheckBox{{color:{TEXT};font-size:{FS_SMALL}px;font-weight:700;}}")
             cb.setToolTip(opt)
-            self._metamagic_box.addWidget(cb)
+            rl.addWidget(cb)
+            if what:
+                desc = _lbl(what, TEXT2, FS_TINY, wrap=True)
+                desc.setContentsMargins(26, 0, 0, 0)   # (under the box's label)
+                rl.addWidget(desc)
+            self._metamagic_box.addWidget(row)
             self._metamagic_cbs[opt] = cb
         self._mm_active_lbl.setText("")
 
@@ -1397,25 +1449,26 @@ class SpellsMixin:
         fs = FS_TINY if small else FS_SMALL
         pad = "2px 8px" if small else "3px 12px"
         if active:
-            return (f"QPushButton{{background:{GOLD};color:{BG};border:1px solid {GOLD};"
-                    f"border-radius:5px;font-size:{fs}px;font-weight:700;padding:{pad};}}")
+            return (f"QPushButton{{background:{GOLD};color:{on_fill(GOLD)};border:1px solid {GOLD};"
+                    f"border-radius:5px;font-size:{fs}px;font-weight:700;padding:{pad};min-height:0px;}}")
         return (f"QPushButton{{background:{SURF2};color:{TEXT2};border:1px solid {qa(AMBER,0x33)};"
-                f"border-radius:5px;font-size:{fs}px;font-weight:600;padding:{pad};}}"
+                f"border-radius:5px;font-size:{fs}px;font-weight:600;padding:{pad};min-height:0px;}}"
                 f"QPushButton:hover{{background:{qa(AMBER,0x22)};color:{AMBE2};}}")
 
     def _classify_action_entry(self, entry):
-        """Racial trait entries reliably use the character's own base
-        race name as their source, so matching against that is
-        accurate. Magic Item is a deliberate placeholder until that
-        system is properly wired — it currently classifies nothing
-        rather than guess inaccurately from arbitrary source-name
-        text."""
+        """The action filter's category for an action card. Racial trait
+        entries use the character's own base race name as their source,
+        and an item's (a magic item, a tinderbox, a tool check) the item's
+        name or "Tool"."""
         source = entry[2] if len(entry) > 2 else ""
         is_spell = len(entry) > 3 and entry[3] is not None
         if is_spell:
             return "Spell"
         if source and source == self.char.get("race", ""):
             return "Race"
+        if source == "Tool" or source in {e.get("name") for e in self.char.get("equipment", [])} \
+                or source in {m.get("name") for m in self.char.get("magic_items", [])}:
+            return "Item"
         return "Common"
 
     def _apply_spell_active_effect(self, spell, level=0):

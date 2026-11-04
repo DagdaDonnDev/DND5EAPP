@@ -2,7 +2,7 @@ import os
 import re
 import random
 from PySide6.QtWidgets import *
-from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtCore import Qt, Signal, QTimer, QPoint
 from PySide6.QtGui import QFont
 from dnd_app.ui_desktop.style.theme import *
 from ...shared import *
@@ -60,6 +60,63 @@ from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
 
 
+class PickerPopup(QFrame):
+    """A small list to pick one name from, with a search box over it, that
+    drops down under a button and closes once something's picked (or on
+    a click elsewhere). Typing narrows the list; Enter picks the first
+    one shown."""
+    picked = Signal(str)
+
+    def __init__(self, names, placeholder="Search…", parent=None):
+        super().__init__(parent, Qt.Popup)
+        self.setObjectName("pickerPopup")
+        self.setStyleSheet(f"QFrame#pickerPopup{{background:{SURF2};border:2px solid {BORDER2};"
+                           f"border-radius:8px;}}")
+        lay = QVBoxLayout(self); lay.setContentsMargins(8,8,8,8); lay.setSpacing(6)
+        self._search = QLineEdit(); self._search.setPlaceholderText(placeholder)
+        self._search.setClearButtonEnabled(True)
+        self._search.textChanged.connect(self._filter)
+        self._search.returnPressed.connect(self._pick_first)
+        self._list = QListWidget()
+        self._list.addItems(list(names))
+        self._list.itemClicked.connect(lambda it: self._pick(it.text()))
+        self._list.itemActivated.connect(lambda it: self._pick(it.text()))
+        lay.addWidget(self._search); lay.addWidget(self._list, 1)
+        self.resize(300, 340)
+
+    def show_at(self, pos):
+        self.move(pos)
+        self.show()
+        self._search.setFocus()
+
+    def _filter(self, text):
+        low = text.strip().lower()
+        for i in range(self._list.count()):
+            it = self._list.item(i)
+            it.setHidden(bool(low) and low not in it.text().lower())
+
+    def _pick_first(self):
+        for i in range(self._list.count()):
+            it = self._list.item(i)
+            if not it.isHidden():
+                self._pick(it.text())
+                return
+
+    def _pick(self, name):
+        self.close()
+        self.picked.emit(name)
+
+    def keyPressEvent(self, e):
+        if e.key() == Qt.Key_Down and self._search.hasFocus():
+            self._list.setFocus()
+            for i in range(self._list.count()):
+                if not self._list.item(i).isHidden():
+                    self._list.setCurrentRow(i)
+                    break
+            return
+        super().keyPressEvent(e)
+
+
 class CombatMixin:
     def _bind_death_and_conditions(self):
         if getattr(self, "_death_cond_bound", False):
@@ -74,12 +131,12 @@ class CombatMixin:
         if hasattr(self, "_death_status_lbl"):
             self._death_status_lbl.setText(
                 self._death_status_text(ds.get("successes", 0), ds.get("failures", 0)))
+        # (the conditions' menu actions are connected where they're built)
         active = set(self.char.get("conditions", []))
-        for cond, cb in self._cond_checks.items():
-            cb.blockSignals(True)
-            cb.setChecked(cond in active)
-            cb.blockSignals(False)
-            cb.stateChanged.connect(lambda s, c=cond: self._on_condition_changed(c, bool(s)))
+        for cond, act in self._cond_checks.items():
+            act.blockSignals(True)
+            act.setChecked(cond in active)
+            act.blockSignals(False)
         self._death_cond_bound = True
 
     @staticmethod
@@ -220,10 +277,15 @@ class CombatMixin:
                 self._death_status_text(ds.get("successes", 0), ds.get("failures", 0)))
         if hasattr(self, "_cond_checks"):
             active = set(self.char.get("conditions", []))
-            for cond, cb in self._cond_checks.items():
-                cb.blockSignals(True)
-                cb.setChecked(cond in active)
-                cb.blockSignals(False)
+            changed = False
+            for cond, act in self._cond_checks.items():
+                if act.isChecked() != (cond in active):
+                    act.blockSignals(True)
+                    act.setChecked(cond in active)
+                    act.blockSignals(False)
+                    changed = True
+            if changed:   # (put on or taken off by something else: a rest, a beast form...)
+                self._refresh_active_conditions()
 
     def _make_room_for_death_saves(self, down: bool):
         """At 0 HP the death saves card appears under the HP boxes, and on a
@@ -492,42 +554,79 @@ class CombatMixin:
         top_strip.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         top_lay = QHBoxLayout(top_strip); top_lay.setContentsMargins(0,0,0,0); top_lay.setSpacing(8)
 
-        # ── HP card ───────────────────────────────────────────────────────────
+        # ── Vitals: the HP card (AC with it), and Initiative & Speed under it ─
+        vitals = QWidget(); vitals.setStyleSheet("background:transparent;border:none;")
+        vitl = QVBoxLayout(vitals); vitl.setContentsMargins(0,0,0,0); vitl.setSpacing(8)
+        # The HP card: two columns (the header's health bar and the menu
+        # bar show HP too) -- AC beside Temp, which sits over Current (it's
+        # lost first), with Max beside Current; then how much, across
+        # both, and Damage / Heal under it.
         hp_card = _card(qa(GREEN, 0x55)); hp_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        hpcl = QVBoxLayout(hp_card); hpcl.setContentsMargins(12,10,12,10)
-        hpcl.addWidget(_lbl("HIT POINTS", GOLD, FS_SMALL, bold=True))
-        hp_row = QHBoxLayout(); hp_row.setSpacing(8)
-        for label, key, color in [("Max","max_hp",IND2),("Current","current_hp",GREEN2),("Temp","temp_hp",TEAL2)]:
-            col = QVBoxLayout(); col.setSpacing(2)
-            if key == "max_hp":
-                label_row = QHBoxLayout(); label_row.setSpacing(2); label_row.setContentsMargins(0,0,0,0)
-                label_row.addWidget(_lbl(label, TEXT2, FS_TINY, bold=True, align=Qt.AlignCenter), 1)
-                reset_max = QPushButton("↺")
-                reset_max.setFixedSize(18, 18)
-                reset_max.setToolTip("Reset Max HP to the auto-calculated value "
-                                     "(class Hit Dice + CON)")
-                reset_max.setStyleSheet(
-                    f"QPushButton{{background:transparent;border:none;"
-                    f"color:{TEXT3};font-size:11px;padding:0;}}"
-                    f"QPushButton:hover{{color:{TEAL2};}}")
-                reset_max.clicked.connect(self._reset_max_hp_override)
-                label_row.addWidget(reset_max)
-                col.addLayout(label_row)
-            else:
-                col.addWidget(_lbl(label, TEXT2, FS_TINY, bold=True, align=Qt.AlignCenter))
+        hpcl = QVBoxLayout(hp_card); hpcl.setContentsMargins(12,10,12,10); hpcl.setSpacing(6)
+        title_row = QHBoxLayout(); title_row.setSpacing(4); title_row.setContentsMargins(0,0,0,0)
+        title_row.addWidget(_lbl("HIT POINTS", GOLD, FS_SMALL, bold=True, wrap=False))
+        reset_max = QPushButton("↺")
+        reset_max.setFixedSize(18, 18)
+        reset_max.setToolTip("Reset Max HP to the auto-calculated value "
+                             "(class Hit Dice + CON)")
+        reset_max.setAccessibleName("Reset Max HP to the auto-calculated value")
+        reset_max.setStyleSheet(
+            f"QPushButton{{background:transparent;border:none;"
+            f"color:{TEXT3};font-size:11px;padding:0;min-height:0px;}}"
+            f"QPushButton:hover{{color:{TEAL2};}}")
+        reset_max.clicked.connect(self._reset_max_hp_override)
+        title_row.addWidget(reset_max)
+        title_row.addStretch()
+        hpcl.addLayout(title_row)
+
+        hp_grid = QGridLayout(); hp_grid.setHorizontalSpacing(8); hp_grid.setVerticalSpacing(3)
+        hp_grid.setColumnStretch(0, 1); hp_grid.setColumnStretch(1, 1)
+
+        def _hp_box(key, color):
             sp = QSpinBox(); sp.setRange(0,999); sp.setAlignment(Qt.AlignCenter)
             sp.setStyleSheet(f"QSpinBox{{font-size:{FS_TITLE}px;font-weight:700;color:{color};"
                              f"border:2px solid {qa(color,0x55)};border-radius:8px;"
-                             f"background:{SURF2};padding:2px;min-width:64px;}}" + SPIN_NO_BUTTONS)
-            col.addWidget(sp); hp_row.addLayout(col, 1)
-            setattr(self, f"_hp_{key}", sp)
-        hpcl.addLayout(hp_row)
-        self._hp_bar = QProgressBar(); self._hp_bar.setRange(0,100); self._hp_bar.setValue(100)
-        self._hp_bar.setTextVisible(False); self._hp_bar.setFixedHeight(6)
-        self._hp_bar.setStyleSheet(
-            f"QProgressBar{{background:{SURF2};border:none;border-radius:3px;}}"
-            f"QProgressBar::chunk{{border-radius:3px;background:{GREEN2};}}")
-        hpcl.addWidget(self._hp_bar)
+                             f"background:{SURF2};padding:0px 2px;min-width:56px;}}" + SPIN_NO_BUTTONS)
+            setattr(self, f"_hp_{key}", sp)   # (36px: the theme's 32 + its border)
+            return sp
+
+        def _cap(text, gap=False):
+            lbl = _lbl(text, TEXT2, FS_TINY, bold=True, align=Qt.AlignCenter, wrap=False)
+            if gap:
+                lbl.setContentsMargins(0, 4, 0, 0)   # (a little air between the pairs)
+            return lbl
+        hp_grid.addWidget(_cap("AC"), 0, 0)
+        hp_grid.addWidget(_cap("Temp"), 0, 1)
+        hp_grid.addWidget(self._build_ac_box(), 1, 0)
+        hp_grid.addWidget(_hp_box("temp_hp", TEAL2), 1, 1)
+        hp_grid.addWidget(_cap("Max", True), 2, 0)
+        hp_grid.addWidget(_cap("Current", True), 2, 1)
+        hp_grid.addWidget(_hp_box("max_hp", IND2), 3, 0)
+        hp_grid.addWidget(_hp_box("current_hp", GREEN2), 3, 1)
+        hpcl.addLayout(hp_grid)
+        # (the health bar is the window's menu bar: _update_hp_bar)
+
+        # how much, then Damage | Heal
+        ctrl = QGridLayout(); ctrl.setHorizontalSpacing(8); ctrl.setVerticalSpacing(6)
+        ctrl.setColumnStretch(0, 1); ctrl.setColumnStretch(1, 1)
+        self._hp_amt = QSpinBox(); self._hp_amt.setRange(1,9999); self._hp_amt.setValue(1)
+        self._hp_amt.setAlignment(Qt.AlignCenter)
+        self._hp_amt.setAccessibleName("How much damage or healing")
+        # 36px, the same as Damage / Heal (shared.py's stepper look)
+        self._hp_amt.setStyleSheet(stepper_qss())
+        dmg_btn = _btn("Damage", CRIMSON, variant="danger", height=36, bg_alpha=0x44,
+                        text_color=CRIM2, hover_text="white", font_size=FS_SMALL, padding="0px")
+        dmg_btn.setAccessibleName("Apply damage to hit points")
+        dmg_btn.clicked.connect(self._do_damage)
+        heal_btn = _btn("Heal", GREEN, variant="cta", height=36, bg_alpha=0x44,
+                         text_color=GREEN2, hover_text="white", font_size=FS_SMALL, padding="0px")
+        heal_btn.setAccessibleName("Heal hit points")
+        heal_btn.clicked.connect(self._do_heal)
+        # padding:0 above sizes these to their bare text -- give them room
+        dmg_btn.setMinimumWidth(72); heal_btn.setMinimumWidth(56)
+        ctrl.addWidget(self._hp_amt, 0, 0, 1, 2)
+        ctrl.addWidget(dmg_btn, 1, 0); ctrl.addWidget(heal_btn, 1, 1)
+        hpcl.addLayout(ctrl)
         # Resistances strip: holds an arbitrary number of badges (multiple
         # resistance/immunity sources, or a "resistance to everything but
         # psychic"-style toggle expanded into 12 individual damage types)
@@ -564,28 +663,9 @@ class CombatMixin:
         # concentration-save prompt on taking damage already fires from
         # this tab regardless (see _do_damage), so no duplicate controls
         # are needed.
-        self._combat_conc_lbl = _lbl("", AMBER, FS_SMALL, wrap=False)
+        self._combat_conc_lbl = _lbl("", AMBER, FS_SMALL, wrap=True)
         self._combat_conc_lbl.setVisible(False)
         hpcl.addWidget(self._combat_conc_lbl)
-        # Damage / Heal
-        ctrl_row = QHBoxLayout(); ctrl_row.setSpacing(6)
-        self._hp_amt = QSpinBox(); self._hp_amt.setRange(1,9999); self._hp_amt.setValue(1)
-        self._hp_amt.setMinimumWidth(96); self._hp_amt.setMaximumWidth(120)   # "-  n  +"
-        self._hp_amt.setFixedHeight(34)   # the same height as Damage / Heal
-        self._hp_amt.setStyleSheet("QSpinBox{min-height:0;}")   # (the theme's min-height would win)
-        dmg_btn = _btn("Damage", CRIMSON, variant="danger", height=34, bg_alpha=0x44,
-                        text_color=CRIM2, hover_text="white", font_size=FS_SMALL, padding="0px")
-        dmg_btn.setAccessibleName("Apply damage to hit points")
-        dmg_btn.clicked.connect(self._do_damage)
-        heal_btn = _btn("Heal", GREEN, variant="cta", height=34, bg_alpha=0x44,
-                         text_color=GREEN2, hover_text="white", font_size=FS_SMALL, padding="0px")
-        heal_btn.setAccessibleName("Heal hit points")
-        heal_btn.clicked.connect(self._do_heal)
-        # padding:0 above sizes these to their bare text -- give them room
-        dmg_btn.setMinimumWidth(84); heal_btn.setMinimumWidth(64)
-        ctrl_row.addWidget(self._hp_amt); ctrl_row.addWidget(dmg_btn); ctrl_row.addWidget(heal_btn)
-        ctrl_row.addStretch()
-        hpcl.addLayout(ctrl_row)
         # Death saves — a genuinely tense moment (0 HP, rolling to live or
         # die) gets its own alert-styled card (only shown at 0 HP to
         # begin with, so it earns the attention) with bigger pips, a
@@ -601,83 +681,84 @@ class CombatMixin:
         dsl.setContentsMargins(12,8,12,8); dsl.setSpacing(4)
 
         ds_hdr = QHBoxLayout(); ds_hdr.setSpacing(8)
-        ds_hdr.addWidget(_icons.icon_header("skull", _lbl("DEATH SAVING THROWS", CRIM2, FS_SMALL, bold=True, wrap=False)))
+        ds_hdr.addWidget(_icons.icon_header("skull", _lbl("DEATH SAVES", CRIM2, FS_SMALL, bold=True, wrap=False)))
         ds_hdr.addStretch()
-        self._death_status_lbl = _lbl("", TEXT2, FS_TINY, bold=True, wrap=False)
-        ds_hdr.addWidget(self._death_status_lbl)
         dsl.addLayout(ds_hdr)
+        # (its own line: the card is narrow)
+        self._death_status_lbl = _lbl("", TEXT2, FS_TINY, bold=True, wrap=True)
+        dsl.addWidget(self._death_status_lbl)
 
         pip_tip = ("Roll a d20 at the start of each of your turns while at 0 HP and "
                    "taking no other action. 10 or higher: success. Below 10: failure. "
                    "A natural 20 regains 1 HP instead; a natural 1 counts as two failures. "
                    "3 successes: stable at 0 HP. 3 failures: dead.")
-        # One row: SUCCESSES ooo   FAILURES ooo -- the card has to fit
-        # under the HP boxes on a laptop-height window.
-        pips_row = QHBoxLayout(); pips_row.setSpacing(6)
+        # Successes ooo over Failures ooo, to fit the HP card's two columns
+        pips_grid = QGridLayout(); pips_grid.setHorizontalSpacing(6); pips_grid.setVerticalSpacing(4)
 
-        def _pips(title, color, color2, attr):
-            pips_row.addWidget(_lbl(title, color2, FS_TINY, bold=True, wrap=False))
+        def _pips(row, title, color, color2, attr):
+            pips_grid.addWidget(_lbl(title, color2, FS_TINY, bold=True, wrap=False), row, 0)
             boxes = [QCheckBox() for _ in range(3)]
-            for cb in boxes:
-                cb.setFixedSize(24,24)
+            for i, cb in enumerate(boxes):
+                # 20px circles and their 2px edge: 24px, in a 26px box (a
+                # 22px circle there was cut off)
+                cb.setFixedSize(26,26)
                 cb.setToolTip(pip_tip)
                 cb.setStyleSheet(
-                    f"QCheckBox::indicator{{width:22px;height:22px;border-radius:11px;"
+                    f"QCheckBox{{spacing:0px;padding:1px;}}"
+                    f"QCheckBox::indicator{{width:20px;height:20px;border-radius:12px;"
                     f"border:2px solid {color};background:{BG};}}"
                     f"QCheckBox::indicator:hover{{border-color:{color2};background:{qa(color,0x22)};}}"
                     f"QCheckBox::indicator:checked{{background:{color2};border-color:{color2};}}")
-                pips_row.addWidget(cb)
+                pips_grid.addWidget(cb, row, 1 + i)
             setattr(self, attr, boxes)
 
-        _pips("SUCCESSES", GREEN, GREEN2, "_death_success")
-        pips_row.addSpacing(14)
-        _pips("FAILURES", CRIMSON, CRIM2, "_death_fail")
-        pips_row.addStretch()
-        dsl.addLayout(pips_row)
+        _pips(0, "SUCCESSES", GREEN, GREEN2, "_death_success")
+        _pips(1, "FAILURES", CRIMSON, CRIM2, "_death_fail")
+        pips_grid.setColumnStretch(4, 1)
+        dsl.addLayout(pips_grid)
         hpcl.addWidget(self._death_saves_container)
         # spare height goes under the controls, not between the title and
         # the numbers
         hpcl.addStretch(1)
-        top_lay.addWidget(hp_card, 3)
+        vitl.addWidget(hp_card, 1)
+        vitl.addWidget(self._build_init_speed_card())
+        top_lay.addWidget(vitals, 3)
 
-        # ── Armor & Shield card (READ-ONLY display — equip via Gear tab) ──────
+        # ── Weapons card, with what's worn on one line at the top ────────────
+        # (read-only: armour and shield are put on in the Gear tab -- the
+        # line takes you there -- so the weapons get the card's height)
         armor_card = _card(); armor_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        acl2 = QVBoxLayout(armor_card); acl2.setContentsMargins(12,10,12,10)
-        acl2.addWidget(_lbl("ARMOR & SHIELD", GOLD, FS_SMALL, bold=True))
-        self._armor_card_ac_lbl = _lbl("AC —", TEAL2, FS_BODY, bold=True)
-        self._armor_card_ac_lbl.setStyleSheet(
-            f"QLabel{{background:{qa(TEAL,0x22)};border:1px solid {TEAL};border-radius:6px;"
-            f"padding:4px 10px;color:{TEAL2};font-weight:700;font-size:{FS_BODY}px;}}")
-        self._armor_card_ac_lbl.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
-        self._armor_display = QLabel("No Armor")
-        self._armor_display.setStyleSheet(
-            f"QLabel{{background:{SURF2};border:1px solid {BORDER2};border-radius:6px;"
-            f"padding:6px 10px;color:{TEXT};font-weight:700;}}")
-        self._armor_display.setToolTip("Equip armor from the Gear tab")
-        self._shield_display = QLabel("No Shield")
-        self._shield_display.setStyleSheet(
-            f"QLabel{{background:{SURF2};border:1px solid {BORDER};border-radius:6px;"
-            f"padding:4px 10px;color:{TEXT3};font-size:{FS_SMALL}px;}}")
-        # one row: the AC pill, then what's worn (armor above shield) --
-        # leaves the rest of the card's height for the weapons list
-        ac_row = QHBoxLayout(); ac_row.setSpacing(6)
-        ac_row.addWidget(self._armor_card_ac_lbl)
-        worn = QVBoxLayout(); worn.setSpacing(4)
-        worn.addWidget(self._armor_display); worn.addWidget(self._shield_display)
-        ac_row.addLayout(worn, 1)
-        acl2.addLayout(ac_row)
-        armor_jump = QPushButton("Equip armor && shield in Gear ▸")
-        _icons.set_button_icon(armor_jump, "shield", 12)
-        armor_jump.setFixedHeight(24)
-        armor_jump.setStyleSheet(
-            f"QPushButton{{background:transparent;border:none;color:{TEAL2};"
-            f"font-size:{FS_TINY}px;text-align:left;min-height:0;padding:0;}}"
-            f"QPushButton:hover{{color:{TEAL};text-decoration:underline;}}")
-        armor_jump.clicked.connect(lambda: self._tabs.setCurrentIndex(3))
-        acl2.addWidget(armor_jump)
-        # Weapons section embedded in armor card. The Gear tab (for
-        # equipping weapons/armor) is one click away on the tab bar itself.
-        acl2.addWidget(_lbl("WEAPONS", GOLD, FS_SMALL, bold=True))
+        acl2 = QVBoxLayout(armor_card); acl2.setContentsMargins(12,10,12,10); acl2.setSpacing(6)
+        wpn_head = QHBoxLayout(); wpn_head.setSpacing(6)
+        wpn_head.addWidget(_lbl("WEAPONS", GOLD, FS_SMALL, bold=True, wrap=False))
+        # a rogue's once-a-turn Sneak Attack (● ready, ○ used), by the
+        # attacks it goes on; New Turn makes it ready again
+        self._sneak_chip = QPushButton("Sneak Attack ●")
+        _icons.set_button_icon(self._sneak_chip, "dagger", 13)
+        self._sneak_chip.setFixedHeight(24)
+        self._sneak_chip.setToolTip("Sneak Attack: once a turn. Click to mark it used or ready.")
+        self._sneak_chip.setAccessibleName("Sneak Attack this turn — click to mark it used or ready")
+        self._sneak_chip.clicked.connect(self._toggle_sneak)
+        self._sneak_chip.setVisible(False)
+        wpn_head.addWidget(self._sneak_chip)
+        wpn_head.addStretch()
+        worn = QFrame(); worn.setObjectName("wornLine")
+        worn.setCursor(Qt.PointingHandCursor)
+        worn.setToolTip("Your armour and shield. Put them on or take them off in the Gear tab.")
+        worn.setStyleSheet("QFrame#wornLine{background:transparent;border:none;}")
+        wl = QHBoxLayout(worn); wl.setContentsMargins(0,0,0,0); wl.setSpacing(6)
+        # (the AC they make is in the HP card, beside this one)
+        self._armor_display = _lbl("No armor", TEXT2, FS_SMALL, wrap=False)
+        self._shield_display = _lbl("No shield", TEXT3, FS_SMALL, wrap=False)
+        wl.addWidget(self._armor_display)
+        wl.addWidget(_lbl("·", TEXT3, FS_SMALL, wrap=False))
+        wl.addWidget(self._shield_display)
+        wl.addWidget(_lbl("Gear ▸", TEAL2, FS_TINY, bold=True, wrap=False))
+        worn.mousePressEvent = lambda e: self._tabs.setCurrentIndex(3)
+        wpn_head.addWidget(worn)
+        acl2.addLayout(wpn_head)
+        # The Gear tab (for equipping weapons/armor) is one click away on
+        # the tab bar itself.
         wpn_host = QWidget(); wpn_host.setStyleSheet("background:transparent;border:none;")
         self._weapon_rows = QVBoxLayout(wpn_host)
         self._weapon_rows.setSpacing(4); self._weapon_rows.setContentsMargins(0,0,0,0)
@@ -685,84 +766,147 @@ class CombatMixin:
         wpn_scroll = QScrollArea(); wpn_scroll.setWidgetResizable(True)
         wpn_scroll.setFrameShape(QFrame.NoFrame)
         wpn_scroll.setMinimumHeight(80)
+        # never scrolled sideways: the card is kept as wide as its widest
+        # row (_refresh_combat_weapons), so every weapon's to-hit, damage
+        # and Hit button are always in view
+        wpn_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._weapons_card, self._weapons_scroll = armor_card, wpn_scroll
         wpn_scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
         wpn_scroll.setWidget(wpn_host)
         acl2.addWidget(wpn_scroll, 1)
         top_lay.addWidget(armor_card, 5)
 
-        # ── Conditions card ───────────────────────────────────────────────────
+        # ── Conditions & Effects card ─────────────────────────────────────────
+        # Two pages under tabs (a stacked widget): the conditions on you,
+        # and the effects on you (Bless, Haste, Shield of Faith...). Each
+        # tab says how many it holds, so neither goes unseen; ＋ Add puts
+        # one on, for whichever page is showing.
         cond_card = _card(); cond_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        ccl = QVBoxLayout(cond_card); ccl.setContentsMargins(12,10,12,10)
-        ccl.addWidget(_lbl("CONDITIONS", GOLD, FS_SMALL, bold=True))
-        exh_row = QWidget(); exhl = QHBoxLayout(exh_row)
-        exhl.setContentsMargins(0,0,0,0); exhl.setSpacing(6)
-        exhl.addWidget(_lbl("Exhaustion:", TEXT2, FS_SMALL, wrap=False))
-        self._exhaustion_spin = QSpinBox(); self._exhaustion_spin.setRange(0,6)
-        self._exhaustion_spin.setFixedWidth(78)
-        self._exhaustion_spin.setStyleSheet(
-            f"QSpinBox{{background:{SURF2};border:1px solid {BORDER2};"
-            f"border-radius:4px;color:{TEXT};font-size:{FS_SMALL}px;padding:2px;}}"
-            f"QSpinBox::up-button,QSpinBox::down-button{{width:18px;background:{BORDER};}}")
-        self._exhaustion_spin.setToolTip(
-            "PHB exhaustion (cumulative):\n"
-            "1 — Disadvantage on ability checks\n"
-            "2 — Speed halved\n"
-            "3 — Disadvantage on attack rolls and saving throws\n"
-            "4 — Hit point maximum halved\n"
-            "5 — Speed reduced to 0\n"
-            "6 — Death")
-        self._exhaustion_spin.setAccessibleName(
-            "Exhaustion level, 0 to 6. Level 6 is death.")
-        self._exhaustion_spin.valueChanged.connect(self._on_exhaustion_changed)
-        exhl.addWidget(self._exhaustion_spin)
-        exhl.addStretch()
-        ccl.addWidget(exh_row)
-        self._cond_checks = {}
+        ccl = QVBoxLayout(cond_card); ccl.setContentsMargins(10,6,10,10); ccl.setSpacing(8)
+        head = QHBoxLayout(); head.setSpacing(6); head.setContentsMargins(0,0,0,0)
+        self._ce_bar = QTabBar()
+        self._ce_bar.setDrawBase(False); self._ce_bar.setExpanding(False)
+        self._ce_bar.setUsesScrollButtons(False)
+        self._ce_bar.addTab("Conditions"); self._ce_bar.addTab("Effects")
+        self._ce_bar.setTabToolTip(0, "The conditions on you: what each does, and how to take it off")
+        self._ce_bar.setTabToolTip(1, "The effects on you: your own spells, and ones an ally put on you")
+        self._ce_bar.setStyleSheet(
+            f"QTabBar{{background:transparent;border:none;}}"
+            f"QTabBar::tab{{background:transparent;color:{TEXT2};border:none;"
+            f"border-bottom:2px solid transparent;border-radius:0px;padding:4px 2px;"
+            f"margin-right:14px;min-width:0px;font-size:{FS_SMALL}px;font-weight:700;}}"
+            f"QTabBar::tab:selected{{color:{GOLD};border-bottom:2px solid {GOLD};}}"
+            f"QTabBar::tab:hover:!selected{{color:{TEXT};}}")
+        head.addWidget(self._ce_bar, 0, Qt.AlignBottom)
+        head.addStretch()
+        self._ce_add = QPushButton("＋ Add")
+        self._ce_add.setStyleSheet(_btn("", variant="neutral", radius=6, font_size=FS_SMALL,
+                                        padding="0px 10px", min_height0=True).styleSheet())
+        self._ce_add.setFixedHeight(26)
+        self._ce_add.clicked.connect(self._ce_add_clicked)
+        head.addWidget(self._ce_add, 0, Qt.AlignVCenter)
+        ccl.addLayout(head)
+        self._ce_stack = QStackedWidget()
+        self._ce_stack.setStyleSheet("QStackedWidget{background:transparent;border:none;}")
+        self._ce_bar.currentChanged.connect(self._ce_stack.setCurrentIndex)
+        self._ce_bar.currentChanged.connect(lambda i: self._ce_add.setToolTip(
+            "Put a condition on you, or take one off" if i == 0 else
+            "Put an effect on you: one an ally cast on you, a potion..."))
+        ccl.addWidget(self._ce_stack, 1)
+
+        def _list_page():
+            """A page: a list that scrolls (never sideways), and its layout."""
+            sc = QScrollArea(); sc.setWidgetResizable(True); sc.setFrameShape(QFrame.NoFrame)
+            sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+            sc.setStyleSheet("QScrollArea{background:transparent;border:none;}")
+            host = QWidget(); host.setStyleSheet("background:transparent;border:none;")
+            lay = QVBoxLayout(host); lay.setContentsMargins(0,0,4,0); lay.setSpacing(5)
+            sc.setWidget(host)
+            return sc, lay
+
+        def _empty(text):
+            lbl = _lbl(text, TEXT3, FS_SMALL, align=Qt.AlignCenter, wrap=True)
+            lbl.setContentsMargins(6, 14, 6, 14)
+            return lbl
+
+        # ── page 1: conditions, and exhaustion's level under them ──
+        cpage = QWidget(); cpage.setStyleSheet("background:transparent;border:none;")
+        cpl = QVBoxLayout(cpage); cpl.setContentsMargins(0,0,0,0); cpl.setSpacing(8)
+        cond_scroll, self._active_cond_lay = _list_page()
+        # the rows go in above these two: the "none" line, and a stretch
+        self._active_cond_none_lbl = _empty("No conditions on you.")
+        self._active_cond_lay.addWidget(self._active_cond_none_lbl)
+        self._active_cond_lay.addStretch(1)
         COND_NAMES = ["Blinded","Charmed","Deafened","Frightened","Gagged",
                       "Grappled","Incapacitated","Invisible","Paralyzed",
                       "Petrified","Poisoned","Prone","Restrained","Stunned","Surprised",
                       "Unconscious"]
-        cond_grid = QGridLayout(); cond_grid.setSpacing(3)
-        for ci, cname in enumerate(COND_NAMES):
-            cb = QCheckBox(cname); cb.setStyleSheet(
-                f"QCheckBox{{color:{TEXT2};font-size:{FS_SMALL}px;}}"
-                f"QCheckBox::indicator{{width:12px;height:12px;border:1px solid {BORDER2};"
-                f"border-radius:3px;background:{SURF2};}}"
-                f"QCheckBox::indicator:checked{{background:{CRIM2};border-color:{CRIM2};}}")
-            cb.stateChanged.connect(lambda s,n=cname: self._on_condition_changed(n, bool(s)))
+        self._cond_menu = QMenu(cond_card)
+        self._cond_menu.setToolTipsVisible(True)
+        self._cond_checks = {}   # name -> its checkable menu action
+        for cname in COND_NAMES:
+            act = self._cond_menu.addAction(cname)
+            act.setCheckable(True)
             cdata = CONDITIONS.get(cname, {})
             tip_lines = list(cdata.get("effects", []))
-            if cdata.get("levels"):
-                tip_lines = tip_lines + [""] + cdata["levels"]
             if cdata.get("source"):
                 tip_lines.append(f"({cdata['source']})")
             if tip_lines:
-                cb.setToolTip("\n".join(tip_lines))
-            self._cond_checks[cname] = cb
-            cond_grid.addWidget(cb, ci//3, ci%3)
-        ccl.addLayout(cond_grid)
+                act.setToolTip("\n".join(tip_lines))
+            act.toggled.connect(lambda on, n=cname: self._on_condition_changed(n, on))
+            self._cond_checks[cname] = act
+        self._cond_menu.addSeparator()
+        self._cond_clear_act = self._cond_menu.addAction("Clear all")
+        self._cond_clear_act.setToolTip("Take every condition off (exhaustion stays: a long rest takes a level off)")
+        self._cond_clear_act.triggered.connect(self._clear_conditions)
+        cpl.addWidget(cond_scroll, 1)
 
-        # "Active Conditions" section — uses the space that used to just
-        # be addStretch()'d away. Shows each currently-active condition
-        # (plus exhaustion, if its level is above 0) as a readable badge
-        # with the full effect text (including exhaustion's disadvantage
-        # note, which was always present in the data but too cramped in
-        # the old inline label to actually read) available on hover.
-        ccl.addWidget(_sep())
-        ccl.addWidget(_lbl("ACTIVE CONDITIONS", GOLD, FS_TINY, bold=True))
-        self._active_cond_frame = QWidget(); self._active_cond_frame.setStyleSheet("background:transparent;border:none;")
-        self._active_cond_lay = QGridLayout(self._active_cond_frame)
-        self._active_cond_lay.setSpacing(4); self._active_cond_lay.setContentsMargins(0,4,0,0)
-        ccl.addWidget(self._active_cond_frame)
-        self._active_cond_none_lbl = _lbl("None", TEXT3, FS_SMALL)
-        ccl.addWidget(self._active_cond_none_lbl)
+        # Exhaustion: six pips, the level filled in -- click one to set it
+        # (click the top one again to take a level off). The spin box under
+        # them is the level itself, kept hidden: loading, rests and the
+        # rules all set it, and the pips follow.
+        exh = QFrame(); exh.setObjectName("exhRow")
+        exh.setStyleSheet(f"QFrame#exhRow{{background:{SURF2};border:1px solid {BORDER};border-radius:6px;}}")
+        exl = QHBoxLayout(exh); exl.setContentsMargins(10,6,10,6); exl.setSpacing(5)
+        exl.addWidget(_lbl("Exhaustion", TEXT2, FS_SMALL, bold=True, wrap=False))
+        exl.addSpacing(4)
+        self._exh_pips = []
+        for n in range(1, 7):
+            pip = QPushButton(); pip.setFixedSize(16, 16)
+            pip.setCursor(Qt.PointingHandCursor)
+            pip.setAccessibleName(f"Exhaustion level {n}")
+            pip.clicked.connect(lambda checked=False, lv=n: self._exh_pip_clicked(lv))
+            exl.addWidget(pip)
+            self._exh_pips.append(pip)
+        exl.addStretch(1)
+        self._exh_level_lbl = _lbl("", TEXT3, FS_TINY, bold=True, wrap=False)
+        exl.addWidget(self._exh_level_lbl)
+        cpl.addWidget(exh)
+        self._exhaustion_spin = QSpinBox(cpage); self._exhaustion_spin.setRange(0,6)
+        self._exhaustion_spin.hide()
+        self._exhaustion_spin.valueChanged.connect(self._on_exhaustion_changed)
+        # what the exhaustion level does, while there is one
+        self._exh_effect_lbl = _lbl("", CRIM2, FS_TINY, wrap=True)
+        self._exh_effect_lbl.setVisible(False)
+        cpl.addWidget(self._exh_effect_lbl)
+        self._ce_stack.addWidget(cpage)
+
+        # ── page 2: effects (Haste, Shield of Faith, an ally's Bless...) ──
+        epage = QWidget(); epage.setStyleSheet("background:transparent;border:none;")
+        epl = QVBoxLayout(epage); epl.setContentsMargins(0,0,0,0); epl.setSpacing(6)
+        fx_scroll, self._fx_lay = _list_page()
+        self._fx_lay.addStretch()   # (the rows go in above it: _refresh_effects_list)
+        epl.addWidget(fx_scroll, 1)
+        self._ce_stack.addWidget(epage)
+
+        self._cond_card = cond_card
         top_lay.addWidget(cond_card, 3)
 
         from dnd_app.core.calculator import get_wild_shape_info
         if get_wild_shape_info(self.char) is not None:
             self._wildshape_card_container = top_lay
             self._wildshape_card_widget = self._build_wildshape_control_card()
-            top_lay.addWidget(self._wildshape_card_widget, 4)
+            top_lay.addWidget(self._wildshape_card_widget, 2)
 
         top_half_lay.addWidget(top_strip)
         # No addStretch() here: dragging the splitter handle below should
@@ -812,7 +956,7 @@ class CombatMixin:
         self._action_level_filter_rows = {}
         _TAB_DISPLAY_LABEL = {"Action":"Action","Bonus Action":"Bonus Action",
                                "Reaction":"Reaction","Passive":"Other"}
-        CAT_ICONS = {"Common": "combat", "Magic Item": "magic", "Race": "identity", "Spell": "spells"}
+        CAT_ICONS = {"Common": "combat", "Item": "gear", "Race": "identity", "Spell": "spells"}
         for bucket_name, icon in [("Action","combat"),("Bonus Action","bonus"),
                                    ("Reaction","bolt"),("Passive","passive")]:
             bw = QWidget(); bw.setStyleSheet("background:transparent;border:none;")
@@ -834,16 +978,20 @@ class CombatMixin:
                     self._action_level_filter_rows[_bucket].setVisible(cat == "Spell")
                     self._refresh_action_tabs()
                 return _click
-            for cat in ["All", "Common", "Magic Item", "Race", "Spell"]:
+            # (a category shows only while the tab has something in it:
+            # _refresh_action_tabs)
+            for cat in ["All", "Common", "Item", "Race", "Spell"]:
                 btn = QPushButton(cat)
                 if cat in CAT_ICONS:
                     _icons.set_button_icon(btn, CAT_ICONS[cat], 13)
-                btn.setMinimumHeight(24)
+                btn.setFixedHeight(26)
                 btn.setStyleSheet(self._action_cat_btn_style(cat == "All"))
                 btn.clicked.connect(_make_cat_click(cat))
-                if cat == "Magic Item":
-                    btn.setToolTip("Placeholder — magic items aren't mechanically wired into "
-                                    "Known Actions yet.")
+                btn.setToolTip({"All": "Everything in this tab",
+                                "Common": "Class features, feats and the basic actions",
+                                "Item": "What your items and tools let you do",
+                                "Race": "Your race's traits",
+                                "Spell": "Your spells"}[cat])
                 self._action_cat_btns_by_bucket[bucket_name][cat] = btn
                 filter_row.addWidget(btn)
             filter_row.addStretch()
@@ -866,7 +1014,7 @@ class CombatMixin:
                 return _click
             for lvl_label in ["All", "Cantrip"] + [f"L{n}" for n in range(1, 10)]:
                 btn = QPushButton(lvl_label)
-                btn.setMinimumHeight(20); btn.setMaximumWidth(48)
+                btn.setFixedHeight(22); btn.setMaximumWidth(48)
                 btn.setStyleSheet(self._action_cat_btn_style(lvl_label == "All", small=True))
                 btn.clicked.connect(_make_lvl_click(lvl_label))
                 self._action_lvl_btns_by_bucket[bucket_name][lvl_label] = btn
@@ -886,84 +1034,45 @@ class CombatMixin:
             self._action_tabs.addTab(scroll, label)
             _icons.set_tab_icon(self._action_tabs, scroll, icon, 15)
 
-        # ── 5th tab: Active spell effects (Shield of Faith, Haste, …) ────────
-        fx_tab = QWidget(); fx_tab.setStyleSheet("background:transparent;border:none;")
-        fxl = QVBoxLayout(fx_tab); fxl.setContentsMargins(10,10,10,10); fxl.setSpacing(8)
-        add_row = QHBoxLayout(); add_row.setSpacing(8)
-        self._fx_combo = QComboBox(); self._fx_combo.setEditable(True)
-        self._fx_combo.setAccessibleName("Choose or type a spell effect to apply")
-        from dnd_app.core.effects import EFFECT_TABLE
-        self._fx_combo.addItems(sorted(EFFECT_TABLE.keys()))
-        self._fx_combo.setMinimumHeight(30)
-        fx_add = QPushButton("＋ Apply Effect"); fx_add.setMinimumHeight(30)
-        fx_add.setAccessibleName("Apply the selected spell effect")
-        fx_add.setStyleSheet(_btn("", TEAL, variant="cta", text_color=TEAL2,
-                                   hover_text="white", padding="2px 14px").styleSheet())
-        fx_add.clicked.connect(self._add_active_effect)
-        add_row.addWidget(self._fx_combo, 1); add_row.addWidget(fx_add)
-        fxl.addLayout(add_row)
-        fx_scroll = QScrollArea(); fx_scroll.setWidgetResizable(True)
-        fx_scroll.setFrameShape(QFrame.NoFrame)
-        fx_scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
-        fx_host = QWidget(); fx_host.setStyleSheet("background:transparent;border:none;")
-        self._fx_lay = QVBoxLayout(fx_host); self._fx_lay.setSpacing(6)
-        self._fx_lay.addStretch()
-        fx_scroll.setWidget(fx_host)
-        fxl.addWidget(fx_scroll, 1)
-        self._action_tabs.addTab(fx_tab, "Effects")
-        _icons.set_tab_icon(self._action_tabs, fx_tab, "effects", 15)
-
-        # ── Turn tracker bar (Action / Bonus / Reaction economy per turn) ────
-        # Deliberately NOT part of the resizable splitter below — it's a
-        # single fixed-height row of buttons with no variable-length
-        # content, so giving it a share of the splitter just took space
-        # away from the Attacks/action-tabs area (which holds actual
-        # variable-length content players need to read clearly) for zero
-        # benefit, since there's nothing useful gained by resizing this bar
-        # bigger or smaller.
+        # ── Turn tracker (Action / Bonus / Reaction economy per turn) ────────
+        # Beside the action tabs, in the corner of their tab row, so it
+        # doesn't take a row of its own: a chip each for this turn's
+        # action, bonus action and reaction (● ready, ○ used -- click to
+        # change it) and New Turn. (A rogue's Sneak Attack is on the
+        # Weapons card, by the attacks it goes on.)
         self._turn_counts = {"Action":0, "Bonus Action":0, "Reaction":0}
         self._action_spell_is_cantrip = None
         self._bonus_action_spell_is_cantrip = None
-        turn_bar = QFrame()
-        turn_bar.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        turn_bar.setStyleSheet(f"QFrame{{background:{SURF};border:1px solid {qa(AMBER,0x33)};"
-                               f"border-radius:8px;}}")
-        tb = QHBoxLayout(turn_bar); tb.setContentsMargins(10,6,10,6); tb.setSpacing(8)
-        tb.addWidget(_lbl("TURN:", GOLD, FS_SMALL, bold=True, wrap=False))
+        turn_bar = QWidget()
+        turn_bar.setStyleSheet("background:transparent;border:none;")
+        tb = QHBoxLayout(turn_bar); tb.setContentsMargins(8,0,2,3); tb.setSpacing(6)
         self._turn_chips = {}
-        for bname, icon in [("Action","combat"),("Bonus Action","bonus"),("Reaction","bolt")]:
-            chip = QPushButton(f"{bname}  ●")
+        for bname, short, icon in [("Action","Action","combat"),("Bonus Action","Bonus","bonus"),
+                                   ("Reaction","Reaction","bolt")]:
+            chip = QPushButton(f"{short}  ●")
             _icons.set_button_icon(chip, icon, 14)
-            chip.setCheckable(False); chip.setMinimumHeight(28)
-            chip.setAccessibleName(f"{bname} availability — click to toggle used")
-            chip.setToolTip(f"Click to manually toggle your {bname} as used/available")
+            chip.setProperty("_short", short)
+            chip.setCheckable(False); chip.setFixedHeight(26)
+            chip.setAccessibleName(f"{bname} this turn — click to mark it used or ready")
             chip.clicked.connect(lambda checked=False, b=bname: self._toggle_turn_slot(b))
             tb.addWidget(chip)
             self._turn_chips[bname] = chip
-        self._haste_chip = _lbl("HASTE: +1 action", "#FFD34D", FS_SMALL, bold=True, wrap=False)
-        self._haste_chip.setStyleSheet(
-            f"background:#22FFD34D;border:1px solid #FFD34D;border-radius:6px;"
-            f"padding:4px 8px;color:#FFD34D;font-weight:700;")
-        self._haste_chip.setVisible(False)
-        tb.addWidget(self._haste_chip)
-        self._sneak_chip = QPushButton("Sneak Attack ●")
-        _icons.set_button_icon(self._sneak_chip, "dagger", 14)
-        self._sneak_chip.setMinimumHeight(28)
-        self._sneak_chip.setToolTip("Rogue: once per turn. Click to toggle used.")
-        self._sneak_chip.setAccessibleName("Sneak Attack availability — click to toggle")
-        self._sneak_chip.clicked.connect(self._toggle_sneak)
-        self._sneak_chip.setVisible(False)
-        tb.addWidget(self._sneak_chip)
-        tb.addStretch()
         new_turn = QPushButton("New Turn")
         _icons.set_button_icon(new_turn, "refresh", 14)
-        new_turn.setMinimumHeight(30)
+        new_turn.setFixedHeight(26)
         new_turn.setAccessibleName("Start a new turn — resets action, bonus action, reaction and sneak attack")
-        new_turn.setStyleSheet(_btn("", GREEN, variant="cta", text_color=GREEN2,
-                                     hover_text="white", padding="2px 16px").styleSheet())
+        new_turn.setToolTip("Start your next turn: your action, bonus action and reaction are ready again")
+        # (the turn chips' look: on the action tabs' darker strip, its text
+        # kept readable on its tint there -- in a light theme too)
+        _nt_ink = readable(GREEN2, tint(PANELDK, GREEN2, 0x1e))
+        new_turn.setStyleSheet(
+            f"QPushButton{{background:{qa(GREEN2,0x1e)};border:2px solid {GREEN2};font-size:{FS_SMALL}px;"
+            f"border-radius:6px;color:{_nt_ink};font-weight:700;padding:0px 12px;min-height:0px;}}"
+            f"QPushButton:hover{{background:{GREEN2};color:{on_fill(GREEN2)};}}"
+            f"QPushButton:focus{{border:2px solid {TEAL2};}}")
         new_turn.clicked.connect(self._new_turn)
         tb.addWidget(new_turn)
-        root_lay.addWidget(turn_bar)
+        self._action_tabs.setCornerWidget(turn_bar, Qt.TopRightCorner)
 
         splitter.addWidget(top_half)
         splitter.addWidget(self._action_tabs)
@@ -1174,17 +1283,32 @@ class CombatMixin:
         fw = QApplication.focusWidget()
         if fw is not None and any(fw in btns for btns in getattr(self, "_bucket_use_btns", {}).values()):
             fw.clearFocus()
+        from dnd_app.core.effects import has_extra_action
+        extra = has_extra_action(self.char)
         for bname, chip in self._turn_chips.items():
             limit = self._turn_limit(bname)
             used  = self._turn_counts.get(bname, 0)
             free  = used < limit
             marker = "●" * max(0, limit-used) + "○" * used if limit else "—"
-            chip.setText(f"{bname}  {marker}")
-            chip.setToolTip(blocks.get(bname, ""))
+            chip.setText(f"{chip.property('_short') or bname}  {marker}")
+            if bname in blocks:
+                tip = f"No {bname.lower()} this turn: {blocks[bname]}"
+            else:
+                tip = (f"Your {bname.lower()} this turn: "
+                       + ("ready" if free else "used") + ". Click to mark it "
+                       + ("used." if free else "ready again."))
+                if bname == "Action" and extra and limit == 2:
+                    tip += ("\nAction Surge: one more action this turn."
+                            if self.char.get("_action_surge_used_this_turn") else
+                            "\nHasted: one more action this turn (Attack with one weapon "
+                            "attack only, Dash, Disengage, Hide or Use an Object).")
+            chip.setToolTip(tip)
             col = GREEN2 if free else (CRIM2 if bname in blocks else TEXT2)
+            # (on the action tabs' darker strip: kept readable on its tint)
+            ink = readable(col, tint(PANELDK, col, 0x1e))
             chip.setStyleSheet(
-                f"QPushButton{{background:{qa(col,0x1e)};border:2px solid {col};"
-                f"border-radius:6px;color:{col};font-weight:700;padding:2px 10px;}}"
+                f"QPushButton{{background:{qa(col,0x1e)};border:2px solid {col};font-size:{FS_SMALL}px;"
+                f"border-radius:6px;color:{ink};font-weight:700;padding:0px 10px;min-height:0px;}}"
                 f"QPushButton:hover{{border-color:{TEAL2};}}"
                 f"QPushButton:focus{{border:2px solid {TEAL2};}}")
             # Grey the bucket's buttons + dim cards
@@ -1200,9 +1324,6 @@ class CombatMixin:
                         btn.setText(btn.property("_orig_text"))
                 except RuntimeError:
                     pass
-        # Haste chip
-        from dnd_app.core.effects import has_extra_action
-        self._haste_chip.setVisible(has_extra_action(self.char))
         # Sneak chip (rogues only): hidden while Wild Shaped, since Sneak
         # Attack requires a finesse or ranged weapon and natural weapons
         # never qualify. Also hidden if nothing currently equipped qualifies.
@@ -1228,19 +1349,54 @@ class CombatMixin:
             dice = (rogue_lvl + 1) // 2
             used = "Sneak Attack" in self.char.get("_turn_uses", [])
             self._sneak_chip.setVisible(True)
-            self._sneak_chip.setText(f"Sneak {dice}d6  {'○ used' if used else '● ready'}")
-            col = TEXT3 if used else PURP2
+            self._sneak_chip.setText(f"Sneak {dice}d6  {'○' if used else '●'}")
+            self._sneak_chip.setToolTip(
+                f"Sneak Attack ({dice}d6): once a turn, "
+                + ("used this turn. Click to mark it ready again." if used
+                   else "ready. Click to mark it used."))
+            col = TEXT2 if used else PURP2
+            ink = readable(col, tint(SURF, col, 0x1e))
             self._sneak_chip.setStyleSheet(
-                f"QPushButton{{background:{qa(col,0x1e)};border:2px solid {col};"
-                f"border-radius:6px;color:{col};font-weight:700;padding:2px 10px;}}"
+                f"QPushButton{{background:{qa(col,0x1e)};border:2px solid {col};font-size:{FS_SMALL}px;"
+                f"border-radius:6px;color:{ink};font-weight:700;padding:0px 10px;min-height:0px;}}"
+                f"QPushButton:hover{{border-color:{TEAL2};}}"
                 f"QPushButton:focus{{border:2px solid {TEAL2};}}")
         else:
             self._sneak_chip.setVisible(False)
 
-    # ═══ Active spell effects ═══════════════════════════════════════════════
-    def _add_active_effect(self):
+    def _ce_add_clicked(self):
+        """＋ Add on the Conditions & Effects card: for conditions, the menu
+        of them (ticked: on you; click to put one on or take it off); for
+        effects, a list to pick from, with a search box."""
+        b = self._ce_add
+        at = b.mapToGlobal(QPoint(b.width(), b.height() + 2))
+        if self._ce_stack.currentIndex() == 0:
+            self._cond_menu.exec(QPoint(at.x() - self._cond_menu.sizeHint().width(), at.y()))
+            return
         from dnd_app.core.effects import EFFECT_TABLE
-        typed = self._fx_combo.currentText().strip()
+        on = set(self.char.get("active_effects", []))
+        names = [n for n in sorted(set(EFFECT_TABLE) | RESOURCE_POOL_TOGGLES) if n not in on]
+        pop = PickerPopup(names, "Search effects…", self)
+        pop.picked.connect(self._add_active_effect)
+        pop.show_at(QPoint(at.x() - pop.width(), at.y()))
+
+    def _exh_pip_clicked(self, level: int):
+        """An exhaustion pip: that level (the top one again: a level off).
+        Level 6 is death, so that one asks first."""
+        cur = self._exhaustion_spin.value()
+        new = level - 1 if cur == level else level
+        if new >= 6 > cur:
+            ans = QMessageBox.question(self, "Exhaustion 6",
+                                       "Exhaustion level 6 is death. Set it?",
+                                       QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if ans != QMessageBox.Yes:
+                return
+        self._exhaustion_spin.setValue(new)
+
+    # ═══ Active spell effects ═══════════════════════════════════════════════
+    def _add_active_effect(self, typed: str = ""):
+        from dnd_app.core.effects import EFFECT_TABLE
+        typed = (typed or "").strip()
         if not typed: return
         # Editable QComboBox.currentText() returns whatever was typed, with
         # no guarantee it matches a real entry — a mistyped or misremembered
@@ -1304,6 +1460,8 @@ class CombatMixin:
                 self._toast(f"{name} removed")
 
     def _refresh_effects_list(self):
+        """The Effects page: a row for each effect on you -- its name, what
+        it does, and ✕ to end it. The tab says how many there are."""
         if not hasattr(self, "_fx_lay"): return
         from dnd_app.core.effects import EFFECT_TABLE
         from dnd_app.core.riders import effect_note
@@ -1313,34 +1471,41 @@ class CombatMixin:
             if w:
                 w.hide(); w.setParent(None); w.deleteLater()
         fx = self.char.get("active_effects", [])
+        if hasattr(self, "_ce_bar"):
+            self._ce_bar.setTabText(1, "Effects" + (f" ({len(fx)})" if fx else ""))
         if not fx:
-            self._fx_lay.insertWidget(0, _lbl(
-                "No active effects. Pick a spell above (Haste, Shield of Faith, "
-                "Enlarge…) — AC, speed and the turn tracker update automatically.",
-                TEXT3, FS_SMALL, wrap=True))
+            empty = _lbl("No effects on you. A spell you cast on yourself shows here; "
+                         "＋ Add puts on one an ally cast on you.",
+                         TEXT3, FS_SMALL, align=Qt.AlignCenter, wrap=True)
+            empty.setContentsMargins(6, 14, 6, 14)
+            self._fx_lay.insertWidget(0, empty)
             return
         for i, name in enumerate(fx):
             info = EFFECT_TABLE.get(name, {})
-            row = QFrame()
-            col = TEAL2 if info else AMBE2
-            row.setStyleSheet(f"QFrame{{background:{qa(col,0x11)};border:1px solid {qa(col,0x44)};"
-                              f"border-radius:8px;}}")
-            rl = QHBoxLayout(row); rl.setContentsMargins(10,7,8,7); rl.setSpacing(8)
-            head = name + ("  ©" if info.get("conc") else "")
-            tcol = QVBoxLayout(); tcol.setSpacing(1)
-            tcol.addWidget(_lbl(head, GOLD, FS_BODY, bold=True, wrap=False))
+            col = TEAL if info else AMBER
+            under = tint(SURF, col, 0x1a)
+            ink = readable(GOLD, under)
+            row = QFrame(); row.setObjectName("fxRow")
+            row.setStyleSheet(f"QFrame#fxRow{{background:{qa(col,0x1a)};border:1px solid {qa(col,0x66)};"
+                              f"border-radius:6px;}}")
+            rl = QHBoxLayout(row); rl.setContentsMargins(8,5,8,5); rl.setSpacing(7)
+            rl.addWidget(_icons.icon_label("effects", 16, ink))
+            rl.addWidget(_lbl(name + ("  ©" if info.get("conc") else ""), ink, FS_SMALL,
+                              bold=True, wrap=False), 1)
             # a smite's dice at the level it was cast, or what's left of it on
             # the target once it has landed (core/riders.py)
             note = effect_note(self.char, name) or info.get("note", "Custom effect — tracked, no automatic numbers.")
-            tcol.addWidget(_lbl(note, TEXT2, FS_TINY, wrap=True))
-            rm = QPushButton("✕ End"); rm.setMinimumHeight(28); rm.setMinimumWidth(58)
-            rm.setAccessibleName(f"End the {name} effect")
-            rm.setStyleSheet(
-                _btn("", CRIMSON, variant="danger", bg_alpha=0x22, text_color=CRIM2,
-                     hover_text="white", padding="0px").styleSheet()
-                + f"QPushButton:focus{{border:2px solid {TEAL2};}}")
-            rm.clicked.connect(lambda checked=False, n=name: self._remove_active_effect(n))
-            rl.addLayout(tcol, 1); rl.addWidget(rm, 0, Qt.AlignTop)
+            row.setToolTip(f"<b>{name}</b>" + (" (concentration)" if info.get("conc") else "")
+                           + f"<br>{note}<br><br><i>Right-click: end it, or read it all</i>")
+            row.setAccessibleName(f"{name}: {note}")
+
+            def _menu(pos, r=row, n=name, nt=note):
+                m = QMenu(r)
+                m.addAction(f"End {n}", lambda: QTimer.singleShot(0, self, lambda: self._remove_active_effect(n)))
+                m.addAction("Details…", lambda: show_details(self, n, details_markdown(nt)))
+                m.exec(r.mapToGlobal(pos))
+            row.setContextMenuPolicy(Qt.CustomContextMenu)
+            row.customContextMenuRequested.connect(_menu)
             self._fx_lay.insertWidget(i, row)
 
     _EXHAUSTION_EFFECTS = {
@@ -1371,47 +1536,111 @@ class CombatMixin:
         if not hasattr(self, "_exh_effect_lbl"):
             return
         lvl = self.char.get("exhaustion", 0)
-        self._exh_effect_lbl.setText(self._EXHAUSTION_EFFECTS.get(lvl, ""))
+        text = self._EXHAUSTION_EFFECTS.get(lvl, "")
+        self._exh_effect_lbl.setText(text)
+        self._exh_effect_lbl.setVisible(bool(text))
+        _LEVEL = {1: "Disadvantage on ability checks", 2: "Speed halved",
+                  3: "Disadvantage on attack rolls and saving throws",
+                  4: "Hit point maximum halved", 5: "Speed reduced to 0", 6: "Death"}
+        for n, pip in enumerate(getattr(self, "_exh_pips", []), start=1):
+            on = n <= lvl
+            pip.setStyleSheet(
+                f"QPushButton{{background:{CRIM2 if on else 'transparent'};"
+                f"border:2px solid {CRIM2 if on else BORDER2};border-radius:8px;"
+                f"padding:0px;min-height:0px;}}"
+                f"QPushButton:hover{{border-color:{CRIM2};}}")
+            pip.setToolTip(f"Level {n}: {_LEVEL[n]} (and everything below it)"
+                           + ("\nClick to take this level off" if n == lvl else ""))
+        if hasattr(self, "_exh_level_lbl"):
+            self._exh_level_lbl.setText(f"Level {lvl}" if lvl else "None")
+            self._exh_level_lbl.setStyleSheet(
+                f"color:{CRIM2 if lvl else TEXT3};font-size:{FS_TINY}px;font-weight:700;"
+                f"background:transparent;border:none;")
 
     def _refresh_active_conditions(self):
-        """Populate the readable "Active Conditions" badge section — one
-        badge per checked condition checkbox, plus exhaustion (if its
-        level is above 0), each with the condition's full effect text
-        (from the same data wired into the checkboxes' own tooltips)
-        shown on hover."""
+        """The Conditions page: a row for each condition on you -- its icon
+        and name; what it does on hover, and a right-click to take it off or
+        read the full rules. One another condition brings with it (Stunned
+        -> Incapacitated, Unconscious -> Prone) says what it's from, and goes
+        when that one does. The tab says how many there are."""
         if not hasattr(self, "_active_cond_lay"):
             return
-        while self._active_cond_lay.count():
-            item = self._active_cond_lay.takeAt(0)
-            if item.widget(): item.widget().setParent(None)
+        lay = self._active_cond_lay
+        # the rows sit above the permanent tail: the "none" line, and a stretch
+        while lay.count() > 2:
+            w = lay.takeAt(0).widget()
+            if w is not None:
+                w.setParent(None)
+                w.deleteLater()
 
-        def _badge(text, tooltip):
-            b = _lbl(text, CRIM2, FS_SMALL, bold=True, wrap=False)
-            b.setStyleSheet(
-                f"background:{qa(CRIMSON,0x33)};border:1.5px solid {qa(CRIMSON,0x99)};"
-                f"border-radius:5px;padding:3px 8px;color:{CRIM2};"
-                f"font-size:{FS_SMALL}px;font-weight:700;")
-            b.setToolTip(tooltip)
-            return b
+        def _menu(pos, row, cond, removable, cause):
+            m = QMenu(row)
+            if removable:
+                m.addAction(f"Take {cond} off",
+                            lambda c=cond: QTimer.singleShot(0, self, lambda: self._cond_checks[c].setChecked(False)))
+            else:
+                a = m.addAction(f"Goes when {cause} does"); a.setEnabled(False)
+            m.addAction("Details…", lambda c=cond: self._show_condition_details(c))
+            m.exec(row.mapToGlobal(pos))
 
-        active = []
-        for cname, cb in self._cond_checks.items():
-            if cb.isChecked():
-                active.append((cname, cb.toolTip()))
-        # conditions another one brings with it (Stunned -> Incapacitated,
-        # Unconscious -> Prone), shown so a blocked turn has a visible reason
+        def _row(cond, title, removable, cause=""):
+            alpha = 0x22 if removable else 0x10
+            under = tint(SURF, CRIMSON, alpha)
+            ink = readable(CRIM2 if removable else TEXT2, under)
+            row = QFrame(); row.setObjectName("condRow")
+            row.setStyleSheet(
+                f"QFrame#condRow{{background:{qa(CRIMSON, alpha)};"
+                f"border:1px solid {qa(CRIMSON, 0x88 if removable else 0x44)};border-radius:6px;}}")
+            rl = QHBoxLayout(row); rl.setContentsMargins(8,5,8,5); rl.setSpacing(7)
+            icon = CONDITIONS.get(cond, {}).get("icon")
+            if icon:
+                rl.addWidget(_icons.icon_label(icon, 16, ink))
+            rl.addWidget(_lbl(title, ink, FS_SMALL, bold=True, wrap=False), 1)
+            summary = CONDITIONS.get(cond, {}).get("summary", "")
+            row.setToolTip(f"<b>{cond}</b>" + (f" (from {cause})" if cause else "")
+                           + (f"<br>{summary}" if summary else "")
+                           + "<br><br><i>Right-click: "
+                           + ("take it off, or " if removable else "") + "the full rules</i>")
+            row.setContextMenuPolicy(Qt.CustomContextMenu)
+            row.customContextMenuRequested.connect(
+                lambda pos, r=row, c=cond, rm=removable, cs=cause: _menu(pos, r, c, rm, cs))
+            return row
+
+        on = set(self.char.get("conditions", []))
+        rows = [_row(c, c, True) for c in self._cond_checks if c in on]
         from dnd_app.core.calculator import implied_conditions
-        for cname, causes in implied_conditions(self.char).items():
-            tip = self._cond_checks[cname].toolTip() if cname in self._cond_checks else ""
-            active.append((f"{cname} (from {', '.join(causes)})", tip))
-        lvl = self.char.get("exhaustion", 0)
-        if lvl > 0:
-            active.append((f"Exhaustion ({lvl})", self._EXHAUSTION_EFFECTS.get(lvl, "")))
+        implied = implied_conditions(self.char)
+        rows += [_row(c, f"{c} · from {', '.join(causes)}", False, ", ".join(causes))
+                 for c, causes in implied.items()]
+        for i, row in enumerate(rows):
+            lay.insertWidget(i, row)
+        self._active_cond_none_lbl.setVisible(not rows)
+        if hasattr(self, "_cond_clear_act"):
+            self._cond_clear_act.setEnabled(bool(on))
+        if hasattr(self, "_ce_bar"):
+            n = len(on) + len(implied) + (1 if self.char.get("exhaustion", 0) else 0)
+            self._ce_bar.setTabText(0, "Conditions" + (f" ({n})" if n else ""))
 
-        self._active_cond_none_lbl.setVisible(not active)
-        self._active_cond_frame.setVisible(bool(active))
-        for i, (name, tip) in enumerate(sorted(active)):
-            self._active_cond_lay.addWidget(_badge(name, tip), i // 2, i % 2)
+    def _show_condition_details(self, cond: str):
+        """A condition's full rules, from its row's right-click menu."""
+        data = CONDITIONS.get(cond, {})
+        text = "\n".join(f"• {e}" for e in data.get("effects", []))
+        if data.get("source"):
+            text += f"\n\n*{data['source']}*"
+        show_details(self, cond, details_markdown(text))
+
+    def _clear_conditions(self):
+        """Clear all, from the Add condition menu: every condition off.
+        (Exhaustion stays -- it's a level a long rest takes down.)"""
+        if not self.char.get("conditions"):
+            return
+        self.char["conditions"] = []
+        for act in self._cond_checks.values():
+            act.blockSignals(True); act.setChecked(False); act.blockSignals(False)
+        self._refresh_active_conditions()
+        self._mark_dirty()
+        self._apply_turn_state()     # Incapacitated/Surprised no longer block the turn
+        self.ctrl.refresh()
 
     def _reset_max_hp_override(self):
         """Clear the manual Max HP override and let it auto-calculate again."""
@@ -1451,16 +1680,12 @@ class CombatMixin:
         self._mark_dirty()
 
     def _update_hp_bar(self):
-        """Live green→amber→red HP bar; safe to call from any HP change."""
-        if not hasattr(self, "_hp_bar"): return
-        mx  = self._hp_max_hp.value()
-        cur = self._hp_current_hp.value()
-        pct = max(0, min(100, round(cur * 100 / mx))) if mx > 0 else 0
-        self._hp_bar.setValue(pct)
-        bar_col = GREEN2 if pct > 50 else (AMBER if pct > 25 else CRIM2)
-        self._hp_bar.setStyleSheet(
-            f"QProgressBar{{background:{SURF2};border:none;border-radius:4px;}}"
-            f"QProgressBar::chunk{{border-radius:4px;background:{bar_col};}}")
+        """The health bar -- the window's menu bar (main_window.py) -- shows
+        the HP in the boxes here: current and temp of max, a beast form's
+        own while Wild Shaped. Safe to call from any HP change."""
+        if not hasattr(self, "_hp_max_hp"): return
+        self.health_changed.emit(self._hp_current_hp.value(), self._hp_max_hp.value(),
+                                 self._hp_temp_hp.value(), bool(self.char.get("_wildshape_active")))
 
     # ── Toast notifications (non-blocking) ────────────────────────────────────
     def _spend_hit_die(self, die_key: str):
@@ -1469,23 +1694,12 @@ class CombatMixin:
         if not hd or hd.get("remaining", 0) <= 0:
             return
         sides = int(die_key[1:])
-        roll = random.randint(1, sides)
         con = ability_mod(self.char, "CON")
-        # Durable: the die roll itself (before CON is added) has a floor of 2x CON modifier (min 2).
-        if "Durable" in self.char.get("feats", []):
-            roll = max(roll, 2 * con, 2)
-        heal = max(0, roll + con)
-        # Dwarven Fortitude: guarantees at least 1 HP healed (the standard
-        # hit-die-spend formula allows 0). This app doesn't track "when"
-        # a hit die is spent, so the Dodge-triggered part of this feat
-        # works through this same button; only this floor differs from the norm.
-        if "Dwarven Fortitude" in self.char.get("feats", []):
-            heal = max(1, roll + con)
-        # Vigor of the Hill Giant: extra HP = CON modifier + proficiency
-        # bonus when spending a Hit Die during a short rest ("Iron Stomach").
-        if "Vigor of the Hill Giant" in self.char.get("feats", []):
-            from dnd_app.core.calculator import get_prof_bonus
-            heal += con + get_prof_bonus(self.char)
+        # what changes a Hit Die's healing (Durable, Dwarven Fortitude, Vigor
+        # of the Hill Giant, a Periapt of Wound Closure) -- core, shared with
+        # the Rest dialog's dice and Android
+        from dnd_app.core.character import hit_die_heal
+        roll, heal = hit_die_heal(self.char, sides, random.randint(1, sides))
         hd["remaining"] -= 1
         cur, mx = self.char.get("current_hp", 0), self.char.get("max_hp", 0)
         self.char["current_hp"] = min(mx, cur + heal)
@@ -1885,6 +2099,19 @@ class CombatMixin:
             self._add_attack_row(a)
         for idx, wpn in enumerate(self.char.get("equipped_weapons",[])):
             self._add_weapon_row(wpn, is_offhand=(idx > 0))
+        self._fit_weapons_card()
+
+    def _fit_weapons_card(self):
+        """The weapons card is at least as wide as its widest row, so no
+        row is cut off: the other cards give it the room."""
+        card = getattr(self, "_weapons_card", None)
+        if card is None:
+            return
+        rows = [w for w in self._weapon_row_widgets if w is not None]
+        widest = max((w.sizeHint().width() for w in rows), default=0)
+        scroll_bar = self._weapons_scroll.verticalScrollBar().sizeHint().width()
+        m = card.layout().contentsMargins()
+        card.setMinimumWidth(min(620, widest + scroll_bar + m.left() + m.right() + 6) if widest else 0)
 
     def _refresh_ammo_counters(self):
         """Every weapon's ammo counter shows the inventory as it is now --
@@ -1955,20 +2182,27 @@ class CombatMixin:
             self._hp_temp_hp.valueChanged.connect(
                 lambda v: self.ctrl.update("temp_hp", v, rebuild_char=False)
             )
+            self._hp_temp_hp.valueChanged.connect(lambda v: self._update_hp_bar())
             self._hp_signals_connected = True
 
-        # Armor combo
+        # What's worn, on the weapons card's top line
         _armor_name = char.get("armor_worn", "No Armor")
         if _armor_name and _armor_name != "No Armor":
             _abase = next((a for a in ARMOR if a[0] == _armor_name), None)
-            self._armor_display.setText(f"{_armor_name} (AC {_abase[2]})" if _abase else _armor_name)
+            self._armor_display.setText(_armor_name)
+            self._armor_display.setToolTip(f"{_armor_name}: base AC {_abase[2]}" if _abase else _armor_name)
+            self._armor_display.setStyleSheet(
+                f"color:{TEXT};font-size:{FS_SMALL}px;font-weight:700;background:transparent;border:none;")
         else:
-            self._armor_display.setText("No Armor")
-        self._shield_display.setText("Shield equipped (+2 AC)" if char.get("shield") else "No Shield")
+            self._armor_display.setText("No armor")
+            self._armor_display.setToolTip("")
+            self._armor_display.setStyleSheet(
+                f"color:{TEXT3};font-size:{FS_SMALL}px;background:transparent;border:none;")
+        has_shield = bool(char.get("shield"))
+        self._shield_display.setText("Shield +2" if has_shield else "No shield")
         self._shield_display.setStyleSheet(
-            f"QLabel{{background:{SURF2};border:1px solid {GOLD if char.get('shield') else BORDER};"
-            f"border-radius:6px;padding:4px 10px;color:{GOLD2 if char.get('shield') else TEXT3};"
-            f"font-size:{FS_SMALL}px;font-weight:{700 if char.get('shield') else 400};}}")
+            f"color:{GOLD2 if has_shield else TEXT3};font-size:{FS_SMALL}px;"
+            f"font-weight:{700 if has_shield else 400};background:transparent;border:none;")
 
         self._bind_death_and_conditions()
         self._refresh_death_and_conditions()
@@ -2019,7 +2253,7 @@ class CombatMixin:
         self._resist_frame.setVisible(True)
         self._resist_caption.setVisible(True)
         idx = 0
-        cols = 5
+        cols = 2   # (the HP card is two columns wide)
 
         def _badge(text, color, tooltip):
             b = _lbl(text, color, FS_SMALL, bold=True, wrap=False)

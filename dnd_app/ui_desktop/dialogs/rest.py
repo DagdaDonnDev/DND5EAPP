@@ -44,7 +44,7 @@ from dnd_app.core.save_load import (
     save_character, load_character, list_saved_characters, character_filename, validate_character,
 )
 from dnd_app.core.character import set_subclass, get_class_entry
-from dnd_app.core.character import rest_options, rest_preview_lines
+from dnd_app.core.character import rest_options, rest_preview_lines, rest_activities
 from dnd_app.data.magic_items import ALL_MAGIC_ITEMS, has_item_effect
 from dnd_app.ui_desktop.dialogs.levelup_panel import LevelUpPanel
 from dnd_app.data.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
@@ -114,66 +114,191 @@ class RestOptionsDialog(QDialog):
         return [kind for kind, cb in self._checks.items() if cb.isChecked()]
 
 
-class RestPreviewDialog(QDialog):
-    """Shows exactly what a Short/Long Rest is about to restore/reset —
-    HP, hit dice, spell slots, resources — before it's applied, instead
-    of the rest silently happening with only a toast confirming it
-    afterward. Purely informational (Confirm/Cancel); the real apply
-    logic in CharacterSheet._short_rest()/_long_rest() is unchanged and
-    only runs once this dialog is confirmed. `preview` is built by
-    CharacterSheet._preview_short_rest()/_preview_long_rest() — plain
-    filters over current character state, not a simulation, so this
-    can't drift from what those methods actually do next.
+class RestDialog(QDialog):
+    """One dialog for a rest, from the sheet's Rest button: Short or Long
+    (a switch at the top), what it will restore, the hit dice to spend on
+    a short rest, and anything this character can change on that rest
+    (core/character.py's rest_options(): re-preparing spells, a pact
+    weapon, an Armorer's model...). One Confirm does the lot; the sheet
+    then applies it (_do_short_rest / _do_long_rest).
 
-    `options` (from core/character.py's rest_options()) folds the
-    "anything you'd like to reconfigure on this rest" checklist into
-    this same preview dialog rather than a separate confirm step, so
-    the player gets one dialog and one Confirm for the whole rest.
-    get_selected() below is read the same way RestOptionsDialog's is."""
+    `previews` is {"short": dict, "long": dict}, from the sheet's
+    _preview_short_rest()/_preview_long_rest() -- plain filters over the
+    character as it is, so they can't drift from what the rest does.
+    `long_block` is why a long rest can't be taken now ("" if it can)."""
 
-    def __init__(self, rest_type: str, preview: dict, options: list, parent=None):
+    def __init__(self, char: dict, previews: dict, rest_type: str = "short",
+                 long_block: str = "", parent=None):
         super().__init__(parent)
         from dnd_app.ui_desktop.style.theme import sync_globals as _sg; _sg(globals())
-        self.rest_type = rest_type
-        self._options = options
+        self.char = char
+        self._previews = previews
+        self._long_block = long_block
         self._checks = {}
-        label = "Short Rest" if rest_type == "short" else "Long Rest"
-        icon = "short_rest" if rest_type == "short" else "long_rest"
-        self.setWindowTitle(label)
-        self.setMinimumWidth(440)
+        self.setWindowTitle("Rest")
+        self.setMinimumWidth(480)
         self.setStyleSheet(f"QDialog{{background:{BG};}}")
         root = QVBoxLayout(self); root.setContentsMargins(20,18,20,18); root.setSpacing(12)
-        root.addWidget(_icons.icon_header(icon, _lbl(label, GOLD2, FS_HEAD, bold=True), size=20, spacing=8))
+        root.addWidget(_icons.icon_header("long_rest", _lbl("Rest", GOLD2, FS_HEAD, bold=True),
+                                          size=20, spacing=8))
 
-        card = _card(qa(TEAL,0x44)); cl = QVBoxLayout(card)
-        cl.setContentsMargins(14,12,14,14); cl.setSpacing(4)
-        cl.addWidget(_lbl("WHAT THIS WILL DO", TEAL2, FS_SMALL, bold=True))
-        cl.addWidget(_lbl("\n".join(rest_preview_lines(rest_type, preview)), TEXT, FS_BODY, wrap=True))
-        root.addWidget(card)
+        # Short or long: a two-way switch
+        sw = QHBoxLayout(); sw.setSpacing(0)
+        self._type_btns = {}
+        for i, (kind, text, tip) in enumerate((
+                ("short", "Short Rest  ·  1 hour", "At least an hour: spend hit dice, and "
+                                                    "what comes back on a short rest does"),
+                ("long", "Long Rest  ·  8 hours", "8 hours: all your HP and spell slots, up to "
+                                                   "half your hit dice back, a level of exhaustion off"))):
+            b = QPushButton(text); b.setCheckable(True)
+            b.setToolTip(tip)
+            _icons.set_button_icon(b, "short_rest" if kind == "short" else "long_rest", 15)
+            left, right = (8, 0) if i == 0 else (0, 8)
+            b.setStyleSheet(
+                f"QPushButton{{background:{SURF};color:{TEXT2};border:2px solid {BORDER2};"
+                f"border-top-left-radius:{left}px;border-bottom-left-radius:{left}px;"
+                f"border-top-right-radius:{right}px;border-bottom-right-radius:{right}px;"
+                f"font-size:{FS_SMALL}px;font-weight:700;padding:0px 14px;"
+                f"min-height:32px;max-height:32px;}}"   # (36px with the border)
+                f"QPushButton:checked{{background:{qa(GOLD,0x33)};color:{GOLD2};border-color:{GOLD};}}"
+                f"QPushButton:disabled{{color:{TEXT3};}}")
+            b.clicked.connect(lambda checked=False, k=kind: self._set_type(k))
+            sw.addWidget(b, 1)
+            self._type_btns[kind] = b
+        if long_block:
+            self._type_btns["long"].setEnabled(False)
+            self._type_btns["long"].setToolTip(f"Can't take a long rest: {long_block}")
+        root.addLayout(sw)
+        self._block_lbl = _lbl(f"Can't take a long rest: {long_block}." if long_block else "",
+                               CRIM2, FS_SMALL, wrap=True)
+        self._block_lbl.setVisible(bool(long_block))
+        root.addWidget(self._block_lbl)
 
-        if options:
-            opt_card = _card(qa(INDIGO,0x44)); ol = QVBoxLayout(opt_card)
-            ol.setContentsMargins(14,12,14,14); ol.setSpacing(6)
-            ol.addWidget(_lbl("ALSO RECONFIGURE?", IND2, FS_SMALL, bold=True))
-            ol.addWidget(_lbl("Check anything you'd like to change as part of this rest.",
-                               TEXT3, FS_TINY, wrap=True))
-            for opt in options:
-                cb = QCheckBox(opt["label"])
-                cb.setToolTip(opt.get("detail", ""))
-                ol.addWidget(cb)
-                self._checks[opt["kind"]] = cb
-            root.addWidget(opt_card)
+        # The cards scroll, if there's more than the screen has room for (a
+        # character with a lot to do on a long rest)
+        self._scroll = QScrollArea(); self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
+        self._body = QWidget(); self._body.setStyleSheet("background:transparent;")
+        body = QVBoxLayout(self._body); body.setContentsMargins(0, 0, 6, 0); body.setSpacing(12)
+        self._scroll.setWidget(self._body)
+        root.addWidget(self._scroll, 1)
 
+        # What it will do
+        prev = _card(qa(TEAL,0x44)); pl = QVBoxLayout(prev)
+        pl.setContentsMargins(14,12,14,14); pl.setSpacing(4)
+        pl.addWidget(_lbl("WHAT THIS WILL DO", TEAL2, FS_SMALL, bold=True))
+        self._preview_lbl = _lbl("", TEXT, FS_BODY, wrap=True)
+        pl.addWidget(self._preview_lbl)
+        body.addWidget(prev)
+
+        # Hit dice to spend (a short rest)
+        self._dice_card = _card(qa(GREEN,0x44)); dl = QVBoxLayout(self._dice_card)
+        dl.setContentsMargins(14,12,14,14); dl.setSpacing(6)
+        dl.addWidget(_lbl("SPEND HIT DICE", GREEN2, FS_SMALL, bold=True))
+        hd = char.get("hit_dice", {})
+        left = sum(d.get("remaining", 0) for d in hd.values())
+        pool = ", ".join(f"{d.get('remaining', 0)}{k}" for k, d in
+                         sorted(hd.items(), key=lambda kv: -int(kv[0][1:])) if d.get("remaining", 0))
+        cur, mx = char.get("current_hp", 0), char.get("max_hp", 0)
+        con = ability_mod(char, "CON")
+        drow = QHBoxLayout(); drow.setSpacing(10)
+        self._dice = QSpinBox(); self._dice.setRange(0, left); self._dice.setValue(0)
+        self._dice.setAlignment(Qt.AlignCenter)
+        self._dice.setAccessibleName("How many hit dice to spend")
+        self._dice.setStyleSheet(stepper_qss())
+        self._dice.setFixedWidth(120)
+        drow.addWidget(self._dice)
+        if not left:
+            why = "No hit dice left: a long rest gets half of them back."
+        elif cur >= mx:
+            why = "Your HP is full."
+            self._dice.setEnabled(False)
+        else:
+            from dnd_app.core.character import hit_die_notes
+            notes = hit_die_notes(char)
+            why = (f"{left} left ({pool}). Each heals one die {con:+d} (CON), "
+                   f"the biggest dice first. HP {cur}/{mx}."
+                   + (" " + "; ".join(notes) + "." if notes else ""))
+        if not left:
+            self._dice.setEnabled(False)
+        drow.addWidget(_lbl(why, TEXT2, FS_SMALL, wrap=True), 1)
+        dl.addLayout(drow)
+        body.addWidget(self._dice_card)
+
+        # Anything this character can change on the rest
+        self._opt_card = _card(qa(INDIGO,0x44)); self._opt_lay = QVBoxLayout(self._opt_card)
+        self._opt_lay.setContentsMargins(14,12,14,14); self._opt_lay.setSpacing(6)
+        body.addWidget(self._opt_card)
+
+        # Everything else the character can do on this rest: their own
+        # features', feats', race's and items' (core's rest_activities), and
+        # the rules everyone has (attuning to an item...)
+        self._act_card = _card(qa(GOLD,0x33)); self._act_lay = QVBoxLayout(self._act_card)
+        self._act_lay.setContentsMargins(14,12,14,14); self._act_lay.setSpacing(6)
+        body.addWidget(self._act_card)
+        body.addStretch(1)
         btn_row = QHBoxLayout(); btn_row.addStretch()
         cancel_btn = QPushButton("Cancel"); cancel_btn.setFixedHeight(34)
         cancel_btn.clicked.connect(self.reject)
-        confirm_btn = QPushButton(f"Confirm {label}"); confirm_btn.setFixedHeight(34)
-        confirm_btn.setStyleSheet(_btn("", GOLD, variant="cta", text_color=GOLD2).styleSheet())
-        confirm_btn.clicked.connect(self.accept)
-        btn_row.addWidget(cancel_btn); btn_row.addWidget(confirm_btn)
+        self._confirm = QPushButton(); self._confirm.setFixedHeight(34)
+        self._confirm.setStyleSheet(_btn("", GOLD, variant="cta", text_color=GOLD2).styleSheet())
+        self._confirm.clicked.connect(self.accept)
+        self._confirm.setDefault(True)
+        btn_row.addWidget(cancel_btn); btn_row.addWidget(self._confirm)
         root.addLayout(btn_row)
+
+        self._set_type("long" if rest_type == "long" and not long_block else "short")
+
+    def _set_type(self, kind: str):
+        self.rest_type = kind
+        for k, b in self._type_btns.items():
+            b.setChecked(k == kind)
+        self._preview_lbl.setText("\n".join(
+            rest_preview_lines(kind, self._previews[kind], dice_below=True)))
+        self._dice_card.setVisible(kind == "short")
+        # the options for this rest (rebuilt: some are long-rest only)
+        while self._opt_lay.count():
+            w = self._opt_lay.takeAt(0).widget()
+            if w is not None:
+                w.setParent(None); w.deleteLater()
+        self._checks = {}
+        options = rest_options(self.char, kind)
+        if options:
+            self._opt_lay.addWidget(_lbl("ALSO ON THIS REST", IND2, FS_SMALL, bold=True))
+            self._opt_lay.addWidget(_lbl("Tick anything you'd like to change as part of it.",
+                                         TEXT3, FS_TINY, wrap=True))
+            for opt in options:
+                cb = QCheckBox(opt["label"])
+                cb.setToolTip(opt.get("detail", ""))
+                self._opt_lay.addWidget(cb)
+                self._checks[opt["kind"]] = cb
+        self._opt_card.setVisible(bool(options))
+        # ...and everything else they can do on it
+        while self._act_lay.count():
+            w = self._act_lay.takeAt(0).widget()
+            if w is not None:
+                w.setParent(None); w.deleteLater()
+        import html
+        acts = rest_activities(self.char, kind)
+        if acts:
+            self._act_lay.addWidget(_lbl("YOU CAN ALSO", GOLD2, FS_SMALL, bold=True))
+            for a in acts:
+                line = _lbl(f"<b>{html.escape(a['source'])}</b> — {html.escape(a['text'])}",
+                            TEXT, FS_SMALL, wrap=True)
+                line.setTextFormat(Qt.RichText)
+                self._act_lay.addWidget(line)
+        self._act_card.setVisible(bool(acts))
+        self._confirm.setText("Take a Short Rest" if kind == "short" else "Take a Long Rest")
+        # all of it in view when the screen has room; a scroll when it hasn't
+        self._body.adjustSize()
+        screen = self.screen().availableGeometry().height() if self.screen() else 800
+        self._scroll.setMinimumHeight(min(self._body.sizeHint().height(), max(240, screen - 260)))
+        self.adjustSize()
 
     def get_selected(self):
         return [kind for kind, cb in self._checks.items() if cb.isChecked()]
 
-
+    def dice_to_spend(self) -> int:
+        return self._dice.value() if self.rest_type == "short" and self._dice.isEnabled() else 0

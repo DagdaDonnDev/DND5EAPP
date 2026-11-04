@@ -55,6 +55,19 @@ SPIN_NO_BUTTONS = ("QSpinBox::up-button,QSpinBox::down-button{width:0px;border:n
                    "QSpinBox::up-arrow,QSpinBox::down-arrow{image:none;width:0px;height:0px;}")
 
 
+def stepper_qss() -> str:
+    """A number with − and + either side, in the HP boxes' look: the raised
+    surface, a 2px edge, a bold centred number, quiet buttons that tint on
+    hover. 36px tall (the theme's 32, without its vertical padding)."""
+    return (f"QSpinBox{{background:{SURF2};border:2px solid {BORDER2};border-radius:8px;"
+            f"color:{TEXT};font-size:{FS_BODY}px;font-weight:700;"
+            f"padding-top:0px;padding-bottom:0px;}}"
+            f"QSpinBox:focus{{border-color:{INDIGO};background:{SURF2};}}"
+            f"QSpinBox::up-button,QSpinBox::down-button{{background:transparent;width:30px;}}"
+            f"QSpinBox::up-button:hover,QSpinBox::down-button:hover{{background:{qa(INDIGO,0x33)};}}"
+            f"QSpinBox::up-button:disabled,QSpinBox::down-button:disabled{{background:transparent;}}")
+
+
 def h(text, color=None, size=FS_BODY, bold=False, align=Qt.AlignLeft, wrap=True):
     """Quick label factory."""
     w = QLabel(text)

@@ -249,6 +249,29 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
 
 
+# What a caster spends or tracks beside their spell slots -- both apps' Spells
+# pages list these (the Combat page's resource list has them too).
+CASTER_RESOURCE_KEYS = {
+    "sorcery_points", "tides_of_chaos",                    # Sorcerer
+    "arcane_recovery", "arcane_ward", "portent", "chronal_shift",   # Wizard
+    "bardic_insp", "spirit_session",                       # Bard
+    "channel_divinity", "channel_div", "divine_interv", "harness_divine_power",
+    "use_natural_recovery",                                # Druid (Land)
+    "healing_light", "arcanum_6", "arcanum_7", "arcanum_8", "arcanum_9",   # Warlock
+}
+
+
+def is_caster_resource(char: dict, resource: dict) -> bool:
+    """Whether `resource` goes on the Spells page: a caster's own pool
+    (CASTER_RESOURCE_KEYS) or anything that casts a spell for free (an
+    invocation's, a feat's, a race's). Pact slots aren't: they're the
+    page's Pact Magic bar."""
+    key = resource.get("key", "")
+    if key == "pact_slots":
+        return False
+    return key in CASTER_RESOURCE_KEYS or bool(free_spells_of(char, resource))
+
+
 def free_spells_of(char: dict, resource: dict) -> list[str]:
     """The spells `resource` lets the character cast for free."""
     if resource.get("free_spells"):

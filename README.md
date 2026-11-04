@@ -31,7 +31,8 @@
   <a href="#whats-in-it">What's in it</a> ·
   <a href="#screenshots">Screenshots</a> ·
   <a href="#project-layout">Project layout</a> ·
-  <a href="#roadmap">Roadmap</a>
+  <a href="#roadmap">Roadmap</a> ·
+  <a href="CHANGELOG.md">Patch notes</a>
 </p>
 <!-- /github-only -->
 
@@ -105,9 +106,9 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 |---|---|---|
 | Abilities & Saves | Abilities | Scores, saving throws and passive senses. The dice buttons roll; click a save to mark an extra proficiency |
 | Skills & Proficiencies | Proficiencies | Skills (right-click one to set proficiency or expertise), languages, armour, weapon and tool proficiencies, and **DM-granted proficiencies…** |
-| Combat | Combat, Actions | HP, death saves, weapons, conditions, Wild Shape, everything you can do on a turn, and **New Turn** |
+| Combat | Combat, Actions | HP and AC, Initiative and Speed, death saves, weapons, conditions and effects, Wild Shape, everything you can do on a turn, and **New Turn** |
 | Gear & Items | Equipment, Companions | Inventory, coins, magic items and attunement, and the Equipment, Magic Items and Companions browsers |
-| Spells | Spells | Slots, the Spellcasting table, My Spells and the Spell Browser |
+| Spells | Spells | Slots, Spell Resources (Sorcery Points, Arcane Ward, Bardic Inspiration, Channel Divinity, free casts…), the Spellcasting table, My Spells and the Spell Browser |
 | Infusions | Infusions | Artificers only |
 | Choices | Choices | **Level Up / Multiclass**, **Level Down**, **Remove Class**, your identity, and anything still to pick |
 | Features | Features | Every class, race and feat feature, and the feats and rewards your DM grants |
@@ -115,7 +116,8 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 
 - **The magnifying glass opens the details** of a spell, item or feat, on both apps.
 - **On desktop, right-click a row** for everything else it can do (Cast, Study, Remove…) and hover anything for its numbers. **On Android, press and hold.**
-- **Short Rest and Long Rest** sit at the top of the desktop sheet, and in the Android menu.
+- **Rest** sits at the top of the desktop sheet (Short Rest and Long Rest are in the Android menu). It asks short or long, shows what the rest gives back, takes the hit dice to spend, offers what you can change on it (prepared spells, a pact weapon, an Armorer's model…), and lists everything else it lets you do, from Song of Rest to attuning to an item.
+- **The menu bar is your health bar** on desktop: it fills with your hit points, temp HP after them, and turns amber then red as they drop. Your name is on it too; click it to rename. (Settings can turn the bar off.)
 - In a narrow window the tab names shorten; hover one for its full name.
 
 </details>
@@ -128,11 +130,11 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **Attacking:** a weapon's **Hit** button (**Roll to Hit** on Android) rolls the d20 and says what AC it hits. Under the roll is what you can add to it, each with its cost: Precision Attack, Lucky, Guided Strike, Emboldening Bond… Press **Add** and it's paid for and rolled at once, and the total updates. **If it misses** lists what can turn a miss around: Favored by the Gods, Stroke of Luck, Focused Aim… Below that is what you can add to the hit: Sneak Attack, a smite, a maneuver… The **Attack** action card asks which weapon first. On a critical hit, the dice shown are already doubled.
 - **Damage is your roll.** Every damage line says what to roll and its type; roll it yourself, or open the Dice Roller (Ctrl+D).
 - **Advantage and disadvantage are reminders.** Every roll is one d20, with a note of what the sheet knows applies (Reckless Attack, Poisoned, exhaustion…). Roll the second die yourself, since cover, the target and your DM can change it. Advantage you spend something on, like Inspiration, is rolled for you.
-- **Taking damage:** type the amount and press **Damage**. Halve it yourself for a resistance; yours are listed just above. Temporary hit points, concentration saves, Wild Shape hit points and death saves follow on their own.
-- **Buffs from someone else:** when an ally casts Bless, Guidance, Haste and the like on you, add it on the **Effects** tab (on Android, **Effects on You** on the Combat screen) so its bonuses count. It comes off when its time is up.
-- **Conditions** are one click on or off, and show up on the rolls they change.
+- **Taking damage:** type the amount and press **Damage**. Halve it yourself for a resistance; yours are listed just below. Temporary hit points, concentration saves, Wild Shape hit points and death saves follow on their own.
+- **Buffs from someone else:** when an ally casts Bless, Guidance, Haste and the like on you, add it with **＋ Add** on the Combat tab's **Effects** page (on Android, **Effects on You** on the Combat screen) so its bonuses count. It comes off when its time is up.
+- **Conditions** go on with **＋ Add** and show up on the rolls they change. Hover one for what it does; right-click it to take it off or read the rules. Exhaustion's level is the six pips under them.
 - **Wild Shape:** the Wild Shape card on the Combat tab lists the forms you can take, strongest first. Anything that needs hands asks before going ahead.
-- **Initiative and Inspiration** are at the top of the desktop sheet. Click Initiative to roll it.
+- **Initiative** is on the Combat tab, beside Speed: click it to roll. **Inspiration** is at the top of the desktop sheet.
 - **Before any roll** (check, save, initiative or attack) it asks if there's something to decide first: cast Guidance or Resistance, give yourself advantage (Inspiration, Tides of Chaos, Kenku Recall) or use a Portent roll.
 - **Checks, saves and initiative** roll the same way as an attack. What always applies is already counted (Reliable Talent, Bless on a save, Halfling Lucky, Jack of All Trades…). Then each thing you can still add has an **Add** button and its cost: a superiority die, a Bardic Inspiration, your reaction, a use. Press **Done** when you're finished.
 - **Tools:** each tool you're proficient with and carry has a card on the **Other** tab that rolls a check with it. It asks which ability, since that's your DM's call, with the usual one first. A Thief's **Fast Hands** card can do the same with your bonus action.
@@ -217,7 +219,8 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 Open them with **Ctrl+,** on desktop, or from the menu on Android.
 
 - **Appearance:** 26 themes (16 dark, 10 light), every one with readable text (WCAG AA contrast, coloured text included), and the text size (Small, Medium or Large).
-- **Immersion:** Immersive Health drains the colour from the sheet as you lose hit points; Immersive Exhaustion closes a dark frame in from the screen's edges with each level of exhaustion. Each is Full, Reduced or Off. The numbers never change, and Reduced never covers any text.
+- **Health bar** (desktop): the menu bar fills with the open character's hit points. On unless you turn it off.
+- **Immersion:** Immersive Health drains some of the colour from the sheet as you lose hit points; Immersive Exhaustion closes a dark frame in from the screen's edges with each level of exhaustion. Each is Full, Reduced or Off. The numbers never change, and Reduced never covers any text.
 - **Character Folder:** where characters are saved.
 - **Saved with each character:** levelling by milestone or XP, the table rules (see *For DMs and house rules*), and **DM Secrets**: purely cosmetic surprises, off by default. Try them and see.
 
@@ -234,8 +237,8 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 | Ctrl+E | Export |
 | Ctrl+Shift+D | Duplicate the character |
 | Ctrl+D | Dice Roller |
-| Ctrl+R | Short Rest |
-| Ctrl+Shift+R | Long Rest |
+| Ctrl+R | Rest, short rest picked |
+| Ctrl+Shift+R | Rest, long rest picked |
 | Ctrl+, | Settings |
 | Ctrl+Q | Quit |
 
