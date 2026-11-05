@@ -261,6 +261,57 @@ CASTER_RESOURCE_KEYS = {
 }
 
 
+def metamagic_options(char: dict) -> list:
+    """The Metamagic a Sorcerer knows, for both apps' Spells page: [{"key"
+    (the option as kept), "name", "what" (what it does), "cost" (sorcery
+    points; None when it's the spell's level), "cost_text"}] -- the costs
+    and words of the Metamagic action (core/action_use.py METAMAGIC), so
+    the card and the action agree."""
+    import re
+    from dnd_app.core.action_use import METAMAGIC as _MM
+    out = []
+    for opt in char.get("_choices", {}).get("sorcerer_metamagic", []) or []:
+        opt = str(opt)
+        name = opt.split(" \u2013")[0].split(" (")[0].strip()
+        cost, what = _MM.get(name, (None, None))
+        if what is None:                     # not in the table: what its own text says
+            m = re.search(r"spend (\d+) SP", opt)
+            cost = "level" if re.search(r"spell(?:'s)? level", opt, re.I) else (int(m.group(1)) if m else 1)
+            what = opt.partition("\u2013")[2].strip()
+            what = re.sub(r"^spend (?:\d+ SP|SP[^:]*)\s*:\s*", "", what, flags=re.I)
+        per_level = cost == "level"
+        out.append({"key": opt, "name": name, "what": what[:1].upper() + what[1:],
+                    "cost": None if per_level else cost,
+                    "cost_text": "SP = spell level (1 for a cantrip)" if per_level else f"{cost} SP"})
+    return out
+
+
+def apply_metamagic(char: dict, keys) -> dict:
+    """Spend the sorcery points for the Metamagic picked and mark it active
+    for the next cast (its effect is the table's, as the spell's own is).
+    {"ok", "toast", "note": what's active, for the card}. Options that
+    cost the spell's level are marked active but paid when it's cast."""
+    picked = [o for o in metamagic_options(char) if o["key"] in set(keys or [])]
+    if not picked:
+        return {"ok": False, "toast": "Pick at least one Metamagic option first", "note": ""}
+    sp = next((r for r in char.get("resources", []) if r.get("key") == "sorcery_points"), None)
+    if not sp:
+        return {"ok": False, "toast": "No Sorcery Points to spend", "note": ""}
+    cost = sum(o["cost"] for o in picked if o["cost"] is not None)
+    have = sp.get("current", 0)
+    if cost > have:
+        return {"ok": False, "toast": f"Not enough Sorcery Points ({have} left, {cost} needed)", "note": ""}
+    sp["current"] = have - cost
+    names = [o["name"] for o in picked]
+    char["_active_metamagic"] = names
+    later = [o["name"] for o in picked if o["cost"] is None]
+    note = f"Active for your next cast: {', '.join(names)}"
+    if later:
+        note += f" ({', '.join(later)}: SP = the level you cast it at)"
+    return {"ok": True, "note": note,
+            "toast": f"Spent {cost} SP: {', '.join(names)} active for your next cast"}
+
+
 def is_caster_resource(char: dict, resource: dict) -> bool:
     """Whether `resource` goes on the Spells page: a caster's own pool
     (CASTER_RESOURCE_KEYS) or anything that casts a spell for free (an
@@ -685,6 +736,10 @@ def use_spell_scroll(char: dict, eq_name: str, rng=random) -> dict:
         total = d20 + chk["mod"]
         res["roll"] = {"d20": d20, "total": total, "dc": chk["dc"], "ability": chk["ability"]}
         roll_txt = f"{chk['ability']} check {d20}{chk['mod']:+d} = {total} vs DC {chk['dc']}"
+        from dnd_app.core.roll_log import log_roll
+        log_roll(char, "check", f"Spell scroll of {spell}: {chk['ability']} check (DC {chk['dc']})", total,
+                 f"Rolled {d20} {chk['mod']:+d}", nat=20 if d20 == 20 else 1 if d20 == 1 else 0,
+                 result="succeeded" if total >= chk["dc"] else "failed")
         if total < chk["dc"]:
             consume()
             return {**res, "status": "failed",

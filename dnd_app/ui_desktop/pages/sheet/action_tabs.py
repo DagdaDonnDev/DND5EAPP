@@ -611,13 +611,11 @@ class ActionTabsMixin:
             # spells), then the basic ones anyone can take, then the
             # optional rules, each group under its own heading -- so the
             # basic ones don't need a "Universal" tag on every card.
-            def _group(e):
-                if e[2] != "Universal":
-                    return 0
-                return 2 if "(optional rule" in e[0] else 1
+            # own first, then the basic actions, then the optional rules
+            # (core/actions.py -- Android's Actions screen the same)
+            from dnd_app.core.actions import action_group as _group, action_group_head, optional_rule_name
             rows = sorted(rows, key=_group)   # (stable: each group keeps its order)
-            _HEADS = {1: {"Passive": "GENERAL"}.get(bucket_name, "BASIC ACTIONS"),
-                      2: "OPTIONAL RULES — if your DM uses them"}
+            _HEADS = {1: action_group_head(1, bucket_name), 2: action_group_head(2, bucket_name)}
             grid_row, col, last_group = 0, 0, 0
             for idx, entry in enumerate(rows):
                 display, desc, source = entry[0], entry[1], entry[2]
@@ -634,9 +632,7 @@ class ActionTabsMixin:
                 shown_name = display
                 book = ""
                 if group == 2:   # "Disarm (optional rule, DMG)" -> "Disarm", tagged DMG
-                    m = re.match(r"^(.*?) \(optional rule, ([^)]+)\)$", display)
-                    if m:
-                        shown_name, book = m.group(1), m.group(2)
+                    shown_name, book = optional_rule_name(display)
                 spell = entry[3] if len(entry) > 3 else None
                 is_spell = spell is not None
                 if not is_spell:

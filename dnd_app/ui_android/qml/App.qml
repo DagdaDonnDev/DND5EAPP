@@ -558,7 +558,58 @@ ApplicationWindow {
     function startRest(restType) { restFlowDialog.start(restType) }
 
     header: ToolBar {
+        id: topBar
         Material.background: window.creatorNamed ? "#3a2e05" : Theme.surf
+
+        // On a character's sheet the bar is their health bar (desktop's
+        // menu bar is too; Settings turns it off): it fills from the left
+        // with current HP -- green, amber below half, red below a quarter,
+        // purple for a beast form's own -- then temp HP in teal.
+        readonly property bool showHealth: !!(appSettingsBridge && appSettingsBridge.menuHealthBar
+                                              && sheetBridge && sheetBridge.hasCharacter
+                                              && stackView.currentItem && stackView.currentItem.sheetBridge !== undefined
+                                              && sheetBridge.maxHp > 0)
+        readonly property bool beast: !!(sheetBridge && sheetBridge.wildShapeActive)
+        readonly property int hp: Math.max(0, sheetBridge ? sheetBridge.currentHp : 0)
+        readonly property int temp: Math.max(0, sheetBridge ? sheetBridge.tempHp : 0)
+        readonly property int whole: Math.max(1, Math.max(sheetBridge ? sheetBridge.maxHp : 1, hp + temp))
+        readonly property color hpColour: beast ? Theme.purple
+                                          : hp * 100 / Math.max(1, sheetBridge ? sheetBridge.maxHp : 1) > 50 ? Theme.green
+                                          : hp * 100 / Math.max(1, sheetBridge ? sheetBridge.maxHp : 1) > 25 ? Theme.amber : Theme.crimson
+        readonly property color base: window.creatorNamed ? "#3a2e05" : Theme.surf
+        function _over(c) { return Qt.tint(base, Qt.rgba(c.r, c.g, c.b, 0.4)) }
+        // the title's ink stays readable (4.5:1) over the fill and the rest
+        function ink(want) {
+            if (!showHealth) return want
+            var bgs = [base, _over(hpColour), _over(Theme.teal)]
+            var picks = [want, Theme.text, Theme.bg]
+            var best = want, bestMin = 0
+            for (var i = 0; i < picks.length; i++) {
+                var worst = 99
+                for (var j = 0; j < bgs.length; j++) worst = Math.min(worst, Theme.contrast(picks[i], bgs[j]))
+                if (worst >= 4.5) return picks[i]
+                if (worst > bestMin) { best = picks[i]; bestMin = worst }
+            }
+            return best
+        }
+        Row {
+            objectName: "topBarHealth"
+            visible: topBar.showHealth
+            anchors.fill: parent
+            z: -1
+            Rectangle {
+                objectName: "topBarHealthFill"
+                height: parent.height
+                width: parent.width * topBar.hp / topBar.whole
+                color: topBar._over(topBar.hpColour)
+            }
+            Rectangle {
+                height: parent.height
+                width: parent.width * topBar.temp / topBar.whole
+                color: topBar._over(Theme.teal)
+            }
+        }
+
         ToolButton {
             id: hamburgerButton
             objectName: "hamburgerButton"
@@ -603,7 +654,7 @@ ApplicationWindow {
                             width: 22
                             height: 2
                             radius: 1
-                            color: Theme.text
+                            color: topBar.ink(Theme.text)
                         }
                     }
                 }
@@ -615,7 +666,7 @@ ApplicationWindow {
             anchors.centerIn: parent
             text: stackView.currentItem && stackView.currentItem.screenTitle
                   ? stackView.currentItem.screenTitle : "MIMIC"
-            color: window.creatorNamed ? "#f5cc50" : Theme.gold2
+            color: topBar.ink(window.creatorNamed ? "#f5cc50" : Theme.gold2)
             font.pixelSize: Theme.fsHead
             font.bold: true
             elide: Text.ElideRight

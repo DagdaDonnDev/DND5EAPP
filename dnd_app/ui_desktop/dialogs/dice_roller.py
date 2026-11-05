@@ -1,309 +1,370 @@
-"""Floating dice roller panel.
+"""Floating dice roller panel: a dice tray (pick dice, add your bonus,
+advantage or disadvantage on a d20, roll) and the roll history -- every
+roll the sheet makes (checks, saves, attacks, hit dice, what actions
+roll) and the tray's own, kept with the character (core/roll_log.py).
+The rolling is core/dice.py's, the same as Android's Dice Roller.
 
 Author: Ethan O'Brien
 Date: 2026-08-20
 """
-import random
+import html
 from PySide6.QtWidgets import *
-from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QFont, QColor
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QFont
 from dnd_app.ui_desktop.style.theme import *
 from ..shared import h as _h, card as _card
 from dnd_app.ui_desktop import icons as _icons
+from dnd_app.core import dice as _dice
+from dnd_app.core import roll_log as _log
+
+DICE = (4, 6, 8, 10, 12, 20, 100)
+MODES = (("normal", "Normal"), ("advantage", "Advantage"), ("disadvantage", "Disadvantage"))
+SHOWN = 60          # history rows shown (the character keeps more)
 
 
 def sign(n): return f"+{n}" if n >= 0 else str(n)
 
-def lbl(text, color=None, bold=False, size=None, align=Qt.AlignLeft):
-    # Not a direct alias to shared.py's h(): h() defaults wrap=True and
-    # calls setWordWrap(True), but this file's labels never had word-
-    # wrap enabled (no such param existed here) — a straight alias would
-    # silently start wrapping "Pick a die below to get started." inside
-    # a panel never laid out to expect that. Delegates with wrap=False
-    # to keep the original (never-wraps) behavior exactly.
-    return _h(text, color or TEXT, size or FS_TINY, bold, align, wrap=False)
 
-# card() is shared.py's promoted version of this exact shape (background
-# SURF, 1px BORDER, radius 10) — this file's own _card() took no accent
-# param and always used BORDER, matching card()'s own default exactly.
+def lbl(text, color=None, bold=False, size=None, align=Qt.AlignLeft, wrap=False):
+    return _h(text, color or TEXT, size or FS_TINY, bold, align, wrap=wrap)
+
+
+def _big(color) -> str:
+    # (its own font size: the panel's QWidget rule would make it the small one)
+    return f"color:{color};border:none;background:transparent;font-size:44px;font-weight:700;"
+
+
+def _small_btn() -> str:
+    return (f"QPushButton{{background:transparent;border:1px solid {BORDER2};border-radius:6px;color:{TEXT2};"
+            f"padding:2px 10px;min-height:0px;font-weight:700;}}"
+            f"QPushButton:hover{{background:{SURF3};color:{TEXT};}}"
+            f"QPushButton:disabled{{color:{TEXT3};border-color:{BORDER};}}")
+
 
 def _section_header(text: str) -> QLabel:
     return lbl(text, TEAL2, bold=True, size=FS_TINY)
 
 
 class DiceRollerPanel(QWidget):
-    """Floating dice roller. Roll dice with optional modifier and bonus."""
+    """Floating dice roller: the tray and the history."""
 
     def __init__(self, char_ref: dict, parent=None):
         super().__init__(parent, Qt.Window | Qt.Tool | Qt.WindowStaysOnTopHint)
         # `from .theme import *` above only captured whatever the theme
-        # was when this module was first imported -- a persistent
-        # floating window like this one is exactly the case where that
-        # staleness is most visible, since it can outlive several later
-        # theme switches. main_window.py's _set_theme() destroys and
-        # recreates this panel (preserving position/visibility) on every
-        # theme change specifically so this line picks up fresh colors
-        # each time, rather than trying to re-style already-built child
-        # widgets in place.
+        # was when this module was first imported -- main_window.py's
+        # _set_theme() destroys and recreates this panel on every theme
+        # change, so this line picks up fresh colours each time.
         from dnd_app.ui_desktop.style.theme import sync_globals as _sg; _sg(globals())
-        self.char = char_ref
+        self._char = char_ref
+        self._mode = "normal"
+        self._fresh = False          # the next die starts a new roll (after a roll)
         self.setWindowTitle("Dice Roller")
-        self.setFixedWidth(380)
+        self.setFixedWidth(400)
         self.setStyleSheet(f"""
             QWidget {{ background: {BG}; color: {TEXT}; font-size: {FS_TINY}px; font-family: 'Segoe UI', sans-serif; }}
             QPushButton {{ background: {SURF3}; border: 1px solid {BORDER2}; border-radius: 6px; color: {TEXT}; padding: 4px 8px; font-weight: 700; }}
             QPushButton:hover {{ background: {INDIGO}; border-color: {IND2}; color: {on_fill(INDIGO)}; }}
             QPushButton:pressed {{ background: {qa(INDIGO,0xaa)}; }}
-            QSpinBox {{ background: {SURF2}; border: 1px solid {BORDER}; border-radius: 5px; color: {TEXT}; padding: 3px 2px; }}
+            QLineEdit {{ background: {SURF2}; border: 2px solid {BORDER2}; border-radius: 8px; color: {TEXT};
+                         padding: 4px 8px; font-size: {FS_BODY}px; font-weight: 700; }}
+            QLineEdit:focus {{ border-color: {INDIGO}; }}
             QComboBox {{ background: {SURF2}; border: 1px solid {BORDER}; border-radius: 5px; color: {TEXT}; padding: 3px 6px; }}
             QComboBox::drop-down {{ border: none; width: 18px; background: {BORDER}; border-top-left-radius: 0px; border-top-right-radius: 5px; border-bottom-right-radius: 5px; border-bottom-left-radius: 0px; }}
             QComboBox QAbstractItemView {{ background: {SURF2}; border: 1px solid {BORDER2}; color: {TEXT}; selection-background-color: {INDIGO}; }}
         """)
-        self._history = []   # [{"text": str, "crit": "nat20"|"nat1"|None}]
         self._build_ui()
+        # the sheet's rolls land in the history as they're made
+        self._stop_listening = _log.on_roll(self._on_logged)
+        self.destroyed.connect(lambda *_: self._stop_listening())
+        self._refresh_history()
+
+    # the character whose rolls these are (main_window sets it as sheets open)
+    @property
+    def char(self):
+        return self._char
+
+    @char.setter
+    def char(self, value):
+        self._char = value
+        if hasattr(self, "history_box"):
+            self.refresh_bonuses()
+            self._refresh_history()
+
+    def set_char(self, value):
+        self.char = value
 
     def _build_ui(self):
-        outer = QVBoxLayout(self); outer.setContentsMargins(12,12,12,12); outer.setSpacing(10)
+        outer = QVBoxLayout(self); outer.setContentsMargins(12, 12, 12, 12); outer.setSpacing(10)
 
         title_row = QHBoxLayout()
         title_row.addWidget(_icons.icon_header("dice", lbl("DICE ROLLER", GOLD2, bold=True, size=FS_LABEL), size=18))
         title_row.addStretch()
         outer.addLayout(title_row)
 
-        # ── Result display ────────────────────────────────────────────────────
-        # Placed above the roll controls since the result is the whole
-        # point of this panel.
+        # ── The result ────────────────────────────────────────────────
         self.result_frame = QFrame()
         self.result_frame.setMinimumHeight(96)
         self.result_frame.setStyleSheet(
             f"QFrame{{background:{SURF};border:2px solid {BORDER2};border-radius:10px;}}")
-        rf_lay = QVBoxLayout(self.result_frame); rf_lay.setContentsMargins(10,10,10,8); rf_lay.setSpacing(2)
-
+        rf_lay = QVBoxLayout(self.result_frame); rf_lay.setContentsMargins(10, 10, 10, 8); rf_lay.setSpacing(2)
         self.crit_badge = lbl("", on_fill(TEAL), bold=True, size=FS_TINY, align=Qt.AlignCenter)
         self.crit_badge.setFixedHeight(20)
         self.crit_badge.hide()
         rf_lay.addWidget(self.crit_badge)
-
         self.result_main = QLabel("—")
         f = QFont(); f.setBold(True); f.setPointSize(36)
         self.result_main.setFont(f)
         self.result_main.setAlignment(Qt.AlignCenter)
-        self.result_main.setStyleSheet(f"color:{GOLD2};")
+        self.result_main.setStyleSheet(_big(GOLD2))
         rf_lay.addWidget(self.result_main)
-
-        self.result_detail = lbl("Pick a die below to get started.", TEXT2, size=FS_TINY, align=Qt.AlignCenter)
-        self.result_detail.setWordWrap(True)
+        self.result_detail = lbl("Pick dice below, then Roll.", TEXT2, size=FS_TINY, align=Qt.AlignCenter, wrap=True)
         rf_lay.addWidget(self.result_detail)
         outer.addWidget(self.result_frame)
 
-        # ── Quick dice buttons ────────────────────────────────────────────────
-        quick_card = _card()
-        qg = QVBoxLayout(quick_card); qg.setContentsMargins(12,10,12,12); qg.setSpacing(8)
-        qg.addWidget(_section_header("QUICK ROLL"))
-        row1 = QHBoxLayout(); row1.setSpacing(6)
-        row2 = QHBoxLayout(); row2.setSpacing(6)
-        for die, row in [("d4",row1),("d6",row1),("d8",row1),("d10",row1),("d12",row2),("d20",row2),("d100",row2)]:
-            btn = QPushButton(die)
-            btn.setFixedHeight(38)
-            if die == "d20":
-                btn.setStyleSheet(
+        # ── The tray ──────────────────────────────────────────────────
+        tray = _card()
+        tl = QVBoxLayout(tray); tl.setContentsMargins(12, 10, 12, 12); tl.setSpacing(8)
+        tl.addWidget(_section_header("ROLL"))
+        dice_row = QHBoxLayout(); dice_row.setSpacing(5)
+        self._die_btns = {}
+        for sides in DICE:
+            b = QPushButton(f"d{sides}"); b.setFixedHeight(36)
+            b.setToolTip(f"Add a d{sides}")
+            if sides == 20:
+                b.setStyleSheet(
                     f"QPushButton{{background:{INDIGO};border:1px solid {IND2};border-radius:6px;"
                     f"color:{on_fill(INDIGO)};font-weight:700;font-size:{FS_SMALL}px;}}"
                     f"QPushButton:hover{{background:{IND2};color:{on_fill(IND2)};}}")
-            btn.clicked.connect(lambda _, d=die: self._quick_roll(d))
-            row.addWidget(btn)
-        qg.addLayout(row1); qg.addLayout(row2)
-        outer.addWidget(quick_card)
+            b.clicked.connect(lambda _=False, s=sides: self._add_die(s))
+            dice_row.addWidget(b)
+            self._die_btns[sides] = b
+        tl.addLayout(dice_row)
+        er = QHBoxLayout(); er.setSpacing(6)
+        self.expr_edit = QLineEdit()
+        self.expr_edit.setPlaceholderText("e.g. 2d6 + 3")
+        self.expr_edit.setAccessibleName("Dice to roll")
+        self.expr_edit.setToolTip("The dice to roll: pick them above, or type them (2d6 + 1d4 + 3, 4d6kh3...)")
+        self.expr_edit.textEdited.connect(lambda *_: setattr(self, "_fresh", False))
+        self.expr_edit.returnPressed.connect(self._roll)
+        er.addWidget(self.expr_edit, 1)
+        clear_btn = QPushButton("Clear"); clear_btn.setFixedHeight(34)
+        clear_btn.clicked.connect(self._clear_tray)
+        er.addWidget(clear_btn)
+        tl.addLayout(er)
+        br = QHBoxLayout(); br.setSpacing(6)
+        br.addWidget(lbl("Your bonus", TEXT2, size=FS_TINY))
+        self.bonus_combo = QComboBox(); self.bonus_combo.setMinimumWidth(200)
+        self.bonus_combo.setToolTip("Adds one of your bonuses to the roll (a d20 if there are no dice yet)")
+        self.refresh_bonuses()
+        self.bonus_combo.activated.connect(self._bonus_picked)
+        br.addWidget(self.bonus_combo, 1)
+        tl.addLayout(br)
+        mr = QHBoxLayout(); mr.setSpacing(0)
+        self._mode_btns = {}
+        for i, (key, text) in enumerate(MODES):
+            b = QPushButton(text); b.setCheckable(True); b.setFixedHeight(30)
+            left, right = (6, 0) if i == 0 else (0, 6) if i == len(MODES) - 1 else (0, 0)
+            b.setStyleSheet(
+                f"QPushButton{{background:{SURF};color:{TEXT2};border:1px solid {BORDER2};"
+                f"border-top-left-radius:{left}px;border-bottom-left-radius:{left}px;"
+                f"border-top-right-radius:{right}px;border-bottom-right-radius:{right}px;font-weight:700;}}"
+                f"QPushButton:checked{{background:{qa(GOLD,0x33)};color:{GOLD2};border-color:{GOLD};}}"
+                f"QPushButton:hover:!checked{{background:{SURF3};color:{TEXT};}}")
+            b.setToolTip("Two d20s, the higher one" if key == "advantage" else
+                         "Two d20s, the lower one" if key == "disadvantage" else "One d20")
+            b.clicked.connect(lambda _=False, k=key: self._set_mode(k))
+            mr.addWidget(b, 1)
+            self._mode_btns[key] = b
+        self._set_mode("normal")
+        tl.addLayout(mr)
+        self._mode_note = lbl("Advantage and disadvantage are for a single d20.", TEXT3, size=FS_TINY, wrap=True)
+        tl.addWidget(self._mode_note)
+        self.roll_btn = QPushButton("Roll")
+        self.roll_btn.setFixedHeight(36)
+        self.roll_btn.setStyleSheet(
+            f"QPushButton{{background:{GOLD};border:1px solid {GOLD2};border-radius:8px;"
+            f"color:{on_fill(GOLD)};font-weight:700;font-size:{FS_SMALL}px;}}"
+            f"QPushButton:hover{{background:{GOLD2};color:{on_fill(GOLD2)};}}")
+        self.roll_btn.clicked.connect(self._roll)
+        tl.addWidget(self.roll_btn)
+        outer.addWidget(tray)
 
-        # ── Custom roll ───────────────────────────────────────────────────────
-        custom_card = _card()
-        cvl = QVBoxLayout(custom_card); cvl.setContentsMargins(12,10,12,12); cvl.setSpacing(8)
-        cvl.addWidget(_section_header("CUSTOM ROLL"))
-        cg = QHBoxLayout(); cg.setSpacing(6)
-        self.num_dice = QSpinBox(); self.num_dice.setRange(1,20); self.num_dice.setValue(1); self.num_dice.setFixedWidth(84)
-        self.die_combo = QComboBox()
-        for d in ["d4","d6","d8","d10","d12","d20","d100"]: self.die_combo.addItem(d)
-        self.die_combo.setCurrentIndex(5)  # d20 default
-        self.mod_spin = QSpinBox(); self.mod_spin.setRange(-20,20); self.mod_spin.setValue(0); self.mod_spin.setPrefix("+"); self.mod_spin.setFixedWidth(92)
-        roll_btn = QPushButton("Roll!")
-        roll_btn.setFixedHeight(32)
-        roll_btn.setStyleSheet(
-            f"QPushButton{{background:{INDIGO};border:1px solid {IND2};border-radius:6px;"
-            f"color:{on_fill(INDIGO)};font-weight:700;padding:4px 14px;}}"
-            f"QPushButton:hover{{background:{IND2};color:{on_fill(IND2)};}}")
-        roll_btn.clicked.connect(self._custom_roll)
-        cg.addWidget(self.num_dice); cg.addWidget(lbl("×")); cg.addWidget(self.die_combo)
-        cg.addWidget(lbl("+")); cg.addWidget(self.mod_spin); cg.addStretch(); cg.addWidget(roll_btn)
-        cvl.addLayout(cg)
-        outer.addWidget(custom_card)
-
-        # ── Skill / Save roll ─────────────────────────────────────────────────
-        skill_card = _card()
-        svl = QVBoxLayout(skill_card); svl.setContentsMargins(12,10,12,12); svl.setSpacing(8)
-        svl.addWidget(_section_header("ROLL WITH BONUS"))
-        sg_top = QHBoxLayout(); sg_top.setSpacing(6)
-        self.bonus_combo = QComboBox(); self.bonus_combo.setMinimumWidth(180)
-        self._populate_bonus_combo()
-        self.adv_combo = QComboBox()
-        self.adv_combo.addItems(["Normal","Advantage","Disadvantage"])
-        sg_top.addWidget(self.bonus_combo, 2); sg_top.addWidget(self.adv_combo)
-        svl.addLayout(sg_top)
-        skill_roll_btn = QPushButton("Roll d20 + Bonus")
-        skill_roll_btn.setFixedHeight(32)
-        skill_roll_btn.clicked.connect(self._skill_roll)
-        svl.addWidget(skill_roll_btn)
-        outer.addWidget(skill_card)
-
-        # ── History ───────────────────────────────────────────────────────────
-        hist_card = _card()
-        hl = QVBoxLayout(hist_card); hl.setContentsMargins(12,10,12,12); hl.setSpacing(6)
+        # ── The history ───────────────────────────────────────────────
+        hist = _card()
+        hl = QVBoxLayout(hist); hl.setContentsMargins(12, 10, 12, 12); hl.setSpacing(6)
         h_top = QHBoxLayout()
-        h_top.addWidget(_section_header("HISTORY (LAST 8)"))
+        self.history_title = _section_header("HISTORY")
+        h_top.addWidget(self.history_title)
         h_top.addStretch()
-        clear_btn = QPushButton("Clear")
-        clear_btn.setFixedSize(56, 24)
-        clear_btn.clicked.connect(self._clear_history)
-        h_top.addWidget(clear_btn)
+        self.clear_hist_btn = QPushButton("Clear")
+        self.clear_hist_btn.setStyleSheet(_small_btn())
+        self.clear_hist_btn.setFixedHeight(24)
+        self.clear_hist_btn.setToolTip("Clear this character's roll history")
+        self.clear_hist_btn.clicked.connect(self._clear_history)
+        h_top.addWidget(self.clear_hist_btn)
         hl.addLayout(h_top)
-        self.history_list = QListWidget()
-        self.history_list.setMaximumHeight(130)
-        self.history_list.setStyleSheet(
-            f"QListWidget{{background:{BG};border:1px solid {BORDER};border-radius:6px;"
-            f"font-size:{FS_TINY}px;color:{TEXT2};}}"
-            f"QListWidget::item{{padding:3px 6px;border-radius:3px;}}"
-            f"QListWidget::item:selected{{background:{INDIGO};color:{on_fill(INDIGO)};}}")
-        hl.addWidget(self.history_list)
-        outer.addWidget(hist_card)
+        self.history_scroll = QScrollArea(); self.history_scroll.setWidgetResizable(True)
+        self.history_scroll.setFrameShape(QFrame.NoFrame)
+        self.history_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.history_scroll.setFixedHeight(250)
+        self.history_scroll.setStyleSheet(f"QScrollArea{{background:{BG};border:1px solid {BORDER};border-radius:6px;}}")
+        self.history_box = QWidget(); self.history_box.setStyleSheet(f"background:{BG};")
+        self.history_lay = QVBoxLayout(self.history_box)
+        self.history_lay.setContentsMargins(6, 6, 6, 6); self.history_lay.setSpacing(4)
+        self.history_scroll.setWidget(self.history_box)
+        hl.addWidget(self.history_scroll)
+        outer.addWidget(hist)
 
-    def _populate_bonus_combo(self):
-        self.bonus_combo.clear()
-        # Ability checks
-        from dnd_app.core.calculator import all_skill_bonuses, all_saving_throw_bonuses
-        from dnd_app.core.character import class_levels
-        skills = all_skill_bonuses(self.char)
-        saves = all_saving_throw_bonuses(self.char)
-        self.bonus_combo.addItem("No bonus (raw d20)", 0)
-        self.bonus_combo.addItem(f"─── Skills ───", None)
-        for skill, bonus in sorted(skills.items()):
-            self.bonus_combo.addItem(f"  {skill}: {sign(bonus)}", bonus)
-        self.bonus_combo.addItem(f"─── Saving Throws ───", None)
-        for ab, bonus in saves.items():
-            self.bonus_combo.addItem(f"  {ab} Save: {sign(bonus)}", bonus)
-        self.bonus_combo.addItem(f"─── Ability Checks ───", None)
-        from dnd_app.core.character import ability_mod
-        for ab in ["STR","DEX","CON","INT","WIS","CHA"]:
-            mod = ability_mod(self.char, ab)
-            self.bonus_combo.addItem(f"  {ab} Check: {sign(mod)}", mod)
-
+    # ── Your bonus ────────────────────────────────────────────────────
     def refresh_bonuses(self):
-        idx = self.bonus_combo.currentIndex()
-        self._populate_bonus_combo()
-        if idx < self.bonus_combo.count():
-            self.bonus_combo.setCurrentIndex(idx)
+        """The skills, saves and ability checks to add, as they are now."""
+        keep = self.bonus_combo.currentIndex() if self.bonus_combo.count() else 0
+        self.bonus_combo.clear()
+        self.bonus_combo.addItem("No bonus", None)
+        char = self._char or {}
+        if char.get("abilities"):
+            from dnd_app.core.calculator import all_skill_bonuses, all_saving_throw_bonuses
+            from dnd_app.core.character import ability_mod
+            try:
+                skills = all_skill_bonuses(char)
+                saves = all_saving_throw_bonuses(char)
+            except Exception:
+                skills, saves = {}, {}
+            for skill, bonus in sorted(skills.items()):
+                self.bonus_combo.addItem(f"{skill} {sign(bonus)}", (skill, bonus))
+            for ab, bonus in saves.items():
+                self.bonus_combo.addItem(f"{ab} save {sign(bonus)}", (f"{ab} save", bonus))
+            for ab in ("STR", "DEX", "CON", "INT", "WIS", "CHA"):
+                mod = ability_mod(char, ab)
+                self.bonus_combo.addItem(f"{ab} check {sign(mod)}", (f"{ab} check", mod))
+        self.bonus_combo.setCurrentIndex(min(keep, self.bonus_combo.count() - 1))
 
-    def _quick_roll(self, die_str: str):
-        sides = int(die_str[1:])
-        result = random.randint(1, sides)
-        # A single quick d20 is exactly a "natural" roll -- give it the
-        # same crit treatment as the "Roll with Bonus" button.
-        is_d20 = (sides == 20)
-        self._show_result(result, f"1{die_str}", [result],
-                           nat20=(is_d20 and result == 20), nat1=(is_d20 and result == 1))
+    def _bonus_picked(self, *_):
+        data = self.bonus_combo.currentData()
+        expr = self.expr_edit.text()
+        if self._fresh or not _dice.parse(expr) or isinstance(_dice.parse(expr), str):
+            expr = "1d20"            # a bonus on its own: a d20 with it
+        self.expr_edit.setText(_dice.set_modifier(expr, data[1] if data else 0) or expr)
+        self._fresh = False
 
-    def _custom_roll(self):
-        n = self.num_dice.value()
-        die_str = self.die_combo.currentText()
-        sides = int(die_str[1:])
-        mod = self.mod_spin.value()
-        rolls = [random.randint(1, sides) for _ in range(n)]
-        total = sum(rolls) + mod
-        detail = f"{n}{die_str}: [{', '.join(str(r) for r in rolls)}]" + (f" {sign(mod)}" if mod else "")
-        # Crit styling only makes sense for a single natural d20 -- with
-        # multiple dice "natural 20" isn't a meaningful concept.
-        single_d20 = (n == 1 and sides == 20)
-        self._show_result(total, detail, rolls, modifier=mod,
-                           nat20=(single_d20 and rolls[0] == 20),
-                           nat1=(single_d20 and rolls[0] == 1))
+    # ── The tray ──────────────────────────────────────────────────────
+    def _add_die(self, sides: int):
+        expr = "" if self._fresh else self.expr_edit.text()
+        if self._fresh:
+            self.bonus_combo.setCurrentIndex(0)
+        self.expr_edit.setText(_dice.add_die(expr, sides))
+        self._fresh = False
 
-    def _skill_roll(self):
+    def _set_mode(self, key: str):
+        self._mode = key
+        for k, b in self._mode_btns.items():
+            b.setChecked(k == key)
+
+    def _clear_tray(self):
+        self.expr_edit.clear()
+        self.bonus_combo.setCurrentIndex(0)
+        self._set_mode("normal")
+        self._fresh = False
+
+    def _roll(self):
+        res = _dice.roll(self.expr_edit.text(), self._mode)
+        if res["error"]:
+            self.result_detail.setText(res["error"])
+            self.result_main.setText("—")
+            self.crit_badge.hide()
+            return
+        self.expr_edit.setText(res["expr"])
         bonus = self.bonus_combo.currentData()
-        if bonus is None: return  # separator selected
-        label = self.bonus_combo.currentText().strip()
-        mode = self.adv_combo.currentText()
+        detail = res["text"] + (f"  ({bonus[0]})" if bonus else "")
+        self._show_result(res["total"], detail, nat=res["nat"])
+        _log.log_roll(self._char, "dice", res["expr"], res["total"], detail, nat=res["nat"],
+                      result=res["mode"] if res["mode"] != "normal" else "")
+        self._fresh = True
 
-        if mode == "Normal":
-            roll = random.randint(1,20)
-            rolls = [roll]
-        elif mode == "Advantage":
-            rolls = [random.randint(1,20), random.randint(1,20)]
-            roll = max(rolls)
-        else:
-            rolls = [random.randint(1,20), random.randint(1,20)]
-            roll = min(rolls)
-
-        total = roll + bonus
-        adv_str = f" (Adv: {rolls})" if len(rolls)>1 else ""
-        detail = f"{label}: d20={roll}{adv_str} {sign(bonus)} = {total}"
-        self._show_result(total, detail, rolls, modifier=bonus, nat20=(roll==20), nat1=(roll==1))
-
-    def _show_result(self, total, detail, rolls, modifier=0, nat20=False, nat1=False):
+    def _show_result(self, total, detail, nat=0):
         self.result_main.setText(str(total))
         self.result_detail.setText(detail)
-
-        if nat20:
-            color, border_color = TEAL2, TEAL2
+        if nat == 20:
+            color, border = TEAL2, TEAL2
             self.crit_badge.setText("NATURAL 20")
-            self.crit_badge.setStyleSheet(
-                f"background:{TEAL};color:{on_fill(TEAL)};font-size:{FS_TINY}px;font-weight:700;"
-                f"border-radius:4px;padding:2px 8px;")
+            self.crit_badge.setStyleSheet(f"background:{TEAL};color:{on_fill(TEAL)};font-size:{FS_TINY}px;"
+                                          f"font-weight:700;border-radius:4px;padding:2px 8px;")
             self.crit_badge.show()
-        elif nat1:
-            color, border_color = CRIM2, CRIM2
+        elif nat == 1:
+            color, border = CRIM2, CRIM2
             self.crit_badge.setText("NATURAL 1")
-            self.crit_badge.setStyleSheet(
-                f"background:{CRIMSON};color:{on_fill(CRIMSON)};font-size:{FS_TINY}px;font-weight:700;"
-                f"border-radius:4px;padding:2px 8px;")
+            self.crit_badge.setStyleSheet(f"background:{CRIMSON};color:{on_fill(CRIMSON)};font-size:{FS_TINY}px;"
+                                          f"font-weight:700;border-radius:4px;padding:2px 8px;")
             self.crit_badge.show()
         else:
-            border_color = BORDER2
+            color, border = GOLD2, BORDER2
             self.crit_badge.hide()
-            if total >= 20:
-                color = GOLD2
-            elif total <= 5:
-                color = TEXT2
-            else:
-                color = TEXT
-
-        self.result_main.setStyleSheet(f"color:{color};")
-
-        # Flash animation, settling to a crit-colored border afterward
-        # (rather than always reverting to the plain default) so a nat
-        # 20/1 stays visually obvious at a glance even after the flash
-        # fades.
+        self.result_main.setStyleSheet(_big(color))
         self.result_frame.setStyleSheet(
             f"QFrame{{background:{qa(INDIGO,0x44)};border:2px solid {INDIGO};border-radius:10px;}}")
-        QTimer.singleShot(200, lambda bc=border_color: self.result_frame.setStyleSheet(
-            f"QFrame{{background:{SURF};border:2px solid {bc};border-radius:10px;}}"
-        ))
+        QTimer.singleShot(200, lambda bc=border: self.result_frame.setStyleSheet(
+            f"QFrame{{background:{SURF};border:2px solid {bc};border-radius:10px;}}"))
 
-        # Add to history
-        crit = "nat20" if nat20 else ("nat1" if nat1 else None)
-        self._history.insert(0, {"text": f"{total:>3d}  {detail[:55]}", "crit": crit})
-        self._history = self._history[:8]
-        self.history_list.clear()
-        for entry in self._history:
-            item = QListWidgetItem(entry["text"])
-            if entry["crit"] == "nat20":
-                item.setForeground(QColor(TEAL2))
-            elif entry["crit"] == "nat1":
-                item.setForeground(QColor(CRIM2))
-            self.history_list.addItem(item)
+    # ── The history ───────────────────────────────────────────────────
+    def _on_logged(self, char, entry):
+        if char is self._char:
+            QTimer.singleShot(0, self._refresh_history)
+
+    def _refresh_history(self):
+        while self.history_lay.count():
+            w = self.history_lay.takeAt(0).widget()
+            if w is not None:
+                w.setParent(None); w.deleteLater()
+        entries = _log.roll_history(self._char)
+        name = (self._char or {}).get("name") or ""
+        self.history_title.setText(f"HISTORY · {name.upper()}" if name else "HISTORY")
+        self.clear_hist_btn.setEnabled(bool(entries))
+        if not entries:
+            self.history_lay.addWidget(lbl("No rolls yet. Your sheet's rolls show here too: checks, saves, "
+                                           "attacks, hit dice.", TEXT3, size=FS_TINY, wrap=True))
+        for e in entries[:SHOWN]:
+            self.history_lay.addWidget(self._history_row(e))
+        self.history_lay.addStretch(1)
+
+    def _history_row(self, e: dict) -> QWidget:
+        row = QFrame(); row.setObjectName("rollRow")
+        row.setStyleSheet(f"QFrame#rollRow{{background:{SURF};border-radius:6px;}}"
+                          f"QFrame#rollRow:hover{{background:{SURF2};}}")
+        rl = QHBoxLayout(row); rl.setContentsMargins(8, 5, 8, 5); rl.setSpacing(8)
+        col = QVBoxLayout(); col.setSpacing(1)
+        result = f" · {e['result']}" if e.get("result") else ""
+        head = lbl(f"<span style='color:{TEXT3}'>{_log.when(e)}</span>&nbsp;&nbsp;"
+                   f"<b>{html.escape(e.get('label') or '')}</b>{html.escape(result)}", TEXT, size=FS_TINY, wrap=True)
+        head.setTextFormat(Qt.RichText)
+        col.addWidget(head)
+        if e.get("detail"):
+            col.addWidget(lbl(e["detail"], TEXT2, size=FS_TINY, wrap=True))
+        rl.addLayout(col, 1)
+        if e.get("total") is not None:
+            tint = TEAL2 if e.get("nat") == 20 else CRIM2 if e.get("nat") == 1 else GOLD2
+            tot = lbl(str(e["total"]), tint, bold=True, size=FS_HEAD, align=Qt.AlignRight | Qt.AlignVCenter)
+            tot.setToolTip("A natural 20" if e.get("nat") == 20 else "A natural 1" if e.get("nat") == 1 else "")
+            rl.addWidget(tot)
+        if e.get("kind") == "dice":
+            row.setCursor(Qt.PointingHandCursor)
+            row.setToolTip("Click to roll these dice again")
+            row.mousePressEvent = lambda ev, ex=e: self._reuse(ex)
+        return row
+
+    def _reuse(self, e: dict):
+        """A tray roll from the history, back in the tray."""
+        self.expr_edit.setText(e.get("label") or "")
+        self._set_mode(e.get("result") if e.get("result") in ("advantage", "disadvantage") else "normal")
+        self._fresh = False
 
     def _clear_history(self):
-        self._history.clear()
-        self.history_list.clear()
+        if QMessageBox.question(self, "Clear history", "Clear this character's roll history?",
+                                QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
+            return
+        _log.clear_roll_history(self._char)
+        self._refresh_history()
         self.result_main.setText("—")
-        self.result_detail.setText("Pick a die below to get started.")
+        self.result_detail.setText("Pick dice below, then Roll.")
         self.crit_badge.hide()
         self.result_frame.setStyleSheet(
             f"QFrame{{background:{SURF};border:2px solid {BORDER2};border-radius:10px;}}")

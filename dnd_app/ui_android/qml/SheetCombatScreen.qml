@@ -895,271 +895,345 @@ Page {
                 }
             }
 
-            // ── Conditions ──────────────────────────────────────────────
+            // ── Conditions & Effects: one card, a tab each (as desktop's) ──
+            // Conditions: tap one to put it on or take it off, press and
+            // hold for what it does. Effects: Bless or Guidance an ally
+            // cast, a potion...: what each does, End to take it off, and
+            // Add for one put on you. Checks, saves and attacks use them.
             MCard {
-                title: "Conditions"
+                id: ceCard
+                objectName: "conditionsEffectsCard"
+                title: "Conditions & Effects"
                 iconName: "cond_stunned"
+                property int page: 0
+                readonly property int condCount: sheetBridge.activeConditions.filter(function(c) { return c.name.indexOf("Exhaustion") !== 0 }).length
+                                                 + (sheetBridge.exhaustionLevel > 0 ? 1 : 0)
+                readonly property int fxCount: sheetBridge.activeEffectRows.length
 
-                // Every condition in an even 3-column table: 16 conditions,
-                // then Exhaustion (a level, set with - / +) and Clear all --
-                // 6 rows of 3. Tap a cell to toggle it.
-                GridLayout {
-                    objectName: "conditionGrid"
+                RowLayout {
                     Layout.fillWidth: true
-                    columns: 3
-                    columnSpacing: 6
-                    rowSpacing: 6
-
+                    spacing: 0
                     Repeater {
-                        model: sheetBridge.allConditions.filter(function(c) { return c.name !== "Exhaustion" })
-                        delegate: Rectangle {
-                            objectName: "conditionChip_" + modelData.name
-                            readonly property bool isOn: modelData.active
-                            readonly property bool viaOther: !isOn && modelData.impliedBy.length > 0
+                        model: [["Conditions", ceCard.condCount], ["Effects", ceCard.fxCount]]
+                        delegate: Button {
+                            id: ceTab
+                            objectName: "ceTab_" + modelData[0]
+                            readonly property bool on: ceCard.page === index
+                            Layout.fillWidth: true
+                            implicitHeight: 40
+                            topInset: 0
+                            bottomInset: 0
+                            onClicked: ceCard.page = index
+                            contentItem: Text {
+                                text: modelData[0] + (modelData[1] > 0 ? " (" + modelData[1] + ")" : "")
+                                color: ceTab.on ? Theme.gold2 : Theme.text2
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            background: Rectangle {
+                                color: "transparent"
+                                Rectangle {
+                                    anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                                    height: ceTab.on ? 3 : 1
+                                    color: ceTab.on ? Theme.gold : Theme.border
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── the conditions
+                ColumnLayout {
+                    objectName: "conditionsPage"
+                    visible: ceCard.page === 0
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    // Every condition in an even 3-column table: 16 conditions,
+                    // then Exhaustion (a level, set with - / +) and Clear all --
+                    // 6 rows of 3. Tap a cell to toggle it.
+                    GridLayout {
+                        objectName: "conditionGrid"
+                        Layout.fillWidth: true
+                        columns: 3
+                        columnSpacing: 6
+                        rowSpacing: 6
+
+                        Repeater {
+                            model: sheetBridge.allConditions.filter(function(c) { return c.name !== "Exhaustion" })
+                            delegate: Rectangle {
+                                objectName: "conditionChip_" + modelData.name
+                                readonly property bool isOn: modelData.active
+                                readonly property bool viaOther: !isOn && modelData.impliedBy.length > 0
+                                Layout.fillWidth: true
+                                Layout.preferredWidth: 1
+                                implicitWidth: 0
+                                Layout.preferredHeight: 64
+                                radius: 8
+                                color: isOn ? Qt.rgba(Theme.crimson.r, Theme.crimson.g, Theme.crimson.b, 0.20)
+                                   : viaOther ? Qt.rgba(Theme.crimson.r, Theme.crimson.g, Theme.crimson.b, 0.08)
+                                   : Theme.surf2
+                                border.color: isOn ? Theme.crimson2 : (viaOther ? Theme.crimson : Theme.border)
+                                border.width: isOn ? 2 : 1
+                                Column {
+                                    anchors.centerIn: parent
+                                    width: parent.width - 8
+                                    spacing: 3
+                                    MIcon {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        name: modelData.icon
+                                        size: 20
+                                        color: isOn || viaOther ? Theme.crimson2 : Theme.indigo2
+                                    }
+                                    Label {
+                                        width: parent.width
+                                        horizontalAlignment: Text.AlignHCenter
+                                        text: modelData.name
+                                        color: isOn || viaOther ? Theme.crimson2 : Theme.text
+                                        font.pixelSize: Theme.fsSmall - 1
+                                        font.bold: isOn
+                                        elide: Text.ElideRight
+                                    }
+                                    Label {
+                                        visible: viaOther
+                                        width: parent.width
+                                        horizontalAlignment: Text.AlignHCenter
+                                        text: "via " + modelData.impliedBy
+                                        color: Theme.crimson2
+                                        font.pixelSize: Theme.fsSmall - 3
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: sheetBridge.setConditionActive(modelData.name, !modelData.active)
+                                    // what it does, without putting it on
+                                    onPressAndHold: {
+                                        conditionInfo.title = modelData.name
+                                        conditionInfo.text = modelData.effectText
+                                        conditionInfo.open()
+                                    }
+                                }
+                            }
+                        }
+
+                        // Exhaustion: a level, 0-6
+                        Rectangle {
+                            id: exhCell
+                            objectName: "exhaustionCell"
+                            readonly property int level: sheetBridge.exhaustionLevel
                             Layout.fillWidth: true
                             Layout.preferredWidth: 1
                             implicitWidth: 0
                             Layout.preferredHeight: 64
                             radius: 8
-                            color: isOn ? Qt.rgba(Theme.crimson.r, Theme.crimson.g, Theme.crimson.b, 0.20)
-                               : viaOther ? Qt.rgba(Theme.crimson.r, Theme.crimson.g, Theme.crimson.b, 0.08)
-                               : Theme.surf2
-                            border.color: isOn ? Theme.crimson2 : (viaOther ? Theme.crimson : Theme.border)
-                            border.width: isOn ? 2 : 1
+                            color: level > 0 ? Qt.rgba(Theme.crimson.r, Theme.crimson.g, Theme.crimson.b, 0.20) : Theme.surf2
+                            border.color: level > 0 ? Theme.crimson2 : Theme.border
+                            border.width: level > 0 ? 2 : 1
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: 2
+                                spacing: 0
+                                Label {
+                                    objectName: "exhaustionDown"
+                                    text: "−"
+                                    color: exhCell.level > 0 ? Theme.text : Theme.text3
+                                    font.pixelSize: Theme.fsBody + 2
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    Layout.preferredWidth: 26
+                                    Layout.fillHeight: true
+                                    MouseArea { anchors.fill: parent; onClicked: sheetBridge.setExhaustionLevel(Math.max(0, sheetBridge.exhaustionLevel - 1)) }
+                                }
+                                Column {
+                                    Layout.fillWidth: true
+                                    spacing: 3
+                                    MIcon {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        name: "cond_exhaustion"
+                                        size: 20
+                                        color: exhCell.level > 0 ? Theme.crimson2 : Theme.indigo2
+                                    }
+                                    Label {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: "Exhaust. " + exhCell.level
+                                        color: exhCell.level > 0 ? Theme.crimson2 : Theme.text
+                                        font.pixelSize: Theme.fsSmall - 1
+                                        font.bold: exhCell.level > 0
+                                    }
+                                }
+                                Label {
+                                    objectName: "exhaustionUp"
+                                    text: "+"
+                                    color: exhCell.level < 6 ? Theme.text : Theme.text3
+                                    font.pixelSize: Theme.fsBody + 2
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    Layout.preferredWidth: 26
+                                    Layout.fillHeight: true
+                                    MouseArea { anchors.fill: parent; onClicked: sheetBridge.setExhaustionLevel(Math.min(6, sheetBridge.exhaustionLevel + 1)) }
+                                }
+                            }
+                        }
+
+                        // Clear all
+                        Rectangle {
+                            objectName: "clearConditionsCell"
+                            readonly property bool any: sheetBridge.activeConditions.some(function(c) { return c.name.indexOf("Exhaustion") !== 0 })
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 1
+                            implicitWidth: 0
+                            Layout.preferredHeight: 64
+                            radius: 8
+                            color: Theme.surf2
+                            border.color: Theme.border
+                            opacity: any ? 1.0 : 0.45
                             Column {
                                 anchors.centerIn: parent
-                                width: parent.width - 8
                                 spacing: 3
-                                MIcon {
+                                MIcon { anchors.horizontalCenter: parent.horizontalCenter; name: "refresh"; size: 20 }
+                                Label {
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    name: modelData.icon
-                                    size: 20
-                                    color: isOn || viaOther ? Theme.crimson2 : Theme.indigo2
-                                }
-                                Label {
-                                    width: parent.width
-                                    horizontalAlignment: Text.AlignHCenter
-                                    text: modelData.name
-                                    color: isOn || viaOther ? Theme.crimson2 : Theme.text
+                                    text: "Clear all"
+                                    color: Theme.text
                                     font.pixelSize: Theme.fsSmall - 1
-                                    font.bold: isOn
-                                    elide: Text.ElideRight
-                                }
-                                Label {
-                                    visible: viaOther
-                                    width: parent.width
-                                    horizontalAlignment: Text.AlignHCenter
-                                    text: "via " + modelData.impliedBy
-                                    color: Theme.crimson2
-                                    font.pixelSize: Theme.fsSmall - 3
-                                    elide: Text.ElideRight
                                 }
                             }
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: sheetBridge.setConditionActive(modelData.name, !modelData.active)
-                            }
+                            MouseArea { anchors.fill: parent; enabled: parent.any; onClicked: sheetBridge.clearConditions() }
                         }
                     }
 
-                    // Exhaustion: a level, 0-6
-                    Rectangle {
-                        id: exhCell
-                        objectName: "exhaustionCell"
-                        readonly property int level: sheetBridge.exhaustionLevel
+                    Label {
+                        visible: sheetBridge.exhaustionEffectText.length > 0
+                        text: sheetBridge.exhaustionEffectText
+                        color: Theme.crimson2
+                        font.pixelSize: Theme.fsSmall
+                        wrapMode: Text.WordWrap
                         Layout.fillWidth: true
-                        Layout.preferredWidth: 1
-                        implicitWidth: 0
-                        Layout.preferredHeight: 64
-                        radius: 8
-                        color: level > 0 ? Qt.rgba(Theme.crimson.r, Theme.crimson.g, Theme.crimson.b, 0.20) : Theme.surf2
-                        border.color: level > 0 ? Theme.crimson2 : Theme.border
-                        border.width: level > 0 ? 2 : 1
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.margins: 2
-                            spacing: 0
-                            Label {
-                                objectName: "exhaustionDown"
-                                text: "−"
-                                color: exhCell.level > 0 ? Theme.text : Theme.text3
-                                font.pixelSize: Theme.fsBody + 2
-                                font.bold: true
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                                Layout.preferredWidth: 26
-                                Layout.fillHeight: true
-                                MouseArea { anchors.fill: parent; onClicked: sheetBridge.setExhaustionLevel(Math.max(0, sheetBridge.exhaustionLevel - 1)) }
+                    }
+
+                    // what each active condition does
+                    Repeater {
+                        model: sheetBridge.activeConditions.filter(function(c) { return c.name.indexOf("Exhaustion") !== 0 })
+                        delegate: Rectangle {
+                            Layout.fillWidth: true
+                            radius: 8
+                            color: Qt.rgba(Theme.crimson.r, Theme.crimson.g, Theme.crimson.b, 0.10)
+                            border.color: Theme.crimson
+                            implicitHeight: acCol.implicitHeight + 14
+                            Column {
+                                id: acCol
+                                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
+                                spacing: 2
+                                Label {
+                                    text: modelData.name
+                                    color: Theme.crimson2
+                                    font.pixelSize: Theme.fsSmall
+                                    font.bold: true
+                                }
+                                Label {
+                                    text: modelData.effectText
+                                    color: Theme.text2
+                                    font.pixelSize: Theme.fsSmall
+                                    wrapMode: Text.WordWrap
+                                    width: parent.width
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── the effects on you
+                ColumnLayout {
+                    objectName: "effectsCard"
+                    visible: ceCard.page === 1
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Label {
+                        visible: sheetBridge.activeEffectRows.length === 0
+                        text: "Nothing on you. A spell you cast on yourself shows here; add one an ally put on you."
+                        color: Theme.text3
+                        font.pixelSize: Theme.fsSmall
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                    Repeater {
+                        model: sheetBridge.activeEffectRows
+                        delegate: Rectangle {
+                            objectName: "effectRow_" + modelData.name
+                            Layout.fillWidth: true
+                            radius: 8
+                            color: Theme.surf2
+                            border.color: Theme.border
+                            implicitHeight: Math.max(fxCol.implicitHeight, fxEnd.height) + 14
+                            Rectangle {
+                                width: 4; radius: 2
+                                anchors { left: parent.left; top: parent.top; bottom: parent.bottom; margins: 1 }
+                                color: Theme.teal2
                             }
                             Column {
-                                Layout.fillWidth: true
-                                spacing: 3
-                                MIcon {
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    name: "cond_exhaustion"
-                                    size: 20
-                                    color: exhCell.level > 0 ? Theme.crimson2 : Theme.indigo2
+                                id: fxCol
+                                anchors { left: parent.left; right: fxEnd.left; top: parent.top
+                                          leftMargin: 14; rightMargin: 8; topMargin: 7 }
+                                spacing: 2
+                                Label {
+                                    text: modelData.name + (modelData.concentration ? " (concentration)" : "")
+                                    color: Theme.text
+                                    font.pixelSize: Theme.fsSmall
+                                    font.bold: true
+                                    wrapMode: Text.WordWrap
+                                    width: parent.width
                                 }
                                 Label {
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    text: "Exhaust. " + exhCell.level
-                                    color: exhCell.level > 0 ? Theme.crimson2 : Theme.text
+                                    text: modelData.note
+                                    color: Theme.text2
                                     font.pixelSize: Theme.fsSmall - 1
-                                    font.bold: exhCell.level > 0
+                                    wrapMode: Text.WordWrap
+                                    width: parent.width
                                 }
                             }
-                            Label {
-                                objectName: "exhaustionUp"
-                                text: "+"
-                                color: exhCell.level < 6 ? Theme.text : Theme.text3
-                                font.pixelSize: Theme.fsBody + 2
-                                font.bold: true
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                                Layout.preferredWidth: 26
-                                Layout.fillHeight: true
-                                MouseArea { anchors.fill: parent; onClicked: sheetBridge.setExhaustionLevel(Math.min(6, sheetBridge.exhaustionLevel + 1)) }
+                            MButton {
+                                id: fxEnd
+                                anchors { right: parent.right; top: parent.top; margins: 6 }
+                                primary: false
+                                height: 32
+                                text: "End"
+                                onClicked: sheetBridge.removeActiveEffect(modelData.name)
                             }
                         }
                     }
-
-                    // Clear all
-                    Rectangle {
-                        objectName: "clearConditionsCell"
-                        readonly property bool any: sheetBridge.activeConditions.some(function(c) { return c.name.indexOf("Exhaustion") !== 0 })
+                    MButton {
+                        objectName: "addEffectButton"
                         Layout.fillWidth: true
-                        Layout.preferredWidth: 1
-                        implicitWidth: 0
-                        Layout.preferredHeight: 64
-                        radius: 8
-                        color: Theme.surf2
-                        border.color: Theme.border
-                        opacity: any ? 1.0 : 0.45
-                        Column {
-                            anchors.centerIn: parent
-                            spacing: 3
-                            MIcon { anchors.horizontalCenter: parent.horizontalCenter; name: "refresh"; size: 20 }
-                            Label {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                text: "Clear all"
-                                color: Theme.text
-                                font.pixelSize: Theme.fsSmall - 1
-                            }
-                        }
-                        MouseArea { anchors.fill: parent; enabled: parent.any; onClicked: sheetBridge.clearConditions() }
-                    }
-                }
-
-                Label {
-                    visible: sheetBridge.exhaustionEffectText.length > 0
-                    text: sheetBridge.exhaustionEffectText
-                    color: Theme.crimson2
-                    font.pixelSize: Theme.fsSmall
-                    wrapMode: Text.WordWrap
-                    Layout.fillWidth: true
-                }
-
-                // what each active condition does
-                Repeater {
-                    model: sheetBridge.activeConditions.filter(function(c) { return c.name.indexOf("Exhaustion") !== 0 })
-                    delegate: Rectangle {
-                        Layout.fillWidth: true
-                        radius: 8
-                        color: Qt.rgba(Theme.crimson.r, Theme.crimson.g, Theme.crimson.b, 0.10)
-                        border.color: Theme.crimson
-                        implicitHeight: acCol.implicitHeight + 14
-                        Column {
-                            id: acCol
-                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
-                            spacing: 2
-                            Label {
-                                text: modelData.name
-                                color: Theme.crimson2
-                                font.pixelSize: Theme.fsSmall
-                                font.bold: true
-                            }
-                            Label {
-                                text: modelData.effectText
-                                color: Theme.text2
-                                font.pixelSize: Theme.fsSmall
-                                wrapMode: Text.WordWrap
-                                width: parent.width
-                            }
-                        }
+                        primary: false
+                        text: "Add an effect on you"
+                        onClicked: effectPicker.open()
                     }
                 }
             }
+        }
+    }
 
-            // ── Effects on you (desktop's Active Effects) ───────────────
-            // Bless or Guidance an ally cast, a potion...: what each does,
-            // End to take it off, and Add for one put on you. Checks, saves
-            // and attacks use them.
-            MCard {
-                objectName: "effectsCard"
-                title: "Effects on You"
-                iconName: "effects"
-
-                Label {
-                    visible: sheetBridge.activeEffectRows.length === 0
-                    text: "Nothing on you. A spell you cast on yourself shows here; add one an ally put on you."
-                    color: Theme.text3
-                    font.pixelSize: Theme.fsSmall
-                    wrapMode: Text.WordWrap
-                    Layout.fillWidth: true
-                }
-                Repeater {
-                    model: sheetBridge.activeEffectRows
-                    delegate: Rectangle {
-                        objectName: "effectRow_" + modelData.name
-                        Layout.fillWidth: true
-                        radius: 8
-                        color: Theme.surf2
-                        border.color: Theme.border
-                        implicitHeight: Math.max(fxCol.implicitHeight, fxEnd.height) + 14
-                        Rectangle {
-                            width: 4; radius: 2
-                            anchors { left: parent.left; top: parent.top; bottom: parent.bottom; margins: 1 }
-                            color: Theme.teal2
-                        }
-                        Column {
-                            id: fxCol
-                            anchors { left: parent.left; right: fxEnd.left; top: parent.top
-                                      leftMargin: 14; rightMargin: 8; topMargin: 7 }
-                            spacing: 2
-                            Label {
-                                text: modelData.name + (modelData.concentration ? " (concentration)" : "")
-                                color: Theme.text
-                                font.pixelSize: Theme.fsSmall
-                                font.bold: true
-                                wrapMode: Text.WordWrap
-                                width: parent.width
-                            }
-                            Label {
-                                text: modelData.note
-                                color: Theme.text2
-                                font.pixelSize: Theme.fsSmall - 1
-                                wrapMode: Text.WordWrap
-                                width: parent.width
-                            }
-                        }
-                        MButton {
-                            id: fxEnd
-                            anchors { right: parent.right; top: parent.top; margins: 6 }
-                            primary: false
-                            height: 32
-                            text: "End"
-                            onClicked: sheetBridge.removeActiveEffect(modelData.name)
-                        }
-                    }
-                }
-                MButton {
-                    objectName: "addEffectButton"
-                    Layout.fillWidth: true
-                    primary: false
-                    text: "Add an effect on you"
-                    onClicked: effectPicker.open()
-                }
-            }
+    // A condition's rules, from pressing and holding it
+    Dialog {
+        id: conditionInfo
+        objectName: "conditionInfo"
+        property string text: ""
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(parent.width - 32, 420)
+        modal: true
+        standardButtons: Dialog.Close
+        Label {
+            width: conditionInfo.availableWidth
+            text: conditionInfo.text
+            color: Theme.text
+            font.pixelSize: Theme.fsSmall
+            wrapMode: Text.WordWrap
         }
     }
 

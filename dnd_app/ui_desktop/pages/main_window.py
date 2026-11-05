@@ -1240,6 +1240,9 @@ class CharacterCreatorApp(QMainWindow):
             self._set_menu_corner(self._sheet._name_box)
             self._sheet.health_changed.connect(self._set_health_bar)
             self._sheet._update_hp_bar()
+            # an open Dice Roller follows the character: its history is theirs
+            if self._dice_roller:
+                self._dice_roller.set_char(char)
             self._stack.addWidget(self._sheet)
             self._stack.setCurrentWidget(self._sheet)
         except Exception:
@@ -1272,6 +1275,8 @@ class CharacterCreatorApp(QMainWindow):
         self._go_menu()
 
     def _go_menu(self):
+        if self._dice_roller:          # no character: the Dice Roller's rolls are its own
+            self._dice_roller.set_char(new_character())
         # Dispose of the open character the same way _show_sheet() does
         # when swapping to a different one -- previously left dangling
         # (still a live self._sheet reference, just not the current

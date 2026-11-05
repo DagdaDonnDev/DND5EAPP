@@ -1698,8 +1698,8 @@ class CombatMixin:
         # what changes a Hit Die's healing (Durable, Dwarven Fortitude, Vigor
         # of the Hill Giant, a Periapt of Wound Closure) -- core, shared with
         # the Rest dialog's dice and Android
-        from dnd_app.core.character import hit_die_heal
-        roll, heal = hit_die_heal(self.char, sides, random.randint(1, sides))
+        from dnd_app.core.character import roll_hit_die
+        roll, heal = roll_hit_die(self.char, sides)
         hd["remaining"] -= 1
         cur, mx = self.char.get("current_hp", 0), self.char.get("max_hp", 0)
         self.char["current_hp"] = min(mx, cur + heal)

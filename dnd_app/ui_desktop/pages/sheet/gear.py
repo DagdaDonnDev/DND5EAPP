@@ -1546,11 +1546,17 @@ class GearMixin:
                 cur = self.char.get("current_hp", 0)
                 self.char["current_hp"] = min(mx, cur + rolled)
                 msgs.append(f"healed {rolled} HP")
+                from dnd_app.core.roll_log import log_roll     # (the roll history)
+                log_roll(self.char, "potion", name, rolled,
+                         f"{count}d{sides}" + (f" + {bonus}" if bonus else "") + f": healed {rolled} HP")
             if "damage_dice" in instant:
                 count, sides, bonus = instant["damage_dice"]
                 rolled = sum(random.randint(1, sides) for _ in range(count)) + bonus
                 self.char["current_hp"] = max(0, self.char.get("current_hp", 0) - rolled)
                 dtype = instant.get("damage_type", "")
+                from dnd_app.core.roll_log import log_roll
+                log_roll(self.char, "potion", name, rolled,
+                         f"{count}d{sides}" + (f" + {bonus}" if bonus else "") + f": {rolled} {dtype} damage".replace("  ", " "))
                 msgs.append(f"took {rolled} {dtype} damage".replace("  ", " "))
             if "add_condition" in instant:
                 conds = self.char.setdefault("conditions", [])

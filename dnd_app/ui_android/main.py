@@ -148,7 +148,7 @@ def main():
     equipment_bridge = EquipmentWizardBridge(char)
     save_load_bridge = SaveLoadBridge(char)
     sheet_bridge = CharacterSheetBridge(char)
-    dice_roller_bridge = DiceRollerBridge()
+    dice_roller_bridge = DiceRollerBridge(char)      # (the shared character: its roll history)
     credits_bridge = CreditsBridge()
     easter_egg_bridge = EasterEggBridge()
     app.installEventFilter(easter_egg_bridge)

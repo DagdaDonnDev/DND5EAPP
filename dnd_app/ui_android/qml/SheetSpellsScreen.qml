@@ -173,6 +173,76 @@ Page {
                 }
             }
 
+            // ── Metamagic: tick what's for your next cast, then spend the
+            // sorcery points (bridge applyMetamagic -- desktop's Spells page
+            // card, the same rules from core)
+            MCard {
+                id: mmCard
+                objectName: "metamagicCard"
+                visible: sheetBridge.metamagicOptions.length > 0
+                title: "Metamagic — for your next cast"
+                iconName: "magic"
+                bodySpacing: 10
+                property string activeNote: ""
+                Repeater {
+                    id: mmRepeater
+                    objectName: "metamagicRepeater"
+                    model: sheetBridge.metamagicOptions
+                    delegate: ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        property alias ticked: mmTick.checked
+                        property string key: modelData.key
+                        MCheckBox {
+                            id: mmTick
+                            objectName: "metamagic_" + modelData.name
+                            Layout.fillWidth: true
+                            text: modelData.name + "  ·  " + modelData.cost_text
+                            textColor: Theme.text
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 32
+                            visible: modelData.what !== ""
+                            text: modelData.what
+                            color: Theme.text2
+                            font.pixelSize: Theme.fsSmall
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+                MButton {
+                    objectName: "metamagicSpend"
+                    Layout.fillWidth: true
+                    text: "Spend SP & Mark Active"
+                    onClicked: {
+                        var keys = []
+                        for (var i = 0; i < mmRepeater.count; i++) {
+                            var it = mmRepeater.itemAt(i)
+                            if (it && it.ticked) keys.push(it.key)
+                        }
+                        var note = sheetBridge.applyMetamagic(keys)
+                        if (note !== "") {
+                            mmCard.activeNote = note
+                            for (var j = 0; j < mmRepeater.count; j++) {
+                                var row = mmRepeater.itemAt(j)
+                                if (row) row.ticked = false
+                            }
+                        }
+                    }
+                }
+                Label {
+                    objectName: "metamagicActive"
+                    Layout.fillWidth: true
+                    visible: mmCard.activeNote !== ""
+                    text: mmCard.activeNote
+                    color: Theme.teal2
+                    font.pixelSize: Theme.fsSmall
+                    font.bold: true
+                    wrapMode: Text.WordWrap
+                }
+            }
+
             // ── Spellcasting: the ability, save DC and attack bonus of each
             // class, race and feat that gives spells (desktop's Spellcasting
             // table) -- a tiefling wizard's Hellish Rebuke is CHA, their

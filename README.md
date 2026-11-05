@@ -116,8 +116,9 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 
 - **The magnifying glass opens the details** of a spell, item or feat, on both apps.
 - **On desktop, right-click a row** for everything else it can do (Cast, Study, Remove…) and hover anything for its numbers. **On Android, press and hold.**
-- **Rest** sits at the top of the desktop sheet (Short Rest and Long Rest are in the Android menu). It asks short or long, shows what the rest gives back, takes the hit dice to spend, offers what you can change on it (prepared spells, a pact weapon, an Armorer's model…), and lists everything else it lets you do, from Song of Rest to attuning to an item.
-- **The menu bar is your health bar** on desktop: it fills with your hit points, temp HP after them, and turns amber then red as they drop. Your name is on it too; click it to rename. (Settings can turn the bar off.)
+- **Rest** sits at the top of the desktop sheet (and in the Android menu). It asks short or long, shows what the rest gives back, takes the hit dice to spend, offers what you can change on it (prepared spells, a pact weapon, an Armorer's model…), and lists everything else it lets you do, from Song of Rest to attuning to an item.
+- **Help on a rest** is ticked there too: your Song of Rest or Chef's food (tick it, then say what you rolled), Celestial Resilience's temporary hit points, Tireless, and what your party gives you (a bard's song, a chef's food, an ally's Inspiring Leader).
+- **The bar at the top is your health bar** (the menu bar on desktop): it fills with your hit points, temp HP after them, and turns amber then red as they drop. On desktop your name is on it too; click it to rename. (Settings can turn the bar off.)
 - In a narrow window the tab names shorten; hover one for its full name.
 
 </details>
@@ -129,10 +130,11 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **Use** (or **Cast**) on a card spends what it costs — a slot, ki, a use — turns its effect on, and says what it did and what's left. When there's a choice to make, it asks.
 - **Attacking:** a weapon's **Hit** button (**Roll to Hit** on Android) rolls the d20 and says what AC it hits. Under the roll is what you can add to it, each with its cost: Precision Attack, Lucky, Guided Strike, Emboldening Bond… Press **Add** and it's paid for and rolled at once, and the total updates. **If it misses** lists what can turn a miss around: Favored by the Gods, Stroke of Luck, Focused Aim… Below that is what you can add to the hit: Sneak Attack, a smite, a maneuver… The **Attack** action card asks which weapon first. On a critical hit, the dice shown are already doubled.
 - **Damage is your roll.** Every damage line says what to roll and its type; roll it yourself, or open the Dice Roller (Ctrl+D).
+- **The Dice Roller:** pick dice or type them (2d6 + 1d4 + 3, 4d6kh3), add one of your bonuses, take advantage or disadvantage on a d20, and roll. Its **history** keeps every roll the sheet makes too: checks, saves, initiative, attacks (and whether they hit), hit dice and what your actions roll, saved with the character. Click a roll of your own to roll it again.
 - **Advantage and disadvantage are reminders.** Every roll is one d20, with a note of what the sheet knows applies (Reckless Attack, Poisoned, exhaustion…). Roll the second die yourself, since cover, the target and your DM can change it. Advantage you spend something on, like Inspiration, is rolled for you.
 - **Taking damage:** type the amount and press **Damage**. Halve it yourself for a resistance; yours are listed just below. Temporary hit points, concentration saves, Wild Shape hit points and death saves follow on their own.
 - **Buffs from someone else:** when an ally casts Bless, Guidance, Haste and the like on you, add it with **＋ Add** on the Combat tab's **Effects** page (on Android, **Effects on You** on the Combat screen) so its bonuses count. It comes off when its time is up.
-- **Conditions** go on with **＋ Add** and show up on the rolls they change. Hover one for what it does; right-click it to take it off or read the rules. Exhaustion's level is the six pips under them.
+- **Conditions** go on with **＋ Add** and show up on the rolls they change. Hover one for what it does; right-click it to take it off or read the rules. Exhaustion's level is the six pips under them. On Android, tap a condition to put it on or take it off, and press and hold it for what it does.
 - **Wild Shape:** the Wild Shape card on the Combat tab lists the forms you can take, strongest first. Anything that needs hands asks before going ahead.
 - **Initiative** is on the Combat tab, beside Speed: click it to roll. **Inspiration** is at the top of the desktop sheet.
 - **Before any roll** (check, save, initiative or attack) it asks if there's something to decide first: cast Guidance or Resistance, give yourself advantage (Inspiration, Tides of Chaos, Kenku Recall) or use a Portent roll.
@@ -219,7 +221,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 Open them with **Ctrl+,** on desktop, or from the menu on Android.
 
 - **Appearance:** 26 themes (16 dark, 10 light), every one with readable text (WCAG AA contrast, coloured text included), and the text size (Small, Medium or Large).
-- **Health bar** (desktop): the menu bar fills with the open character's hit points. On unless you turn it off.
+- **Health bar:** the menu bar (desktop) or the top bar (Android) fills with the open character's hit points. On unless you turn it off.
 - **Immersion:** Immersive Health drains some of the colour from the sheet as you lose hit points; Immersive Exhaustion closes a dark frame in from the screen's edges with each level of exhaustion. Each is Full, Reduced or Off. The numbers never change, and Reduced never covers any text.
 - **Character Folder:** where characters are saved.
 - **Saved with each character:** levelling by milestone or XP, the table rules (see *For DMs and house rules*), and **DM Secrets**: purely cosmetic surprises, off by default. Try them and see.
@@ -247,7 +249,7 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 <details>
 <summary><b>On Android</b></summary>
 
-- **The menu** has every page of the sheet, plus Short Rest, Long Rest, the Dice Roller, Settings, Save & Export and Credits.
+- **The menu** has every page of the sheet, plus Rest, the Dice Roller, Settings, Save & Export and Credits.
 - **Big buttons for what you do often** (Cast, Equip, Drink, Use), a magnifying glass for details, and press and hold for the rest: preparing, favourites, attunement, removing.
 - **Favourite a spell** (press and hold → Add to favourites) to cast it from the Combat screen.
 - **Holding − or +** on a quantity or an ammunition count changes it by 5.

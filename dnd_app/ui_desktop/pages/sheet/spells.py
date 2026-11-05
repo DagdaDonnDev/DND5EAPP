@@ -816,17 +816,6 @@ class SpellsMixin:
         self._refresh_spellcasting_table()
         self._refresh_metamagic_card()
 
-    @staticmethod
-    def _parse_sp_cost(option_text: str) -> tuple[int | None, bool]:
-        """Parse a Metamagic option's SP cost. Returns (fixed_cost_or_None,
-        is_per_spell_level) — e.g. 'spend 2 SP' -> (2, False), 'spend SP
-        equal to spell level' -> (None, True)."""
-        import re
-        if "equal to spell level" in option_text.lower():
-            return None, True
-        m = re.search(r'spend (\d+) SP', option_text)
-        return (int(m.group(1)) if m else 1), False
-
     def _refresh_metamagic_card(self):
         """Rebuild the Metamagic quick-apply checkboxes from the character's
         actually-known options (never the full pool), and show/hide the
@@ -847,62 +836,35 @@ class SpellsMixin:
                 w.setParent(None)
                 w.deleteLater()
         self._metamagic_cbs = {}
-        for opt in known:
-            name, _, what = opt.partition("–")
-            name, what = name.strip(), what.strip()
-            cost, per_level = self._parse_sp_cost(opt)
-            cost_str = "SP = spell level" if per_level else f"{cost} SP"
+        from dnd_app.core.spellcasting import metamagic_options
+        for o in metamagic_options(self.char):     # (the same as Android's card)
             row = QWidget(); row.setStyleSheet("background:transparent;border:none;")
             rl = QVBoxLayout(row); rl.setContentsMargins(0, 0, 0, 0); rl.setSpacing(2)
-            cb = QCheckBox(f"{name}  ·  {cost_str}")
+            cb = QCheckBox(f"{o['name']}  ·  {o['cost_text']}")
             cb.setStyleSheet(f"QCheckBox{{color:{TEXT};font-size:{FS_SMALL}px;font-weight:700;}}")
-            cb.setToolTip(opt)
+            cb.setToolTip(o["key"])
             rl.addWidget(cb)
-            if what:
-                desc = _lbl(what, TEXT2, FS_TINY, wrap=True)
+            if o["what"]:
+                desc = _lbl(o["what"], TEXT2, FS_TINY, wrap=True)
                 desc.setContentsMargins(26, 0, 0, 0)   # (under the box's label)
                 rl.addWidget(desc)
             self._metamagic_box.addWidget(row)
-            self._metamagic_cbs[opt] = cb
+            self._metamagic_cbs[o["key"]] = cb
         self._mm_active_lbl.setText("")
 
     def _apply_metamagic_selection(self):
-        """Spend Sorcery Points for whichever Metamagic checkboxes are
-        selected and mark them active for the next cast. Doesn't simulate
-        each option's mechanical effect (that varies per spell/target) —
-        it handles the concrete, common part: paying the SP cost and
-        tracking what's active so the player (and the cast confirmation)
-        can see it."""
-        selected = [opt for opt, cb in self._metamagic_cbs.items() if cb.isChecked()]
-        if not selected:
-            self._toast("Select at least one Metamagic option first")
+        """Spend Sorcery Points for whichever Metamagic boxes are ticked
+        and mark them active for the next cast (core/spellcasting.py's
+        apply_metamagic, the same as Android's): the concrete part, paying
+        the cost and saying what's active; each option's effect is the
+        table's."""
+        from dnd_app.core.spellcasting import apply_metamagic
+        res = apply_metamagic(self.char, [k for k, cb in self._metamagic_cbs.items() if cb.isChecked()])
+        if not res["ok"]:
+            self._toast(res["toast"])
             return
-        sp_res = next((r for r in self.char.get("resources", [])
-                       if r.get("key") == "sorcery_points"), None)
-        if not sp_res:
-            self._toast("No Sorcery Points resource found")
-            return
-        total_cost = 0
-        per_level_opts = []
-        for opt in selected:
-            cost, per_level = self._parse_sp_cost(opt)
-            if per_level:
-                per_level_opts.append(opt.split("–")[0].strip())
-            else:
-                total_cost += cost
-        available = sp_res.get("current", 0)
-        if total_cost > available:
-            self._toast(f"Not enough Sorcery Points ({available} available, "
-                        f"{total_cost} needed for fixed-cost options)")
-            return
-        sp_res["current"] = available - total_cost
-        active_names = [opt.split("–")[0].strip() for opt in selected]
-        self.char["_active_metamagic"] = active_names
-        note = f"Active for next cast: {', '.join(active_names)}"
-        if per_level_opts:
-            note += f"  ({', '.join(per_level_opts)} costs SP = the slot level you cast at)"
-        self._mm_active_lbl.setText(note)
-        self._toast(f"✓ Spent {total_cost} SP — {', '.join(active_names)} active for your next cast")
+        self._mm_active_lbl.setText(res["note"])
+        self._toast("\u2713 " + res["toast"])
         if hasattr(self, "_refresh_action_tabs"): self._refresh_action_tabs()
         self._mark_dirty()
 

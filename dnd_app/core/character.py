@@ -830,6 +830,25 @@ def hit_die_heal(char: dict, sides: int, roll: int, rng=None) -> tuple:
     return roll, heal
 
 
+def roll_hit_die(char: dict, sides: int, rng=None) -> tuple:
+    """Spend one Hit Die: rolled, its healing worked out (hit_die_heal) and
+    kept in the roll history (core/roll_log.py). (the roll as it counts,
+    the HP it heals) -- the caller spends the die and heals."""
+    import random as _random
+    rng = rng or _random
+    raw = rng.randint(1, sides)
+    roll, heal = hit_die_heal(char, sides, raw, rng=rng)
+    from dnd_app.core.roll_log import log_roll
+    con = ability_mod(char, "CON")
+    sign = "+" if con >= 0 else "\u2212"
+    detail = f"Rolled {raw}" + (f" (counts as {roll})" if roll != raw else "") + f" {sign} {abs(con)} (CON)"
+    notes = [n for n in hit_die_notes(char) if not n.startswith(("Durable", "Black Blood"))]
+    log_roll(char, "hit_die", f"Hit Die (d{sides})", heal,
+             detail + (f"; {'; '.join(notes)}" if notes else "") + f": {heal} HP back",
+             nat=0)
+    return roll, heal
+
+
 def hit_die_notes(char: dict) -> list:
     """What changes this character's Hit Dice (hit_die_heal), in words, for
     the rest dialogs: ["Durable: each die counts as at least 4", ...]."""
@@ -1002,7 +1021,7 @@ def rest_activities(char: dict, rest_type: str) -> list:
     out, seen = [], set()
 
     def add(source, text):
-        if (source, text) not in seen:
+        if (source, text) not in seen and source not in ticked:
             seen.add((source, text)); out.append({"source": source, "text": text})
 
     def add_catalogued(source, entries):
@@ -1012,10 +1031,14 @@ def rest_activities(char: dict, rest_type: str) -> list:
 
     covered = [w for kind in (o["kind"] for o in rest_options(char, rest_type))
                for w in _OPTION_SOURCES.get(kind, ())]
+    # ...and what's a tick of its own (rest_extras: Song of Rest, a Chef's
+    # food, Celestial Resilience, Tireless...)
+    ticked = {e["source"] for e in rest_extras(char, rest_type) if not e["party"]}
     skip = lambda name: any(w in name for w in covered) or any(w in name for w in _APPLIED_ON_HIT_DICE)
 
     # class features, invocations, and the optional class features this
-    # table uses (Tasha's Cantrip Formulas, Deft Explorer's Tireless)
+    # table uses (Tasha's Cantrip Formulas; Deft Explorer's Tireless is a
+    # tick of its own, in rest_extras)
     from dnd_app.data.class_features import get_class_features
     for cls, names in get_class_features(char).items():
         for name in names:
@@ -1030,11 +1053,6 @@ def rest_activities(char: dict, rest_type: str) -> list:
     if rules.get("cantrip_formulas") and levels.get("Wizard", 0) >= 3:
         add_catalogued("Cantrip Formulas", [("long", "When you finish the rest, replace one wizard cantrip "
                                                      "you know with another from the wizard spell list.")])
-    if levels.get("Ranger", 0) >= 10:
-        from dnd_app.core.actions import _optional_feature_enabled
-        if _optional_feature_enabled(char, "Deft Explorer"):
-            add_catalogued("Tireless", [("short", "When you finish the rest, take a level of exhaustion "
-                                                  "off, if you have any.")])
 
     # feats: their description, or the feat list's own summary
     from dnd_app.data.feature_tooltips import FEATURE_DESCS
@@ -1090,6 +1108,154 @@ def rest_activities(char: dict, rest_type: str) -> list:
         add("Identify an item", "Spend the rest focused on one magic item, touching it, to learn its "
                                 "properties and how to use them.")
     return out
+
+
+def _song_of_rest_die(bard_level: int) -> int:
+    return 12 if bard_level >= 17 else 10 if bard_level >= 13 else 8 if bard_level >= 9 else 6
+
+
+def rest_extras(char: dict, rest_type: str) -> list:
+    """What else this rest can do for the character's HP and exhaustion,
+    for both apps' rest dialogs to tick -- their own features and a party's
+    help. [{"key", "source", "label", "detail", "effect", "group", "ask",
+    "max", "value", "checked", "party"}]:
+      effect   "heal" (extra HP at the end of the rest), "temp_hp" or
+               "exhaustion" (a level off)
+      group    "dice": only when Hit Dice are spent (Song of Rest, a Chef's
+               food) -- the dialogs show these with the hit dice;
+               "rest": with the rest's other options
+      ask      "" for a tick the app applies with `value`; else what the
+               box asks for once ticked: "rolled" (the die they rolled, up
+               to `max`) or "amount" (an ally's number, up to `max`)
+      checked  ticked to start with (what the rules give anyway)
+    apply_rest_extras() applies the ticked ones."""
+    from dnd_app.data.class_features import get_class_features
+    out = []
+    levels = class_levels(char)
+    feats = char.get("feats", [])
+    features = {n for names in get_class_features(char).values() for n in names}
+    cha = ability_mod(char, "CHA")
+
+    def add(key, source, label, detail, effect, group, ask="", mx=0, value=0, checked=False, party=False):
+        out.append({"key": key, "source": source, "label": label, "detail": detail, "effect": effect,
+                    "group": group, "ask": ask, "max": mx, "value": value, "checked": checked,
+                    "party": party})
+
+    if rest_type == "short":
+        bard = levels.get("Bard", 0)
+        if bard >= 2:
+            die = _song_of_rest_die(bard)
+            add("song_of_rest", "Song of Rest", f"Song of Rest: an extra 1d{die} for you",
+                f"You perform during the rest: you and anyone friendly who hears it and spends Hit "
+                f"Dice regain an extra 1d{die} HP at its end. Roll yours.", "heal", "dice", "rolled", die)
+        else:
+            add("ally_song_of_rest", "Song of Rest", "A bard's Song of Rest: an extra die",
+                "A bard in your party performed during the rest: you regain an extra d6 (d8, d10 or "
+                "d12, by their level) when you spend Hit Dice. Roll it.", "heal", "dice", "rolled", 12,
+                party=True)
+        if "Chef" in feats:
+            add("chef_food", "Chef (feat)", "Your Chef's food: an extra 1d8",
+                f"Cook for up to {4 + _prof_bonus(char)} creatures as part of the rest (ingredients and "
+                f"cook's utensils): anyone who eats it and spends Hit Dice regains an extra 1d8 HP. "
+                f"Roll yours.", "heal", "dice", "rolled", 8)
+        else:
+            add("ally_chef_food", "Chef (feat)", "A chef's food: an extra 1d8",
+                "Someone in your party cooked during the rest: eat it and you regain an extra 1d8 HP "
+                "when you spend Hit Dice. Roll it.", "heal", "dice", "rolled", 8, party=True)
+        if levels.get("Ranger", 0) >= 10 and char.get("exhaustion", 0) > 0:
+            from dnd_app.core.actions import _optional_feature_enabled
+            if _optional_feature_enabled(char, "Deft Explorer"):
+                ex = char.get("exhaustion", 0)
+                add("tireless", "Tireless", f"Tireless: a level of exhaustion off ({ex} → {ex - 1})",
+                    "Deft Explorer: whenever you finish a short rest, your exhaustion goes down by 1.",
+                    "exhaustion", "rest", value=1, checked=True)
+    if "Celestial Resilience" in features:
+        hp = max(0, levels.get("Warlock", 0) + cha)
+        add("celestial_resilience", "Celestial Resilience",
+            f"Celestial Resilience: {hp} temporary hit points",
+            f"When you finish the rest you gain {hp} temporary hit points, and up to five creatures you "
+            f"can see gain {max(0, levels.get('Warlock', 0) // 2 + cha)} each.", "temp_hp", "rest",
+            value=hp, checked=True)
+    if "Inspiring Leader" in feats:
+        hp = max(0, total_level(char) + cha)
+        add("inspiring_leader", "Inspiring Leader (feat)",
+            f"Inspiring Leader: your speech, {hp} temporary hit points",
+            f"Ten minutes inspiring up to six friendly creatures, you included: each gains {hp} "
+            f"temporary hit points (once each until they finish a rest).", "temp_hp", "rest", value=hp)
+    else:
+        add("ally_inspiring_leader", "Inspiring Leader (feat)",
+            "An ally's Inspiring Leader: temporary hit points",
+            "Someone in your party gave their ten-minute speech: you gain temporary hit points equal "
+            "to their level + their CHA modifier.", "temp_hp", "rest", "amount", 99, party=True)
+    if "Celestial Resilience" not in features:
+        add("ally_celestial_resilience", "Celestial Resilience",
+            "An ally's Celestial Resilience: temporary hit points",
+            "A Celestial warlock in your party chose you when they finished the rest: half their "
+            "warlock level + their CHA modifier.", "temp_hp", "rest", "amount", 99, party=True)
+    return out
+
+
+def _prof_bonus(char: dict) -> int:
+    from dnd_app.core.calculator import get_prof_bonus
+    return get_prof_bonus(char)
+
+
+def apply_rest_extras(char: dict, rest_type: str, chosen: dict, dice_spent: int = 0) -> list:
+    """Apply what was ticked in a rest dialog (rest_extras), at the end of
+    the rest: `chosen` is {key: the number in its box, or True}. Extra
+    healing needs Hit Dice spent on this rest; temporary hit points don't
+    add up, so the most of them is kept (or what you have, if that's more).
+    Returns what happened, a line each, for the rest's message."""
+    lines, temps = [], []
+    for e in rest_extras(char, rest_type):
+        if e["key"] not in chosen or chosen[e["key"]] in (None, False):
+            continue
+        amount = e["value"] if not e["ask"] else int(chosen[e["key"]] or 0)
+        amount = max(0, min(amount, e["max"])) if e["ask"] else amount
+        if e["effect"] == "heal":
+            if dice_spent <= 0:
+                lines.append(f"{e['source']}: no extra HP without spending Hit Dice")
+                continue
+            before = char.get("current_hp", 0)
+            char["current_hp"] = min(char.get("max_hp", 0), before + amount)
+            lines.append(f"{e['source']}: +{char['current_hp'] - before} HP")
+        elif e["effect"] == "temp_hp" and amount > 0:
+            temps.append((amount, e["source"]))
+        elif e["effect"] == "exhaustion":
+            ex = char.get("exhaustion", 0)
+            char["exhaustion"] = max(0, ex - amount)
+            lines.append(f"{e['source']}: exhaustion {ex} → {char['exhaustion']}")
+    if temps:
+        amount, source = max(temps)
+        had = char.get("temp_hp", 0)
+        if amount > had:
+            char["temp_hp"] = amount
+            lines.append(f"{source}: {amount} temporary hit points"
+                         + (" (the most of them; they don't add up)" if len(temps) > 1 else ""))
+        else:
+            lines.append(f"Kept your {had} temporary hit points ({source} gives {amount}; they don't add up)")
+    return lines
+
+
+def rest_dice_note(char: dict) -> dict:
+    """The hit dice a short rest can spend, for both apps' rest dialogs:
+    {"left": how many, "can_spend": whether there's any point, "text": what
+    the dialogs say beside the box (the pool, what each heals, what changes
+    the dice -- hit_die_notes)}."""
+    hd = char.get("hit_dice", {})
+    left = sum(d.get("remaining", 0) for d in hd.values())
+    pool = ", ".join(f"{d.get('remaining', 0)}{k}" for k, d in
+                     sorted(hd.items(), key=lambda kv: -int(kv[0][1:])) if d.get("remaining", 0))
+    cur, mx = char.get("current_hp", 0), char.get("max_hp", 0)
+    if not left:
+        return {"left": 0, "can_spend": False, "text": "No hit dice left: a long rest gets half of them back."}
+    if cur >= mx:
+        return {"left": left, "can_spend": False, "text": "Your HP is full."}
+    con = ability_mod(char, "CON")
+    notes = hit_die_notes(char)
+    return {"left": left, "can_spend": True,
+            "text": (f"{left} left ({pool}). Each heals one die {con:+d} (CON), the biggest dice first. "
+                     f"HP {cur}/{mx}." + (" " + "; ".join(notes) + "." if notes else ""))}
 
 
 def rest_preview_lines(rest_type: str, preview: dict, dice_below: bool = False) -> list:

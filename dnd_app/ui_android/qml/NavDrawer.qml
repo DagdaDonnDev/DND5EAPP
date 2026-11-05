@@ -63,10 +63,10 @@ Drawer {
             Layout.bottomMargin: 12
         }
 
-        // ── Home / Refresh / Short Rest / Long Rest, all one row ──────
-        // Home and Refresh are single-unit icon buttons; Short Rest and
-        // Long Rest are double-width (they carry text, not just a
-        // glyph) -- six units total split 1:1:2:2 across the row.
+        // ── Home / Rest / Refresh, all one row ──────────────────────
+        // Home and Refresh are single-unit icon buttons; Rest is four
+        // units wide (it carries text, not just a glyph), and asks short
+        // or long itself, as desktop's -- six units total, 1:4:1.
         RowLayout {
             id: actionRow
             Layout.fillWidth: true
@@ -94,9 +94,11 @@ Drawer {
                 onClicked: Window.window.requestGoToStartMenu()
             }
             MButton {
-                Layout.preferredWidth: actionRow.unit * 2
+                objectName: "drawerRestButton"
+                Layout.preferredWidth: actionRow.unit * 4 + actionRow.spacing
                 primary: false
-                text: "Short Rest"
+                text: "Rest"
+                iconName: "long_rest"
                 onClicked: {
                     // Start the rest flow BEFORE closing the drawer, not
                     // after -- closing this Popup first left the new
@@ -105,15 +107,6 @@ Drawer {
                     // interaction between two Popups transitioning at
                     // once in this offscreen harness.
                     Window.window.startRest("short")
-                    root.close()
-                }
-            }
-            MButton {
-                Layout.preferredWidth: actionRow.unit * 2
-                primary: false
-                text: "Long Rest"
-                onClicked: {
-                    Window.window.startRest("long")
                     root.close()
                 }
             }

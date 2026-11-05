@@ -372,9 +372,9 @@ class BaseSheetMixin:
         if dlg.exec() != QDialog.Accepted:
             return
         if dlg.rest_type == "long":
-            self._do_long_rest(dlg.get_selected())
+            self._do_long_rest(dlg.get_selected(), dlg.get_extras())
         else:
-            self._do_short_rest(dlg.get_selected(), dlg.dice_to_spend())
+            self._do_short_rest(dlg.get_selected(), dlg.dice_to_spend(), dlg.get_extras())
 
     def _short_rest(self):
         self._rest("short")
@@ -382,10 +382,11 @@ class BaseSheetMixin:
     def _long_rest(self):
         self._rest("long")
 
-    def _do_short_rest(self, selected_options: list, dice: int = 0):
+    def _do_short_rest(self, selected_options: list, dice: int = 0, extras: dict = None):
         """A short rest, as chosen in the Rest dialog: spend `dice` hit dice
         to heal (the biggest first), reset SR resources, and apply what
-        was ticked."""
+        was ticked (`extras`: core's rest_extras -- Song of Rest, temporary
+        hit points... -- {key: the number in its box, or True})."""
         from dnd_app.core.calculator import update_all
         import random
         char = self.char
@@ -397,7 +398,7 @@ class BaseSheetMixin:
         if total_remaining > 0 and cur < mx:
             n = max(0, min(dice, total_remaining))
             if n > 0:
-                from dnd_app.core.character import hit_die_heal
+                from dnd_app.core.character import roll_hit_die
                 rolls = []
                 for _ in range(n):
                     # Spend from the largest die first
@@ -405,8 +406,9 @@ class BaseSheetMixin:
                         d = hd_model[die_key]
                         if d.get("remaining", 0) > 0:
                             sides = int(die_key[1:])
-                            # (Durable, a Periapt of Wound Closure... as the Spend button)
-                            r, heal = hit_die_heal(char, sides, random.randint(1, sides))
+                            # (Durable, a Periapt of Wound Closure... as the Spend
+                            # button; kept in the roll history)
+                            r, heal = roll_hit_die(char, sides)
                             rolls.append(f"{die_key}:{r}")
                             healed += heal
                             d["remaining"] -= 1
@@ -438,20 +440,24 @@ class BaseSheetMixin:
         char["_relentless_rage_uses"] = 0
         expired = self._clear_expired_active_effects(("short",))
         expired += self._clear_active_toggles()
+        from dnd_app.core.character import apply_rest_extras
+        extra_lines = apply_rest_extras(char, "short", extras or {}, dice_spent)
         update_all(char)
         self.ctrl.refresh()
         self._mark_dirty()
         self._apply_rest_options(selected_options)
+        more = ("\n" + "\n".join(extra_lines)) if extra_lines else ""
         if dice_spent:
-            self._toast(f"Short rest: spent {dice_spent} hit dice, healed {healed} HP")
+            self._toast(f"Short rest: spent {dice_spent} hit dice, healed {healed} HP{more}")
         else:
-            self._toast("Short rest complete — SR resources restored")
+            self._toast(f"Short rest complete — SR resources restored{more}")
         if expired:
             self._toast(f"Faded: {', '.join(expired)}")
 
-    def _do_long_rest(self, selected_options: list):
+    def _do_long_rest(self, selected_options: list, extras: dict = None):
         """A long rest, as chosen in the Rest dialog: full HP, all
-        resources reset, a level of exhaustion off, and what was ticked."""
+        resources reset, a level of exhaustion off, and what was ticked
+        (`extras`: core's rest_extras, as _do_short_rest)."""
         from dnd_app.core.calculator import update_all
         from dnd_app.core.builder import rebuild
         from dnd_app.core.character import long_rest_block_reason
@@ -501,13 +507,18 @@ class BaseSheetMixin:
         # a Diviner's new Portent rolls (core/action_use.py)
         from dnd_app.core.action_use import roll_portent
         portent = roll_portent(char)
-        rebuild(char); update_all(char)
+        rebuild(char)
+        # what was ticked (temporary hit points...), once the rest's own reset is done
+        from dnd_app.core.character import apply_rest_extras
+        extra_lines = apply_rest_extras(char, "long", extras or {}, 0)
+        update_all(char)
         self.ctrl.refresh()
         self._mark_dirty()
         self._apply_rest_options(selected_options)
         from dnd_app.data.flavor_text import random_long_rest_dream
         items = ("\nAt dawn: " + "; ".join(dawn)) if dawn else ""
         items += f"\n{portent}" if portent else ""
+        items += ("\n" + "\n".join(extra_lines)) if extra_lines else ""
         if expired:
             self._toast(f"Faded: {', '.join(expired)}{items}")
         else:

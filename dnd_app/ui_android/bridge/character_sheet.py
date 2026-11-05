@@ -544,8 +544,8 @@ class CharacterSheetBridge(QObject):
             return
         sides = int(die_key[1:])
         # (Durable, a Periapt of Wound Closure... core, the same as desktop)
-        from dnd_app.core.character import hit_die_heal
-        _roll, heal = hit_die_heal(self.char, sides, random.randint(1, sides))
+        from dnd_app.core.character import roll_hit_die
+        _roll, heal = roll_hit_die(self.char, sides)
         hd["remaining"] -= 1
         max_hp = self.char.get("max_hp", 0)
         self.char["current_hp"] = min(max_hp, self.char.get("current_hp", 0) + heal)
@@ -989,11 +989,17 @@ class CharacterSheetBridge(QObject):
                 cur = self.char.get("current_hp", 0)
                 self.char["current_hp"] = min(mx, cur + rolled)
                 msgs.append(f"healed {rolled} HP")
+                from dnd_app.core.roll_log import log_roll     # (the roll history)
+                log_roll(self.char, "potion", name, rolled,
+                         f"{count}d{sides}" + (f" + {bonus}" if bonus else "") + f": healed {rolled} HP")
             if "damage_dice" in instant:
                 count, sides, bonus = instant["damage_dice"]
                 rolled = sum(random.randint(1, sides) for _ in range(count)) + bonus
                 self.char["current_hp"] = max(0, self.char.get("current_hp", 0) - rolled)
                 dtype = instant.get("damage_type", "")
+                from dnd_app.core.roll_log import log_roll
+                log_roll(self.char, "potion", name, rolled,
+                         f"{count}d{sides}" + (f" + {bonus}" if bonus else "") + f": {rolled} {dtype} damage".replace("  ", " "))
                 msgs.append(f"took {rolled} {dtype} damage".replace("  ", " "))
             if "add_condition" in instant:
                 conds = self.char.setdefault("conditions", [])
@@ -1762,6 +1768,7 @@ class CharacterSheetBridge(QObject):
     def actionAbilities(self):
         try:
             buckets = build_action_abilities(self.char)
+            from dnd_app.core.actions import action_groups
         except Exception:
             # A Property getter that raises leaves QML with an empty
             # list and no visible error at all -- reported as "actions
@@ -1786,6 +1793,10 @@ class CharacterSheetBridge(QObject):
                 # tabs for any such character.
                 "bucketKey": key,
                 "items": [self._action_item(entry, key) for entry in items],
+                # the order and headings desktop's tabs have: your own
+                # first, then BASIC ACTIONS, then OPTIONAL RULES (core)
+                "groups": [{"head": head, "items": [self._action_item(e, key) for e in group]}
+                           for head, group in action_groups(items, key)],
             })
         return out
 
@@ -1801,7 +1812,11 @@ class CharacterSheetBridge(QObject):
         # an "Other" card gets Use too when using it does something
         # (Agile Parry, Deft Strike...: core/action_use.py)
         from dnd_app.core.action_use import rule_for
+        from dnd_app.core.actions import optional_rule_name
+        shown, book = optional_rule_name(name)
         item = {"name": name,
+                "shownName": shown,
+                "book": book,
                 "desc": entry[1] if len(entry) > 1 else "",
                 "source": entry[2] if len(entry) > 2 else "",
                 "bucketKey": bucket_key,
@@ -3824,7 +3839,8 @@ class CharacterSheetBridge(QObject):
     @Slot(str, result=list)
     def restPreviewLines(self, rest_type: str):
         preview = self._preview_short_rest() if rest_type == "short" else self._preview_long_rest()
-        return rest_preview_lines(rest_type, preview)
+        # (the dice are on the same page, below it -- as desktop's)
+        return rest_preview_lines(rest_type, preview, dice_below=True)
 
     @Slot(str, result=str)
     def restBlockReason(self, rest_type: str):
@@ -3842,6 +3858,53 @@ class CharacterSheetBridge(QObject):
     @Slot(str, result=list)
     def restOptions(self, rest_type: str):
         return list(rest_options(self.char, rest_type))
+
+    # ── Metamagic: ticked, then spent for the next cast (core/spellcasting.py,
+    # the same as desktop's Spells page card)
+    @Property(list, notify=statsChanged)
+    def metamagicOptions(self):
+        from dnd_app.core.spellcasting import metamagic_options
+        return metamagic_options(self.char) if self.hasCharacter else []
+
+    @Slot(list, result=str)
+    def applyMetamagic(self, keys):
+        """Spend the sorcery points for the picked options; the toast says
+        so, and the card shows what's active ("" if nothing was spent)."""
+        from dnd_app.core.spellcasting import apply_metamagic
+        res = apply_metamagic(self.char, list(keys or []))
+        self.toastRequested.emit(res["toast"])
+        if res["ok"]:
+            self.ctrl.refresh()
+            self._changed()
+        return res["note"]
+
+    @Slot(str, result=list)
+    def restExtras(self, rest_type: str):
+        """What else the rest can do for HP and exhaustion, to tick (core's
+        rest_extras: Song of Rest, a Chef's food, temporary hit points --
+        yours or your party's), as desktop's Rest dialog."""
+        from dnd_app.core.character import rest_extras
+        return rest_extras(self.char, rest_type) if self.hasCharacter else []
+
+    @Slot("QVariantMap")
+    def setRestExtras(self, chosen):
+        """What was ticked ({key: the number in its box, or true}), for the
+        next applyShortRest/applyLongRest to apply at its end."""
+        self._pending_rest_extras = dict(chosen or {})
+
+    @Slot(result="QVariantMap")
+    def restDiceNote(self):
+        """The hit dice a short rest can spend, and what the dialog says
+        beside the box (core's rest_dice_note, desktop's words)."""
+        from dnd_app.core.character import rest_dice_note
+        return rest_dice_note(self.char) if self.hasCharacter else {"left": 0, "can_spend": False, "text": ""}
+
+    @Slot(result=str)
+    def longRestBlock(self):
+        """Why a long rest can't be taken now ("" if it can), without the
+        toast restBlockReason shows -- for the rest dialog's switch."""
+        from dnd_app.core.character import long_rest_block_reason
+        return long_rest_block_reason(self.char) if self.hasCharacter else ""
 
     @Slot(str, result=list)
     def restActivities(self, rest_type: str):
@@ -3884,13 +3947,13 @@ class CharacterSheetBridge(QObject):
         cur, mx = char.get("current_hp", 0), char.get("max_hp", 0)
         healed = 0
         dice_spent = 0
-        from dnd_app.core.character import hit_die_heal
+        from dnd_app.core.character import roll_hit_die
         for _ in range(max(0, hit_dice_to_spend)):
             for die_key in sorted(hd_model, key=lambda k: -int(k[1:])):
                 d = hd_model[die_key]
                 if d.get("remaining", 0) > 0:
                     sides = int(die_key[1:])
-                    _roll, heal = hit_die_heal(char, sides, random.randint(1, sides))
+                    _roll, heal = roll_hit_die(char, sides)
                     healed += heal
                     d["remaining"] -= 1
                     dice_spent += 1
@@ -3907,11 +3970,16 @@ class CharacterSheetBridge(QObject):
         char["_relentless_rage_uses"] = 0
         expired = self._clear_expired_active_effects(("short",))
         expired += self._clear_active_toggles()
+        # what was ticked in the dialog (Song of Rest, temporary hit points...)
+        from dnd_app.core.character import apply_rest_extras
+        extras = apply_rest_extras(char, "short", getattr(self, "_pending_rest_extras", {}), dice_spent)
+        self._pending_rest_extras = {}
+        more = ("\n" + "\n".join(extras)) if extras else ""
         self.ctrl.refresh()
         if dice_spent:
-            self.restToastRequested.emit(f"Short rest: spent {dice_spent} hit dice, healed {healed} HP")
+            self.restToastRequested.emit(f"Short rest: spent {dice_spent} hit dice, healed {healed} HP{more}")
         else:
-            self.restToastRequested.emit("Short rest complete -- SR resources restored")
+            self.restToastRequested.emit(f"Short rest complete -- SR resources restored{more}")
         if expired:
             self.restToastRequested.emit(f"Faded: {', '.join(expired)}")
         self._changed()
@@ -3948,10 +4016,14 @@ class CharacterSheetBridge(QObject):
         from dnd_app.core.action_use import roll_portent
         portent = roll_portent(char)
         rebuild(char)
+        from dnd_app.core.character import apply_rest_extras
+        extras = apply_rest_extras(char, "long", getattr(self, "_pending_rest_extras", {}), 0)
+        self._pending_rest_extras = {}
         self.ctrl.refresh()
         from dnd_app.data.flavor_text import random_long_rest_dream
         items = ("\nAt dawn: " + "; ".join(dawn)) if dawn else ""
         items += f"\n{portent}" if portent else ""
+        items += ("\n" + "\n".join(extras)) if extras else ""
         if expired:
             self.restToastRequested.emit(f"Faded: {', '.join(expired)}{items}")
         else:

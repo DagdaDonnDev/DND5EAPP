@@ -317,6 +317,42 @@ def carried_use_item(char: dict, card: str):
     return None
 
 
+# ── How both apps order a bucket's cards ─────────────────────────────────
+def action_group(entry) -> int:
+    """0: the character's own (class, race, feat, item...); 1: the basic
+    actions everyone has (source "Universal"); 2: the optional rules, if
+    the DM uses them ("Disarm (optional rule, DMG)")."""
+    if (entry[2] if len(entry) > 2 else "") != "Universal":
+        return 0
+    return 2 if "(optional rule" in entry[0] else 1
+
+
+def action_group_head(group: int, bucket: str) -> str:
+    """The heading above a group's first card ("" for the character's own)."""
+    if group == 1:
+        return "GENERAL" if bucket == "Passive" else "BASIC ACTIONS"
+    return "OPTIONAL RULES \u2014 if your DM uses them" if group == 2 else ""
+
+
+def optional_rule_name(display: str) -> tuple:
+    """"Disarm (optional rule, DMG)" -> ("Disarm", "DMG"); anything else as
+    it is, no book."""
+    m = re.match(r"^(.*?) \(optional rule, ([^)]+)\)$", display or "")
+    return (m.group(1), m.group(2)) if m else (display, "")
+
+
+def action_groups(entries, bucket: str) -> list:
+    """A bucket's cards in the order both apps show them, own first:
+    [(heading, [entries])] (sorted stably, each group keeps its order)."""
+    out = []
+    for entry in sorted(entries, key=action_group):
+        g = action_group(entry)
+        if not out or out[-1][0] != g:
+            out.append((g, []))
+        out[-1][1].append(entry)
+    return [(action_group_head(g, bucket), items) for g, items in out]
+
+
 def build_action_abilities(char):
     """
     Return {bucket: [(name, desc, source), ...]} for the action economy display.

@@ -44,7 +44,7 @@ from dnd_app.core.save_load import (
     save_character, load_character, list_saved_characters, character_filename, validate_character,
 )
 from dnd_app.core.character import set_subclass, get_class_entry
-from dnd_app.core.character import rest_options, rest_preview_lines, rest_activities
+from dnd_app.core.character import rest_options, rest_preview_lines, rest_activities, rest_extras
 from dnd_app.data.magic_items import ALL_MAGIC_ITEMS, has_item_effect
 from dnd_app.ui_desktop.dialogs.levelup_panel import LevelUpPanel
 from dnd_app.data.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
@@ -135,6 +135,7 @@ class RestDialog(QDialog):
         self._previews = previews
         self._long_block = long_block
         self._checks = {}
+        self._extras = {}          # key -> (its extra, its tick, its number box or None)
         self.setWindowTitle("Rest")
         self.setMinimumWidth(480)
         self.setStyleSheet(f"QDialog{{background:{BG};}}")
@@ -197,34 +198,25 @@ class RestDialog(QDialog):
         self._dice_card = _card(qa(GREEN,0x44)); dl = QVBoxLayout(self._dice_card)
         dl.setContentsMargins(14,12,14,14); dl.setSpacing(6)
         dl.addWidget(_lbl("SPEND HIT DICE", GREEN2, FS_SMALL, bold=True))
-        hd = char.get("hit_dice", {})
-        left = sum(d.get("remaining", 0) for d in hd.values())
-        pool = ", ".join(f"{d.get('remaining', 0)}{k}" for k, d in
-                         sorted(hd.items(), key=lambda kv: -int(kv[0][1:])) if d.get("remaining", 0))
-        cur, mx = char.get("current_hp", 0), char.get("max_hp", 0)
-        con = ability_mod(char, "CON")
+        from dnd_app.core.character import rest_dice_note
+        note = rest_dice_note(char)      # (the same words as Android's)
         drow = QHBoxLayout(); drow.setSpacing(10)
-        self._dice = QSpinBox(); self._dice.setRange(0, left); self._dice.setValue(0)
+        self._dice = QSpinBox(); self._dice.setRange(0, note["left"]); self._dice.setValue(0)
         self._dice.setAlignment(Qt.AlignCenter)
         self._dice.setAccessibleName("How many hit dice to spend")
         self._dice.setStyleSheet(stepper_qss())
         self._dice.setFixedWidth(120)
+        self._dice.setEnabled(note["can_spend"])
         drow.addWidget(self._dice)
-        if not left:
-            why = "No hit dice left: a long rest gets half of them back."
-        elif cur >= mx:
-            why = "Your HP is full."
-            self._dice.setEnabled(False)
-        else:
-            from dnd_app.core.character import hit_die_notes
-            notes = hit_die_notes(char)
-            why = (f"{left} left ({pool}). Each heals one die {con:+d} (CON), "
-                   f"the biggest dice first. HP {cur}/{mx}."
-                   + (" " + "; ".join(notes) + "." if notes else ""))
-        if not left:
-            self._dice.setEnabled(False)
-        drow.addWidget(_lbl(why, TEXT2, FS_SMALL, wrap=True), 1)
+        drow.addWidget(_lbl(note["text"], TEXT2, FS_SMALL, wrap=True), 1)
         dl.addLayout(drow)
+        # ...and what adds to the dice (Song of Rest, a Chef's food: yours,
+        # or your party's), once there are dice to spend
+        self._dice_extra_box = QWidget(); self._dice_extra_box.setStyleSheet("background:transparent;")
+        self._dice_extra_lay = QVBoxLayout(self._dice_extra_box)
+        self._dice_extra_lay.setContentsMargins(0, 4, 0, 0); self._dice_extra_lay.setSpacing(6)
+        dl.addWidget(self._dice_extra_box)
+        self._dice.valueChanged.connect(self._update_dice_extras)
         body.addWidget(self._dice_card)
 
         # Anything this character can change on the rest
@@ -264,17 +256,39 @@ class RestDialog(QDialog):
             if w is not None:
                 w.setParent(None); w.deleteLater()
         self._checks = {}
+        self._extras = {}
         options = rest_options(self.char, kind)
-        if options:
+        extras = rest_extras(self.char, kind)
+        rest_own = [e for e in extras if e["group"] == "rest" and not e["party"]]
+        rest_party = [e for e in extras if e["group"] == "rest" and e["party"]]
+        if options or rest_own or rest_party:
             self._opt_lay.addWidget(_lbl("ALSO ON THIS REST", IND2, FS_SMALL, bold=True))
-            self._opt_lay.addWidget(_lbl("Tick anything you'd like to change as part of it.",
+            self._opt_lay.addWidget(_lbl("Tick anything you'd like as part of it.",
                                          TEXT3, FS_TINY, wrap=True))
             for opt in options:
                 cb = QCheckBox(opt["label"])
                 cb.setToolTip(opt.get("detail", ""))
                 self._opt_lay.addWidget(cb)
                 self._checks[opt["kind"]] = cb
-        self._opt_card.setVisible(bool(options))
+            for e in rest_own:
+                self._add_extra(e, self._opt_lay)
+            if rest_party:
+                party = _lbl("FROM YOUR PARTY", TEXT3, FS_TINY, bold=True)
+                party.setContentsMargins(0, 6, 0, 0)
+                self._opt_lay.addWidget(party)
+                for e in rest_party:
+                    self._add_extra(e, self._opt_lay)
+        self._opt_card.setVisible(bool(options or rest_own or rest_party))
+        # what adds to the hit dice (a short rest's)
+        while self._dice_extra_lay.count():
+            w = self._dice_extra_lay.takeAt(0).widget()
+            if w is not None:
+                w.setParent(None); w.deleteLater()
+        for e in extras:
+            if e["group"] == "dice":
+                self._add_extra(e, self._dice_extra_lay)
+        self._dice_extra_box.setVisible(self._dice.isEnabled() and any(e["group"] == "dice" for e in extras))
+        self._update_dice_extras()
         # ...and everything else they can do on it
         while self._act_lay.count():
             w = self._act_lay.takeAt(0).widget()
@@ -297,8 +311,64 @@ class RestDialog(QDialog):
         self._scroll.setMinimumHeight(min(self._body.sizeHint().height(), max(240, screen - 260)))
         self.adjustSize()
 
+    def _add_extra(self, e: dict, lay):
+        """One extra (core's rest_extras) as a tick; one that needs a number
+        (a die they rolled, an ally's temporary hit points) opens a box for
+        it once ticked."""
+        box = QWidget(); box.setStyleSheet("background:transparent;")
+        bl = QVBoxLayout(box); bl.setContentsMargins(0, 0, 0, 0); bl.setSpacing(4)
+        cb = QCheckBox(e["label"]); cb.setToolTip(e.get("detail", ""))
+        cb.setChecked(bool(e.get("checked")))
+        bl.addWidget(cb)
+        spin = None
+        if e.get("ask"):
+            row = QWidget(); row.setStyleSheet("background:transparent;")
+            rl = QHBoxLayout(row); rl.setContentsMargins(26, 0, 0, 0); rl.setSpacing(8)
+            rl.addWidget(_lbl("You rolled" if e["ask"] == "rolled" else "How many?", TEXT2, FS_SMALL))
+            spin = QSpinBox()
+            spin.setRange(1 if e["ask"] == "rolled" else 0, e.get("max") or 99)
+            spin.setValue(1 if e["ask"] == "rolled" else 0)
+            spin.setAlignment(Qt.AlignCenter); spin.setFixedWidth(110)
+            spin.setStyleSheet(stepper_qss())
+            spin.setAccessibleName(e["label"] + (": what you rolled" if e["ask"] == "rolled" else ": how many"))
+            rl.addWidget(spin)
+            if e["ask"] == "rolled":
+                rl.addWidget(_lbl("(d6 to d12, by their level)" if e["key"] == "ally_song_of_rest"
+                                  else f"(1\u2013{e.get('max')})", TEXT3, FS_TINY))
+            rl.addStretch(1)
+            row.setVisible(cb.isChecked())
+            cb.toggled.connect(row.setVisible)
+            cb.toggled.connect(lambda *_: QTimer.singleShot(0, self._refit))
+            bl.addWidget(row)
+        lay.addWidget(box)
+        self._extras[e["key"]] = (e, cb, spin)
+
+    def _update_dice_extras(self, *_):
+        """What adds to the hit dice only counts when some are spent."""
+        on = self._dice.value() > 0
+        for e, cb, spin in self._extras.values():
+            if e["group"] == "dice":
+                cb.setEnabled(on)
+                cb.setToolTip(e.get("detail", "") if on else "Spend at least one Hit Die for this.")
+
+    def _refit(self):
+        self._body.adjustSize()
+        screen = self.screen().availableGeometry().height() if self.screen() else 800
+        self._scroll.setMinimumHeight(min(self._body.sizeHint().height(), max(240, screen - 260)))
+        self.adjustSize()
+
     def get_selected(self):
         return [kind for kind, cb in self._checks.items() if cb.isChecked()]
+
+    def get_extras(self) -> dict:
+        """{key: the number in its box, or True} for every extra ticked --
+        those that add to the hit dice only when some are spent."""
+        out = {}
+        for key, (e, cb, spin) in self._extras.items():
+            if not cb.isChecked() or (e["group"] == "dice" and not self.dice_to_spend()):
+                continue
+            out[key] = spin.value() if spin is not None else True
+        return out
 
     def dice_to_spend(self) -> int:
         return self._dice.value() if self.rest_type == "short" and self._dice.isEnabled() else 0

@@ -8,10 +8,11 @@
 
 ### 🌍 Overview
 
-Adventurers, this one's about spells and the fight. MIMIC now tells you
-what you've still got to learn and lets you swap spells as you level, the
-desktop Combat page has been cleared for action, a rest shows everything
-it lets you do, and every theme is easier on the eyes.
+Adventurers, this one's about spells, the fight and the rest after it.
+MIMIC now tells you what you've still got to learn and lets you swap
+spells as you level, keeps every roll you make, the Combat page has been
+cleared for action, a rest shows (and does) everything it lets you do,
+and every theme is easier on the eyes.
 
 ### ✨ New
 
@@ -24,18 +25,32 @@ it lets you do, and every theme is easier on the eyes.
 - **Spell Resources:** Sorcery Points, Arcane Ward, Bardic Inspiration,
   Channel Divinity, Portent and your free casts now sit on the Spells page,
   next to your slots.
-- **One Rest button:** pick a short or long rest, see what it gives back,
-  choose the hit dice to spend, and change what that rest lets you
-  (prepared spells, your pact weapon…), all in one go.
+- **Roll history:** every roll the sheet makes (checks, saves, initiative,
+  attacks and whether they hit, hit dice, what your actions roll,
+  potions) is kept with your character, ready to show your DM.
+- **A new Dice Roller:** pick dice or type them (2d6 + 1d4 + 3, or 4d6kh3
+  for an ability score), add one of your bonuses, take advantage or
+  disadvantage on a d20, and tap a roll in the history to roll it again.
+  The same on both apps.
+- **One Rest:** one button (desktop) and one menu entry (Android). Pick a
+  short or long rest, see what it gives back, choose the hit dice to
+  spend, and change what that rest lets you (prepared spells, your pact
+  weapon…), all in one go.
+- **Help on a rest:** tick what else a rest gives you: your Song of Rest
+  or Chef's food (say what you rolled), Celestial Resilience's temporary
+  hit points, Tireless taking off a level of exhaustion. Your party's
+  help too: a bard's song, a chef's food, an ally's Inspiring Leader.
 - **Everything a rest allows:** short and long rests list what else your
   class, feats, race and magic items let you do on them (Song of Rest,
   Blessing of the Forge, a Chef's treats, a warforged's Sentry's Rest…),
   plus attuning to an item or identifying one.
 - **Natural Recovery:** a Circle of the Land druid picks the spell slots to
   get back on a short rest, the same as a Wizard's Arcane Recovery.
-- **Health bar (desktop):** the menu bar fills with your hit points, temp
-  HP after them, and turns amber then red as they drop. You can turn it
-  off in Settings.
+- **Health bar:** the menu bar (desktop) and the top bar (Android) fill
+  with your hit points, temp HP after them, and turn amber then red as
+  they drop. You can turn it off in Settings.
+- **Metamagic on Android:** the Spells screen has the Metamagic card: tick
+  what's for your next cast and spend the points.
 
 ### ⚖️ Rules
 
@@ -52,12 +67,13 @@ it lets you do, and every theme is easier on the eyes.
 ### 🧰 Quality of Life
 
 - Every theme now meets WCAG AA contrast, coloured text included.
-- **A cleaner Combat page (desktop):**
+- **A cleaner Combat page:**
   - AC sits with your hit points, and Initiative and Speed have their own
-    card.
-  - Conditions and effects share one card; hover a condition for what it
-    does, and right-click it to take it off.
-  - The turn tracker sits beside your actions.
+    card (desktop).
+  - Conditions and effects share one card, a tab each. Hover a condition
+    for what it does and right-click it to take it off (desktop), or
+    press and hold it (Android).
+  - The turn tracker sits beside your actions (desktop).
   - Your own actions come first, then the basic ones everyone has, then
     the optional rules.
 - **A tidier top bar (desktop):** your name is on the menu bar,
@@ -81,6 +97,8 @@ it lets you do, and every theme is easier on the eyes.
   half as many for your allies) and Deft Explorer's Tireless (a level of
   exhaustion off on a short rest).
 - Fixed the actions list's item filter, which never found anything.
+- Fixed the Metamagic card charging 1 sorcery point for every option:
+  Quickened Spell costs 2, Heightened 3 and Twinned the spell's level.
 
 ---
 
