@@ -31,7 +31,8 @@
   <a href="#whats-in-it">What's in it</a> ·
   <a href="#screenshots">Screenshots</a> ·
   <a href="#project-layout">Project layout</a> ·
-  <a href="#roadmap">Roadmap</a>
+  <a href="#roadmap">Roadmap</a> ·
+  <a href="CHANGELOG.md">Patch notes</a>
 </p>
 <!-- /github-only -->
 
@@ -92,7 +93,7 @@ The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Androi
 
 1. Press **Create New Character** on the start screen (or **File → New Character**). The wizard goes race, ability scores (point buy, standard array or your own), background, class, spells and equipment, and shows each option in full as you pick.
 2. When it finishes, the sheet opens and the character is saved.
-3. Anything the wizard didn't ask — a background's extra skill or tool, a racial language, which ability a feat raises, the spells a feat lets you pick — waits on the **Choices** tab. On Android, the Choices tab pulses until you're done.
+3. Anything the wizard didn't ask — a background's extra skill or tool, a racial language, which ability a feat raises, the spells a feat lets you pick — waits on the **Choices** tab, with any spells you still have room to learn. The Choices tab pulses until you're done.
 
 Playing a character from paper? **Import PDF Sheet** on the start screen turns a filled-in official character sheet into a full character (see *Saving, sharing and PDFs*).
 
@@ -105,9 +106,9 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 |---|---|---|
 | Abilities & Saves | Abilities | Scores, saving throws and passive senses. The dice buttons roll; click a save to mark an extra proficiency |
 | Skills & Proficiencies | Proficiencies | Skills (right-click one to set proficiency or expertise), languages, armour, weapon and tool proficiencies, and **DM-granted proficiencies…** |
-| Combat | Combat, Actions | HP, death saves, weapons, conditions, Wild Shape, everything you can do on a turn, and **New Turn** |
+| Combat | Combat, Actions | HP and AC, Initiative and Speed, death saves, weapons, conditions and effects, Wild Shape, everything you can do on a turn, and **New Turn** |
 | Gear & Items | Equipment, Companions | Inventory, coins, magic items and attunement, and the Equipment, Magic Items and Companions browsers |
-| Spells | Spells | Slots, the Spellcasting table, My Spells and the Spell Browser |
+| Spells | Spells | Slots, Spell Resources (Sorcery Points, Arcane Ward, Bardic Inspiration, Channel Divinity, free casts…), the Spellcasting table, My Spells and the Spell Browser |
 | Infusions | Infusions | Artificers only |
 | Choices | Choices | **Level Up / Multiclass**, **Level Down**, **Remove Class**, your identity, and anything still to pick |
 | Features | Features | Every class, race and feat feature, and the feats and rewards your DM grants |
@@ -115,7 +116,9 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 
 - **The magnifying glass opens the details** of a spell, item or feat, on both apps.
 - **On desktop, right-click a row** for everything else it can do (Cast, Study, Remove…) and hover anything for its numbers. **On Android, press and hold.**
-- **Short Rest and Long Rest** sit at the top of the desktop sheet, and in the Android menu.
+- **Rest** sits at the top of the desktop sheet (and in the Android menu). It asks short or long, shows what the rest gives back, takes the hit dice to spend, offers what you can change on it (prepared spells, a pact weapon, an Armorer's model…), and lists everything else it lets you do, from Song of Rest to attuning to an item.
+- **Help on a rest** is ticked there too: your Song of Rest or Chef's food (tick it, then say what you rolled), Celestial Resilience's temporary hit points, Tireless, and what your party gives you (a bard's song, a chef's food, an ally's Inspiring Leader).
+- **The bar at the top is your health bar** (the menu bar on desktop): it fills with your hit points, temp HP after them, and turns amber then red as they drop. On desktop your name is on it too; click it to rename. (Settings can turn the bar off.)
 - In a narrow window the tab names shorten; hover one for its full name.
 
 </details>
@@ -127,12 +130,13 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **Use** (or **Cast**) on a card spends what it costs — a slot, ki, a use — turns its effect on, and says what it did and what's left. When there's a choice to make, it asks.
 - **Attacking:** a weapon's **Hit** button (**Roll to Hit** on Android) rolls the d20 and says what AC it hits. Under the roll is what you can add to it, each with its cost: Precision Attack, Lucky, Guided Strike, Emboldening Bond… Press **Add** and it's paid for and rolled at once, and the total updates. **If it misses** lists what can turn a miss around: Favored by the Gods, Stroke of Luck, Focused Aim… Below that is what you can add to the hit: Sneak Attack, a smite, a maneuver… The **Attack** action card asks which weapon first. On a critical hit, the dice shown are already doubled.
 - **Damage is your roll.** Every damage line says what to roll and its type; roll it yourself, or open the Dice Roller (Ctrl+D).
+- **The Dice Roller:** pick dice or type them (2d6 + 1d4 + 3, 4d6kh3), add one of your bonuses, take advantage or disadvantage on a d20, and roll. Its **history** keeps every roll the sheet makes too: checks, saves, initiative, attacks (and whether they hit), hit dice and what your actions roll, saved with the character. Click a roll of your own to roll it again.
 - **Advantage and disadvantage are reminders.** Every roll is one d20, with a note of what the sheet knows applies (Reckless Attack, Poisoned, exhaustion…). Roll the second die yourself, since cover, the target and your DM can change it. Advantage you spend something on, like Inspiration, is rolled for you.
-- **Taking damage:** type the amount and press **Damage**. Halve it yourself for a resistance; yours are listed just above. Temporary hit points, concentration saves, Wild Shape hit points and death saves follow on their own.
-- **Buffs from someone else:** when an ally casts Bless, Guidance, Haste and the like on you, add it on the **Effects** tab (on Android, **Effects on You** on the Combat screen) so its bonuses count. It comes off when its time is up.
-- **Conditions** are one click on or off, and show up on the rolls they change.
+- **Taking damage:** type the amount and press **Damage**. Halve it yourself for a resistance; yours are listed just below. Temporary hit points, concentration saves, Wild Shape hit points and death saves follow on their own.
+- **Buffs from someone else:** when an ally casts Bless, Guidance, Haste and the like on you, add it with **＋ Add** on the Combat tab's **Effects** page (on Android, **Effects on You** on the Combat screen) so its bonuses count. It comes off when its time is up.
+- **Conditions** go on with **＋ Add** and show up on the rolls they change. Hover one for what it does; right-click it to take it off or read the rules. Exhaustion's level is the six pips under them. On Android, tap a condition to put it on or take it off, and press and hold it for what it does.
 - **Wild Shape:** the Wild Shape card on the Combat tab lists the forms you can take, strongest first. Anything that needs hands asks before going ahead.
-- **Initiative and Inspiration** are at the top of the desktop sheet. Click Initiative to roll it.
+- **Initiative** is on the Combat tab, beside Speed: click it to roll. **Inspiration** is at the top of the desktop sheet.
 - **Before any roll** (check, save, initiative or attack) it asks if there's something to decide first: cast Guidance or Resistance, give yourself advantage (Inspiration, Tides of Chaos, Kenku Recall) or use a Portent roll.
 - **Checks, saves and initiative** roll the same way as an attack. What always applies is already counted (Reliable Talent, Bless on a save, Halfling Lucky, Jack of All Trades…). Then each thing you can still add has an **Add** button and its cost: a superiority die, a Bardic Inspiration, your reaction, a use. Press **Done** when you're finished.
 - **Tools:** each tool you're proficient with and carry has a card on the **Other** tab that rolls a check with it. It asks which ability, since that's your DM's call, with the usual one first. A Thief's **Fast Hands** card can do the same with your bonus action.
@@ -147,7 +151,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **Where to cast:** cantrips and bonus-action and reaction spells always have a card on the Combat tab. A leveled spell that takes an action only shows there once you pin it with ☆ (on Android, press and hold → Add to favourites), so a long spell list doesn't bury your Action tab. Anything slower is cast from My Spells: right-click → Cast, or Cast as Ritual.
 - **The Spellcasting table** lists each class, your race and each feat that gives you spells, with its own ability, save DC and attack. A racial spell uses its own row, not your class's.
 - **Free casts** from your race or a feat have their own counter, and Cast spends it before a slot. A spell a feat gives at will (Drow High Magic's Detect Magic) never takes one, and Strixhaven Mascot's Find Familiar is cast as a ritual.
-- **The Spell Browser** shows the spells your classes can learn now: on their lists, at a level each class learns, and with room left. Once a class has learned all its spells or cantrips, the browser says so and stops offering them; remove one (a misclick, say) and that pick is free again. A spell two of your classes share counts for whichever has room, and a Wizard's spellbook never fills up. **Ignore restrictions** shows every spell and lifts the limits, if your DM allows it.
+- **The Spell Browser** shows the spells your classes can learn now: on their lists, at a level each class learns, and with room left. Once a class has learned all its spells or cantrips, the browser says so and stops offering them; remove one (a misclick, say) and that pick is free again. A spell two of your classes share counts for whichever has room, and a Wizard's spellbook never fills up. An Eldritch Knight's spells are abjuration or evocation (an Arcane Trickster's enchantment or illusion), apart from one from any school at 3rd level and one more at 8th, 14th and 20th. **Ignore restrictions** shows every spell and lifts the limits, if your DM allows it.
 - **Spell scrolls** are read from their card on the Combat tab (Actions on Android), like any other action.
 
 </details>
@@ -170,7 +174,9 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 <details>
 <summary><b>Levelling up, and changing your mind</b></summary>
 
-- **Level Up / Multiclass** is on the Choices tab: pick the class to level or add, then make that level's choices. A new class needs the multiclassing scores, for your current classes and the new one (Monk: Dexterity 13 and Wisdom 13; Fighter: Strength 13 or Dexterity 13). One you can't take yet is greyed, with what it needs.
+- **Level Up / Multiclass** is on the Choices tab: pick the class to level or add (it shows what the level adds: hit points, spell slots, spells to learn), then make that level's choices. A new class needs the multiclassing scores, for your current classes and the new one (Monk: Dexterity 13 and Wisdom 13; Fighter: Strength 13 or Dexterity 13). One you can't take yet is greyed, with what it needs.
+- **Swapping a spell:** a Bard, Sorcerer, Warlock, Ranger, Eldritch Knight or Arcane Trickster gaining a level can replace one of its spells with another it can learn at the new level, right in the level-up (on Android, on the Choices tab once the level is gained). A **Wizard** adds two spells to its spellbook there, free, or later from the Spell Browser.
+- **Spells to learn:** while a class has cantrips or spells left to learn (a Wizard's free spellbook spells too), a card on the Choices tab says how many, with a button to the Spell Browser. It counts as a pending choice until they're learned.
 - **Level Down** and **Remove Class** take a level or a whole class away, with everything it brought: invocations, maneuvers, the spells it alone gave. Level back up and you're asked again.
 - Change your race, subrace, background, alignment or a feat later and the same clean-up happens. Anything new to pick waits on Choices (a new alignment asks for Divinely Favored's spell again).
 - Your own edits on the Skills tab stay until you press **↺ Reset Manual Changes**.
@@ -214,8 +220,9 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 
 Open them with **Ctrl+,** on desktop, or from the menu on Android.
 
-- **Appearance:** 26 themes (16 dark, 10 light), and the text size (Small, Medium or Large).
-- **Immersion:** Immersive Health drains the colour from the sheet as you lose hit points; Immersive Exhaustion closes a dark frame in from the screen's edges with each level of exhaustion. Each is Full, Reduced or Off. The numbers never change, and Reduced never covers any text.
+- **Appearance:** 26 themes (16 dark, 10 light), every one with readable text (WCAG AA contrast, coloured text included), and the text size (Small, Medium or Large).
+- **Health bar:** the menu bar (desktop) or the top bar (Android) fills with the open character's hit points. On unless you turn it off.
+- **Immersion:** Immersive Health drains some of the colour from the sheet as you lose hit points; Immersive Exhaustion closes a dark frame in from the screen's edges with each level of exhaustion. Each is Full, Reduced or Off. The numbers never change, and Reduced never covers any text.
 - **Character Folder:** where characters are saved.
 - **Saved with each character:** levelling by milestone or XP, the table rules (see *For DMs and house rules*), and **DM Secrets**: purely cosmetic surprises, off by default. Try them and see.
 
@@ -232,8 +239,8 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 | Ctrl+E | Export |
 | Ctrl+Shift+D | Duplicate the character |
 | Ctrl+D | Dice Roller |
-| Ctrl+R | Short Rest |
-| Ctrl+Shift+R | Long Rest |
+| Ctrl+R | Rest, short rest picked |
+| Ctrl+Shift+R | Rest, long rest picked |
 | Ctrl+, | Settings |
 | Ctrl+Q | Quit |
 
@@ -242,7 +249,7 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 <details>
 <summary><b>On Android</b></summary>
 
-- **The menu** has every page of the sheet, plus Short Rest, Long Rest, the Dice Roller, Settings, Save & Export and Credits.
+- **The menu** has every page of the sheet, plus Rest, the Dice Roller, Settings, Save & Export and Credits.
 - **Big buttons for what you do often** (Cast, Equip, Drink, Use), a magnifying glass for details, and press and hold for the rest: preparing, favourites, attunement, removing.
 - **Favourite a spell** (press and hold → Add to favourites) to cast it from the Combat screen.
 - **Holding − or +** on a quantity or an ammunition count changes it by 5.

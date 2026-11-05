@@ -68,6 +68,24 @@ Flickable {
                     Label { Layout.fillWidth: true; text: sheetBridge.fontScale; color: Theme.text; font.pixelSize: Theme.fsBody; font.bold: true }
                     MButton { primary: false; height: 32; text: "Change"; onClicked: fontScaleDialog.open() }
                 }
+                // The top bar as the health bar (desktop's menu bar, the same setting)
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+                    MCheckBox {
+                        objectName: "healthBarToggle"
+                        Layout.fillWidth: true
+                        text: "Health bar on the top bar"
+                        textColor: Theme.text
+                        checked: appSettingsBridge.menuHealthBar
+                        onToggled: appSettingsBridge.setMenuHealthBar(checked)
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: "On a character's sheet, the bar at the top fills with their hit points: green, then amber below half and red below a quarter, temp HP after them."
+                        color: Theme.text3; font.pixelSize: Theme.fsSmall; wrapMode: Text.WordWrap
+                    }
+                }
                 // Immersive Health / Immersive Exhaustion (core/immersive.py)
                 Repeater {
                     model: ["health", "exhaustion"]

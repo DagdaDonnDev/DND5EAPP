@@ -18,6 +18,21 @@ class AppSettingsBridge(QObject):
     def setTheme(self, name: str):
         set_app_theme(name)
 
+    # ── The top bar as the open character's health bar (desktop's menu
+    # bar has it too: the same setting) ──
+    healthBarChanged = Signal()
+
+    @Property(bool, notify=healthBarChanged)
+    def menuHealthBar(self):
+        from dnd_app.core.app_settings import get_menu_health_bar
+        return get_menu_health_bar()
+
+    @Slot(bool)
+    def setMenuHealthBar(self, on: bool):
+        from dnd_app.core.app_settings import set_menu_health_bar
+        set_menu_health_bar(on)
+        self.healthBarChanged.emit()
+
     # ── Immersive Health / Immersive Exhaustion (core/immersive.py) ──
     immersiveChanged = Signal()
 

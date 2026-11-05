@@ -142,6 +142,10 @@ def _rage_keeps_you_up(char: dict, notes: list, rng) -> int:
         roll = rng.randint(1, 20)
         bonus = get_saving_throw_bonus(char, "CON")
         total = roll + bonus
+        from .roll_log import log_roll
+        log_roll(char, "save", f"Relentless Rage (DC {dc} CON save)", total, f"Rolled {roll} {bonus:+d}",
+                 nat=20 if roll == 20 else 1 if roll == 1 else 0,
+                 result="succeeded" if total >= dc else "failed")
         if total >= dc:
             hp = barb * 2 if char.get("edition") == "2024" else 1
             notes.append(f"Relentless Rage: DC {dc} CON save -- rolled {roll}{bonus:+d} = {total}, "

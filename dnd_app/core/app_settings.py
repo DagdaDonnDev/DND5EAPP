@@ -85,3 +85,15 @@ def set_flag(key: str, value: bool) -> None:
     data = _load()
     data[key] = bool(value)
     _save(data)
+
+
+def get_menu_health_bar() -> bool:
+    """Whether the desktop app's menu bar is the open character's health
+    bar (Settings → Appearance). On unless it's been turned off."""
+    return bool(_load().get("menu_health_bar", True))
+
+
+def set_menu_health_bar(on: bool) -> None:
+    data = _load()
+    data["menu_health_bar"] = bool(on)
+    _save(data)

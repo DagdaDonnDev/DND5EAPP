@@ -63,15 +63,16 @@ class ArcaneRecoveryDialog(QDialog):
     slots can't be recovered this way), live-validating the total level
     spent against the budget (half Wizard level, rounded up)."""
 
-    def __init__(self, char, budget, parent=None):
+    def __init__(self, char, budget, parent=None, title="Arcane Recovery"):
         super().__init__(parent)
         from dnd_app.ui_desktop.style.theme import sync_globals as _sg; _sg(globals())
         self.char = char
         self.budget = budget
-        self.setWindowTitle("Arcane Recovery")
+        # (a Circle of the Land druid's Natural Recovery works the same way)
+        self.setWindowTitle(title)
         self.setStyleSheet(f"QDialog{{background:{BG};}}")
         root = QVBoxLayout(self); root.setContentsMargins(18,16,18,16); root.setSpacing(8)
-        root.addWidget(_lbl("Arcane Recovery", GOLD2, FS_HEAD, bold=True))
+        root.addWidget(_lbl(title, GOLD2, FS_HEAD, bold=True))
         self._budget_lbl = _lbl("", TEXT2, FS_SMALL, wrap=True)
         root.addWidget(self._budget_lbl)
 

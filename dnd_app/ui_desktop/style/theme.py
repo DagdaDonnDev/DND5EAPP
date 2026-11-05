@@ -1,52 +1,98 @@
 """
-Accessible dark theme — WCAG AA compliant.
+Accessible themes — WCAG AA compliant.
 Min font: 13px body, 15px labels, 18px headings, 24px+ stat numbers.
-Contrast ratios: text on dark bg ≥ 4.5:1
+Contrast: every theme's text colours are at least 4.5:1 on its four
+surfaces (data/themes.py); text on a fill or a tint goes through
+on_fill() / readable() below.
 
 Author: Ethan O'Brien
 Date: 2026-08-20
 """
 
 # ── Palette ───────────────────────────────────────────────────────────────────
-BG      = "#0f1117"   # page background
-SURF    = "#181c28"   # card/panel surface
-SURF2   = "#1e2336"   # raised surface
-SURF3   = "#252a40"   # hover/selected surface
-BORDER  = "#505670"   # subtle border — 2.6:1 on BG (was 1.6:1, too faint to read as an edge)
-BORDER2 = "#4a5480"   # active border
-
-TEXT    = "#eeeaf8"   # primary text  — 14.8:1 on BG
-TEXT2   = "#b0acc8"   # secondary text — 7.2:1 on BG
-TEXT3   = "#908fa9"   # muted text — 6.0:1 on BG, 4.5:1 on SURF3 (was 4.6:1/3.4:1, failed against raised surfaces)
-
-GOLD    = "#d4a820"   # gold accent — 6.8:1 on BG
-GOLD2   = "#f5cc50"   # bright gold
-
-INDIGO  = "#5b7af5"   # primary blue — 4.7:1 on SURF
-IND2    = "#8fa8ff"   # lighter blue — 7.1:1
-
-TEAL    = "#18b28a"   # success/heal — 5.2:1
-TEAL2   = "#22d4a8"   # bright teal
-
-CRIMSON = "#d44040"   # danger — 5.1:1
-CRIM2   = "#f06060"   # bright red
-
-PURPLE  = "#8e50d8"   # magic — 4.8:1
-PURP2   = "#b87cff"   # bright purple
-
-AMBER   = "#e09020"   # warning — 5.4:1
-AMBE2   = "#f5b040"   # bright amber
-
-GREEN   = "#2ea854"   # success
-GREEN2  = "#48d470"
-
-PANELDK = "#212949"   # dark accent chrome (tab-bar gap, etc.) -- see THEMES
+# The default theme's colours, until apply_theme() sets the chosen one
+# (data/themes.py has every theme; both apps share them).
+from dnd_app.data.themes import THEMES as _THEMES
+BG, SURF, SURF2, SURF3, BORDER, BORDER2 = (_THEMES["(Dark) Obsidian"][k] for k in
+                                           ("BG", "SURF", "SURF2", "SURF3", "BORDER", "BORDER2"))
+TEXT, TEXT2, TEXT3 = (_THEMES["(Dark) Obsidian"][k] for k in ("TEXT", "TEXT2", "TEXT3"))
+GOLD, GOLD2, INDIGO, IND2, TEAL, TEAL2 = (_THEMES["(Dark) Obsidian"][k] for k in
+                                          ("GOLD", "GOLD2", "INDIGO", "IND2", "TEAL", "TEAL2"))
+CRIMSON, CRIM2, PURPLE, PURP2, AMBER, AMBE2 = (_THEMES["(Dark) Obsidian"][k] for k in
+                                               ("CRIMSON", "CRIM2", "PURPLE", "PURP2", "AMBER", "AMBE2"))
+GREEN, GREEN2, PANELDK = (_THEMES["(Dark) Obsidian"][k] for k in ("GREEN", "GREEN2", "PANELDK"))
 
 def qa(color: str, alpha) -> str:
     """Qt-style alpha hex: Qt QSS parses 8-digit hex as #AARRGGBB (alpha FIRST),
     unlike CSS #RRGGBBAA. qa(TEAL, 0x33) -> "#3318b28a"."""
     a = alpha if isinstance(alpha, str) else f"{alpha:02x}"
     return f"#{a}{color.lstrip('#')}"
+
+
+# ── Readable text (WCAG AA: 4.5:1) ─────────────────────────────────────────
+# Every theme's text colours pass on its four surfaces (data/themes.py);
+# these cover text on anything else -- a solid accent fill (a badge, a
+# selected row, a hovered button) or a button's tint of its own colour.
+def _rgb(c: str):
+    h = c.lstrip("#")
+    if len(h) == 8:   # #AARRGGBB: the colour, its alpha left to tint()
+        h = h[2:]
+    if len(h) == 3:
+        h = "".join(ch * 2 for ch in h)
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _hex(rgb) -> str:
+    return "#" + "".join(f"{max(0, min(255, round(v))):02x}" for v in rgb)
+
+
+def _lum(c: str) -> float:
+    def f(v):
+        v /= 255
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+    r, g, b = _rgb("#ffffff" if c == "white" else c)
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+
+
+def contrast(a: str, b: str) -> float:
+    """WCAG contrast ratio of two colours (1 to 21)."""
+    la, lb = _lum(a), _lum(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def tint(under: str, color: str, alpha: int) -> str:
+    """What qa(color, alpha) looks like painted over `under`."""
+    u, o, a = _rgb(under), _rgb(color), alpha / 255
+    return _hex(tuple(u[i] * (1 - a) + o[i] * a for i in range(3)))
+
+
+def on_fill(fill: str, page: str = None, text: str = None) -> str:
+    """Text for a solid `fill`: white, the page colour (BG) or the text
+    colour, whichever reads best -- dark text on a dark theme's light
+    accents, white on a light theme's deep ones, the text colour on a
+    surface. The page colour passes on every palette accent."""
+    return max(("#ffffff", page or BG, text or TEXT), key=lambda c: contrast(c, fill))
+
+
+def readable(fg: str, *bgs: str) -> str:
+    """fg where it reads on every one of bgs (4.5:1); else the same hue
+    moved lighter or darker, away from the backgrounds, as far as it must
+    -- a coloured button's text on its own tint, say."""
+    import colorsys
+    if fg == "white":
+        fg = "#ffffff"
+    if all(contrast(fg, b) >= 4.5 for b in bgs):
+        return fg
+    lighter = sum(_lum(b) for b in bgs) / len(bgs) < 0.18
+    r, g, b = (v / 255 for v in _rgb(fg))
+    h, l0, s = colorsys.rgb_to_hls(r, g, b)
+    steps = [l0 + (1 - l0) * i / 40 for i in range(1, 41)] if lighter else \
+            [l0 * (1 - i / 40) for i in range(1, 41)]
+    for l in steps:
+        c = _hex(tuple(v * 255 for v in colorsys.hls_to_rgb(h, l, s)))
+        if all(contrast(c, b) >= 4.5 for b in bgs):
+            return c
+    return "#ffffff" if lighter else "#000000"
 
 
 # ── Font sizes (px) — WCAG compliant ─────────────────────────────────────────
@@ -321,9 +367,9 @@ QPushButton {{
     border-radius: 7px; color: {tx}; padding: 8px 18px;
     font-weight: 700; font-size: {px(15)}px; min-height: 36px;
 }}
-QPushButton:hover {{ background: {ind}44; border-color: {ind}; color: {tx}; }}
-QPushButton:pressed {{ background: {ind}; color: white; border-color: {ind2}; }}
-QPushButton:checked {{ background: {ind}; color: white; border-color: {ind2}; }}
+QPushButton:hover {{ background: {qa(ind, 0x44)}; border-color: {ind}; color: {tx}; }}
+QPushButton:pressed {{ background: {ind}; color: {on_fill(ind, b, tx)}; border-color: {ind2}; }}
+QPushButton:checked {{ background: {ind}; color: {on_fill(ind, b, tx)}; border-color: {ind2}; }}
 QPushButton:disabled {{ background: {bo}; color: {tx3}; border-color: {bo}; }}
 
 /* ── Checkboxes & Radios ───────────────────────────────────────────────────── */
@@ -357,11 +403,11 @@ QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{ background: 
 QListWidget {{ background: {b}; color: {tx}; border: 2px solid {bo}; border-radius: 6px; outline: none; font-size: {px(15)}px; }}
 /* no colour on ::item -- it would override each item's own (setForeground) colour */
 QListWidget::item {{ padding: 6px 10px; border-radius: 4px; }}
-QListWidget::item:selected {{ background: {ind}; color: white; }}
+QListWidget::item:selected {{ background: {ind}; color: {on_fill(ind, b, tx)}; }}
 QListWidget::item:hover:!selected {{ background: {s2}; }}
 QTableWidget {{ background: {b}; color: {tx}; border: none; gridline-color: {bo}; font-size: {px(14)}px; }}
 QTableWidget::item {{ padding: 6px 10px; border-bottom: 1px solid {bo}; color: {tx}; }}
-QTableWidget::item:selected {{ background: {ind}; color: white; }}
+QTableWidget::item:selected {{ background: {ind}; color: {on_fill(ind, b, tx)}; }}
 QHeaderView::section {{ background: {s2}; color: {g}; font-weight: 700; padding: 8px; border: none; border-bottom: 2px solid {bo}; font-size: {px(13)}px; }}
 
 /* ── Labels ────────────────────────────────────────────────────────────────── */
@@ -380,10 +426,10 @@ QStatusBar {{ background: {s}; border-top: 2px solid {bo}; color: {tx2}; font-si
 QStatusBar::item {{ border: none; }}
 QMenuBar {{ background: {s}; color: {tx}; border-bottom: 1px solid {bo}; font-size: {px(15)}px; }}
 QMenuBar::item {{ background: transparent; padding: 6px 12px; }}
-QMenuBar::item:selected {{ background: {ind}; color: white; border-radius: 4px; }}
+QMenuBar::item:selected {{ background: {ind}; color: {on_fill(ind, b, tx)}; border-radius: 4px; }}
 QMenu {{ background: {s2}; border: 2px solid {bo2}; color: {tx}; padding: 4px; font-size: {px(15)}px; }}
 QMenu::item {{ padding: 8px 28px 8px 14px; border-radius: 4px; color: {tx}; }}
-QMenu::item:selected {{ background: {ind}; color: white; }}
+QMenu::item:selected {{ background: {ind}; color: {on_fill(ind, b, tx)}; }}
 QMenu::separator {{ height: 1px; background: {bo}; margin: 3px 0; }}
 
 /* ── Progress & Sliders ────────────────────────────────────────────────────── */

@@ -1784,7 +1784,10 @@ def roll_portent(char, rng=random) -> str:
     if _portent_res(char) is None:
         return ""
     char["portent_rolls"] = []
-    return "Portent rolls: " + ", ".join(map(str, portent_rolls(char, rng)))
+    rolls = portent_rolls(char, rng)
+    from dnd_app.core.roll_log import log_roll
+    log_roll(char, "portent", "Portent", None, "Rolled " + ", ".join(map(str, rolls)) + " for the day")
+    return "Portent rolls: " + ", ".join(map(str, rolls))
 
 
 # ── Costs ─────────────────────────────────────────────────────────────────
@@ -1926,7 +1929,35 @@ def _uses_resource(char, display, spec):
 
 
 # ── Use ───────────────────────────────────────────────────────────────────
+class _Recorded:
+    """The dice an action rolls with, noting that it rolled any."""
+    def __init__(self, rng):
+        self._rng = rng
+        self.rolled = False
+
+    def randint(self, a, b):
+        self.rolled = True
+        return self._rng.randint(a, b)
+
+    def __getattr__(self, name):
+        return getattr(self._rng, name)
+
+
 def use_action(char, bucket, display, desc="", answers=None, rng=random):
+    """Use an action card (see _use_action) -- and what it rolled (Second
+    Wind, Healing Light, a Wild Magic surge...) kept in the roll history
+    (core/roll_log.py), with what it said."""
+    rec = _Recorded(rng)
+    out = _use_action(char, bucket, display, desc, answers, rec)
+    if rec.rolled and out.get("ok") and not out.get("ask") and out.get("toast"):
+        from dnd_app.core.roll_log import log_roll
+        name = display.split("(")[0].strip()
+        said = out["toast"].split("\n")[0]
+        log_roll(char, "action", name, None, said[len(name) + 2:] if said.startswith(name + ": ") else said)
+    return out
+
+
+def _use_action(char, bucket, display, desc="", answers=None, rng=random):
     answers = dict(answers or {})
     slot = bucket if bucket in ("Action", "Bonus Action", "Reaction") else None
     key = normalize(display)

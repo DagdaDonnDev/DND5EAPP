@@ -116,6 +116,21 @@ class FlowContainer(QWidget):
                 self.setMinimumHeight(needed)
 
 
+class FillTabBar(QTabBar):
+    """A tab bar that spans its whole tab widget, so with setExpanding(True)
+    the tabs share the full width. (A QTabWidget gives its bar only the
+    bar's own size hint, which left a stub of empty bar past the last
+    tab.) Corner widgets still get their room: the tab widget clips the
+    bar to what's left beside them."""
+    def sizeHint(self):
+        hint = super().sizeHint()
+        host = self.parentWidget()
+        if host is not None and self.shape() in (QTabBar.RoundedNorth, QTabBar.RoundedSouth,
+                                                 QTabBar.TriangularNorth, QTabBar.TriangularSouth):
+            hint.setWidth(max(hint.width(), host.width()))
+        return hint
+
+
 # Item data role holding a row's rarity colour (a "#rrggbb" string) for
 # RarityBarDelegate.
 RARITY_ROLE = Qt.UserRole + 42
@@ -183,12 +198,14 @@ class InspectButtonDelegate(QStyledItemDelegate):
     BTN_W, BTN_H, ICON = 28, 24, 18
     RARITY_BAR = False   # RarityInspectDelegate: RarityBarDelegate's bar on the left too
 
-    def __init__(self, view, on_inspect, selected_icon="white", column=0, has_details=None):
+    def __init__(self, view, on_inspect, selected_icon=None, column=0, has_details=None):
         from PySide6.QtCore import QPersistentModelIndex
         super().__init__(view)
         self._view = view
         self._on_inspect = on_inspect
-        self._selected_icon = selected_icon
+        # the selected row's text colour on its indigo highlight (theme.py)
+        from dnd_app.ui_desktop.style import theme as _theme
+        self._selected_icon = selected_icon or _theme.on_fill(_theme.INDIGO)
         self._column = column
         self._has_details = has_details or (lambda data: data is not None)
         self._hot = QPersistentModelIndex()       # the button the mouse is over

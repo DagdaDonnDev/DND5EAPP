@@ -18,7 +18,7 @@ Item {
     property alias font: input.font
     property color color: Theme.text
     property color selectionColor: Theme.indigo
-    property color selectedTextColor: "white"
+    property color selectedTextColor: Theme.onFill(Theme.indigo)
     property alias readOnly: input.readOnly
     property alias validator: input.validator
     property alias inputMethodHints: input.inputMethodHints

@@ -38,5 +38,8 @@ class CharacterSheet(
     back_to_menu must live here rather than on BaseSheetMixin: PySide6's
     Signal descriptor is only registered by Qt's metaclass machinery for
     classes that actually derive from QObject at the point the class
-    body is processed, which a plain mixin doesn't."""
+    body is processed, which a plain mixin doesn't. health_changed too:
+    (current, max, temp HP, in a beast form) for the main window's menu
+    bar, which is the sheet's health bar."""
     back_to_menu = Signal()
+    health_changed = Signal(int, int, int, bool)

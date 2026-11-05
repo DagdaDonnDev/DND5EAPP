@@ -65,94 +65,7 @@ Page {
             }
             Repeater {
                 model: sheetBridge.resources
-                delegate: Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: resCol.height + 20
-                    radius: 10
-                    color: Theme.surf
-                    border.color: Theme.border
-
-                    ColumnLayout {
-                        id: resCol
-                        x: 10; y: 10
-                        width: parent.width - 20
-                        spacing: 6
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 2
-                                Label {
-                                    text: modelData.name
-                                    color: Theme.text
-                                    font.pixelSize: Theme.fsBody
-                                    font.bold: true
-                                    wrapMode: Text.WordWrap
-                                    Layout.fillWidth: true
-                                }
-                                Label {
-                                    text: modelData.sourceClass + (modelData.reset ? "  ·  " + modelData.reset : "")
-                                    color: Theme.text3
-                                    font.pixelSize: Theme.fsSmall
-                                }
-                            }
-                            Label {
-                                text: modelData.unlimited ? "∞" : (modelData.current + " / " + modelData.currentMax)
-                                color: Theme.teal2
-                                font.pixelSize: Theme.fsBody
-                                font.bold: true
-                            }
-                        }
-                        // Portent: the foretelling rolls themselves; tapping one uses it
-                        Label {
-                            visible: modelData.key === "portent"
-                            text: modelData.rolls.length > 0 ? "Tap a roll to use it as the d20"
-                                                              : "No rolls left until your next long rest"
-                            color: Theme.text3
-                            font.pixelSize: Theme.fsSmall
-                            wrapMode: Text.WordWrap
-                            Layout.fillWidth: true
-                        }
-                        Flow {
-                            visible: modelData.key === "portent" && modelData.rolls.length > 0
-                            Layout.fillWidth: true
-                            spacing: 8
-                            Repeater {
-                                model: modelData.rolls
-                                delegate: MButton {
-                                    primary: false
-                                    height: 32
-                                    text: String(modelData)
-                                    onClicked: sheetBridge.usePortentRoll(modelData)
-                                }
-                            }
-                        }
-                        Flow {
-                            visible: !modelData.unlimited && modelData.key !== "portent"
-                            Layout.fillWidth: true
-                            spacing: 8
-                            MButton {
-                                primary: false
-                                height: 32
-                                text: "Use"
-                                enabled: modelData.current > 0
-                                onClicked: sheetBridge.spendResource(modelData.key)
-                            }
-                            MButton {
-                                primary: false
-                                height: 32
-                                text: "Restore"
-                                onClicked: sheetBridge.restoreResource(modelData.key)
-                            }
-                            MToggleButton {
-                                visible: modelData.toggleEffect.length > 0
-                                active: modelData.toggleActive
-                                onClicked: sheetBridge.toggleResourceEffect(modelData.key)
-                            }
-                        }
-                    }
-                }
+                delegate: ResourceCard { res: modelData; Layout.fillWidth: true }
             }
 
             // ── Action economy buckets ───────────────────────────────
@@ -176,84 +89,100 @@ Page {
                     }
 
                     Repeater {
-                        model: modelData.items
-                        delegate: Rectangle {
-                            id: actCard
-                            // Spent this turn (turn tracker) -> greyed, same as
-                            // desktop's _apply_turn_state on its Use/Cast buttons.
-                            readonly property bool bucketSpent: {
-                                var tc = sheetBridge.turnCounts
-                                if (modelData.bucketKey === "Action") return tc.action >= tc.actionLimit
-                                if (modelData.bucketKey === "Bonus Action") return tc.bonusAction >= tc.bonusActionLimit
-                                if (modelData.bucketKey === "Reaction") return tc.reaction >= tc.reactionLimit
-                                return false
-                            }
+                        model: modelData.groups
+                        delegate: ColumnLayout {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: cardRow.implicitHeight + 20
-                            radius: 10
-                            color: Theme.surf
-                            border.color: Theme.border
-
-                            RowLayout {
-                                id: cardRow
-                                anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 10 }
-                                spacing: 10
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 3
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        spacing: 8
-                                        MIcon {
-                                            visible: modelData.isSpell && modelData.pinned
-                                            name: "star_solid"
-                                            size: 14
-                                        }
-                                        Label {
-                                            text: modelData.name
-                                            color: Theme.text
-                                            font.pixelSize: Theme.fsBody
-                                            font.bold: true
-                                            Layout.fillWidth: true
-                                            wrapMode: Text.WordWrap
-                                        }
-                                        Label {
-                                            text: modelData.source
-                                            color: Theme.text3
-                                            font.pixelSize: Theme.fsSmall
-                                        }
-                                    }
-                                    Label {
-                                        text: modelData.desc
-                                        color: Theme.text2
-                                        font.pixelSize: Theme.fsSmall
-                                        wrapMode: Text.WordWrap
-                                        Layout.fillWidth: true
-                                        maximumLineCount: 4
-                                        elide: Text.ElideRight
-                                    }
+                            spacing: 10
+                            Label {
+                                objectName: "actionGroupHead_" + modelData.head
+                                visible: modelData.head !== ""
+                                text: modelData.head
+                                color: Theme.text3
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                                Layout.topMargin: 4
+                            }
+                        Repeater {
+                            model: modelData.items
+                            delegate: Rectangle {
+                                id: actCard
+                                // Spent this turn (turn tracker) -> greyed, same as
+                                // desktop's _apply_turn_state on its Use/Cast buttons.
+                                readonly property bool bucketSpent: {
+                                    var tc = sheetBridge.turnCounts
+                                    if (modelData.bucketKey === "Action") return tc.action >= tc.actionLimit
+                                    if (modelData.bucketKey === "Bonus Action") return tc.bonusAction >= tc.bonusActionLimit
+                                    if (modelData.bucketKey === "Reaction") return tc.reaction >= tc.reactionLimit
+                                    return false
                                 }
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: cardRow.implicitHeight + 20
+                                radius: 10
+                                color: Theme.surf
+                                border.color: Theme.border
 
-                                // Cast for spells, Use for everything else (an
-                                // "Other" card only when using it does something)
-                                MButton {
-                                    objectName: "useButton_" + modelData.name
-                                    visible: modelData.usable
-                                    Layout.alignment: Qt.AlignVCenter
-                                    implicitWidth: 72
-                                    implicitHeight: 36
-                                    primary: modelData.isSpell
-                                    enabled: !actCard.bucketSpent
-                                    text: modelData.isSpell ? "Cast" : "Use"
-                                    onClicked: modelData.isSpell
-                                               ? sheetBridge.castSpell(modelData.spellName)
-                                               : sheetBridge.useAbility(modelData.bucketKey, modelData.name, modelData.desc)
+                                RowLayout {
+                                    id: cardRow
+                                    anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 10 }
+                                    spacing: 10
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 3
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 8
+                                            MIcon {
+                                                visible: modelData.isSpell && modelData.pinned
+                                                name: "star_solid"
+                                                size: 14
+                                            }
+                                            Label {
+                                                text: modelData.name
+                                                color: Theme.text
+                                                font.pixelSize: Theme.fsBody
+                                                font.bold: true
+                                                Layout.fillWidth: true
+                                                wrapMode: Text.WordWrap
+                                            }
+                                            Label {
+                                                text: modelData.source
+                                                color: Theme.text3
+                                                font.pixelSize: Theme.fsSmall
+                                            }
+                                        }
+                                        Label {
+                                            text: modelData.desc
+                                            color: Theme.text2
+                                            font.pixelSize: Theme.fsSmall
+                                            wrapMode: Text.WordWrap
+                                            Layout.fillWidth: true
+                                            maximumLineCount: 4
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+
+                                    // Cast for spells, Use for everything else (an
+                                    // "Other" card only when using it does something)
+                                    MButton {
+                                        objectName: "useButton_" + modelData.name
+                                        visible: modelData.usable
+                                        Layout.alignment: Qt.AlignVCenter
+                                        implicitWidth: 72
+                                        implicitHeight: 36
+                                        primary: modelData.isSpell
+                                        enabled: !actCard.bucketSpent
+                                        text: modelData.isSpell ? "Cast" : "Use"
+                                        onClicked: modelData.isSpell
+                                                   ? sheetBridge.castSpell(modelData.spellName)
+                                                   : sheetBridge.useAbility(modelData.bucketKey, modelData.name, modelData.desc)
+                                    }
                                 }
                             }
                         }
                     }
-                }
+                        }
+                    }
             }
         }
     }

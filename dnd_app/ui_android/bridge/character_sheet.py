@@ -48,7 +48,7 @@ from dnd_app.core.magic_items import (
 )
 from dnd_app.core.effects import EFFECT_TABLE, INSTANT_POTION_EFFECTS
 from dnd_app.core.riders import base_weapon_options as _base_weapon_options, weapon_base_of as _weapon_base_of
-from dnd_app.core.spellcasting import spell_component_block_reason
+from dnd_app.core.spellcasting import spell_component_block_reason, is_caster_resource
 from dnd_app.core.ammo import ammo_kind, ammo_label, ammo_count, spend_ammo, set_ammo
 from dnd_app.core.dying import (
     take_damage, heal, heal_block_reason, set_death_saves,
@@ -543,16 +543,9 @@ class CharacterSheetBridge(QObject):
         if not hd or hd.get("remaining", 0) <= 0:
             return
         sides = int(die_key[1:])
-        roll = random.randint(1, sides)
-        con = ability_mod(self.char, "CON")
-        feats = self.char.get("feats", [])
-        if "Durable" in feats:
-            roll = max(roll, 2 * con, 2)
-        heal = max(0, roll + con)
-        if "Dwarven Fortitude" in feats:
-            heal = max(heal, 1)
-        if "Vigor of the Hill Giant" in feats:
-            heal += con + get_prof_bonus(self.char)
+        # (Durable, a Periapt of Wound Closure... core, the same as desktop)
+        from dnd_app.core.character import roll_hit_die
+        _roll, heal = roll_hit_die(self.char, sides)
         hd["remaining"] -= 1
         max_hp = self.char.get("max_hp", 0)
         self.char["current_hp"] = min(max_hp, self.char.get("current_hp", 0) + heal)
@@ -996,11 +989,17 @@ class CharacterSheetBridge(QObject):
                 cur = self.char.get("current_hp", 0)
                 self.char["current_hp"] = min(mx, cur + rolled)
                 msgs.append(f"healed {rolled} HP")
+                from dnd_app.core.roll_log import log_roll     # (the roll history)
+                log_roll(self.char, "potion", name, rolled,
+                         f"{count}d{sides}" + (f" + {bonus}" if bonus else "") + f": healed {rolled} HP")
             if "damage_dice" in instant:
                 count, sides, bonus = instant["damage_dice"]
                 rolled = sum(random.randint(1, sides) for _ in range(count)) + bonus
                 self.char["current_hp"] = max(0, self.char.get("current_hp", 0) - rolled)
                 dtype = instant.get("damage_type", "")
+                from dnd_app.core.roll_log import log_roll
+                log_roll(self.char, "potion", name, rolled,
+                         f"{count}d{sides}" + (f" + {bonus}" if bonus else "") + f": {rolled} {dtype} damage".replace("  ", " "))
                 msgs.append(f"took {rolled} {dtype} damage".replace("  ", " "))
             if "add_condition" in instant:
                 conds = self.char.setdefault("conditions", [])
@@ -1769,6 +1768,7 @@ class CharacterSheetBridge(QObject):
     def actionAbilities(self):
         try:
             buckets = build_action_abilities(self.char)
+            from dnd_app.core.actions import action_groups
         except Exception:
             # A Property getter that raises leaves QML with an empty
             # list and no visible error at all -- reported as "actions
@@ -1793,6 +1793,10 @@ class CharacterSheetBridge(QObject):
                 # tabs for any such character.
                 "bucketKey": key,
                 "items": [self._action_item(entry, key) for entry in items],
+                # the order and headings desktop's tabs have: your own
+                # first, then BASIC ACTIONS, then OPTIONAL RULES (core)
+                "groups": [{"head": head, "items": [self._action_item(e, key) for e in group]}
+                           for head, group in action_groups(items, key)],
             })
         return out
 
@@ -1808,7 +1812,11 @@ class CharacterSheetBridge(QObject):
         # an "Other" card gets Use too when using it does something
         # (Agile Parry, Deft Strike...: core/action_use.py)
         from dnd_app.core.action_use import rule_for
+        from dnd_app.core.actions import optional_rule_name
+        shown, book = optional_rule_name(name)
         item = {"name": name,
+                "shownName": shown,
+                "book": book,
                 "desc": entry[1] if len(entry) > 1 else "",
                 "source": entry[2] if len(entry) > 2 else "",
                 "bucketKey": bucket_key,
@@ -1851,6 +1859,9 @@ class CharacterSheetBridge(QObject):
                 "toggleActive": bool(toggle_effect) and toggle_effect in self.char.get("active_effects", []),
                 # Portent: the foretelling rolls themselves (core/action_use.py)
                 "rolls": portent_rolls(self.char) if res.get("key") == "portent" else [],
+                # on the Spells screen too: a caster's pool, or a free cast
+                # (core/spellcasting.py, the same test as desktop's Spells tab)
+                "isCaster": is_caster_resource(self.char, res),
             })
         # magic item charges (desktop lists them under Resources & Charges too)
         for name, data in self.char.get("item_charges", {}).items():
@@ -1861,7 +1872,7 @@ class CharacterSheetBridge(QObject):
                 "current": data.get("current", 0), "currentMax": data.get("max", 0),
                 "unlimited": False, "sourceClass": "Magic item",
                 "reset": {"dawn": "Dawn", "dusk": "Dusk"}.get(data.get("recharge", "dawn"), "Never"),
-                "toggleEffect": "", "toggleActive": False, "rolls": [],
+                "toggleEffect": "", "toggleActive": False, "rolls": [], "isCaster": False,
             })
         return out
 
@@ -3828,7 +3839,8 @@ class CharacterSheetBridge(QObject):
     @Slot(str, result=list)
     def restPreviewLines(self, rest_type: str):
         preview = self._preview_short_rest() if rest_type == "short" else self._preview_long_rest()
-        return rest_preview_lines(rest_type, preview)
+        # (the dice are on the same page, below it -- as desktop's)
+        return rest_preview_lines(rest_type, preview, dice_below=True)
 
     @Slot(str, result=str)
     def restBlockReason(self, rest_type: str):
@@ -3846,6 +3858,67 @@ class CharacterSheetBridge(QObject):
     @Slot(str, result=list)
     def restOptions(self, rest_type: str):
         return list(rest_options(self.char, rest_type))
+
+    # ── Metamagic: ticked, then spent for the next cast (core/spellcasting.py,
+    # the same as desktop's Spells page card)
+    @Property(list, notify=statsChanged)
+    def metamagicOptions(self):
+        from dnd_app.core.spellcasting import metamagic_options
+        return metamagic_options(self.char) if self.hasCharacter else []
+
+    @Slot(list, result=str)
+    def applyMetamagic(self, keys):
+        """Spend the sorcery points for the picked options; the toast says
+        so, and the card shows what's active ("" if nothing was spent)."""
+        from dnd_app.core.spellcasting import apply_metamagic
+        res = apply_metamagic(self.char, list(keys or []))
+        self.toastRequested.emit(res["toast"])
+        if res["ok"]:
+            self.ctrl.refresh()
+            self._changed()
+        return res["note"]
+
+    @Slot(str, result=list)
+    def restExtras(self, rest_type: str):
+        """What else the rest can do for HP and exhaustion, to tick (core's
+        rest_extras: Song of Rest, a Chef's food, temporary hit points --
+        yours or your party's), as desktop's Rest dialog."""
+        from dnd_app.core.character import rest_extras
+        return rest_extras(self.char, rest_type) if self.hasCharacter else []
+
+    @Slot("QVariantMap")
+    def setRestExtras(self, chosen):
+        """What was ticked ({key: the number in its box, or true}), for the
+        next applyShortRest/applyLongRest to apply at its end."""
+        self._pending_rest_extras = dict(chosen or {})
+
+    @Slot(result="QVariantMap")
+    def restDiceNote(self):
+        """The hit dice a short rest can spend, and what the dialog says
+        beside the box (core's rest_dice_note, desktop's words)."""
+        from dnd_app.core.character import rest_dice_note
+        return rest_dice_note(self.char) if self.hasCharacter else {"left": 0, "can_spend": False, "text": ""}
+
+    @Slot(result=str)
+    def longRestBlock(self):
+        """Why a long rest can't be taken now ("" if it can), without the
+        toast restBlockReason shows -- for the rest dialog's switch."""
+        from dnd_app.core.character import long_rest_block_reason
+        return long_rest_block_reason(self.char) if self.hasCharacter else ""
+
+    @Slot(str, result=list)
+    def restActivities(self, rest_type: str):
+        """Everything else the character can do on this rest -- their own
+        features', feats', race's and items', and the rules everyone has
+        (core/character.py, the same list as desktop's Rest dialog)."""
+        from dnd_app.core.character import rest_activities
+        return rest_activities(self.char, rest_type)
+
+    @Property(str, notify=statsChanged)
+    def hitDiceNotes(self):
+        """What changes this character's Hit Dice (Durable...), in words."""
+        from dnd_app.core.character import hit_die_notes
+        return "; ".join(hit_die_notes(self.char))
 
     @Property(int, notify=statsChanged)
     def hitDiceAvailableForRest(self):
@@ -3874,21 +3947,13 @@ class CharacterSheetBridge(QObject):
         cur, mx = char.get("current_hp", 0), char.get("max_hp", 0)
         healed = 0
         dice_spent = 0
-        con = ability_mod(char, "CON")
-        feats = char.get("feats", [])
+        from dnd_app.core.character import roll_hit_die
         for _ in range(max(0, hit_dice_to_spend)):
             for die_key in sorted(hd_model, key=lambda k: -int(k[1:])):
                 d = hd_model[die_key]
                 if d.get("remaining", 0) > 0:
                     sides = int(die_key[1:])
-                    roll = random.randint(1, sides)
-                    if "Durable" in feats:
-                        roll = max(roll, 2 * con, 2)
-                    heal = max(0, roll + con)
-                    if "Dwarven Fortitude" in feats:
-                        heal = max(heal, 1)
-                    if "Vigor of the Hill Giant" in feats:
-                        heal += con + get_prof_bonus(char)
+                    _roll, heal = roll_hit_die(char, sides)
                     healed += heal
                     d["remaining"] -= 1
                     dice_spent += 1
@@ -3905,11 +3970,16 @@ class CharacterSheetBridge(QObject):
         char["_relentless_rage_uses"] = 0
         expired = self._clear_expired_active_effects(("short",))
         expired += self._clear_active_toggles()
+        # what was ticked in the dialog (Song of Rest, temporary hit points...)
+        from dnd_app.core.character import apply_rest_extras
+        extras = apply_rest_extras(char, "short", getattr(self, "_pending_rest_extras", {}), dice_spent)
+        self._pending_rest_extras = {}
+        more = ("\n" + "\n".join(extras)) if extras else ""
         self.ctrl.refresh()
         if dice_spent:
-            self.restToastRequested.emit(f"Short rest: spent {dice_spent} hit dice, healed {healed} HP")
+            self.restToastRequested.emit(f"Short rest: spent {dice_spent} hit dice, healed {healed} HP{more}")
         else:
-            self.restToastRequested.emit("Short rest complete -- SR resources restored")
+            self.restToastRequested.emit(f"Short rest complete -- SR resources restored{more}")
         if expired:
             self.restToastRequested.emit(f"Faded: {', '.join(expired)}")
         self._changed()
@@ -3946,10 +4016,14 @@ class CharacterSheetBridge(QObject):
         from dnd_app.core.action_use import roll_portent
         portent = roll_portent(char)
         rebuild(char)
+        from dnd_app.core.character import apply_rest_extras
+        extras = apply_rest_extras(char, "long", getattr(self, "_pending_rest_extras", {}), 0)
+        self._pending_rest_extras = {}
         self.ctrl.refresh()
         from dnd_app.data.flavor_text import random_long_rest_dream
         items = ("\nAt dawn: " + "; ".join(dawn)) if dawn else ""
         items += f"\n{portent}" if portent else ""
+        items += ("\n" + "\n".join(extras)) if extras else ""
         if expired:
             self.restToastRequested.emit(f"Faded: {', '.join(expired)}{items}")
         else:
@@ -4047,6 +4121,12 @@ class CharacterSheetBridge(QObject):
         self._changed()
 
     @Slot()
+    def applyNaturalRecovery(self):
+        """Natural Recovery (Circle of the Land): the same as Arcane
+        Recovery, for the Druid's levels and their own use."""
+        self._apply_slot_recovery("Druid", "use_natural_recovery", "Natural Recovery")
+
+    @Slot()
     def applyArcaneRecovery(self):
         """Desktop lets you manually pick which expended slot levels to
         recover (any combination totaling <= the level budget, via a
@@ -4057,10 +4137,12 @@ class CharacterSheetBridge(QObject):
         an equivalent budget-constrained multi-select control isn't
         worth the added complexity for a single-class, single-feature
         edge case."""
+        self._apply_slot_recovery("Wizard", "arcane_recovery", "Arcane Recovery")
+
+    def _apply_slot_recovery(self, cls: str, res_key: str, title: str):
         from math import ceil
         char = self.char
-        wiz_lvl = class_levels(char).get("Wizard", 0)
-        budget = ceil(wiz_lvl / 2)
+        budget = ceil(class_levels(char).get(cls, 0) / 2)
         slots_used = char.get("spell_slots_used", [0] * 9)
         recovered = []
         for lvl in range(5, 0, -1):
@@ -4071,11 +4153,11 @@ class CharacterSheetBridge(QObject):
                     budget -= lvl
                 slots_used = char.get("spell_slots_used", [0] * 9)
         if recovered:
-            res = next((r for r in char.get("resources", []) if r.get("key") == "arcane_recovery"), None)
+            res = next((r for r in char.get("resources", []) if r.get("key") == res_key), None)
             if res:
                 res["current"] = 0
             self.toastRequested.emit(
-                f"Arcane Recovery: recovered {len(recovered)} slot(s) (levels {', '.join(map(str, sorted(recovered)))})")
+                f"{title}: recovered {len(recovered)} slot(s) (levels {', '.join(map(str, sorted(recovered)))})")
         self.ctrl.refresh()
         self._changed()
 
@@ -4135,6 +4217,7 @@ class CharacterSheetBridge(QObject):
             self.toastRequested.emit(f"Can't gain a level -- {why}")
             return
         entry = get_class_entry(self.char, class_name)
+        had_entry = entry is not None
         had_sub = entry.get("subclass", "") if entry else ""
         if entry:
             set_class_level(self.char, class_name, entry["level"] + 1)
@@ -4142,14 +4225,154 @@ class CharacterSheetBridge(QObject):
             add_class(self.char, class_name, level=1)
         self.ctrl.refresh()
         entry = get_class_entry(self.char, class_name)
+        # a Bard/Sorcerer/Warlock/Ranger/EK/AT may now swap one of its
+        # spells, a Wizard add two to its spellbook (PHB) -- kept on the
+        # character, tied to this class at this level (see _levelup_picks)
+        from dnd_app.core.spellcasting import level_up_swap_out
+        picks = {"class": class_name, "level": entry["level"],
+                 "swap": bool(had_entry and level_up_swap_out(self.char, class_name)),
+                 "book": 2 if (had_entry and class_name == "Wizard") else 0}
+        if picks["swap"] or picks["book"]:
+            self.char["_levelup_spell_picks"] = picks
+        else:
+            self.char.pop("_levelup_spell_picks", None)
+        # what's new to pick is shown by the pulsing Choices tab and menu
+        # entry, not said here
         msg = f"{class_name} is now level {entry['level']}"
         if entry.get("subclass") and not had_sub and entry["level"] > 1:   # set aside by a level down
             msg += f" -- {entry['subclass']} is back"
-        if self.hasPendingChoices:
-            msg += " -- go to Choices to pick your new options"
         self.toastRequested.emit(msg)
         self._changed()
         self.autosaveRequested.emit()
+
+    # ── Level-up spell picks (PHB): a swap, a Wizard's spellbook spells ──
+    def _levelup_picks(self) -> dict:
+        """What the last level gained still offers, while that class is
+        still at that level: {"class", "level", "swap": bool, "book": n}."""
+        p = self.char.get("_levelup_spell_picks") or {}
+        entry = get_class_entry(self.char, p.get("class", "")) if p else None
+        if not entry or entry.get("level") != p.get("level"):
+            return {}
+        return p
+
+    def _levelup_picks_done(self, what: str):
+        p = dict(self._levelup_picks())
+        if not p:
+            return
+        p[what] = 0 if what == "book" else False
+        if p["swap"] or p["book"]:
+            self.char["_levelup_spell_picks"] = p
+        else:
+            self.char.pop("_levelup_spell_picks", None)
+
+    @Property("QVariant", notify=statsChanged)
+    def levelUpSpellSwap(self):
+        """The swap the class just levelled may make -- one of its spells
+        for another it can learn now (core/spellcasting.py level_up_swap_out/
+        _in, desktop's level-up dialog's too): {} if none, else className,
+        label ("Eldritch Knight"), level, out (the spells it can give up,
+        each {name, level})."""
+        p = self._levelup_picks()
+        if not p.get("swap"):
+            return {}
+        from dnd_app.core.spellcasting import level_up_swap_out, learner_key, spell_learners
+        out = level_up_swap_out(self.char, p["class"])
+        if not out:
+            return {}
+        label = spell_learners(self.char).get(learner_key(self.char, p["class"]), {}).get("label", p["class"])
+        return {"className": p["class"], "label": label, "level": p["level"],
+                "out": [self._spell_pick(n) for n in out]}
+
+    @staticmethod
+    def _spell_pick(name: str) -> dict:
+        from dnd_app.core.spellcasting import get_spell_level
+        return {"name": name, "level": get_spell_level(name)}
+
+    @Slot(str, result=list)
+    def levelUpSwapChoices(self, out_name: str):
+        """What can be learned in out_name's place: [{name, level}]."""
+        p = self._levelup_picks()
+        if not p.get("swap"):
+            return []
+        from dnd_app.core.spellcasting import level_up_swap_in
+        return [self._spell_pick(n) for n in level_up_swap_in(self.char, p["class"], out_name)]
+
+    @Slot(str, str)
+    def applyLevelUpSpellSwap(self, out_name: str, in_name: str):
+        p = self._levelup_picks()
+        if not p.get("swap"):
+            return
+        from dnd_app.core.spellcasting import level_up_swap_out, level_up_swap_in
+        if (out_name not in level_up_swap_out(self.char, p["class"])
+                or in_name not in level_up_swap_in(self.char, p["class"], out_name)):
+            self.toastRequested.emit(f"{in_name} can't take {out_name}'s place")
+            return
+        known = self.char.setdefault("spells_known", [])
+        known.remove(out_name)
+        known.append(in_name)
+        for field in ("spells_prepared", "quick_spells"):
+            if out_name in self.char.get(field, []):
+                self.char[field].remove(out_name)
+        self._levelup_picks_done("swap")
+        self.ctrl.refresh()
+        self.toastRequested.emit(f"Swapped {out_name} for {in_name}")
+        self._changed()
+        self.autosaveRequested.emit()
+
+    @Slot()
+    def skipLevelUpSpellSwap(self):
+        self._levelup_picks_done("swap")
+        self._changed()
+
+    @Property("QVariant", notify=statsChanged)
+    def levelUpSpellbook(self):
+        """A Wizard's free spellbook spells for the level just gained:
+        {} if none, else left (how many more) and choices (spell names)."""
+        p = self._levelup_picks()
+        if not p.get("book"):
+            return {}
+        from dnd_app.core.spellcasting import level_up_spellbook
+        return {"left": p["book"], "choices": [self._spell_pick(n) for n in level_up_spellbook(self.char)]}
+
+    @Slot(str)
+    def addLevelUpSpellbookSpell(self, name: str):
+        p = self._levelup_picks()
+        if not p.get("book"):
+            return
+        from dnd_app.core.spellcasting import level_up_spellbook
+        if name not in level_up_spellbook(self.char):
+            self.toastRequested.emit(f"{name} can't go in your spellbook now")
+            return
+        self.char.setdefault("spells_known", []).append(name)
+        left = p["book"] - 1
+        if left > 0:
+            self.char["_levelup_spell_picks"] = dict(p, book=left)
+        else:
+            self._levelup_picks_done("book")
+        self.ctrl.refresh()
+        self.toastRequested.emit(f"Added {name} to your spellbook"
+                                  + (f" -- {left} more to add" if left else ""))
+        self._changed()
+        self.autosaveRequested.emit()
+
+    @Slot()
+    def skipLevelUpSpellbook(self):
+        self._levelup_picks_done("book")
+        self._changed()
+
+    @Property("QVariantList", notify=statsChanged)
+    def spellsToLearn(self):
+        """The Choices screen's Spells to learn card: a line per class with
+        cantrips or spells it still has room to learn ("Bard: 1 cantrip and
+        2 spells (up to level 2)"), as desktop's Choices tab has them --
+        [] for none. A Wizard's free spellbook spells the level-up
+        spellbook card is offering aren't asked for twice."""
+        from dnd_app.core.spellcasting import spells_to_learn_lines
+        try:
+            return spells_to_learn_lines(self.char, minus_book=self._levelup_picks().get("book", 0))
+        except Exception:
+            import traceback; traceback.print_exc()
+            return []
 
     @Property(bool, notify=statsChanged)
     def hasPendingChoices(self):
@@ -4158,7 +4381,9 @@ class CharacterSheetBridge(QObject):
         # choices -- desktop's own unfinished-filter skips them too.
         # Counting them kept this true forever for those subclasses,
         # which would leave the Choices pulse running with nothing to do.
-        return any(c["type"] != "info" for c in self._raw_choices_needed())
+        # Spells still to learn count, as one, like desktop's.
+        return (any(c["type"] != "info" for c in self._raw_choices_needed())
+                or bool(self.spellsToLearn))
 
     def _raw_choices_needed(self):
         # _get_subclass_choices is the single biggest source here despite

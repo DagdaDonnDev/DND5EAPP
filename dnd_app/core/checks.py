@@ -490,7 +490,24 @@ def _start(char, w, pick, free, rng):
                               f"{state['dice'][0]}")
     state["free"] = list(free)
     _settle(char, w, state)
+    # kept in the roll history (core/roll_log.py), brought up to date as
+    # things are added to it (add_option) and with its outcome
+    from dnd_app.core.roll_log import log_roll
+    raw = state["raw"]
+    state["log"] = log_roll(char, w["kind"], _log_label(w), state["total"], roll_line(w, state),
+                            nat=20 if raw == 20 else 1 if raw == 1 else 0)
     return state
+
+
+def _log_label(w) -> str:
+    """How the roll history names a roll: "Stealth check", "Longsword
+    attack", "Concentration save (Bless)"."""
+    label = w.get("label") or ""
+    if w["kind"] == "attack" and not label.lower().endswith("attack"):
+        return f"{label} attack"
+    if w["kind"] == "concentration" and w.get("spell") and w["spell"] not in label:
+        return f"{label} ({w['spell']})"
+    return label
 
 
 def before_question(char, w, free):
@@ -904,6 +921,9 @@ def roll_check(char: dict, what: dict, answers=None, free=("Action", "Bonus Acti
         if cm["mode"] == "auto_fail":
             out = {"ok": True, "toast": f"{w['label']}: automatic failure ({', '.join(cm['sources'])})",
                    "slots": [], "refresh": False}
+            from dnd_app.core.roll_log import log_roll
+            log_roll(char, w["kind"], _log_label(w), None, f"Automatic failure ({', '.join(cm['sources'])})",
+                     result="failed")
             if w["kind"] == "concentration":
                 from dnd_app.core.magic_items import drop_concentration
                 drop_concentration(char)
@@ -929,6 +949,11 @@ def roll_check(char: dict, what: dict, answers=None, free=("Action", "Bonus Acti
 def _finish(char, w, state, out):
     """A concentration save under its DC drops the spell (unless you have
     advantage the sheet knows of: then your second d20 is your call)."""
+    if w["kind"] == "concentration":
+        from dnd_app.core.roll_log import update_roll
+        kept = bool(state.get("succeed")) or state["total"] >= w.get("dc", 10)
+        update_roll(char, state.get("log"), result=f"kept (DC {w.get('dc', 10)})" if kept
+                    else f"under DC {w.get('dc', 10)}")
     if w["kind"] == "concentration" and not state.get("succeed"):
         dc = w.get("dc", 10)
         if state["total"] < dc:
@@ -974,6 +999,8 @@ def add_option(char, w, state, key, answers, free, rng) -> dict:
         state["spent"].append(spent)
     state["used"].append(key)
     _settle(char, w, state)
+    from dnd_app.core.roll_log import update_roll
+    update_roll(char, state.get("log"), total=state["total"], detail=roll_line(w, state))
     return {"ok": True, "slots": list(state["slots"][before:])}
 
 

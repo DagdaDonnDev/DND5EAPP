@@ -415,6 +415,7 @@ class ChoicesMixin:
         try:
             self._levelup_panel = LevelUpPanel(self.char)
             self._levelup_panel.choices_changed.connect(self._on_choices_changed)
+            self._levelup_panel.open_spell_browser.connect(self._open_spell_browser)
             blay.addWidget(self._levelup_panel)
         except Exception as e:
             import traceback; traceback.print_exc()
@@ -480,8 +481,18 @@ class ChoicesMixin:
         self._choices_pulse = PulseDot(IND2)
         idx = self._tabs.indexOf(self._choices_tab_page)
         self._tabs.tabBar().setTabButton(idx, QTabBar.RightSide, self._choices_pulse)
+        # the same pulse on the Spells tab and its Spell Browser while a
+        # class has spells left to learn -- where they're learned
+        self._spells_pulse = PulseDot(IND2)
+        self._tabs.tabBar().setTabButton(self._tabs.indexOf(self._spells_tab_page),
+                                         QTabBar.RightSide, self._spells_pulse)
+        self._browser_pulse = PulseDot(IND2)
+        self._sp_right_tabs.tabBar().setTabButton(self._sp_right_tabs.indexOf(self._sp_browser_page),
+                                                  QTabBar.RightSide, self._browser_pulse)
         panel.pending_count_changed.connect(lambda _n: self._update_choices_pulse())
+        panel.spells_to_learn_changed.connect(lambda _b: self._update_choices_pulse())
         self._tabs.currentChanged.connect(lambda _i: self._update_choices_pulse())
+        self._sp_right_tabs.currentChanged.connect(lambda _i: self._update_choices_pulse())
         self._update_choices_pulse()
 
     def _update_choices_pulse(self):
@@ -490,6 +501,11 @@ class ChoicesMixin:
         self._choices_pulse.set_active(n > 0 and self._tabs.currentIndex() != idx)
         self._tabs.setTabToolTip(idx,
                                  f"{n} pending choice{'s' if n != 1 else ''}" if n else "Choices")
+        learn = self._levelup_panel.has_spells_to_learn
+        sidx = self._tabs.indexOf(self._spells_tab_page)
+        self._spells_pulse.set_active(learn and self._tabs.currentIndex() != sidx)
+        self._browser_pulse.set_active(learn and self._sp_right_tabs.currentWidget() is not self._sp_browser_page)
+        self._tabs.setTabToolTip(sidx, "Spells — spells left to learn" if learn else "Spells")
 
     # ══ TAB 4: SPELLS ══════════════════════════════════════════════════════════
     def _has_infuse_item_access(self):

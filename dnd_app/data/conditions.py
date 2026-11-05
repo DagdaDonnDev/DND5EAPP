@@ -1,5 +1,7 @@
 """D&D 5e condition definitions with full mechanical text. "icon" names a
-line icon from dnd_app/data/icon_data.py (ICON_PATHS).
+line icon from dnd_app/data/icon_data.py (ICON_PATHS); "summary" is what
+the condition does to you, in a line, for the sheet's condition rows (the
+full text is in "effects").
 
 Author: Ethan O'Brien
 Date: 2026-08-20
@@ -15,6 +17,8 @@ CONDITIONS = {
             "The creature's attack rolls have disadvantage.",
         ],
         "source": "PHB p.290",
+        # what it does to you, in a line (the sheet's condition rows)
+        "summary": "You can't see, and fail any check that needs sight. Your attacks have disadvantage; attacks against you have advantage.",
     },
     "Charmed": {
         "icon": "cond_charmed",
@@ -24,6 +28,8 @@ CONDITIONS = {
             "The charmer has advantage on any ability check to interact socially with the creature.",
         ],
         "source": "PHB p.290",
+        # what it does to you, in a line (the sheet's condition rows)
+        "summary": "You can't attack the charmer or target it with harmful abilities or magic. It has advantage on social checks with you.",
     },
     "Deafened": {
         "icon": "cond_deafened",
@@ -32,6 +38,8 @@ CONDITIONS = {
             "A deafened creature can't hear and automatically fails any ability check that requires hearing.",
         ],
         "source": "PHB p.290",
+        # what it does to you, in a line (the sheet's condition rows)
+        "summary": "You can't hear, and fail any check that needs hearing.",
     },
     "Frightened": {
         "icon": "cond_frightened",
@@ -41,6 +49,8 @@ CONDITIONS = {
             "The creature can't willingly move closer to the source of its fear.",
         ],
         "source": "PHB p.290",
+        # what it does to you, in a line (the sheet's condition rows)
+        "summary": "Disadvantage on checks and attacks while you can see its source, and you can't willingly move closer to it.",
     },
     "Gagged": {
         "icon": "cond_gagged",
@@ -51,6 +61,8 @@ CONDITIONS = {
         ],
         "source": "Homebrew — not an official condition; pairs with the "
                    "\"Component Restrictions\" optional rule.",
+        # what it does to you, in a line (the sheet's condition rows)
+        "summary": "You can't speak: no spells with a verbal component, and anything that needs speech fails.",
     },
     "Grappled": {
         "icon": "cond_grappled",
@@ -61,6 +73,8 @@ CONDITIONS = {
             "The condition also ends if an effect removes the grappled creature from the reach of the grappler or grappling effect.",
         ],
         "source": "PHB p.290",
+        # what it does to you, in a line (the sheet's condition rows)
+        "summary": "Your speed is 0. It ends if the grappler is incapacitated, or something moves you out of its reach.",
     },
     "Incapacitated": {
         "icon": "cond_incapacitated",
@@ -69,6 +83,8 @@ CONDITIONS = {
             "An incapacitated creature can't take actions or reactions.",
         ],
         "source": "PHB p.290",
+        # what it does to you, in a line (the sheet's condition rows)
+        "summary": "You can't take actions or reactions.",
     },
     "Invisible": {
         "icon": "cond_invisible",
@@ -80,6 +96,8 @@ CONDITIONS = {
             "The creature's attack rolls have advantage.",
         ],
         "source": "PHB p.291",
+        # what it does to you, in a line (the sheet's condition rows)
+        "summary": "You can't be seen without magic or a special sense. Your attacks have advantage; attacks against you have disadvantage.",
     },
     "Paralyzed": {
         "icon": "cond_paralyzed",
@@ -91,6 +109,8 @@ CONDITIONS = {
             "Any attack that hits the creature is a critical hit if the attacker is within 5 feet.",
         ],
         "source": "PHB p.291",
+        # what it does to you, in a line (the sheet's condition rows)
+        "summary": "You're incapacitated and can't move or speak. You fail STR and DEX saves. Attacks against you have advantage, and a hit from within 5 ft is a critical hit.",
     },
     "Petrified": {
         "icon": "cond_petrified",
@@ -105,6 +125,8 @@ CONDITIONS = {
             "Immune to poison and disease, but doesn't neutralize existing effects.",
         ],
         "source": "PHB p.291",
+        # what it does to you, in a line (the sheet's condition rows)
+        "summary": "Turned to stone: incapacitated, can't move or speak, unaware. You fail STR and DEX saves, resist all damage, and are immune to poison and disease. Attacks against you have advantage.",
     },
     "Poisoned": {
         "icon": "cond_poisoned",
@@ -113,6 +135,8 @@ CONDITIONS = {
             "A poisoned creature has disadvantage on attack rolls and ability checks.",
         ],
         "source": "PHB p.292",
+        # what it does to you, in a line (the sheet's condition rows)
+        "summary": "Disadvantage on attack rolls and ability checks.",
     },
     "Prone": {
         "icon": "cond_prone",
@@ -123,6 +147,8 @@ CONDITIONS = {
             "Attack rolls against the creature have advantage if the attacker is within 5 feet; otherwise, disadvantage.",
         ],
         "source": "PHB p.292",
+        # what it does to you, in a line (the sheet's condition rows)
+        "summary": "You can only crawl, or stand up for half your speed. Your attacks have disadvantage. Attacks against you have advantage within 5 ft, disadvantage beyond.",
     },
     "Restrained": {
         "icon": "cond_restrained",
@@ -134,6 +160,8 @@ CONDITIONS = {
             "The creature has disadvantage on DEX saving throws.",
         ],
         "source": "PHB p.292",
+        # what it does to you, in a line (the sheet's condition rows)
+        "summary": "Your speed is 0. Your attacks and DEX saves have disadvantage; attacks against you have advantage.",
     },
     "Stunned": {
         "icon": "cond_stunned",
@@ -144,6 +172,8 @@ CONDITIONS = {
             "Attack rolls against the creature have advantage.",
         ],
         "source": "PHB p.292",
+        # what it does to you, in a line (the sheet's condition rows)
+        "summary": "You're incapacitated, can't move, and can speak only falteringly. You fail STR and DEX saves. Attacks against you have advantage.",
     },
     "Surprised": {
         "icon": "cond_surprised",
@@ -153,6 +183,8 @@ CONDITIONS = {
             "It can't take a reaction until that turn ends. Remove this once your first turn is over.",
         ],
         "source": "PHB p.189 (Surprise) -- tracked here as a condition.",
+        # what it does to you, in a line (the sheet's condition rows)
+        "summary": "On your first turn you can't move or take an action, and you can't take a reaction until that turn ends.",
     },
     "Unconscious": {
         "icon": "cond_unconscious",
@@ -165,6 +197,8 @@ CONDITIONS = {
             "Any attack that hits the creature is a critical hit if the attacker is within 5 feet.",
         ],
         "source": "PHB p.292",
+        # what it does to you, in a line (the sheet's condition rows)
+        "summary": "You're incapacitated, can't move or speak, and are unaware; you drop what you're holding and fall prone. You fail STR and DEX saves. Attacks against you have advantage, and a hit from within 5 ft is a critical hit.",
     },
     "Exhaustion": {
         "icon": "cond_exhaustion",

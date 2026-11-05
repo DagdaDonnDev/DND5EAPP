@@ -466,6 +466,241 @@ Page {
                 font.pixelSize: Theme.fsSmall
             }
 
+            // ── Level-up spell picks (PHB), both optional: a Bard, Sorcerer,
+            // Warlock, Ranger, Eldritch Knight or Arcane Trickster swapping
+            // one of its spells for another it can learn now, and a
+            // Wizard's two free spellbook spells -- levelUpSpellSwap /
+            // levelUpSpellbook in the bridge, the same rules as desktop's
+            // level-up dialog. The heading text stays plain; the card's
+            // border carries the colour.
+            Rectangle {
+                id: swapCard
+                objectName: "spellSwapCard"
+                readonly property var swap: sheetBridge.levelUpSpellSwap
+                readonly property string swapKey: (swap.className || "") + ":" + (swap.level || 0)
+                property string outSel: ""
+                property string inSel: ""
+                property var inChoices: []
+                property string inFilter: ""
+                onSwapKeyChanged: { outSel = ""; inSel = ""; inChoices = []; inFilter = "" }
+                visible: !!swap.className
+                Layout.fillWidth: true
+                Layout.preferredHeight: swapCol.height + 20
+                radius: 10
+                color: Theme.surf
+                border.color: Theme.teal2
+
+                ColumnLayout {
+                    id: swapCol
+                    x: 12; y: 10
+                    width: parent.width - 24
+                    spacing: 8
+                    Label {
+                        text: "Swap a spell (optional)"
+                        color: Theme.text
+                        font.pixelSize: Theme.fsBody
+                        font.bold: true
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        text: "Reaching " + (swapCard.swap.label || "") + " level " + (swapCard.swap.level || 0)
+                              + ", you can replace one of its spells with another it can learn."
+                        color: Theme.text2
+                        font.pixelSize: Theme.fsSmall
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                    Label { text: "Replace"; color: Theme.text2; font.pixelSize: Theme.fsSmall; font.bold: true }
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+                        columnSpacing: 8
+                        rowSpacing: 8
+                        Repeater {
+                            model: swapCard.swap.out || []
+                            delegate: MButton {
+                                objectName: "swapOut_" + modelData.name
+                                Layout.fillWidth: true
+                                wrapText: true
+                                primary: swapCard.outSel === modelData.name
+                                text: modelData.name + " (Lv" + modelData.level + ")"
+                                onClicked: {
+                                    swapCard.outSel = modelData.name
+                                    swapCard.inSel = ""
+                                    swapCard.inChoices = sheetBridge.levelUpSwapChoices(modelData.name)
+                                }
+                            }
+                        }
+                    }
+                    Label {
+                        visible: swapCard.outSel !== ""
+                        text: "With"
+                        color: Theme.text2
+                        font.pixelSize: Theme.fsSmall
+                        font.bold: true
+                    }
+                    MTextField {
+                        objectName: "swapInSearch"
+                        visible: swapCard.outSel !== ""
+                        Layout.fillWidth: true
+                        placeholderText: "Search spells…"
+                        onTextChanged: swapCard.inFilter = text.toLowerCase()
+                    }
+                    Rectangle {
+                        visible: swapCard.outSel !== ""
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(280, swapInGrid.height + 12)
+                        radius: 8
+                        color: Theme.surf2
+                        border.color: Theme.border
+                        clip: true
+                        Flickable {
+                            anchors.fill: parent
+                            anchors.margins: 6
+                            contentWidth: width
+                            contentHeight: swapInGrid.height
+                            clip: true
+                            GridLayout {
+                                id: swapInGrid
+                                width: parent.width
+                                columns: 2
+                                columnSpacing: 8
+                                rowSpacing: 8
+                                Repeater {
+                                    model: swapCard.inChoices.filter(function (s) {
+                                        return swapCard.inFilter === "" || s.name.toLowerCase().indexOf(swapCard.inFilter) >= 0
+                                    })
+                                    delegate: MButton {
+                                        objectName: "swapIn_" + modelData.name
+                                        Layout.fillWidth: true
+                                        wrapText: true
+                                        primary: swapCard.inSel === modelData.name
+                                        text: modelData.name + " (Lv" + modelData.level + ")"
+                                        onClicked: swapCard.inSel = modelData.name
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        MButton {
+                            objectName: "swapConfirm"
+                            Layout.fillWidth: true
+                            wrapText: true
+                            enabled: swapCard.outSel !== "" && swapCard.inSel !== ""
+                            text: swapCard.inSel !== "" ? "Swap " + swapCard.outSel + " for " + swapCard.inSel : "Swap"
+                            onClicked: sheetBridge.applyLevelUpSpellSwap(swapCard.outSel, swapCard.inSel)
+                        }
+                        MButton {
+                            objectName: "swapSkip"
+                            primary: false
+                            text: "Keep my spells"
+                            onClicked: sheetBridge.skipLevelUpSpellSwap()
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                id: bookCard
+                objectName: "spellbookCard"
+                readonly property var book: sheetBridge.levelUpSpellbook
+                property string pick: ""
+                property string filter: ""
+                visible: (book.left || 0) > 0
+                Layout.fillWidth: true
+                Layout.preferredHeight: bookCol.height + 20
+                radius: 10
+                color: Theme.surf
+                border.color: Theme.teal2
+
+                ColumnLayout {
+                    id: bookCol
+                    x: 12; y: 10
+                    width: parent.width - 24
+                    spacing: 8
+                    Label {
+                        text: "Add to your spellbook (" + (bookCard.book.left || 0) + " left)"
+                        color: Theme.text
+                        font.pixelSize: Theme.fsBody
+                        font.bold: true
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        text: "Each Wizard level adds two Wizard spells to your spellbook, free."
+                        color: Theme.text2
+                        font.pixelSize: Theme.fsSmall
+                        wrapMode: Text.WordWrap
+                        Layout.fillWidth: true
+                    }
+                    MTextField {
+                        objectName: "bookSearch"
+                        Layout.fillWidth: true
+                        placeholderText: "Search spells…"
+                        onTextChanged: bookCard.filter = text.toLowerCase()
+                    }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(280, bookGrid.height + 12)
+                        radius: 8
+                        color: Theme.surf2
+                        border.color: Theme.border
+                        clip: true
+                        Flickable {
+                            anchors.fill: parent
+                            anchors.margins: 6
+                            contentWidth: width
+                            contentHeight: bookGrid.height
+                            clip: true
+                            GridLayout {
+                                id: bookGrid
+                                width: parent.width
+                                columns: 2
+                                columnSpacing: 8
+                                rowSpacing: 8
+                                Repeater {
+                                    model: (bookCard.book.choices || []).filter(function (s) {
+                                        return bookCard.filter === "" || s.name.toLowerCase().indexOf(bookCard.filter) >= 0
+                                    })
+                                    delegate: MButton {
+                                        objectName: "bookPick_" + modelData.name
+                                        Layout.fillWidth: true
+                                        wrapText: true
+                                        primary: bookCard.pick === modelData.name
+                                        text: modelData.name + " (Lv" + modelData.level + ")"
+                                        onClicked: bookCard.pick = modelData.name
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        MButton {
+                            objectName: "bookAdd"
+                            Layout.fillWidth: true
+                            wrapText: true
+                            enabled: bookCard.pick !== ""
+                            text: bookCard.pick !== "" ? "Add " + bookCard.pick : "Add"
+                            onClicked: {
+                                var name = bookCard.pick
+                                bookCard.pick = ""
+                                sheetBridge.addLevelUpSpellbookSpell(name)
+                            }
+                        }
+                        MButton {
+                            objectName: "bookSkip"
+                            primary: false
+                            text: "Skip"
+                            onClicked: sheetBridge.skipLevelUpSpellbook()
+                        }
+                    }
+                }
+            }
+
             // ── Versatility (TCE/TCoE optional-rule swaps) ─────────────
             // Unlike the pending-choice cards above (fill a slot once),
             // these stay available any time the character has reached

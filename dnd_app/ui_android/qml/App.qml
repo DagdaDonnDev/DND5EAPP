@@ -151,6 +151,8 @@ ApplicationWindow {
     // led from wherever they are to the choices waiting for them.
     // Computed once here rather than in each of those bindings.
     readonly property bool choicesPending: sheetMode && sheetBridge.hasPendingChoices
+    // a class has spells left to learn: the menu's Spells entry pulses too
+    readonly property bool spellsPending: sheetMode && sheetBridge.spellsToLearn.length > 0
 
     // Each step is greyed out in the drawer until the previous one is
     // actually confirmed -- the player can still get there via each
@@ -174,7 +176,8 @@ ApplicationWindow {
         { label: "Abilities", screen: sheetAbilitiesComp, enabled: true },
         { label: "Proficiencies", screen: sheetProficienciesComp, enabled: true },
         { label: "Spells", screen: sheetSpellsComp, enabled: true,
-          sections: ["Spell Slots", "Known Spells", "Add a Spell"] },
+          sections: ["Spell Slots", "Known Spells", "Add a Spell"],
+          pulse: window.spellsPending },
         { label: "Equipment", screen: sheetEquipmentComp, enabled: true,
           sections: ["Inventory", "Add Equipment", "Magic Items", "Add a Magic Item"] },
         { label: "Companions", screen: sheetCompanionsComp, enabled: true,
@@ -309,6 +312,13 @@ ApplicationWindow {
     function advanceToAbilities() { stackView.replace(screenComp(abilitiesComp)) }
     function advanceToClass() { stackView.replace(screenComp(classComp)) }
     function advanceToEquipment() { stackView.replace(screenComp(equipmentComp)) }
+    // Another sheet page, scrolled to one of its sections -- as the menu's
+    // section entries do (e.g. the Choices page's Spells to learn card to
+    // the Spells page's Add a Spell list)
+    function openSheetSection(screen, sectionName) {
+        window.pendingScrollSection = sectionName
+        stackView.replace(screenComp(screen))
+    }
     // App-level destinations, not character-creation steps -- each
     // opens as a full-page modal dialog (see the MFullPageDialog
     // instances below) on top of whatever step screen is showing,
@@ -548,7 +558,58 @@ ApplicationWindow {
     function startRest(restType) { restFlowDialog.start(restType) }
 
     header: ToolBar {
+        id: topBar
         Material.background: window.creatorNamed ? "#3a2e05" : Theme.surf
+
+        // On a character's sheet the bar is their health bar (desktop's
+        // menu bar is too; Settings turns it off): it fills from the left
+        // with current HP -- green, amber below half, red below a quarter,
+        // purple for a beast form's own -- then temp HP in teal.
+        readonly property bool showHealth: !!(appSettingsBridge && appSettingsBridge.menuHealthBar
+                                              && sheetBridge && sheetBridge.hasCharacter
+                                              && stackView.currentItem && stackView.currentItem.sheetBridge !== undefined
+                                              && sheetBridge.maxHp > 0)
+        readonly property bool beast: !!(sheetBridge && sheetBridge.wildShapeActive)
+        readonly property int hp: Math.max(0, sheetBridge ? sheetBridge.currentHp : 0)
+        readonly property int temp: Math.max(0, sheetBridge ? sheetBridge.tempHp : 0)
+        readonly property int whole: Math.max(1, Math.max(sheetBridge ? sheetBridge.maxHp : 1, hp + temp))
+        readonly property color hpColour: beast ? Theme.purple
+                                          : hp * 100 / Math.max(1, sheetBridge ? sheetBridge.maxHp : 1) > 50 ? Theme.green
+                                          : hp * 100 / Math.max(1, sheetBridge ? sheetBridge.maxHp : 1) > 25 ? Theme.amber : Theme.crimson
+        readonly property color base: window.creatorNamed ? "#3a2e05" : Theme.surf
+        function _over(c) { return Qt.tint(base, Qt.rgba(c.r, c.g, c.b, 0.4)) }
+        // the title's ink stays readable (4.5:1) over the fill and the rest
+        function ink(want) {
+            if (!showHealth) return want
+            var bgs = [base, _over(hpColour), _over(Theme.teal)]
+            var picks = [want, Theme.text, Theme.bg]
+            var best = want, bestMin = 0
+            for (var i = 0; i < picks.length; i++) {
+                var worst = 99
+                for (var j = 0; j < bgs.length; j++) worst = Math.min(worst, Theme.contrast(picks[i], bgs[j]))
+                if (worst >= 4.5) return picks[i]
+                if (worst > bestMin) { best = picks[i]; bestMin = worst }
+            }
+            return best
+        }
+        Row {
+            objectName: "topBarHealth"
+            visible: topBar.showHealth
+            anchors.fill: parent
+            z: -1
+            Rectangle {
+                objectName: "topBarHealthFill"
+                height: parent.height
+                width: parent.width * topBar.hp / topBar.whole
+                color: topBar._over(topBar.hpColour)
+            }
+            Rectangle {
+                height: parent.height
+                width: parent.width * topBar.temp / topBar.whole
+                color: topBar._over(Theme.teal)
+            }
+        }
+
         ToolButton {
             id: hamburgerButton
             objectName: "hamburgerButton"
@@ -580,16 +641,21 @@ ApplicationWindow {
             // emoji glyphs elsewhere in this app, which ride Android's
             // universal Noto Color Emoji font). Three plain bars can
             // never fail to render since they don't depend on any font.
-            contentItem: Column {
-                anchors.centerIn: parent
-                spacing: 4
-                Repeater {
-                    model: 3
-                    Rectangle {
-                        width: 22
-                        height: 2
-                        radius: 1
-                        color: Theme.text
+            // (The button sizes its contentItem to fill it, so the bars are
+            // centred inside an Item -- a bare Column sat top-left, above
+            // the title's centre line.)
+            contentItem: Item {
+                Column {
+                    anchors.centerIn: parent
+                    spacing: 4
+                    Repeater {
+                        model: 3
+                        Rectangle {
+                            width: 22
+                            height: 2
+                            radius: 1
+                            color: topBar.ink(Theme.text)
+                        }
                     }
                 }
             }
@@ -600,7 +666,7 @@ ApplicationWindow {
             anchors.centerIn: parent
             text: stackView.currentItem && stackView.currentItem.screenTitle
                   ? stackView.currentItem.screenTitle : "MIMIC"
-            color: window.creatorNamed ? "#f5cc50" : Theme.gold2
+            color: topBar.ink(window.creatorNamed ? "#f5cc50" : Theme.gold2)
             font.pixelSize: Theme.fsHead
             font.bold: true
             elide: Text.ElideRight

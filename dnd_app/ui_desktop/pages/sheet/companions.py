@@ -81,7 +81,7 @@ class CompanionsMixin:
         from dnd_app.data.items import MOUNTS
         from dnd_app.data.statblocks import get_mount_statblock
 
-        mc = _card(GOLD+"55")
+        mc = _card(qa(GOLD, 0x55))
         mcl = QVBoxLayout(mc); mcl.setContentsMargins(14,12,14,12); mcl.setSpacing(6)
         mcl.addWidget(_lbl("Mounts", GOLD2, FS_TITLE, bold=True))
 
@@ -152,7 +152,7 @@ class CompanionsMixin:
                                          VEHICLES_BGDIA, VEHICLES_MAGIC, ADVENTURING_GEAR)
         from dnd_app.data.statblocks import get_vehicle_statblock
 
-        vc = _card(TEAL+"55")
+        vc = _card(qa(TEAL, 0x55))
         vcl = QVBoxLayout(vc); vcl.setContentsMargins(14,12,14,12); vcl.setSpacing(6)
         vcl.addWidget(_lbl("Vehicles", TEAL2, FS_TITLE, bold=True))
 
@@ -228,7 +228,7 @@ class CompanionsMixin:
                 # pulled from the general gear catalog (cost/weight/desc).
                 g = gear_lookup.get(vname)
                 desc = g[3] if g else ""
-                row = _card(GOLD+"33")
+                row = _card(qa(GOLD, 0x33))
                 rl = QHBoxLayout(row); rl.setContentsMargins(12,8,12,8); rl.setSpacing(10)
                 rl.addWidget(_icons.icon_label("wagon", 20))
                 name_col = QVBoxLayout(); name_col.setSpacing(0)
@@ -346,7 +346,7 @@ class CompanionsMixin:
         leveling up your spell save DC)."""
         from dnd_app.data.statblocks import SCALING_SUMMONS, resolve_scaling_summon
 
-        sc = _card(TEAL+"55")
+        sc = _card(qa(TEAL, 0x55))
         scl = QVBoxLayout(sc); scl.setContentsMargins(14,12,14,12); scl.setSpacing(6)
         scl.addWidget(_lbl("Summoned Creatures", TEAL2, FS_TITLE, bold=True))
         scl.addWidget(_lbl("For Summon Celestial, Summon Undead, Summon Fiend, Summon Beast, and similar "
@@ -443,7 +443,7 @@ class CompanionsMixin:
 
         if beast_names:
             info = get_wild_shape_info(self.char)
-            wc = _card(GREEN+"55")
+            wc = _card(qa(GREEN, 0x55))
             wcl = QVBoxLayout(wc); wcl.setContentsMargins(14,12,14,12); wcl.setSpacing(6)
             wcl.addWidget(_lbl("Wild Shape", TEAL2, FS_TITLE, bold=True))
             wcl.addWidget(_lbl(f"Max CR {info['max_cr']} \u2014 {info['restriction']}", TEXT3, FS_TINY))
@@ -489,7 +489,7 @@ class CompanionsMixin:
         from dnd_app.core.calculator import companion_max_simultaneous, count_active_companion_instances
         for key in summonable:
             tmpl = COMPANION_STATBLOCKS.get(key, {})
-            sc = _card(TEAL+"33")
+            sc = _card(qa(TEAL, 0x33))
             scl2 = QVBoxLayout(sc); scl2.setContentsMargins(14,12,14,12); scl2.setSpacing(6)
             scl2.addWidget(_lbl(tmpl.get("display_name", key), TEAL2, FS_TITLE, bold=True))
             if tmpl.get("summon_uses_wild_shape"):
@@ -562,7 +562,7 @@ class CompanionsMixin:
         f"companion_{key}"). Left as None for purely informational/preview
         cards (e.g. the Wild Shape form preview, whose real active HP is
         tracked separately via the Combat tab once actually transformed)."""
-        card = _card(TEAL+"55")
+        card = _card(qa(TEAL, 0x55))
         cl = QVBoxLayout(card); cl.setContentsMargins(0,0,0,0); cl.setSpacing(0)
 
         tracking = self.char.setdefault("summon_hp_tracking", {}) if hp_key else {}
@@ -719,7 +719,7 @@ class CompanionsMixin:
     def _build_eldritch_cannon_card(self) -> QFrame:
         from dnd_app.core.calculator import resolve_companion_statblock
         sb = resolve_companion_statblock("eldritch_cannon", self.char)
-        card = _card(TEAL+"55")
+        card = _card(qa(TEAL, 0x55))
         cl = QVBoxLayout(card); cl.setContentsMargins(14,12,14,12); cl.setSpacing(6)
         cl.addWidget(_lbl(sb["display_name"], TEAL2, FS_TITLE, bold=True))
         cl.addWidget(_lbl(sb["source"], TEXT3, FS_TINY))

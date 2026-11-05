@@ -566,7 +566,7 @@ class FeaturesMixin:
             f"QListWidget{{background:{SURF2};border:1px solid {BORDER};border-radius:5px;"
             f"color:{TEXT};font-size:{FS_SMALL}px;}}"
             f"QListWidget::item{{padding:3px 8px;}}"
-            f"QListWidget::item:selected{{background:{qa(AMBER,0x88)};color:white;}}"
+            f"QListWidget::item:selected{{background:{qa(AMBER,0x88)};color:{on_fill(tint(SURF2, AMBER, 0x88))};}}"
             f"QListWidget::item:hover:!selected{{background:{SURF3};}}")
         from dnd_app.data.feature_tooltips import FEATURE_DESCS as _FEAT_DESCS
         for ft in ALL_FEATS:

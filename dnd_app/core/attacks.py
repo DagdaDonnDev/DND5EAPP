@@ -962,6 +962,9 @@ def take_attack_options(char: dict, row: dict, picked, answers: dict, hit: bool 
         st = copy_state(roll["state"])
         had = bool(st["pending"])
         pay_pending(char, roll.get("what") or {"kind": "attack"}, st, hit)
+        from dnd_app.core.roll_log import update_roll
+        update_roll(char, roll["state"].get("log"),
+                    result=("critical hit" if crit else "hit") if hit else "missed")
         answers["_roll:done"] = {"spent": list(st["spent"]), "paid": had,
                                  "notes": [n for n in st["notes"] if n not in roll["state"]["notes"]]}
     got_roll = answers.get("_roll:done") or {"spent": [], "notes": [], "paid": False}

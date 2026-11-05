@@ -55,6 +55,19 @@ SPIN_NO_BUTTONS = ("QSpinBox::up-button,QSpinBox::down-button{width:0px;border:n
                    "QSpinBox::up-arrow,QSpinBox::down-arrow{image:none;width:0px;height:0px;}")
 
 
+def stepper_qss() -> str:
+    """A number with − and + either side, in the HP boxes' look: the raised
+    surface, a 2px edge, a bold centred number, quiet buttons that tint on
+    hover. 36px tall (the theme's 32, without its vertical padding)."""
+    return (f"QSpinBox{{background:{SURF2};border:2px solid {BORDER2};border-radius:8px;"
+            f"color:{TEXT};font-size:{FS_BODY}px;font-weight:700;"
+            f"padding-top:0px;padding-bottom:0px;}}"
+            f"QSpinBox:focus{{border-color:{INDIGO};background:{SURF2};}}"
+            f"QSpinBox::up-button,QSpinBox::down-button{{background:transparent;width:30px;}}"
+            f"QSpinBox::up-button:hover,QSpinBox::down-button:hover{{background:{qa(INDIGO,0x33)};}}"
+            f"QSpinBox::up-button:disabled,QSpinBox::down-button:disabled{{background:transparent;}}")
+
+
 def h(text, color=None, size=FS_BODY, bold=False, align=Qt.AlignLeft, wrap=True):
     """Quick label factory."""
     w = QLabel(text)
@@ -170,8 +183,12 @@ def _btn(label, color=None, *, variant="cta", height=28, width=None,
         bw = border_width if border_width is not None else 2
         bg_a = bg_alpha if bg_alpha is not None else 0x33
         border = qa(color, border_alpha) if border_alpha is not None else color
-        txt = text_color or color
+        # text that reads (WCAG AA) on the tint over a card, and on the
+        # solid colour it fills to on hover
+        txt = readable(text_color or color, *(tint(u, color, bg_a) for u in (SURF, SURF2, SURF3)))
         hov_txt = hover_text if hover_text is not None else BG
+        if contrast(hov_txt, color) < 4.5:
+            hov_txt = on_fill(color)
         btn.setStyleSheet(
             f"QPushButton{{background:{qa(color,bg_a)};border:{bw}px solid {border};"
             f"border-radius:{radius}px;color:{txt};{weight}{fs}{mh}padding:{pad};}}"
@@ -182,11 +199,12 @@ def _btn(label, color=None, *, variant="cta", height=28, width=None,
         bg_a = bg_alpha if bg_alpha is not None else 0x22
         bor_a = border_alpha if border_alpha is not None else 0x66
         hov_a = hover_bg_alpha if hover_bg_alpha is not None else 0x55
-        txt = text_color or color
+        txt = readable(text_color or color, *(tint(u, color, bg_a) for u in (SURF, SURF2, SURF3)))
+        hov_txt = readable(txt, *(tint(u, color, hov_a) for u in (SURF, SURF2, SURF3)))
         btn.setStyleSheet(
             f"QPushButton{{background:{qa(color,bg_a)};border:{bw}px solid {qa(color,bor_a)};"
             f"border-radius:{radius}px;color:{txt};{weight}{fs}{mh}padding:{pad};}}"
-            f"QPushButton:hover{{background:{qa(color,hov_a)};border-color:{color};}}")
+            f"QPushButton:hover{{background:{qa(color,hov_a)};border-color:{color};color:{hov_txt};}}")
     elif variant == "neutral":
         pad = padding or "5px 10px"
         btn.setStyleSheet(
@@ -225,23 +243,27 @@ def _pill(label, value, color, width=96):
     return f
 
 
-def pill_btn(text, bg=INDIGO, fg="white", hover=None):
-    """Styled button."""
+def pill_btn(text, bg=None, fg=None, hover=None):
+    """Styled button: a solid fill, its text whichever of white or the page
+    colour reads on it."""
     btn = QPushButton(text)
+    bg = bg or INDIGO
     h_color = hover or IND2
+    fg = fg if fg is not None and contrast(fg, bg) >= 4.5 else on_fill(bg)
     btn.setStyleSheet(
         f"QPushButton{{background:{bg};border:none;border-radius:8px;color:{fg};"
         f"font-weight:700;font-size:{FS_BODY}px;padding:9px 20px;}}"
-        f"QPushButton:hover{{background:{h_color};}}"
+        f"QPushButton:hover{{background:{h_color};color:{on_fill(h_color)};}}"
         f"QPushButton:pressed{{background:{BG};}}"
         f"QPushButton:disabled{{background:{SURF3};color:{TEXT3};}}"
     )
     return btn
 
-def badge(text, bg=INDIGO, size=FS_SMALL):
+def badge(text, bg=None, size=FS_SMALL):
+    bg = bg or INDIGO
     lbl = QLabel(text)
     lbl.setStyleSheet(
-        f"background:{bg};color:white;font-size:{size}px;font-weight:700;"
+        f"background:{bg};color:{on_fill(bg)};font-size:{size}px;font-weight:700;"
         f"border-radius:{size}px;padding:2px 8px;"
     )
     lbl.setFixedHeight(size + 8)
@@ -583,9 +605,9 @@ class SpellRow(QFrame):
 
         # Level pill
         lvl_txt = "C" if lvl==0 else str(lvl)
-        lvl_pill = h(lvl_txt, "white", FS_SMALL, bold=True, align=Qt.AlignCenter, wrap=False)
+        lvl_pill = h(lvl_txt, on_fill(lc), FS_SMALL, bold=True, align=Qt.AlignCenter, wrap=False)
         lvl_pill.setFixedSize(28,28)
-        lvl_pill.setStyleSheet(f"background:{lc};color:white;border-radius:14px;font-size:{FS_SMALL}px;font-weight:700;")
+        lvl_pill.setStyleSheet(f"background:{lc};color:{on_fill(lc)};border-radius:14px;font-size:{FS_SMALL}px;font-weight:700;")
         lay.addWidget(lvl_pill)
 
         # Prepared checkbox — cantrips are always available (PHB p.201), and
@@ -689,11 +711,6 @@ class SpellRow(QFrame):
         color = "#ffd700" if pinned else TEXT3
         self._star_btn.setStyleSheet(f"QPushButton{{background:transparent;border:none;color:{color};font-size:15px;}}QPushButton:hover{{color:#ffd700;}}")
 
-    _TAG_COLORS = {
-        "Sorcerer": INDIGO, "Warlock": PURPLE, "Bard": TEAL,
-        "Ranger": "#4a8c3f", "Fighter (EK)": AMBER, "Rogue (AT)": AMBER,
-    }
-
     def set_class_tag(self, class_name):
         """Show/hide the small class-source badge (e.g. 'SORC', 'LOCK').
         Pass None to hide it (single-class casters don't need this)."""
@@ -703,10 +720,12 @@ class SpellRow(QFrame):
         abbrev = {"Sorcerer":"SORC", "Warlock":"LOCK", "Bard":"BARD",
                   "Ranger":"RNGR", "Fighter (EK)":"EK", "Rogue (AT)":"AT"}.get(
                       class_name, class_name[:4].upper())
-        color = self._TAG_COLORS.get(class_name, TEXT3)
+        # the theme's colours now, not the ones at import (a theme switch)
+        color = {"Sorcerer": INDIGO, "Warlock": PURPLE, "Bard": TEAL, "Ranger": GREEN,
+                 "Fighter (EK)": AMBER, "Rogue (AT)": AMBER}.get(class_name, TEXT3)
         self._class_tag_lbl.setText(abbrev)
         self._class_tag_lbl.setStyleSheet(
-            f"background:{color};color:white;font-size:{FS_TINY}px;font-weight:700;"
+            f"background:{color};color:{on_fill(color)};font-size:{FS_TINY}px;font-weight:700;"
             f"border-radius:{FS_TINY}px;padding:2px 8px;")
         self._class_tag_lbl.setToolTip(f"Counts against your {class_name} known-spells pool")
         self._class_tag_lbl.setVisible(True)
@@ -727,7 +746,7 @@ class SpellRow(QFrame):
         menu = QMenu(self)
         menu.setStyleSheet(f"QMenu{{background:{SURF2};border:2px solid {BORDER2};color:{TEXT};font-size:{FS_BODY}px;padding:4px;}}"
                            f"QMenu::item{{padding:8px 20px;border-radius:4px;}}"
-                           f"QMenu::item:selected{{background:{INDIGO};color:white;}}")
+                           f"QMenu::item:selected{{background:{INDIGO};color:{on_fill(INDIGO)};}}")
         detail_act = menu.addAction(_icons.icon("features"), f"Show Details: {self.spell['name']}")
         menu.addSeparator()
         cast_act  = menu.addAction(_icons.icon("spells"), f"Cast {self.spell['name']}")

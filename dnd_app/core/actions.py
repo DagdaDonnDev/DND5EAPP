@@ -317,6 +317,42 @@ def carried_use_item(char: dict, card: str):
     return None
 
 
+# ── How both apps order a bucket's cards ─────────────────────────────────
+def action_group(entry) -> int:
+    """0: the character's own (class, race, feat, item...); 1: the basic
+    actions everyone has (source "Universal"); 2: the optional rules, if
+    the DM uses them ("Disarm (optional rule, DMG)")."""
+    if (entry[2] if len(entry) > 2 else "") != "Universal":
+        return 0
+    return 2 if "(optional rule" in entry[0] else 1
+
+
+def action_group_head(group: int, bucket: str) -> str:
+    """The heading above a group's first card ("" for the character's own)."""
+    if group == 1:
+        return "GENERAL" if bucket == "Passive" else "BASIC ACTIONS"
+    return "OPTIONAL RULES \u2014 if your DM uses them" if group == 2 else ""
+
+
+def optional_rule_name(display: str) -> tuple:
+    """"Disarm (optional rule, DMG)" -> ("Disarm", "DMG"); anything else as
+    it is, no book."""
+    m = re.match(r"^(.*?) \(optional rule, ([^)]+)\)$", display or "")
+    return (m.group(1), m.group(2)) if m else (display, "")
+
+
+def action_groups(entries, bucket: str) -> list:
+    """A bucket's cards in the order both apps show them, own first:
+    [(heading, [entries])] (sorted stably, each group keeps its order)."""
+    out = []
+    for entry in sorted(entries, key=action_group):
+        g = action_group(entry)
+        if not out or out[-1][0] != g:
+            out.append((g, []))
+        out[-1][1].append(entry)
+    return [(action_group_head(g, bucket), items) for g, items in out]
+
+
 def build_action_abilities(char):
     """
     Return {bucket: [(name, desc, source), ...]} for the action economy display.
@@ -2408,13 +2444,16 @@ def build_action_abilities(char):
             buckets['Passive'].append((f"Compose a Tune ({inst})",
                 "As part of a long rest, compose a new tune and lyrics.", 'Tool'))
     from dnd_app.core.calculator import get_prof_bonus, ability_mod
-    _grapple_shove_dc = 8 + get_prof_bonus(char) + ability_mod(char, "STR")
+    # (the 2014 rules: a contested check that takes the place of one of the
+    # Attack action's attacks -- not the 2024 rules' saving throw)
     buckets['Action'].append(('Grapple',
-        f"Unarmed Strike option: target (no more than one size larger) makes a STR or DEX save "
-        f"(its choice) vs. DC {_grapple_shove_dc}, or is grappled. Requires a free hand.", 'Universal'))
+        "In place of one of your attacks, with a free hand: STR (Athletics) check contested by "
+        "the target's STR (Athletics) or DEX (Acrobatics), its choice. It must be no more than "
+        "one size larger than you. Win, and it's grappled.", 'Universal'))
     buckets['Action'].append(('Shove',
-        f"Unarmed Strike option: target (no more than one size larger) makes a STR or DEX save "
-        f"(its choice) vs. DC {_grapple_shove_dc}, or is pushed 5 ft. or knocked prone (your choice).", 'Universal'))
+        "In place of one of your attacks: STR (Athletics) check contested by the target's "
+        "STR (Athletics) or DEX (Acrobatics), its choice. It must be no more than one size "
+        "larger than you. Win, and you knock it prone or push it 5 ft. away.", 'Universal'))
     # Telekinetic: bonus-action telekinetic shove — only shown if the
     # character actually has the feat. DC uses the highest of INT/WIS/CHA
     # as a stand-in for "the ability increased by this feat," since the
