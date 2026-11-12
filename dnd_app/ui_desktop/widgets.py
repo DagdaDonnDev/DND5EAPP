@@ -122,6 +122,13 @@ class FillTabBar(QTabBar):
     bar's own size hint, which left a stub of empty bar past the last
     tab.) Corner widgets still get their room: the tab widget clips the
     bar to what's left beside them."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # A tab widget turns the base line off on the bar it makes itself,
+        # but not on one it's given: left on, a dark line and a white one
+        # run along the top of the bar and show between the tabs.
+        self.setDrawBase(False)
+
     def sizeHint(self):
         hint = super().sizeHint()
         host = self.parentWidget()
@@ -129,6 +136,49 @@ class FillTabBar(QTabBar):
                                                  QTabBar.TriangularNorth, QTabBar.TriangularSouth):
             hint.setWidth(max(hint.width(), host.width()))
         return hint
+
+
+class _GripHandle(QSplitterHandle):
+    """A splitter's handle drawn as a small centred grip (a pill, three
+    dots on it), not a bar across the whole pane: it reads as something to
+    drag, and lights up under the pointer."""
+    def __init__(self, orientation, parent):
+        super().__init__(orientation, parent)
+        self._hover = False
+        self.setToolTip("Drag to resize")
+
+    def enterEvent(self, e):
+        self._hover = True; self.update(); super().enterEvent(e)
+
+    def leaveEvent(self, e):
+        self._hover = False; self.update(); super().leaveEvent(e)
+
+    def paintEvent(self, e):
+        from PySide6.QtGui import QPainter, QColor
+        from dnd_app.ui_desktop.style import theme as T    # (the colours as they are now)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(Qt.NoPen)
+        horizontal_bar = self.orientation() == Qt.Vertical      # a Vertical splitter's handle lies flat
+        long, thick = 44, 4
+        r = self.rect()
+        if horizontal_bar:
+            pill = QRect(r.center().x() - long // 2, r.center().y() - thick // 2, long, thick)
+        else:
+            pill = QRect(r.center().x() - thick // 2, r.center().y() - long // 2, thick, long)
+        p.setBrush(QColor(T.INDIGO if self._hover else T.BORDER2))
+        p.drawRoundedRect(pill, 2, 2)
+
+
+class GripSplitter(QSplitter):
+    """A QSplitter whose handle is a centred grip (_GripHandle)."""
+    def __init__(self, orientation, parent=None):
+        super().__init__(orientation, parent)
+        self.setHandleWidth(10)
+        self.setStyleSheet("QSplitter::handle{background:transparent;}")
+
+    def createHandle(self):
+        return _GripHandle(self.orientation(), self)
 
 
 # Item data role holding a row's rarity colour (a "#rrggbb" string) for

@@ -18,6 +18,31 @@ Page {
 
     Component.onCompleted: sheetBridge.refresh()
 
+    // Find a feature: every word typed must be in the feature's name,
+    // what it does, or its group's heading (the bridge's `find` text)
+    property string featureSearch: ""
+    function featureFound(row) {
+        var words = root.featureSearch.toLowerCase().split(/\s+/)
+        for (var i = 0; i < words.length; i++)
+            if (words[i].length > 0 && row.find.indexOf(words[i]) < 0)
+                return false
+        return true
+    }
+    function foundIn(section) {
+        var n = 0
+        for (var i = 0; i < section.rows.length; i++)
+            if (featureFound(section.rows[i]))
+                n++
+        return n
+    }
+    readonly property int featuresFound: {
+        var n = 0, all = sheetBridge.featuresSections
+        for (var i = 0; i < all.length; i++)
+            n += foundIn(all[i])
+        return n
+    }
+    readonly property bool searching: featureSearch.trim().length > 0
+
     Flickable {
         anchors.fill: parent
         anchors.margins: 16
@@ -39,16 +64,42 @@ Page {
                 font.pixelSize: Theme.fsSmall
             }
 
+            MTextField {
+                objectName: "featureFilter"
+                visible: sheetBridge.featuresSections.length > 0
+                Layout.fillWidth: true
+                placeholderText: "Find a feature\u2026"
+                onTextChanged: root.featureSearch = text
+            }
+            Label {
+                objectName: "featureHint"
+                visible: sheetBridge.featuresSections.length > 0
+                text: root.searching
+                      ? (root.featuresFound === 0
+                         ? "No feature matches \u201c" + root.featureSearch.trim() + "\u201d."
+                         : root.featuresFound + " found")
+                      : "Tap a feature with a magnifying glass to read what it does."
+                color: Theme.text3
+                font.pixelSize: Theme.fsSmall
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+                Layout.topMargin: -8
+            }
+
             Repeater {
                 model: sheetBridge.featuresSections
                 delegate: ColumnLayout {
+                    id: featureSection
+                    objectName: "featureSection_" + modelData.title
+                    // a group with nothing found steps aside
+                    visible: root.foundIn(modelData) > 0
                     Layout.fillWidth: true
                     spacing: 8
 
                     Label {
                         text: modelData.title
                         color: Theme.gold
-                        font.pixelSize: Theme.fsSmall
+                        font.pixelSize: Theme.fsBody
                         font.bold: true
                         Layout.topMargin: 6
                         wrapMode: Text.WordWrap
@@ -56,22 +107,44 @@ Page {
                     }
 
                     Repeater {
-                        model: modelData.items
+                        model: modelData.rows
                         delegate: Rectangle {
+                            id: featureRow
+                            objectName: "featureRow_" + modelData.text
+                            visible: root.featureFound(modelData)
                             Layout.fillWidth: true
-                            Layout.preferredHeight: itemLabel.implicitHeight + 16
+                            Layout.preferredHeight: Math.max(itemLabel.implicitHeight + 16, modelData.more ? 44 : 0)
                             radius: 8
-                            color: Theme.surf
+                            color: rowTap.pressed ? Theme.surf2 : Theme.surf
                             border.color: Theme.border
 
                             Label {
                                 id: itemLabel
-                                x: 10; y: 8
-                                width: parent.width - 20
-                                text: modelData
+                                x: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - 20 - (modelData.more ? 26 : 0)
+                                text: modelData.text
                                 color: Theme.text
                                 font.pixelSize: Theme.fsSmall
                                 wrapMode: Text.WordWrap
+                            }
+                            // more to read: a magnifying glass, and the
+                            // whole row opens it
+                            MIcon {
+                                visible: modelData.more
+                                name: "search"
+                                size: 17
+                                color: Theme.text3
+                                anchors.right: parent.right
+                                anchors.rightMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            MouseArea {
+                                id: rowTap
+                                objectName: "featureTap_" + modelData.text
+                                anchors.fill: parent
+                                enabled: modelData.more
+                                onClicked: sheetBridge.showFeatureDetail(modelData.text)
                             }
                         }
                     }
@@ -87,6 +160,9 @@ Page {
                 model: sheetBridge.wildMagicTables
                 delegate: ColumnLayout {
                     id: wmCard
+                    // (the blocks that aren't features step aside while
+                    // one's being looked for)
+                    visible: !root.searching
                     Layout.fillWidth: true
                     spacing: 8
                     property var lastResult: null
@@ -170,8 +246,9 @@ Page {
             // Grants a feat or DM Reward ("Character Secret", "Dark
             // Gift", etc.) outside normal class progression -- desktop's
             // Features tab equivalent card.
-            Label { text: "Bonus Feature Browser -- DM Rewards"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true; Layout.topMargin: 6 }
+            Label { visible: !root.searching; text: "Bonus Feature Browser -- DM Rewards"; color: Theme.gold; font.pixelSize: Theme.fsBody; font.bold: true; Layout.topMargin: 6 }
             Label {
+                visible: !root.searching
                 text: "Grant a feat or DM-awarded bonus feature outside normal class progression. Tap the magnifying glass for details."
                 color: Theme.text3
                 font.pixelSize: Theme.fsSmall
@@ -179,6 +256,7 @@ Page {
                 Layout.fillWidth: true
             }
             RowLayout {
+                visible: !root.searching
                 Layout.fillWidth: true
                 spacing: 8
                 MTextField {
@@ -224,6 +302,7 @@ Page {
             }
 
             Rectangle {
+                visible: !root.searching
                 Layout.fillWidth: true
                 Layout.preferredHeight: 300
                 radius: 10

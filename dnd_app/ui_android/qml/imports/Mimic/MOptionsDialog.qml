@@ -39,13 +39,27 @@ Dialog {
             wrapMode: Text.WordWrap
             Layout.fillWidth: true
         }
-        Label {
+        // (a long message -- a feat's whole text -- scrolls rather than
+        // pushing the buttons off a small screen)
+        Flickable {
+            id: messageFlick
             visible: root.message.length > 0
-            text: root.message
-            color: Theme.text
-            font.pixelSize: Theme.fsBody
-            wrapMode: Text.WordWrap
             Layout.fillWidth: true
+            Layout.preferredHeight: Math.min(messageLabel.implicitHeight,
+                                             (root.parent ? root.parent.height : 800) * 0.5)
+            contentHeight: messageLabel.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollIndicator.vertical: ScrollIndicator {}
+            Label {
+                id: messageLabel
+                objectName: "optionsMessage"
+                width: messageFlick.width
+                text: root.message
+                color: Theme.text
+                font.pixelSize: Theme.fsBody
+                wrapMode: Text.WordWrap
+            }
         }
         // a long list (a druid's Wild Shape forms) scrolls instead of
         // running off the screen

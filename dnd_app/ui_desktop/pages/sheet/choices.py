@@ -499,13 +499,12 @@ class ChoicesMixin:
         n = self._levelup_panel.pending_count
         idx = self._tabs.indexOf(self._choices_tab_page)
         self._choices_pulse.set_active(n > 0 and self._tabs.currentIndex() != idx)
-        self._tabs.setTabToolTip(idx,
-                                 f"{n} pending choice{'s' if n != 1 else ''}" if n else "Choices")
+        self._set_tab_tip(idx, f"{n} pending choice{'s' if n != 1 else ''}" if n else "Choices")
         learn = self._levelup_panel.has_spells_to_learn
         sidx = self._tabs.indexOf(self._spells_tab_page)
         self._spells_pulse.set_active(learn and self._tabs.currentIndex() != sidx)
         self._browser_pulse.set_active(learn and self._sp_right_tabs.currentWidget() is not self._sp_browser_page)
-        self._tabs.setTabToolTip(sidx, "Spells — spells left to learn" if learn else "Spells")
+        self._set_tab_tip(sidx, "Spells — spells left to learn" if learn else "Spells")
 
     # ══ TAB 4: SPELLS ══════════════════════════════════════════════════════════
     def _has_infuse_item_access(self):

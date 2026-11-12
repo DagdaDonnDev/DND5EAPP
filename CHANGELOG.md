@@ -14,6 +14,10 @@ spells as you level, keeps every roll you make, the Combat page has been
 cleared for action, a rest shows (and does) everything it lets you do,
 and every theme is easier on the eyes.
 
+It also looks after your character between sessions. Nothing unsaved is
+lost quietly any more, a slip on the Damage button can be undone, and
+your last character is one button away when you open the app.
+
 ### ✨ New
 
 - **Spells to Learn:** a card on the Choices tab shows the spells and
@@ -51,6 +55,30 @@ and every theme is easier on the eyes.
   they drop. You can turn it off in Settings.
 - **Metamagic on Android:** the Spells screen has the Metamagic card: tick
   what's for your next cast and spend the points.
+- **Continue:** the start menu opens the character you played last with
+  one button. The rest are listed newest first, each with its race, class
+  and when you last played it, and a search box appears once there are
+  more than five. Double-click a row to open it (desktop), or tap its
+  card (Android).
+- **Undo for Damage and Heal:** typed 50 for 5? **Undo** on the Hit Points
+  card puts your hit points, temp HP and death saves back as they were.
+  It's there until your hit points change some other way. If the slip
+  killed your character, the YOU DIED screen has it too.
+- **Unsaved changes are kept safe:**
+  - Closing the window, opening another character, starting a new one or
+    importing a PDF now asks first when you have unsaved changes
+    (desktop). Before, only going back to the menu did.
+  - While you have unsaved changes, both apps keep a backup next to the
+    save: every minute, and on Android whenever you leave the app. If the
+    app ends before you've saved, opening that character offers the
+    changes back.
+- **Find a feature:** the Features page has a search box. It looks in
+  each feature's name and in what it does. Click a feature with a
+  magnifying glass to read it (desktop), or tap it (Android).
+  - *Designer note: on Android there was no way to read what a feature
+    did. Now there is.*
+- **Cast from your spell list (desktop):** every spell on My Spells has
+  its own Cast button, and a star that pins it to the Combat tab.
 
 ### ⚖️ Rules
 
@@ -83,6 +111,30 @@ and every theme is easier on the eyes.
   what it does, and the side column scrolls when a multiclass caster's
   cards don't fit.
 - Immersive Health is gentler: the colour only drains near the end.
+- **Keys (desktop):** Ctrl+1 to Ctrl+9 jump to a tab, and each tab's
+  tooltip says its keys. Ctrl+F puts the cursor in the search box of the
+  tab you're on, and in the start menu's.
+- **Icons in the menu (Android):** every screen in the drawer has its
+  icon, the same one its desktop tab carries.
+- **Pages that use the width (desktop):** Skills go into two columns on a
+  wide window, and Abilities spread across the page.
+- **A roomier Gear page (desktop):** your inventory gets more of the page,
+  the equipment browser shows every column without scrolling sideways,
+  and the dividers have a grip to drag.
+- **More spells on screen (desktop):** a spell takes one short row unless
+  its details need a second line.
+- **Smaller cards on Android's start menu**, so more characters fit.
+- **At a Glance (Android):** the Abilities screen now shows what desktop's
+  Derived Stats do: proficiency bonus, speed, senses, your passive scores,
+  attacks per action and carrying capacity.
+- **Passive Investigation and Insight** sit beside Passive Perception on
+  both apps.
+- The desktop window's title says whose sheet is open, with a dot when
+  there's something unsaved.
+- A class's row of chosen options on the Features page (Metamagic,
+  invocations, infusions…) opens to what each one does.
+- The Features page's group headings are larger, so the groups are easier
+  to tell apart.
 
 ### 🔧 Fixes
 
@@ -99,6 +151,23 @@ and every theme is easier on the eyes.
 - Fixed the actions list's item filter, which never found anything.
 - Fixed the Metamagic card charging 1 sorcery point for every option:
   Quickened Spell costs 2, Heightened 3 and Twinned the spell's level.
+- Fixed Android warning about unsaved changes every time you went Home,
+  even when nothing had changed.
+- Fixed Android's start menu deleting a character on one tap. It asks
+  first now.
+- Fixed Save being refused as "name already used" after pressing Refresh
+  on the desktop sheet.
+- Fixed the desktop sheet forgetting it had unsaved changes after a theme
+  or text size change.
+- Fixed Android's Open in Save & Export leaving you on the old
+  character's screen and theme. It goes straight to the opened
+  character's sheet.
+- Fixed Android listing a subrace's ability score bonuses as features.
+- Fixed the white marks between the desktop sheet's tabs.
+- Fixed the desktop tab names no longer shortening to fit once an
+  Artificer gained the Infusions tab.
+- Fixed the "Extra Attacks" box showing 1 for a character with none: it's
+  the number of attacks with one Attack action, and is now labelled so.
 
 ---
 

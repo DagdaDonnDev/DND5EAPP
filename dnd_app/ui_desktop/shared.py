@@ -415,14 +415,18 @@ class AbilityBlock(QFrame):
         # style/role as the Skills/Saves rows' roll buttons.
         self._roll_btn = None
         if not editable:
-            self._roll_btn = QPushButton()
-            _icons.set_button_icon(self._roll_btn, "dice", 14)
-            self._roll_btn.setFixedHeight(22)
+            # (a proper button: it was a 14px sliver under the modifier.
+            # Its height is in the stylesheet, so a re-polish keeps it.)
+            self._roll_btn = QPushButton(" Roll")
+            _icons.set_button_icon(self._roll_btn, "dice", 15)
+            self._roll_btn.setCursor(Qt.PointingHandCursor)
             self._roll_btn.setToolTip(f"Roll {ab} check ({sign(mod)})")
+            self._roll_btn.setAccessibleName(f"Roll {ab} check")
             self._roll_btn.setStyleSheet(
-                f"QPushButton{{background:transparent;border:1px solid {BORDER};"
-                f"border-radius:5px;font-size:{FS_SMALL}px;padding:0px;min-height:0px;}}"
-                f"QPushButton:hover{{background:{qa(TEAL,0x33)};border-color:{TEAL};}}")
+                f"QPushButton{{background:{qa(TEAL,0x18)};border:1px solid {BORDER2};color:{TEXT2};"
+                f"border-radius:6px;font-size:{FS_SMALL}px;font-weight:700;padding:0px;"
+                f"min-height:26px;max-height:26px;}}"
+                f"QPushButton:hover{{background:{qa(TEAL,0x44)};border-color:{TEAL};color:{TEXT};}}")
             self._roll_btn.clicked.connect(lambda checked=False: self.roll_requested.emit(self.ab))
             lay.addWidget(self._roll_btn)
 
@@ -657,8 +661,11 @@ class SpellRow(QFrame):
         name_row.addStretch()
         info_col.addLayout(name_row)
         details = f"{spell.get('school','?')} · {spell.get('casting_time', spell.get('cast_time','?'))} · {spell.get('range','?')}"
+        # One line when it fits, two when it wraps (a long range or casting
+        # time in a narrow window): the label asks for the height its text
+        # needs at the width it has, rather than always holding two lines.
         detail_lbl = h(details, TEXT2, FS_SMALL, wrap=True)
-        detail_lbl.setMinimumHeight(36)
+        self._detail_lbl = detail_lbl
         info_col.addWidget(detail_lbl)
         lay.addLayout(info_col, 1)
 
@@ -666,6 +673,21 @@ class SpellRow(QFrame):
         self.setToolTip(tip)
         for w in (lvl_pill, self._prep_cb, detail_lbl):
             w.setToolTip(tip)
+
+        # Cast: on the row itself (the right-click menu has it too, and
+        # casting as a ritual). Off while a spell that needs preparing isn't.
+        self._cast_btn = QPushButton("Cast"); self._cast_btn.setFixedSize(56, 28)
+        self._cast_btn.setAccessibleName(f"Cast {spell.get('name', 'spell')}")
+        _ink = readable(IND2, SURF, SURF2)
+        self._cast_btn.setStyleSheet(
+            f"QPushButton{{background:{qa(INDIGO,0x22)};border:1px solid {INDIGO};border-radius:6px;"
+            f"color:{_ink};font-size:{FS_SMALL}px;font-weight:700;min-height:0;padding:0;}}"
+            f"QPushButton:hover{{background:{INDIGO};color:{on_fill(INDIGO)};}}"
+            f"QPushButton:disabled{{background:transparent;border:1px dashed {BORDER2};color:{TEXT3};}}")
+        self._cast_btn.clicked.connect(lambda: self.cast.emit(self.spell))
+        self._prep_cb.toggled.connect(lambda *_: self._sync_cast_btn())
+        lay.addWidget(self._cast_btn)
+        self._sync_cast_btn()
 
         # Magnifying glass: the spell's details (right-click has them too)
         view = QPushButton(); view.setFixedSize(28, 28)
@@ -678,12 +700,17 @@ class SpellRow(QFrame):
         lay.addWidget(view)
 
         # Star: pin to Quick Spells on Combat tab
+        # (a drawn star, not the "☆" glyph: at this size the glyph didn't
+        # show on the row at all)
         self._pinned = False
-        self._star_btn = QPushButton("☆"); self._star_btn.setFixedSize(26,26)
-        self._star_btn.setToolTip("Pin to Quick Spells (Combat tab)")
-        self._star_btn.setStyleSheet(f"QPushButton{{background:transparent;border:none;color:{TEXT3};font-size:15px;}}QPushButton:hover{{color:#ffd700;}}")
+        self._star_btn = QPushButton(); self._star_btn.setFixedSize(28, 28)
+        self._star_btn.setStyleSheet(
+            f"QPushButton{{background:transparent;border:1px solid transparent;border-radius:6px;"
+            f"min-height:0;padding:0;}}"
+            f"QPushButton:hover{{background:{qa(GOLD,0x33)};border-color:{GOLD};}}")
         self._star_btn.clicked.connect(self._on_star)
         lay.addWidget(self._star_btn)
+        self.set_pinned(False)
 
         # Remove button: a trash can
         rm = QPushButton(); rm.setFixedSize(28,28)
@@ -707,9 +734,11 @@ class SpellRow(QFrame):
 
     def set_pinned(self, pinned: bool):
         self._pinned = pinned
-        self._star_btn.setText("★" if pinned else "☆")
-        color = "#ffd700" if pinned else TEXT3
-        self._star_btn.setStyleSheet(f"QPushButton{{background:transparent;border:none;color:{color};font-size:15px;}}QPushButton:hover{{color:#ffd700;}}")
+        _icons.set_button_icon(self._star_btn, "star_solid" if pinned else "star", 17,
+                               color=readable(GOLD2, SURF, SURF2) if pinned else TEXT2)
+        self._star_btn.setToolTip("Pinned to the Combat tab: click to unpin" if pinned
+                                  else "Pin to the Combat tab")
+        self._star_btn.setAccessibleName(("Unpin " if pinned else "Pin ") + self.spell.get("name", "spell"))
 
     def set_class_tag(self, class_name):
         """Show/hide the small class-source badge (e.g. 'SORC', 'LOCK').
@@ -734,6 +763,14 @@ class SpellRow(QFrame):
         self._pinned = not self._pinned
         self.set_pinned(self._pinned)
         self.toggle_quick.emit(self.spell["name"], self._pinned)
+
+    def _sync_cast_btn(self):
+        """Cast is on when the spell can be cast as it stands: prepared, or
+        one that never needs preparing."""
+        ready = self.is_ready()
+        self._cast_btn.setEnabled(ready)
+        self._cast_btn.setToolTip(f"Cast {self.spell.get('name', '')}" if ready
+                                  else "Prepare it first (tick its box)")
 
     def is_prepared(self): return self._prep_cb.isChecked()
     def set_prepared(self, v): self._prep_cb.setChecked(v)

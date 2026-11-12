@@ -145,6 +145,19 @@ Page {
                         }
                     }
                     Item { Layout.fillWidth: true }
+                    // Undo for the last Damage or Heal: there from the
+                    // moment one's applied until the hit points change
+                    // some other way (core/hp_undo.py, as desktop's)
+                    MButton {
+                        objectName: "hpUndo"
+                        visible: sheetBridge.hpUndoLabel !== ""
+                        primary: false
+                        implicitHeight: 34
+                        iconName: "undo"
+                        iconSize: 15
+                        text: "Undo"
+                        onClicked: sheetBridge.undoHpChange()
+                    }
                 }
 
                 // HP bar: green while healthy, amber when bloodied, red near 0
@@ -1343,6 +1356,18 @@ Page {
                 text: "Revive"
                 Layout.alignment: Qt.AlignHCenter
                 onClicked: sheetBridge.revive()
+            }
+            // A mistyped number shouldn't cost a character: when it was the
+            // last Damage that did this, it can be undone from here
+            MButton {
+                objectName: "deathUndo"
+                visible: sheetBridge.hpUndoLabel !== ""
+                primary: false
+                iconName: "undo"
+                text: "Undo: " + sheetBridge.hpUndoLabel
+                Layout.alignment: Qt.AlignHCenter
+                Layout.maximumWidth: root.width - 48
+                onClicked: sheetBridge.undoHpChange()
             }
         }
     }

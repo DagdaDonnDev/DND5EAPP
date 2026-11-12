@@ -91,7 +91,9 @@ def copy_saved_characters(src_dir: str, dst_dir: str, move: bool = False) -> int
             continue
         try:
             (shutil.move if move else shutil.copy2)(src, dst)
-            n += 1
+            # (an unsaved-changes backup goes along with its character,
+            # but it isn't one more character)
+            n += 0 if fname.endswith(".autosave.json") else 1
         except OSError:
             continue
     return n
@@ -229,6 +231,89 @@ def load_character(filepath: str) -> dict:
     return migrate_character(data)
 
 
+# ── Unsaved-changes backups ───────────────────────────────────────────────
+# While a character has changes that haven't been saved, the apps keep a
+# backup of it beside its save file ("<file>.autosave.json"): written every
+# minute, and on Android whenever the app is left. A save removes it, and so
+# does choosing to discard the changes. If the app closes any other way -- a
+# crash, a flat battery, Android clearing it out of memory -- the backup is
+# still there next time, newer than the save, and opening the character
+# offers the changes back (pending_backup).
+
+def backup_path(filepath: str) -> str:
+    """Where the backup for the save file at `filepath` goes."""
+    root = filepath[:-5] if filepath.lower().endswith(".json") else filepath
+    return root + ".autosave.json"
+
+
+def write_backup(char: dict, filepath: str) -> bool:
+    """Back up `char` as it is now, beside `filepath` (its save file, or
+    where that will be). The character itself isn't touched: its own
+    "modified" stays that of its last real save. Returns False, raising
+    nothing, if it can't be written -- a backup never gets in the way."""
+    try:
+        if not filepath or not validate_character(char)[0]:
+            return False
+        data = json.loads(character_json(char))
+        data["modified"] = datetime.now().isoformat()
+        target = backup_path(filepath)
+        os.makedirs(os.path.dirname(os.path.abspath(target)), exist_ok=True)
+        # (written whole, then swapped in: a backup cut short mid-write
+        # would be no backup at all)
+        with open(target + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        os.replace(target + ".tmp", target)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def discard_backup(filepath: str) -> None:
+    """Remove the backup for the save at `filepath`, if there is one (it's
+    been saved, or its changes were discarded on purpose)."""
+    if not filepath:
+        return
+    for path in (backup_path(filepath), backup_path(filepath) + ".tmp"):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def backup_when(iso: str, now=None) -> str:
+    """When a backup was made, in words: "today at 14:05", "yesterday at
+    21:30", "3 Nov at 18:10" ("" if it's not known)."""
+    day = played_when(iso, now)
+    if not day:
+        return ""
+    return f"{day} at {datetime.fromisoformat(iso).strftime('%H:%M')}"
+
+
+def pending_backup(filepath: str):
+    """Unsaved changes to offer back for the save at `filepath`, from a
+    session that ended without a save or a discard: {"char": the character
+    as it was then, "when": backup_when()} -- or None. A backup that's no
+    newer than the save, or that can't be read, is cleared away."""
+    path = backup_path(filepath) if filepath else ""
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            backup = json.load(f)
+        saved_at = ""
+        if os.path.exists(filepath):
+            with open(filepath, "r", encoding="utf-8") as f:
+                saved_at = json.load(f).get("modified", "") or ""
+    except (OSError, ValueError):
+        discard_backup(filepath)
+        return None
+    made_at = backup.get("modified", "") if isinstance(backup, dict) else ""
+    if not made_at or made_at <= saved_at or not validate_character(backup, strict=False)[0]:
+        discard_backup(filepath)
+        return None
+    return {"char": migrate_character(backup), "when": backup_when(made_at)}
+
+
 def list_saved_characters(directory: str = None) -> list[dict]:
     """List saved characters in `directory` (default: get_save_dir())."""
     if directory is None:
@@ -249,12 +334,43 @@ def list_saved_characters(directory: str = None) -> list[dict]:
                     "filepath": fpath,
                     "modified": data.get("modified", ""),
                     "folder": data.get("folder", "") or "",
+                    # what a start menu's row shows, so it needn't load the
+                    # whole character to draw it
+                    "race": data.get("species") or data.get("race", "") or "",
+                    "summary": character_summary(data),
+                    "played": played_when(data.get("modified", "")),
                 })
             except Exception:
                 import logging
                 logging.getLogger("dnd_app.save_load").exception(
                     "Failed to read saved character %s", fpath)
     return sorted(results, key=lambda x: x.get("modified", ""), reverse=True)
+
+
+def character_summary(data: dict) -> str:
+    """"Human  |  Bard 5 (College of Lore)  ·  Rogue 2" -- a saved
+    character in a line, for both apps' start menus."""
+    classes = "  \u00b7  ".join(
+        f"{c.get('class', '?')} {c.get('level', 1)}" + (f" ({c['subclass']})" if c.get("subclass") else "")
+        for c in data.get("classes", []) if isinstance(c, dict))
+    race = data.get("species") or data.get("race", "") or ""
+    return f"{race}  |  {classes}" if race and classes else (race or classes)
+
+
+def played_when(iso: str, now=None) -> str:
+    """When a character was last saved, in words: "today", "yesterday",
+    "3 Nov", "3 Nov 2025" ("" if it's not known)."""
+    try:
+        t = datetime.fromisoformat(iso)
+    except (TypeError, ValueError):
+        return ""
+    now = now or datetime.now()
+    days = (now.date() - t.date()).days
+    if days <= 0:
+        return "today"
+    if days == 1:
+        return "yesterday"
+    return f"{t.day} {t.strftime('%b')}" + ("" if t.year == now.year else f" {t.year}")
 
 
 def _norm_name(name: str) -> str:
@@ -316,6 +432,7 @@ def set_character_folder(filepath: str, folder: str) -> None:
 
 
 def delete_character(filepath: str) -> bool:
+    discard_backup(filepath)          # (its unsaved-changes backup goes with it)
     try:
         os.remove(filepath)
         return True

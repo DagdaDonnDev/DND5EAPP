@@ -95,9 +95,9 @@ class GearMixin:
         root.addWidget(money_card)
 
         # ── Two-panel browser: left = owned, right = browser tabs ────────────
-        splitter = QSplitter(Qt.Horizontal)
+        from ...widgets import GripSplitter
+        splitter = GripSplitter(Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
-        splitter.setHandleWidth(6)
 
         # ── LEFT: owned equipment + magic items ───────────────────────────────
         left_w = QWidget(); left_l = QVBoxLayout(left_w)
@@ -113,14 +113,23 @@ class GearMixin:
         # many items were actually in each). The user can now drag to
         # resize either pane, with a default favoring the equipment list
         # since it's typically the larger of the two.
-        left_split = QSplitter(Qt.Vertical)
+        left_split = GripSplitter(Qt.Vertical)
         left_split.setChildrenCollapsible(False)
-        left_split.setHandleWidth(6)
 
         # ── Carried Equipment: QTreeWidget list, matching the browser's style ──
         equip_w = QWidget(); egl = QVBoxLayout(equip_w)
         egl.setContentsMargins(0,0,0,0); egl.setSpacing(6)
-        egl.addWidget(_icons.icon_header("gear", _lbl("CARRIED EQUIPMENT", TEAL2, FS_SMALL, bold=True, wrap=False)))
+        eq_head = QHBoxLayout(); eq_head.setContentsMargins(0, 0, 0, 0); eq_head.setSpacing(8)
+        eq_head.addWidget(_icons.icon_header("gear", _lbl("CARRIED EQUIPMENT", TEAL2, FS_SMALL, bold=True, wrap=False)))
+        eq_head.addStretch(1)
+        add_eq = QPushButton("+ Custom Item")
+        add_eq.setToolTip("Add something that isn't in the Equipment browser")
+        add_eq.setStyleSheet(_btn("", TEAL, variant="cta", text_color=TEAL2, radius=6, font_size=FS_SMALL,
+                                  padding="0px 12px", min_height0=True).styleSheet())
+        add_eq.setFixedHeight(26)
+        add_eq.clicked.connect(self._add_equipment_dialog)
+        eq_head.addWidget(add_eq, 0, Qt.AlignVCenter)
+        egl.addLayout(eq_head)
         self._gear_equip_tree = QTreeWidget()
         # Item | Eq (tick / scroll's Use) | Qty | Wt | Value | view | remove
         self._gear_equip_tree.setHeaderLabels(["Item", "Eq", "Qty", "Wt", "Value", "", ""])
@@ -152,9 +161,6 @@ class GearMixin:
         # a magic item's rarity is a coloured bar on the row's left edge
         self._gear_equip_tree.setItemDelegateForColumn(0, RarityBarDelegate(self._gear_equip_tree))
         egl.addWidget(self._gear_equip_tree, 1)
-        add_eq = pill_btn("+ Custom Item", TEAL)
-        add_eq.clicked.connect(self._add_equipment_dialog)
-        egl.addWidget(add_eq)
         left_split.addWidget(equip_w)
 
         # ── Magic Items / Attunement: same QTreeWidget list style ──────────────
@@ -194,6 +200,11 @@ class GearMixin:
         self._magic_item_rows = []
         left_split.addWidget(mi_w)
         left_split.setSizes([340, 220])
+        self._gear_left_split = left_split
+        self._gear_split_dragged = False
+        left_split.splitterMoved.connect(lambda *_: setattr(self, "_gear_split_dragged", True))
+        # (fitted once the page has its size: when it's opened, and as the lists change)
+        self._tabs.currentChanged.connect(lambda _i: QTimer.singleShot(0, self._fit_gear_split))
         left_l.addWidget(left_split, 1)
         splitter.addWidget(left_w)
 
@@ -242,13 +253,19 @@ class GearMixin:
             f"QTreeWidget::item{{padding:4px 2px;font-size:{FS_BODY}px;color:{TEXT};}}"
             f"QTreeWidget::item:selected{{background:{TEAL};color:#0a0d12;font-weight:700;}}"
             f"QTreeWidget::item:selected:!active{{background:{TEAL};color:#0a0d12;}}")
-        # Name takes the spare width; the rest are just wide enough
+        # Name takes the spare width (the panel's default width leaves it
+        # room for the names in full); Damage / AC has room for a weapon's
+        # line, weight and cost are as wide as what's in them, and nothing
+        # is pushed off the side
         md_hdr = self._md_list.header()
         md_hdr.setStretchLastSection(False)
         md_hdr.setSectionResizeMode(0, QHeaderView.Stretch)
-        for col, w in [(1, 120), (2, 104)]:
-            md_hdr.setSectionResizeMode(col, QHeaderView.Interactive)
-            self._md_list.setColumnWidth(col, w)
+        md_hdr.setSectionResizeMode(1, QHeaderView.Interactive)
+        self._md_list.setColumnWidth(1, 120)
+        md_hdr.setSectionResizeMode(2, QHeaderView.Interactive)
+        self._md_list.setColumnWidth(2, 138)      # "1d8 bludgeoning"; a long armour line shortens
+        self._md_list.setIndentation(14)
+        self._md_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         # weight and cost: as wide as what's in them, never cut short
         for col in (3, 4):
             md_hdr.setSectionResizeMode(col, QHeaderView.ResizeToContents)
@@ -335,9 +352,9 @@ class GearMixin:
         splitter.addWidget(right_tabs)
         # what you carry gets two thirds of the width, the browser one third
         # (still draggable)
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([640, 320])
+        splitter.setStretchFactor(0, 5)
+        splitter.setStretchFactor(1, 4)
+        splitter.setSizes([560, 440])
         root.addWidget(splitter,1)
 
         # Connect filters
@@ -865,8 +882,28 @@ class GearMixin:
         box.setText(html or f"<b>{name}</b>")
         box.exec()
 
+    def _fit_gear_split(self):
+        """The carried list and the magic items share the height by what's
+        in them: the magic items get the rows they have (three at least,
+        45% of the height at most) and the carried list the rest -- until
+        the divider between them has been dragged."""
+        sp = getattr(self, "_gear_left_split", None)
+        if sp is None or getattr(self, "_gear_split_dragged", False):
+            return
+        total = sum(sp.sizes())
+        if total <= 0:
+            return
+        tree = self._magic_items_tree
+        rows = max(3, tree.topLevelItemCount())
+        row_h = tree.sizeHintForRow(0) if tree.topLevelItemCount() else 0
+        row_h = row_h if row_h > 0 else 26
+        want = tree.header().height() + rows * row_h + 44     # (its title above it, the frame)
+        mine = int(min(want, total * 0.45))
+        sp.setSizes([total - mine, mine])
+
     def _refresh_magic_items(self):
         from PySide6.QtGui import QColor
+        QTimer.singleShot(0, self._fit_gear_split)     # (once the list below is rebuilt)
         art_lvl_for_max = class_levels(self.char).get("Artificer", 0)
         att_max_display = 6 if art_lvl_for_max >= 18 else 5 if art_lvl_for_max >= 14 else 4 if art_lvl_for_max >= 10 else 3
         if "Mystic Conflux" in self.char.get("feats", []):

@@ -444,8 +444,14 @@ class SpellsMixin:
         # ── My Spells tab ─────────────────────────────────────────────────────
         my_spells_w = QWidget(); mst_lay = QVBoxLayout(my_spells_w)
         mst_lay.setContentsMargins(8,8,8,8); mst_lay.setSpacing(6)
-        mst_lay.addWidget(_lbl("MY SPELLS  [ ✓ = Prepared  |  ★ = Quick  |  right-click = Cast ]",
-                               GOLD, FS_SMALL, bold=True))
+        # what the row's marks mean, for this character (the ✓ only for a
+        # class that prepares spells)
+        _prepares = bool({c.get("class") for c in self.char.get("classes", [])}
+                         & {"Wizard", "Cleric", "Druid", "Paladin", "Artificer"})
+        self._my_spells_legend = _lbl(
+            "MY SPELLS   " + ("✓ prepared  ·  " if _prepares else "")
+            + "★ pinned to the Combat tab  ·  right-click a spell for more", GOLD, FS_SMALL, bold=True)
+        mst_lay.addWidget(self._my_spells_legend)
         # Filter box: live-search your known/prepared spells by name
         self._my_sp_filter = QLineEdit()
         self._my_sp_filter.setPlaceholderText("Filter my spells…")

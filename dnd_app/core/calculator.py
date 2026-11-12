@@ -750,6 +750,40 @@ def get_passive_skill(char: dict, skill: str) -> int:
     return 10 + get_skill_bonus(char, skill) + _passive_skill_adjustment(char, skill)
 
 
+def derived_stats(char: dict) -> list:
+    """The at-a-glance numbers that sit with the ability scores, the same
+    on both apps (desktop's Derived Stats boxes, Android's At a Glance
+    card): [{"label", "value"}] -- proficiency bonus, initiative, speed,
+    senses, the three passive scores, attacks per Attack action, carrying
+    capacity, and a Monk's Martial Arts die or a Barbarian's Rage Damage
+    when they have one."""
+    from .character import class_levels, subclasses
+    from .multiclass import get_extra_attacks
+
+    def sign(n):
+        return f"+{n}" if n >= 0 else str(n)
+    senses = get_character_senses(char)
+    senses_text = ", ".join(f"{k.title()} {v} ft" for k, v in senses.items() if v > 0) or "\u2014"
+    if char.get("_devils_sight", False):
+        senses_text += " (Devil's Sight: darkvision works through magical darkness too)"
+    out = [
+        {"label": "Proficiency Bonus", "value": sign(get_prof_bonus(char))},
+        {"label": "Initiative", "value": sign(get_initiative(char))},
+        {"label": "Speed", "value": f"{get_effective_speed(char)['walk']} ft"},
+        {"label": "Senses", "value": senses_text},
+        {"label": "Passive Perception", "value": str(get_passive_perception(char))},
+        {"label": "Passive Investigation", "value": str(get_passive_investigation(char))},
+        {"label": "Passive Insight", "value": str(get_passive_insight(char))},
+        # (the total with one Attack action: 1 without Extra Attack)
+        {"label": "Attacks per Action", "value": str(get_extra_attacks(class_levels(char), subclasses(char), char))},
+        {"label": "Carry Capacity", "value": f"{get_carry_capacity(char)} lb"},
+    ]
+    for label, value in (("Martial Arts", get_martial_arts_die(char)), ("Rage Damage", get_rage_damage(char))):
+        if value != "\u2014":
+            out.append({"label": label, "value": value})
+    return out
+
+
 def get_ac(char: dict) -> int:
     """Calculate AC based on armor worn and relevant abilities,
     plus any active spell effects (Haste, Shield of Faith, Barkskin…).

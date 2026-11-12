@@ -181,7 +181,6 @@ class CombatMixin:
         you_died = _lbl("YOU DIED", "#c00000", 72, bold=True, align=Qt.AlignCenter)
         you_died.setStyleSheet(
             "color:#c00000;font-size:72px;font-weight:900;letter-spacing:12px;"
-            "text-shadow:0 0 40px #88ff0000;"
             "font-family:'Georgia','Times New Roman',serif;"
         )
         vl.addWidget(you_died)
@@ -209,6 +208,8 @@ class CombatMixin:
             overlay.deleteLater()
             if hasattr(self, "_toast_lbl"):
                 self._toast_lbl.hide()
+            from dnd_app.core.hp_undo import clear_hp_undo
+            clear_hp_undo(self.char)             # (revived: that damage stands)
             revive(self.char)                    # 1 HP, saves and exhaustion cleared
             self._hp_current_hp.setValue(1)
             if hasattr(self, "_exh_combo"):
@@ -220,6 +221,26 @@ class CombatMixin:
             self._mark_dirty()
         revive_btn.clicked.connect(_revive)
         vl.addWidget(revive_btn, alignment=Qt.AlignCenter)
+        # A mistyped number shouldn't cost a character: when it was the last
+        # Damage that did this, it can be undone from here (core/hp_undo.py)
+        from dnd_app.core.hp_undo import hp_undo_label
+        slip = hp_undo_label(self.char)
+        if slip:
+            undo_btn = QPushButton(f"Undo: {slip}")
+            undo_btn.setObjectName("deathUndo")
+            undo_btn.setCursor(Qt.PointingHandCursor)
+            undo_btn.setToolTip("Put your hit points back as they were before that damage")
+            undo_btn.setStyleSheet(
+                f"QPushButton{{background:transparent;border:1px solid #6b5a5a;border-radius:8px;"
+                f"color:#e6d3d3;font-size:{FS_BODY}px;font-weight:600;padding:8px 18px;}}"
+                f"QPushButton:hover{{border-color:#e6d3d3;color:white;}}")
+
+            def _undo():
+                if hasattr(self, "_toast_lbl"):
+                    self._toast_lbl.hide()
+                self._undo_hp()
+            undo_btn.clicked.connect(_undo)
+            vl.addWidget(undo_btn, alignment=Qt.AlignCenter)
         vl.addStretch(3)
         overlay.show()
 
@@ -462,6 +483,8 @@ class CombatMixin:
         self._toast(msg)
         if not ok:
             return
+        from dnd_app.core.hp_undo import clear_hp_undo
+        clear_hp_undo(self.char)        # (another form: the last Damage or Heal stands)
         self._wildshape_shown()
 
     def _wildshape_shown(self):
@@ -515,6 +538,8 @@ class CombatMixin:
         # how long you stay shapeshifted.
         self.char["_wildshape_active"] = None
         self.char.pop("_wildshape_hp", None)
+        from dnd_app.core.hp_undo import clear_hp_undo
+        clear_hp_undo(self.char)        # (back in your own form: the last Damage or Heal stands)
         fx = self.char.get("active_effects", [])
         if "Wild Shape" in fx:
             fx.remove("Wild Shape")
@@ -540,11 +565,9 @@ class CombatMixin:
         tab = QWidget()
         root_lay = QVBoxLayout(tab); root_lay.setContentsMargins(10,10,10,10); root_lay.setSpacing(8)
 
-        splitter = QSplitter(Qt.Vertical)
+        from ...widgets import GripSplitter
+        splitter = GripSplitter(Qt.Vertical)     # (a small grip between the cards and the actions)
         splitter.setChildrenCollapsible(False)
-        splitter.setStyleSheet(f"QSplitter::handle{{background:{qa(AMBER,0x33)};height:4px;"
-                              f"border-radius:2px;margin:2px 40%;}}"
-                              f"QSplitter::handle:hover{{background:{AMBER};}}")
 
         top_half = QWidget()
         top_half_lay = QVBoxLayout(top_half); top_half_lay.setContentsMargins(0,0,0,0); top_half_lay.setSpacing(8)
@@ -577,6 +600,21 @@ class CombatMixin:
         reset_max.clicked.connect(self._reset_max_hp_override)
         title_row.addWidget(reset_max)
         title_row.addStretch()
+        # Undo for the last Damage or Heal (core/hp_undo.py): it's there
+        # from the moment one's applied until the hit points change some
+        # other way. Its tooltip says what it undoes.
+        self._hp_undo_btn = QPushButton(" Undo")
+        self._hp_undo_btn.setObjectName("hpUndo")
+        _icons.set_button_icon(self._hp_undo_btn, "undo", 13, color=TEXT2)
+        self._hp_undo_btn.setCursor(Qt.PointingHandCursor)
+        self._hp_undo_btn.setStyleSheet(
+            f"QPushButton{{background:{SURF2};border:1px solid {BORDER2};border-radius:6px;"
+            f"color:{TEXT2};font-size:{FS_TINY}px;font-weight:700;padding:0px 7px;"
+            f"min-height:18px;max-height:18px;}}"
+            f"QPushButton:hover{{color:{TEXT};border-color:{INDIGO};}}")
+        self._hp_undo_btn.setVisible(False)
+        self._hp_undo_btn.clicked.connect(self._undo_hp)
+        title_row.addWidget(self._hp_undo_btn)
         hpcl.addLayout(title_row)
 
         hp_grid = QGridLayout(); hp_grid.setHorizontalSpacing(8); hp_grid.setVerticalSpacing(3)
@@ -1103,6 +1141,8 @@ class CombatMixin:
         amt = self._hp_amt.value()
         if amt <= 0:
             return
+        from dnd_app.core.hp_undo import hp_state, remember_hp_change, clear_hp_undo
+        before = hp_state(self.char)
         if self.char.get("_wildshape_active"):
             # Wild Shape (PHB p.66): the beast's hit points take the hit.
             # Reaching 0 reverts you to your normal form, and the damage
@@ -1113,16 +1153,24 @@ class CombatMixin:
                 self._wildshape_revert()
                 lead = (f"Beast form dropped to 0 HP — reverted to normal form, "
                         f"{excess} excess damage carried over")
-                self._after_damage(take_damage(self.char, excess), lead)
+                res = take_damage(self.char, excess)
+                clear_hp_undo(self.char)      # (a change of form isn't one to undo)
+                self._after_damage(res, lead)
                 return
-            self._hp_current_hp.setValue(cur - amt)
             self.char["_wildshape_hp"] = cur - amt
+            remember_hp_change(self.char, before, f"{amt} damage to your beast form")
+            self._hp_current_hp.blockSignals(True)
+            self._hp_current_hp.setValue(cur - amt)
+            self._hp_current_hp.blockSignals(False)
+            self._update_hp_bar()
             self._mark_dirty()
             self._toast(f"Beast form took {amt} damage")
             if self.char.get("concentration", {}).get("spell"):
                 self._concentration_save_prompt(max(10, amt // 2))
             return
-        self._after_damage(take_damage(self.char, amt))
+        res = take_damage(self.char, amt)
+        remember_hp_change(self.char, before, f"{amt} damage")
+        self._after_damage(res)
 
     def _after_damage(self, res: dict, lead: str = ""):
         """Show what take_damage() did: the HP boxes, one toast, the death
@@ -1169,12 +1217,18 @@ class CombatMixin:
         amt = self._hp_amt.value()
         cur = self._hp_current_hp.value()
         wild = self.char.get("_wildshape_active")
+        from dnd_app.core.hp_undo import hp_state, remember_hp_change
+        before = hp_state(self.char)
         if wild:
             from dnd_app.data.statblocks import WILDSHAPE_BEASTS
             beast_max = WILDSHAPE_BEASTS.get(wild, {}).get("hp", cur)
             new_hp = min(beast_max, cur + amt)
-            self._hp_current_hp.setValue(new_hp)
             self.char["_wildshape_hp"] = new_hp
+            remember_hp_change(self.char, before, f"{amt} healing to your beast form")
+            self._hp_current_hp.blockSignals(True)
+            self._hp_current_hp.setValue(new_hp)
+            self._hp_current_hp.blockSignals(False)
+            self._update_hp_bar()
             self._mark_dirty()
             return
         # The dead need Revive, not a potion. Otherwise core/dying.py's
@@ -1184,10 +1238,45 @@ class CombatMixin:
             self._toast(why.replace(" -- ", " — "))
             return
         note = heal(self.char, amt)
+        remember_hp_change(self.char, before, f"{amt} healing")
         self.ctrl.update("current_hp", self.char["current_hp"], rebuild_char=False)
         self._mark_dirty()
         if note:
             self._toast(note)
+
+    def _sync_hp_undo(self):
+        """The HP card's Undo: there while the last Damage or Heal can
+        still be undone (core/hp_undo.py), saying which in its tooltip."""
+        btn = getattr(self, "_hp_undo_btn", None)
+        if btn is None:
+            return
+        from dnd_app.core.hp_undo import hp_undo_label
+        label = hp_undo_label(self.char)
+        btn.setVisible(bool(label))
+        btn.setToolTip(f"Undo: {label}" if label else "")
+        btn.setAccessibleName(f"Undo {label}" if label else "Undo")
+
+    def _undo_hp(self):
+        """Undo pressed (on the HP card, or the death screen): the hit
+        points, temp HP, death saves -- and life -- as they were before the
+        last Damage or Heal."""
+        from dnd_app.core.hp_undo import undo_hp_change
+        was_dead = bool(self.char.get("is_dead"))
+        said = undo_hp_change(self.char)
+        if not said:
+            self._sync_hp_undo()
+            return
+        if was_dead and not self.char.get("is_dead"):
+            for ov in self.findChildren(QFrame, "death_overlay"):
+                ov.setParent(None); ov.deleteLater()
+        # every HP box, the bar, the death saves and what concentration
+        # carries follow the character
+        self.ctrl.refresh()
+        self._refresh_concentration()
+        self._refresh_death_and_conditions()
+        self._update_hp_bar()
+        self._mark_dirty()
+        self._toast(said)
 
     # ═══ Turn tracker ══════════════════════════════════════════════════════
     def _turn_limit(self, bucket: str) -> int:
@@ -1686,6 +1775,7 @@ class CombatMixin:
         if not hasattr(self, "_hp_max_hp"): return
         self.health_changed.emit(self._hp_current_hp.value(), self._hp_max_hp.value(),
                                  self._hp_temp_hp.value(), bool(self.char.get("_wildshape_active")))
+        self._sync_hp_undo()
 
     # ── Toast notifications (non-blocking) ────────────────────────────────────
     def _spend_hit_die(self, die_key: str):

@@ -1051,7 +1051,11 @@ class LevelUpPanel(QWidget):
         from dnd_app.data.phb2024.classes_2024 import CLASS_DICT_2024
         while self._features_lay.count():
             item = self._features_lay.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
+            old_row = item.widget()
+            if old_row is not None:
+                # (detached now: until it's deleted, an old row would show under the new ones)
+                old_row.setParent(None)
+                old_row.deleteLater()
         edition = self.char.get("edition", "2014")
         D = CLASS_DICT_2024 if edition == "2024" else CLASS_DICT
         classes = self.char.get("classes", [])

@@ -560,6 +560,15 @@ class CharacterSheetBridge(QObject):
     def passivePerception(self):
         return get_passive_perception(self.char)
 
+    @Property(list, notify=statsChanged)
+    def derivedStats(self):
+        """The at-a-glance numbers under the ability scores ([{label,
+        value}]: proficiency bonus, speed, senses, the passive scores,
+        carrying capacity...) -- core/calculator.py derived_stats, the
+        same as desktop's Derived Stats boxes."""
+        from dnd_app.core.calculator import derived_stats
+        return derived_stats(self.char)
+
     # ── Skills ───────────────────────────────────────────────────────
     @Property(list, notify=statsChanged)
     def skills(self):
@@ -1537,6 +1546,9 @@ class CharacterSheetBridge(QObject):
         if amount <= 0:
             return
         char = self.char
+        # (what it changes is kept, for Undo: core/hp_undo.py, as desktop)
+        from dnd_app.core.hp_undo import hp_state, remember_hp_change, clear_hp_undo
+        before = hp_state(char)
         beast = self._active_wildshape_beast()
         if beast:
             # Wild Shape (PHB p.66): the beast's hit points take the hit.
@@ -1545,6 +1557,7 @@ class CharacterSheetBridge(QObject):
             cur = char.get("_wildshape_hp", beast["hp"])
             if amount < cur:
                 char["_wildshape_hp"] = cur - amount
+                remember_hp_change(char, before, f"{amount} damage to your beast form")
                 if self.isConcentrating:
                     self._pending_conc_dc = max(10, amount // 2)
                 self.toastRequested.emit(f"Beast form took {amount} damage")
@@ -1552,11 +1565,15 @@ class CharacterSheetBridge(QObject):
                 return
             excess = amount - cur
             self._revert_wildshape()
-            self._show_damage(take_damage(char, excess),
+            res = take_damage(char, excess)
+            clear_hp_undo(char)           # (a change of form isn't one to undo)
+            self._show_damage(res,
                               f"Beast form dropped to 0 HP -- reverted to normal form, "
                               f"{excess} excess damage carried over")
             return
-        self._show_damage(take_damage(char, amount))
+        res = take_damage(char, amount)
+        remember_hp_change(char, before, f"{amount} damage")
+        self._show_damage(res)
 
     def _show_damage(self, res: dict, lead: str = ""):
         """Tell the player what take_damage() did: one toast (the death
@@ -1578,10 +1595,13 @@ class CharacterSheetBridge(QObject):
         if amount <= 0:
             return
         char = self.char
+        from dnd_app.core.hp_undo import hp_state, remember_hp_change
+        before = hp_state(char)
         beast = self._active_wildshape_beast()
         if beast:
             cur = char.get("_wildshape_hp", beast["hp"])
             char["_wildshape_hp"] = min(beast["hp"], cur + amount)
+            remember_hp_change(char, before, f"{amount} healing to your beast form")
             self._changed()
             return
         # The dead need Revive, not a potion. Otherwise core/dying.py's
@@ -1591,8 +1611,31 @@ class CharacterSheetBridge(QObject):
             self.toastRequested.emit(why)
             return
         note = heal(char, amount)
+        remember_hp_change(char, before, f"{amount} healing")
         if note:
             self.toastRequested.emit(note)
+        self._changed()
+
+    # ── Undo for the last Damage or Heal (core/hp_undo.py, as desktop) ──
+    @Property(str, notify=statsChanged)
+    def hpUndoLabel(self):
+        """What Undo would undo ("12 damage"), or "" when there's nothing:
+        none applied yet, or the hit points have changed another way since."""
+        from dnd_app.core.hp_undo import hp_undo_label
+        return hp_undo_label(self.char)
+
+    @Slot()
+    def undoHpChange(self):
+        """Hit points, temp HP, death saves -- and life -- as they were
+        before the last Damage or Heal."""
+        from dnd_app.core.hp_undo import undo_hp_change
+        said = undo_hp_change(self.char)
+        if not said:
+            self._changed()
+            return
+        self._pending_conc_dc = 0         # (the save that damage asked for isn't owed)
+        self.ctrl.refresh()
+        self.toastRequested.emit(said)
         self._changed()
 
     @Slot(int)
@@ -1655,6 +1698,8 @@ class CharacterSheetBridge(QObject):
 
     @Slot()
     def revive(self):
+        from dnd_app.core.hp_undo import clear_hp_undo
+        clear_hp_undo(self.char)         # (revived: that damage stands)
         _revive_char(self.char)          # 1 HP, saves and exhaustion cleared
         self._changed()
 
@@ -1977,6 +2022,8 @@ class CharacterSheetBridge(QObject):
         char = self.char
         char["_wildshape_active"] = None
         char.pop("_wildshape_hp", None)
+        from dnd_app.core.hp_undo import clear_hp_undo
+        clear_hp_undo(char)              # (back in your own form: the last Damage or Heal stands)
         effects = char.get("active_effects", [])
         if "Wild Shape" in effects:
             effects.remove("Wild Shape")
@@ -2033,6 +2080,8 @@ class CharacterSheetBridge(QObject):
         ok, msg = wild_shape_into(self.char, beast_name)
         self.toastRequested.emit(msg)
         if ok:
+            from dnd_app.core.hp_undo import clear_hp_undo
+            clear_hp_undo(self.char)     # (another form: the last Damage or Heal stands)
             self.ctrl.refresh()
             self._changed()
 
@@ -2069,10 +2118,20 @@ class CharacterSheetBridge(QObject):
     def _build_features_sections(self):
         char = self.char
         sections = []
+        from dnd_app.core.features import feature_detail, feature_search_text
 
         def add_section(title, items):
-            if items:
-                sections.append({"title": title, "items": list(items)})
+            if not items:
+                return
+            # rows: each feature with whether there's more to read behind
+            # it (a tap opens it: showFeatureDetail) and what the screen's
+            # "find a feature" box looks through -- core/features.py, the
+            # same as desktop's Features tab
+            rows = []
+            for it in items:
+                tip = feature_detail(char, it)["tip"]
+                rows.append({"text": it, "more": bool(tip), "find": feature_search_text(it, tip, title)})
+            sections.append({"title": title, "items": list(items), "rows": rows})
 
         race = char.get("species") or char.get("race", "")
         if race:
@@ -2084,13 +2143,9 @@ class CharacterSheetBridge(QObject):
                 add_section(f"Race: {race}", race_traits_for(char))
             subrace = char.get("subrace", "")
             if subrace and rdata:
-                for sub_str in rdata.get("subraces", []):
-                    sub_name = sub_str.split("(")[0].strip()
-                    if sub_name == subrace:
-                        inner = sub_str[sub_str.find("(") + 1:sub_str.rfind(")")]
-                        parts = [p.strip() for p in inner.split(";" if ";" in inner else ",") if p.strip()]
-                        add_section(f"Subrace: {subrace}", parts)
-                        break
+                # (less its ability scores and sourcebook tag, as desktop's)
+                from dnd_app.core.features import subrace_traits
+                add_section(f"Subrace: {subrace}", subrace_traits(rdata, subrace))
 
         bg = get_background(char.get("background", ""))
         if bg and bg.get("feature"):
@@ -2201,6 +2256,15 @@ class CharacterSheetBridge(QObject):
     @Property(list, notify=statsChanged)
     def featuresSections(self):
         return self._build_features_sections()
+
+    @Slot(str)
+    def showFeatureDetail(self, item: str):
+        """A feature row tapped: its name and what it does, in the sheet's
+        message dialog (the same text desktop's Features tab opens)."""
+        from dnd_app.core.features import feature_detail
+        d = feature_detail(self.char, item)
+        if d["body"]:
+            self.sheetMessage.emit(d["name"], d["body"].replace("\n", "<br>") if "<" in d["body"] else d["body"])
 
     # ── Wild Magic Surge (Barbarian d8 / Sorcerer d100) ──────────────
     # Pure "roll and show the effect" mechanic -- doesn't mutate the
@@ -3943,6 +4007,8 @@ class CharacterSheetBridge(QObject):
         if not self.hasCharacter:
             return
         char = self.char
+        from dnd_app.core.hp_undo import clear_hp_undo
+        clear_hp_undo(char)              # (after a rest, the last Damage or Heal stands)
         hd_model = char.get("hit_dice", {})
         cur, mx = char.get("current_hp", 0), char.get("max_hp", 0)
         healed = 0
@@ -3990,6 +4056,8 @@ class CharacterSheetBridge(QObject):
             return
         char = self.char
         from dnd_app.core.character import long_rest_block_reason
+        from dnd_app.core.hp_undo import clear_hp_undo
+        clear_hp_undo(char)              # (after a rest, the last Damage or Heal stands)
         if long_rest_block_reason(char):   # backstop -- RestFlowDialog checks first
             return
         char["current_hp"] = char.get("max_hp", 0)
