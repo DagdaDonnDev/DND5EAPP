@@ -2120,17 +2120,24 @@ class CharacterSheetBridge(QObject):
         sections = []
         from dnd_app.core.features import feature_detail, feature_search_text
 
-        def add_section(title, items):
+        def add_section(title, items, cls=""):
             if not items:
                 return
             # rows: each feature with whether there's more to read behind
             # it (a tap opens it: showFeatureDetail) and what the screen's
             # "find a feature" box looks through -- core/features.py, the
             # same as desktop's Features tab
+            # (numbers in place of '+STAT' and 'CHA mod uses/LR' shorthand,
+            # as desktop's rows: core/calculator.py resolve_stat_placeholders)
+            from dnd_app.core.calculator import resolve_stat_placeholders
+            items = [resolve_stat_placeholders(it, char) for it in dict.fromkeys(items)]
             rows = []
             for it in items:
-                tip = feature_detail(char, it)["tip"]
-                rows.append({"text": it, "more": bool(tip), "find": feature_search_text(it, tip, title)})
+                tip = feature_detail(char, it, cls)["tip"]
+                # (cls: the class whose section this is -- a feature name
+                # other classes share reads as this class's own)
+                rows.append({"text": it, "more": bool(tip), "cls": cls,
+                             "find": feature_search_text(it, tip, title)})
             sections.append({"title": title, "items": list(items), "rows": rows})
 
         race = char.get("species") or char.get("race", "")
@@ -2218,7 +2225,7 @@ class CharacterSheetBridge(QObject):
                     feats.append("[Replicated Magic Items]  " + ", ".join(
                         f"{name} (attunement)" if needs_attunement.get(name) else name for name in learned))
 
-            add_section(title, feats)
+            add_section(title, feats, cls=cname)
 
         feat_items = []
         for fname in char.get("feats", []):
@@ -2258,11 +2265,13 @@ class CharacterSheetBridge(QObject):
         return self._build_features_sections()
 
     @Slot(str)
-    def showFeatureDetail(self, item: str):
+    @Slot(str, str)
+    def showFeatureDetail(self, item: str, cls: str = ""):
         """A feature row tapped: its name and what it does, in the sheet's
-        message dialog (the same text desktop's Features tab opens)."""
+        message dialog (the same text desktop's Features tab opens). cls is
+        the class whose section the row is in, if it's a class's."""
         from dnd_app.core.features import feature_detail
-        d = feature_detail(self.char, item)
+        d = feature_detail(self.char, item, cls)
         if d["body"]:
             self.sheetMessage.emit(d["name"], d["body"].replace("\n", "<br>") if "<" in d["body"] else d["body"])
 

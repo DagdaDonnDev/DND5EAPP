@@ -373,7 +373,8 @@ class FeaturesMixin:
                          for f in feats]
 
             if feats:
-                self._add_feature_section(title, color, feats, badge_color=color)
+                # (cls: a feature name other classes share reads as this class's own)
+                self._add_feature_section(title, color, feats, badge_color=color, cls=c.get("class", ""))
 
         # Chosen feats (a DM-granted one has its own section, below)
         feat_items = []
@@ -855,7 +856,7 @@ class FeaturesMixin:
             chunks.append(current)
         return '<br><br>'.join(chunks)
 
-    def _add_feature_section(self, title, color, items, badge_color=None):
+    def _add_feature_section(self, title, color, items, badge_color=None, cls=""):
         from dnd_app.core.features import feature_detail, feature_search_text
         # Resolve '+STAT' placeholders into real numbers for every item —
         # resolve_stat_placeholders() is a no-op on text with no such
@@ -893,7 +894,7 @@ class FeaturesMixin:
             # (No tooltip that just repeats the row: background, race and
             # subrace rows already show their whole text, so a hover only
             # appears when something different was looked up.)
-            det = feature_detail(self.char, item)
+            det = feature_detail(self.char, item, cls)
             tip = det["tip"]
             if tip:
                 tip_formatted = self._break_long_tooltip(tip)

@@ -24,7 +24,7 @@ dialog rather than a toast (the cantrip's damage).
 from dnd_app.core.effects import EFFECT_TABLE
 
 # One spell, two effects: ask which
-_ALIASES = {"Enlarge/Reduce": ("Enlarge", "Reduce")}
+_ALIASES = {"Enlarge/Reduce": ("Enlarge", "Reduce"), "Shield": ("Shield (spell)",)}
 
 
 def _result(ok=True, toast="", ask=None, refresh=False, message=""):
@@ -105,6 +105,9 @@ def cast_effect(char: dict, spell_name: str, level: int = 0, answers=None) -> di
         details["type"] = answers["type"].lower()
     # 5. on it goes
     char.setdefault("effect_details", {})[name] = details
+    # (cast afresh: it's no longer in the last turn of an earlier casting)
+    if name in char.get("_last_turn_effects", []):
+        char["_last_turn_effects"].remove(name)
     fx = char.setdefault("active_effects", [])
     if name not in fx:
         fx.append(name)

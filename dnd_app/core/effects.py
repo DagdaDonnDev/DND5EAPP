@@ -171,7 +171,15 @@ EFFECT_TABLE: dict[str, dict] = {
         "note": "−2 AC & DEX saves, half speed, no reactions, "
                 "action OR bonus action (not both).",
     },
+    "Blade Ward": {
+        # (New Turn keeps it through your next turn, then ends it:
+        # core/action_use.py NEXT_TURN_EFFECTS)
+        "caster": True, "duration_category": "short",
+        "note": "Until the end of your next turn: resistance to bludgeoning, piercing and "
+                "slashing damage dealt by weapon attacks.",
+    },
     "Shield (spell)": {
+        "caster": True, "duration_category": "short",
         "ac": 5,
         "note": "+5 AC until the start of your next turn; "
                 "immune to Magic Missile.",

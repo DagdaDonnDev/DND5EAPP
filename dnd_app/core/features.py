@@ -15,11 +15,17 @@ _TAG = re.compile(r"<[^>]+>")
 _DASHES = (" – ", " — ", " -- ")
 
 
-def _lookup(name: str) -> str:
+def _lookup(name: str, cls: str = "") -> str:
+    """What's written down for a feature of this name: the class's own
+    text first when the row is one of a class's (several classes share
+    names like "Spellcasting (CHA)"), then the text kept by name alone."""
     if not name:
         return ""
-    from dnd_app.data.feature_tooltips import FEATURE_DESCS
+    from dnd_app.data.feature_tooltips import FEATURE_DESCS, class_feature_desc
     from dnd_app.data.feature_ui_interactions import FEATURE_CONFIG
+    own = class_feature_desc(cls, name)
+    if own:
+        return own
     cfg = FEATURE_CONFIG.get(name) or {}
     return FEATURE_DESCS.get(name) or cfg.get("desc", "") or cfg.get("note", "") or ""
 
@@ -51,8 +57,10 @@ def _own_option_text(char: dict, name: str) -> str:
     return ""
 
 
-def feature_detail(char: dict, item: str) -> dict:
-    """A Features row -> {"tip", "tip_name", "name", "body"}:
+def feature_detail(char: dict, item: str, cls: str = "") -> dict:
+    """A Features row -> {"tip", "tip_name", "name", "body"}. `cls` is the
+    class whose section the row is in ("" for a race's, a feat's...): a
+    feature name several classes share then reads as that class's own.
 
       tip       what was looked up for it ("" if nothing was: the row's
                 own text is then all there is to read)
@@ -95,7 +103,7 @@ def feature_detail(char: dict, item: str) -> dict:
     if not tip:
         for cand in (bold_name, raw, raw_no_paren, raw_no_dash, raw_no_dash_paren,
                      before_colon, after_colon, after_colon_no_paren):
-            tip = _lookup(cand)
+            tip = _lookup(cand, cls)
             if tip:
                 found_as = cand
                 break

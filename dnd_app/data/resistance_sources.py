@@ -87,6 +87,10 @@ DM_REWARD_RESISTANCES = {
 
 # Spells (spells.py) with a real resistance grant — keyed by active_effects name, not feat/DM-reward name.
 SPELL_EFFECT_RESISTANCES = {
+    # (from weapon attacks only: the source says so)
+    "Blade Ward": [{"kind": "resistance", "target": "bludgeoning", "source": "Blade Ward (weapon attacks)"},
+                   {"kind": "resistance", "target": "piercing", "source": "Blade Ward (weapon attacks)"},
+                   {"kind": "resistance", "target": "slashing", "source": "Blade Ward (weapon attacks)"}],
     "Protection from Poison": [{"kind": "resistance", "target": "poison", "source": "Protection from Poison"}],
     "Gaseous Form": [{"kind": "resistance", "target": "nonmagical", "source": "Gaseous Form"}],
     "Invulnerability": [{"kind": "immunity", "target": "all", "source": "Invulnerability"}],

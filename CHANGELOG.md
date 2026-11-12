@@ -133,6 +133,8 @@ your last character is one button away when you open the app.
   there's something unsaved.
 - A class's row of chosen options on the Features page (Metamagic,
   invocations, infusions…) opens to what each one does.
+- Uses that depend on an ability show your number, then the rule:
+  "Bardic Inspiration (d6, 3/Long Rest (CHA/LR))".
 - The Features page's group headings are larger, so the groups are easier
   to tell apart.
 
@@ -168,6 +170,13 @@ your last character is one button away when you open the app.
   Artificer gained the Infusions tab.
 - Fixed the "Extra Attacks" box showing 1 for a character with none: it's
   the number of attacks with one Attack action, and is now labelled so.
+- Fixed a Bard's and a Sorcerer's Spellcasting feature showing the
+  Paladin's text, and a Druid's and a Ranger's showing the Cleric's. Each
+  class has its own now.
+- Fixed Blade Ward doing nothing on the sheet: casting it (or an earth
+  genasi's Merge with Stone) gives resistance to bludgeoning, piercing and
+  slashing through your next turn. Shield now adds its +5 AC until your
+  next turn too.
 
 ---
 

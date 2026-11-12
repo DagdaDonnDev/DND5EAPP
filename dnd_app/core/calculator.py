@@ -1361,6 +1361,11 @@ def resolve_stat_placeholders(text: str, char: dict) -> str:
     a non-ability shorthand ('+CHA/LR' = "per long rest", not a choice)
     is unaffected by this and resolves as a normal single stat.
 
+    Uses per rest counted by an ability ('CHA mod uses/LR', 'CHA mod/LR',
+    '1+CHA/LR') become the number this character has, then the rule in
+    brackets: '3/Long Rest (CHA/LR)', '4/Long Rest (1+CHA/LR)' -- never
+    fewer than one use.
+
     Shared by the Features tab, Action-tab combat cards, and the level-up
     feature preview so all three read identically instead of only some of
     them resolving the placeholder.
@@ -1369,6 +1374,19 @@ def resolve_stat_placeholders(text: str, char: dict) -> str:
     if not text:
         return text
     _ABIL = "STR|DEX|CON|INT|WIS|CHA"
+
+    # ── Uses per rest by an ability: the number, then the rule ────────────────
+    # (set aside until the end, so the '+STAT' passes below leave the rule
+    # in its brackets alone)
+    kept = []
+    uses_pat = re.compile(rf'(?:(\d+)\s*\+\s*)?\b({_ABIL})(?:\s+mod(?:ifier)?)?(?:\s+uses)?\s*/\s*(LR|SR)\b')
+    def _uses_sub(m):
+        base, abl, rest = int(m.group(1) or 0), m.group(2), m.group(3)
+        n = max(1, base + ability_mod(char, abl))
+        rule = (f"{base}+" if base else "") + abl
+        kept.append(f"{n}/{'Long Rest' if rest == 'LR' else 'Short Rest'} ({rule}/{rest})")
+        return f"\x00{len(kept) - 1}\x00"
+    text = uses_pat.sub(_uses_sub, text)
 
     # ── Multi-ability choice: '+ABC/DEF/GHI' (2 or more) ──────────────────────
     multi_pat = re.compile(rf'\s*\+\s*((?:{_ABIL})(?:/(?:{_ABIL}))+)\b')
@@ -1389,7 +1407,8 @@ def resolve_stat_placeholders(text: str, char: dict) -> str:
         abl = m.group(1)
         mod = ability_mod(char, abl)
         return f" + {mod} ({abl})" if mod >= 0 else f" - {abs(mod)} ({abl})"
-    return pat.sub(_sub, text)
+    text = pat.sub(_sub, text)
+    return re.sub(r"\x00(\d+)\x00", lambda m: kept[int(m.group(1))], text)
 
 
 def get_spell_attack_bonus(char: dict, ability: str = None) -> int:

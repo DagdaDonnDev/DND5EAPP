@@ -144,7 +144,7 @@ Page {
                                 objectName: "featureTap_" + modelData.text
                                 anchors.fill: parent
                                 enabled: modelData.more
-                                onClicked: sheetBridge.showFeatureDetail(modelData.text)
+                                onClicked: sheetBridge.showFeatureDetail(modelData.text, modelData.cls)
                             }
                         }
                     }
