@@ -42,10 +42,15 @@ Flickable {
                       "5e character sheets (*.pdf)", "All files (*)"]
         fileMode: FileDialog.OpenFile
         onAccepted: {
-            if (slBridge.loadCharacterFromUrl(selectedFile.toString())) {
-                Window.window.showLoadedCharacter()
-                saveLoadDialog.close()
-            }
+            // (it opens in place of the character that's open: its unsaved
+            // changes are asked about first)
+            var url = selectedFile.toString()
+            Window.window.leaveCharacterThen(function() {
+                if (slBridge.loadCharacterFromUrl(url)) {
+                    Window.window.showLoadedCharacter()
+                    saveLoadDialog.close()
+                }
+            }, "Open")
         }
     }
 
@@ -726,8 +731,8 @@ Flickable {
                                         Layout.fillWidth: true
                                     }
                                     Label {
-                                        visible: card.modelData.classesText.length > 0
-                                        text: card.modelData.classesText
+                                        visible: card.modelData.summary.length > 0
+                                        text: card.modelData.summary
                                         color: Theme.text2
                                         font.pixelSize: Theme.fsSmall
                                         elide: Text.ElideRight
@@ -739,7 +744,10 @@ Flickable {
                                     implicitWidth: 72
                                     height: 36
                                     text: "Open"
-                                    onClicked: slBridge.loadCharacterFrom(card.modelData.filepath)
+                                    // (asks about this character's unsaved
+                                    // changes first, then straight to the
+                                    // opened one's sheet)
+                                    onClicked: Window.window.requestOpenCharacter(card.modelData.filepath)
                                 }
                                 MButton {
                                     objectName: "moveButton_" + card.modelData.name

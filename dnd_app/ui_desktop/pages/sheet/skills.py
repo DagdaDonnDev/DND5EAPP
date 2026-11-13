@@ -57,6 +57,24 @@ from dnd_app.ui_desktop import icons as _icons
 
 
 class SkillsMixin:
+    def _lay_out_skills(self, cols: int):
+        """The skill rows in one column, or two side by side (read down the
+        first, then the second) when the window has room for both."""
+        if cols == getattr(self, "_skill_cols", 0) or not getattr(self, "_skill_row_order", None):
+            return
+        self._skill_cols = cols
+        grid, order = self._skill_grid, self._skill_row_order
+        for f in order:
+            grid.removeWidget(f)
+        per = -(-len(order) // cols)
+        for i, f in enumerate(order):
+            grid.addWidget(f, i % per, i // per)
+        for c in range(2):
+            grid.setColumnStretch(c, 1 if c < cols else 0)
+        # two columns take more of the page; the proficiencies beside them less
+        self._skills_root.setStretch(0, 2 if cols == 2 else 3)
+        self._skills_root.setStretch(1, 1 if cols == 2 else 2)
+
     def _build_tab_skills(self):
         tab = QScrollArea(); tab.setWidgetResizable(True)
         w = QWidget(); tab.setWidget(w)
@@ -75,23 +93,28 @@ class SkillsMixin:
             lrow.addWidget(_lbl(sym, color, FS_BODY, bold=True, wrap=False))
             lrow.addWidget(_lbl(label, color, FS_SMALL, wrap=False))
             leg.addLayout(lrow)
-        leg.addStretch(); skcl.addLayout(leg)
-
-        reset_row = QHBoxLayout()
-        reset_row.addStretch()
-        reset_skills_btn = QPushButton("↺ Reset Manual Changes")
+        leg.addStretch()
+        # (on the legend's row: it had a row of its own under it)
+        reset_skills_btn = QPushButton("↺ Reset")
         reset_skills_btn.setToolTip(
-            "Clears every skill proficiency and rebuilds them from scratch using only your "
-            "actual grants (class, background, race, feat choices) — undoes any manual clicks "
-            "that don't correspond to a real source.")
+            "Reset manual changes: clears every skill proficiency and rebuilds them from scratch "
+            "using only your actual grants (class, background, race, feat choices) — undoes any "
+            "manual clicks that don't correspond to a real source.")
+        reset_skills_btn.setAccessibleName("Reset manual skill changes")
         reset_skills_btn.setStyleSheet(
             _btn("", CRIMSON, variant="danger", bg_alpha=0x22, border_width=1,
                  text_color=CRIM2, hover_text="white", font_size=FS_SMALL,
-                 padding="5px 12px").styleSheet())
+                 padding="3px 12px").styleSheet())
         reset_skills_btn.clicked.connect(self._reset_manual_skill_changes)
-        reset_row.addWidget(reset_skills_btn)
-        skcl.addLayout(reset_row)
+        leg.addWidget(reset_skills_btn)
+        skcl.addLayout(leg)
         skcl.addWidget(_sep())
+        # The rows: one column in a narrow window, two side by side when
+        # there's room (all eighteen in view, no scrolling) -- _lay_out_skills
+        self._skill_grid = QGridLayout(); self._skill_grid.setSpacing(6)
+        self._skill_grid.setContentsMargins(0, 0, 0, 0)
+        self._skill_row_order = []
+        self._skill_cols = 0
 
         from dnd_app.core.calculator import has_jack_of_all_trades
         _jack = has_jack_of_all_trades(self.char)
@@ -145,10 +168,18 @@ class SkillsMixin:
             rl.addWidget(sym_l); rl.addWidget(val_l); rl.addWidget(name_l); rl.addWidget(ab_l)
             rl.addWidget(roll_btn)
             rl.addStretch(); rl.addWidget(adv_badge)
-            skcl.addWidget(row_f)
+            self._skill_row_order.append(row_f)
             self._skill_rows[skill_name] = (row_f, sym_l, val_l, name_l, adv_badge)
 
-        ll.addWidget(sk_card); root.addWidget(left, 3)
+        skcl.addLayout(self._skill_grid)
+        self._skills_root = root
+        ll.addWidget(sk_card); ll.addStretch(1); root.addWidget(left, 3)
+        self._lay_out_skills(1)
+
+        def _skills_resized(e, tab=tab):
+            QScrollArea.resizeEvent(tab, e)
+            self._lay_out_skills(2 if tab.viewport().width() >= 1160 else 1)
+        tab.resizeEvent = _skills_resized
 
         # Right: languages + proficiencies
         right = QWidget(); rl2 = QVBoxLayout(right); rl2.setSpacing(10)

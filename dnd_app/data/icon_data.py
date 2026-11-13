@@ -531,6 +531,12 @@ ICON_PATHS = {
                    line(10.2, 10, 10.2, 16.5), line(13.8, 10, 13.8, 16.5)),
     "refresh": _join(arc(12, 12, 7.5, 7.5, 200, 330), _arrowhead(12, 12, 7.5, 330),
                      arc(12, 12, 7.5, 7.5, 20, 150), _arrowhead(12, 12, 7.5, 150)),
+    # Undo: an arrow back to the left, its tail curling round from below
+    "undo": _join(poly((9, 5), (5, 9), (9, 13), closed=False), "M 5 9 L 14 9",
+                  arc(14, 14, 5, 5, -90, 90, move=False), "L 9.5 19"),
+    # Rounds left: an hourglass
+    "hourglass": _join(line(6, 4, 18, 4), line(6, 20, 18, 20),
+                       poly((7.5, 4), (16.5, 4), (12, 12), (16.5, 20), (7.5, 20), (12, 12))),
     "home": _join(poly((3.5, 11.5), (12, 4), (20.5, 11.5), closed=False),
                   poly((6, 10), (6, 20), (18, 20), (18, 10), closed=False),
                   poly((10, 20), (10, 15), (14, 15), (14, 20), closed=False)),
@@ -546,6 +552,7 @@ ICON_PATHS = {
                     "M 3.8 5.4 Q 4 6.8 10 12.6 L 10 20.2 L 14 18.2 L 14 12.6 Q 20 6.8 20.2 5.4"),
     "credits": _join(circle(12, 12, 9), arc(12, 12, 4.3, 4.3, 45, 315)),
     "arrow_left": _join(line(19, 12, 5, 12), poly((10.5, 6.5), (5, 12), (10.5, 17.5), closed=False)),
+    "arrow_right": _join(line(5, 12, 19, 12), poly((13.5, 6.5), (19, 12), (13.5, 17.5), closed=False)),
     "arrow_up": _join(line(12, 19.5, 12, 5), poly((6.5, 10.5), (12, 5), (17.5, 10.5), closed=False)),
     "arrow_down": _join(line(12, 4.5, 12, 19), poly((6.5, 13.5), (12, 19), (17.5, 13.5), closed=False)),
     "chevron_right": poly((9, 5.5), (15.5, 12), (9, 18.5), closed=False),

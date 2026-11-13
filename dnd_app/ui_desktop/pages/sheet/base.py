@@ -170,10 +170,14 @@ class BaseSheetMixin:
         QShortcut(QKeySequence("Ctrl+S"), self, self._save)
         QShortcut(QKeySequence("Ctrl+Shift+R"), self, self._long_rest)
         QShortcut(QKeySequence("Ctrl+R"), self, self._short_rest)
-        for i in range(1, 9):   # Ctrl+1..8 → jump to tab
+        for i in range(1, 10):   # Ctrl+1..9 → jump to that tab (each tab's tooltip says its keys)
             QShortcut(QKeySequence(f"Ctrl+{i}"), self,
                       lambda idx=i-1: self._tabs.setCurrentIndex(idx)
                       if idx < self._tabs.count() else None)
+        # Ctrl+F → the search or filter box of the tab that's showing
+        find = QShortcut(QKeySequence.Find, self)
+        find.setContext(Qt.WidgetWithChildrenShortcut)
+        find.activated.connect(self._focus_tab_search)
 
         # A character saved while dead (3 failed death saves, massive
         # damage, or exhaustion 6) and never revived should still show
@@ -189,14 +193,24 @@ class BaseSheetMixin:
         from dnd_app.ui_desktop.immersive import SheetImmersion
         self._immersion = SheetImmersion(self)
 
+    def _backup_target(self) -> str:
+        """The save file this character's unsaved-changes backup sits
+        beside: the one it was opened from, or where a first save will go."""
+        from dnd_app.core.save_load import character_filename
+        return self._save_path or character_filename(self.char)
+
     def _autosave(self):
-        """Silently write a .autosave backup when there are unsaved changes."""
+        """Every minute, while there are unsaved changes: a backup beside
+        the save file (core/save_load.py write_backup). A save or a
+        deliberate discard removes it; if the app closes any other way,
+        opening the character next time offers the changes back."""
         if not getattr(self, "_dirty", False):
             return
         try:
-            from dnd_app.core.save_load import save_character, character_filename
-            base = character_filename(self.char)
-            save_character(self.char, base.replace(".json", ".autosave.json"))
+            from dnd_app.core.save_load import write_backup
+            if hasattr(self, "_collect"):
+                self._collect()
+            write_backup(self.char, self._backup_target())
         except Exception:
             pass  # never let auto-save crash the app
 
@@ -217,9 +231,17 @@ class BaseSheetMixin:
         if hasattr(win, "_show_sheet"):
             char = self.char
             cur_tab_idx = self._tabs.currentIndex()
-            win._show_sheet(char)
+            # The same character on a rebuilt sheet: it keeps the file it
+            # saves to and what's still unsaved. (Rebuilt without them, the
+            # next Save was refused as a name already in use -- its own --
+            # and leaving no longer asked about the changes.)
+            save_path, unsaved = self._save_path, self._dirty
+            win._show_sheet(char, save_path=save_path)
             if win._sheet:
                 win._sheet._tabs.setCurrentIndex(cur_tab_idx)
+                if unsaved:
+                    win._sheet._mark_dirty()
+                    win._sheet._update_title()
                 win._sheet._toast("Refreshed")
         else:
             # Defensive fallback if this widget is ever used without a
@@ -276,7 +298,10 @@ class BaseSheetMixin:
             self._blocking_refresh = False
 
     def _mark_dirty(self):
+        was = self._dirty
         self._dirty = True
+        if not was and hasattr(self, "_name_edit"):
+            self._update_title()        # (the window's title gains its "unsaved" dot)
 
     def _preview_short_rest(self) -> dict:
         """Non-mutating preview of what _short_rest() is about to do,
@@ -388,8 +413,10 @@ class BaseSheetMixin:
         was ticked (`extras`: core's rest_extras -- Song of Rest, temporary
         hit points... -- {key: the number in its box, or True})."""
         from dnd_app.core.calculator import update_all
+        from dnd_app.core.hp_undo import clear_hp_undo
         import random
         char = self.char
+        clear_hp_undo(char)             # (after a rest, the last Damage or Heal stands)
 
         hd_model = char.get("hit_dice", {})
         total_remaining = sum(d.get("remaining", 0) for d in hd_model.values())
@@ -461,7 +488,9 @@ class BaseSheetMixin:
         from dnd_app.core.calculator import update_all
         from dnd_app.core.builder import rebuild
         from dnd_app.core.character import long_rest_block_reason
+        from dnd_app.core.hp_undo import clear_hp_undo
         char = self.char
+        clear_hp_undo(char)             # (after a rest, the last Damage or Heal stands)
         why = long_rest_block_reason(char)   # e.g. at 0 HP (the dialog won't offer it)
         if why:
             QMessageBox.information(self, "Long Rest", f"Can't take a long rest — {why}.")
@@ -745,6 +774,8 @@ class BaseSheetMixin:
         save_character(self.char, path)
         self._save_path = path
         self._dirty = False
+        from dnd_app.core.save_load import discard_backup
+        discard_backup(path)            # (saved: no unsaved changes to keep a backup of)
         self._update_title()
         self._toast(f"Saved to {os.path.basename(path)}")
 
@@ -769,6 +800,8 @@ class BaseSheetMixin:
             return
         self._save_path = path
         self._dirty = False
+        from dnd_app.core.save_load import discard_backup
+        discard_backup(path)
         self._update_title()
 
     def _load_dialog(self):
@@ -858,7 +891,10 @@ class BaseSheetMixin:
 
 
     def confirm_leave(self) -> bool:
-        """Prompt to save before leaving sheet. Returns True if safe to leave."""
+        """Before this character is closed or replaced -- back to the menu,
+        another character opened, a new one started, the window closed --
+        ask about unsaved changes: Save, Discard or Cancel. Returns True if
+        it's fine to go on."""
         if getattr(self, "_confirm_leave_active", False):
             # Already showing (or just resolved) this exact prompt — a
             # second, near-simultaneous call means a signal fired twice
@@ -869,10 +905,11 @@ class BaseSheetMixin:
             self._collect()
             if not self._dirty:
                 return True
+            name = (self.char.get("name") or "").strip() or "this character"
             ans = QMessageBox.question(
                 self,
                 "Unsaved Changes",
-                "Save changes before returning to the menu?",
+                f"Save your changes to {name} first?",
                 QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
                 QMessageBox.Save,
             )
@@ -881,6 +918,11 @@ class BaseSheetMixin:
             if ans == QMessageBox.Save:
                 self._save()
                 return not self._dirty
+            # Discarded on purpose: the backup of those changes goes too,
+            # or they'd be offered back the next time this character opens
+            from dnd_app.core.save_load import discard_backup
+            discard_backup(self._backup_target())
+            self._dirty = False
             return True
         finally:
             self._confirm_leave_active = False
@@ -1051,7 +1093,7 @@ class BaseSheetMixin:
         def _add_tab(page, label, icon):
             idx = self._tabs.addTab(page, label)
             self._tab_names.append((label, _SHORT.get(label, label)))
-            self._tabs.setTabToolTip(idx, label.replace("&&", "&"))   # the full name, if it's shortened
+            self._set_tab_tip(idx, label.replace("&&", "&"))   # the full name (if it's shortened) and its keys
             _icons.set_tab_icon(self._tabs, page, icon)
             return page
         _add_tab(self._build_tab_abilities(),    "Abilities && Saves",      "abilities")
@@ -1167,6 +1209,41 @@ class BaseSheetMixin:
                 # (the item's hint: it keeps to a fixed width, the name's)
                 room -= item.sizeHint().width() + hl.spacing()
         return max(0, room - 24)   # a little air either side
+
+    def _focus_tab_search(self):
+        """Ctrl+F: the cursor goes to the search or filter box of the tab
+        that's showing -- the first one in view (Find a feature, Filter my
+        spells, Search equipment...), its text selected to type over. A
+        tab with none leaves things as they are."""
+        page = self._tabs.currentWidget()
+        if page is None:
+            return
+        for box in page.findChildren(QLineEdit):
+            hint = (box.placeholderText() or "").lower()
+            if (hint.startswith(("search", "filter", "find")) and box.isVisibleTo(page)
+                    and box.isEnabled() and not box.isReadOnly()):
+                box.setFocus(Qt.ShortcutFocusReason)
+                box.selectAll()
+                return
+
+    def _set_tab_tip(self, idx: int, text: str):
+        """A tab's tooltip: what it is, and the keys that jump to it
+        (Ctrl+1 for the first tab, and so on)."""
+        if idx < 0:
+            return
+        from PySide6.QtGui import QKeySequence
+        keys = QKeySequence(f"Ctrl+{idx + 1}").toString(QKeySequence.NativeText) if idx < 9 else ""
+        self._tabs.setTabToolTip(idx, f"{text}  ({keys})" if keys else text)
+
+    def _refresh_tab_tips(self):
+        """Every tab's tooltip again -- the tabs after Infusions move along
+        one when it comes or goes, and so do their keys."""
+        if len(self._tab_names) != self._tabs.count():
+            return
+        for i, (full, _short) in enumerate(self._tab_names):
+            self._set_tab_tip(i, full.replace("&&", "&"))
+        if hasattr(self, "_choices_pulse"):
+            self._update_choices_pulse()      # Choices and Spells say what's waiting
 
     def _fit_tab_names(self):
         """Full tab names when they all fit across the window, the short
@@ -1369,8 +1446,10 @@ class BaseSheetMixin:
         """Sync window title with character name + dirty indicator."""
         name = self.char.get("name","Unnamed")
         dirty = " •" if self._dirty else ""
-        if self.window():
-            self.window().setWindowTitle(f"D&D 5e — {name}{dirty}")
+        win = self.window()
+        # (only the app's own window: a sheet built on its own has none to name)
+        if win is not None and win is not self and hasattr(win, "_show_sheet"):
+            win.setWindowTitle(f"{name}{dirty} — MIMIC")
 
     def _collect(self):
         """Flush current UI state into char dict (name etc.)."""

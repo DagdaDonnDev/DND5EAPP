@@ -24,7 +24,7 @@ dialog rather than a toast (the cantrip's damage).
 from dnd_app.core.effects import EFFECT_TABLE
 
 # One spell, two effects: ask which
-_ALIASES = {"Enlarge/Reduce": ("Enlarge", "Reduce")}
+_ALIASES = {"Enlarge/Reduce": ("Enlarge", "Reduce"), "Shield": ("Shield (spell)",)}
 
 
 def _result(ok=True, toast="", ask=None, refresh=False, message=""):
@@ -105,9 +105,18 @@ def cast_effect(char: dict, spell_name: str, level: int = 0, answers=None) -> di
         details["type"] = answers["type"].lower()
     # 5. on it goes
     char.setdefault("effect_details", {})[name] = details
+    # (cast afresh: it's no longer in the last turn of an earlier casting)
+    if name in char.get("_last_turn_effects", []):
+        char["_last_turn_effects"].remove(name)
     fx = char.setdefault("active_effects", [])
     if name not in fx:
         fx.append(name)
+    # a spell of a minute or less is counted down by New Turn
+    # (core/durations.py); the turn-long ones have their own ending
+    from dnd_app.core.durations import cast_rounds, set_rounds
+    from dnd_app.core.action_use import TURN_EFFECTS, NEXT_TURN_EFFECTS
+    if name not in TURN_EFFECTS and name not in NEXT_TURN_EFFECTS:
+        set_rounds(char, "effect", name, cast_rounds(spell))
     # a smite and the like: what your next hit carries, at the level it
     # was cast ("an extra 2d6 fire" for Searing Smite at 2nd level)
     from dnd_app.core.riders import effect_note

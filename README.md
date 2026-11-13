@@ -13,7 +13,7 @@
 
 <!-- github-only -->
 <p align="center">
-  <img alt="Version 0.3.0" src="https://img.shields.io/badge/version-0.3.0-d4a820?style=for-the-badge">
+  <img alt="Version 6.0.0" src="https://img.shields.io/badge/version-6.0.0-d4a820?style=for-the-badge">
   <img alt="Runs on Windows, macOS, Linux and Android" src="https://img.shields.io/badge/runs%20on-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux%20%C2%B7%20Android-5b7af5?style=for-the-badge">
   <img alt="D&D 5e, 2014 rules" src="https://img.shields.io/badge/rules-D%26D%205e%20(2014)-d44040?style=for-the-badge">
   <img alt="Works offline" src="https://img.shields.io/badge/works-offline-18b28a?style=for-the-badge">
@@ -75,7 +75,7 @@ python dnd_app/run_dnd_creator.py
 - **Android** — `packaging\android\clean_build_android.bat` makes `dist\MIMIC.apk`, ready to copy to your phone
 - **A new computer** — double-click `packaging\setup_new_computer.bat` once first: it installs what both builds need (Python; WSL, Java and the Android tools)
 
-The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Android](packaging/android/README.md) — cover first-time setup. The version, **0.3.0**, is set in one place (`dnd_app/ui_android/buildozer.spec`), and both the APK and the Windows EXE (right-click → Properties → Details) carry it.
+The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Android](packaging/android/README.md) — cover first-time setup. The version, **6.0.0**, is set in one place (`dnd_app/ui_android/buildozer.spec`), and both the APK and the Windows EXE (right-click → Properties → Details) carry it.
 
 ### Troubleshooting
 
@@ -104,14 +104,14 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 
 | Desktop tab | Android screen | What's there |
 |---|---|---|
-| Abilities & Saves | Abilities | Scores, saving throws and passive senses. The dice buttons roll; click a save to mark an extra proficiency |
+| Abilities & Saves | Abilities | Scores, saving throws, and your numbers at a glance: proficiency bonus, speed, senses, passive Perception, Investigation and Insight, attacks per action, carrying capacity. The dice buttons roll; click a save to mark an extra proficiency |
 | Skills & Proficiencies | Proficiencies | Skills (right-click one to set proficiency or expertise), languages, armour, weapon and tool proficiencies, and **DM-granted proficiencies…** |
 | Combat | Combat, Actions | HP and AC, Initiative and Speed, death saves, weapons, conditions and effects, Wild Shape, everything you can do on a turn, and **New Turn** |
 | Gear & Items | Equipment, Companions | Inventory, coins, magic items and attunement, and the Equipment, Magic Items and Companions browsers |
 | Spells | Spells | Slots, Spell Resources (Sorcery Points, Arcane Ward, Bardic Inspiration, Channel Divinity, free casts…), the Spellcasting table, My Spells and the Spell Browser |
 | Infusions | Infusions | Artificers only |
 | Choices | Choices | **Level Up / Multiclass**, **Level Down**, **Remove Class**, your identity, and anything still to pick |
-| Features | Features | Every class, race and feat feature, and the feats and rewards your DM grants |
+| Features | Features | Every class, race and feat feature, with a box to find one and what it does a click (or tap) away, and the feats and rewards your DM grants |
 | Traits & Notes | Notes | Personality, backstory and notes, and the *Imported from PDF* page |
 
 - **The magnifying glass opens the details** of a spell, item or feat, on both apps.
@@ -127,20 +127,23 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 <summary><b>Playing a turn</b></summary>
 
 - **New Turn** gives back your action, bonus action and reaction, ends turn-long effects and resets once-a-turn extras. Until then, a card whose action you've spent is greyed out.
+- **Rounds left:** a spell of a minute or less counts its own rounds once it's cast (Bless, Hold Person, a smite…), and so do Rage and the other one-minute class features. Give any effect or condition a count with its hourglass. Each New Turn takes a round off and ends what has run out, saying so. Longer spells (10 minutes, an hour) last until you end them.
 - **Use** (or **Cast**) on a card spends what it costs — a slot, ki, a use — turns its effect on, and says what it did and what's left. When there's a choice to make, it asks.
 - **Attacking:** a weapon's **Hit** button (**Roll to Hit** on Android) rolls the d20 and says what AC it hits. Under the roll is what you can add to it, each with its cost: Precision Attack, Lucky, Guided Strike, Emboldening Bond… Press **Add** and it's paid for and rolled at once, and the total updates. **If it misses** lists what can turn a miss around: Favored by the Gods, Stroke of Luck, Focused Aim… Below that is what you can add to the hit: Sneak Attack, a smite, a maneuver… The **Attack** action card asks which weapon first. On a critical hit, the dice shown are already doubled.
 - **Damage is your roll.** Every damage line says what to roll and its type; roll it yourself, or open the Dice Roller (Ctrl+D).
 - **The Dice Roller:** pick dice or type them (2d6 + 1d4 + 3, 4d6kh3), add one of your bonuses, take advantage or disadvantage on a d20, and roll. Its **history** keeps every roll the sheet makes too: checks, saves, initiative, attacks (and whether they hit), hit dice and what your actions roll, saved with the character. Click a roll of your own to roll it again.
 - **Advantage and disadvantage are reminders.** Every roll is one d20, with a note of what the sheet knows applies (Reckless Attack, Poisoned, exhaustion…). Roll the second die yourself, since cover, the target and your DM can change it. Advantage you spend something on, like Inspiration, is rolled for you.
 - **Taking damage:** type the amount and press **Damage**. Halve it yourself for a resistance; yours are listed just below. Temporary hit points, concentration saves, Wild Shape hit points and death saves follow on their own.
-- **Buffs from someone else:** when an ally casts Bless, Guidance, Haste and the like on you, add it with **＋ Add** on the Combat tab's **Effects** page (on Android, **Effects on You** on the Combat screen) so its bonuses count. It comes off when its time is up.
+- **Typed the wrong number?** **Undo** on the Hit Points card puts your hit points, temp HP and death saves back as they were before the last Damage or Heal. It's there until your hit points change some other way, and on the YOU DIED screen if that's where the slip left you.
+- **Buffs from someone else:** when an ally casts Bless, Guidance, Haste and the like on you, add it with **＋ Add** on the Combat tab's **Effects** page (on Android, **Effects on You** on the Combat screen) so its bonuses count. Its hourglass counts down the rounds it has left, and it comes off when they run out.
 - **Conditions** go on with **＋ Add** and show up on the rolls they change. Hover one for what it does; right-click it to take it off or read the rules. Exhaustion's level is the six pips under them. On Android, tap a condition to put it on or take it off, and press and hold it for what it does.
 - **Wild Shape:** the Wild Shape card on the Combat tab lists the forms you can take, strongest first. Anything that needs hands asks before going ahead.
 - **Initiative** is on the Combat tab, beside Speed: click it to roll. **Inspiration** is at the top of the desktop sheet.
 - **Before any roll** (check, save, initiative or attack) it asks if there's something to decide first: cast Guidance or Resistance, give yourself advantage (Inspiration, Tides of Chaos, Kenku Recall) or use a Portent roll.
 - **Checks, saves and initiative** roll the same way as an attack. What always applies is already counted (Reliable Talent, Bless on a save, Halfling Lucky, Jack of All Trades…). Then each thing you can still add has an **Add** button and its cost: a superiority die, a Bardic Inspiration, your reaction, a use. Press **Done** when you're finished.
 - **Tools:** each tool you're proficient with and carry has a card on the **Other** tab that rolls a check with it. It asks which ability, since that's your DM's call, with the usual one first. A Thief's **Fast Hands** card can do the same with your bonus action.
-- **Concentration saves** roll themselves on both apps when you take damage. A failed save ends the spell, unless the sheet knows you have advantage on it (War Caster); then your second d20 decides.
+- **Concentration saves:** when you take damage while concentrating, the sheet asks for the save: roll it there, or type in the number on your own d20 and your bonus is added for you. A failed save ends the spell, unless the sheet knows you have advantage on it (War Caster); then your second d20 decides.
+- **Concentration ends on its own** when you can't keep it: incapacitated, paralyzed, petrified, stunned or unconscious (asleep too), raging, or at 0 hit points. The sheet says why it ended.
 
 </details>
 
@@ -199,9 +202,10 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 <summary><b>Saving, sharing and PDFs</b></summary>
 
 - **Characters are saved in `Documents/MIMIC Characters`**, one `.json` file each, with each character's exported sheets in a folder of its own. Settings → Character Folder changes where; on Android it has to be inside Documents or Download.
-- **It saves itself** when you create a character, level up or down, or confirm a choice. For anything else, save with **Ctrl+S** (Android: Save & Export → Save). Leaving with unsaved changes asks first.
-- **A backup, on desktop:** while you have unsaved changes, a copy is written every minute to `<name>.autosave.json`, next to the character's file. If the app ever closes unexpectedly, rename it to `<name>.json` to get your changes back.
+- **It saves itself** when you create a character, level up or down, or confirm a choice. For anything else, save with **Ctrl+S** (Android: Save & Export → Save). Leaving a character with unsaved changes asks first, whichever way you leave: back to the menu, another character opened, a new one started, the window closed.
+- **A backup of what's unsaved:** while you have unsaved changes, a copy is kept next to the character's file (`<name>.autosave.json`): written every minute, and on Android whenever you leave the app. If the app ever closes before you've saved, opening that character offers the changes back. Saving, or choosing to discard, removes the copy.
 - **If something goes wrong**, it's noted in `mimic_error_log.txt`: next to MIMIC.exe on desktop, in the character folder on Android. Send that file along with what you were doing.
+- **The start screen** lists your characters, the last played first. **Continue** opens that one; a search box (by name, class, race or folder) appears once there are more than five. Double-click a row to open it, or tap its card on Android.
 - **Campaign folders:** on the start screen, the folder button on a character moves it into a folder.
 - **Between your phone and your computer**, copy the `.json` file across. Open it with **File → Open…** (Ctrl+O), or **Save & Export → Import…** on Android.
 - **File → Duplicate Character** (Ctrl+Shift+D) makes a copy to try a different build on.
@@ -241,6 +245,8 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 | Ctrl+D | Dice Roller |
 | Ctrl+R | Rest, short rest picked |
 | Ctrl+Shift+R | Rest, long rest picked |
+| Ctrl+1 … Ctrl+9 | Jump to that tab (each tab's tooltip says its keys) |
+| Ctrl+F | The search box of the tab you're on, or the start screen's |
 | Ctrl+, | Settings |
 | Ctrl+Q | Quit |
 

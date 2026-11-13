@@ -49,6 +49,7 @@ from dnd_app.core.save_load import (
     SAVES_SUBDIR, get_save_dir, set_default_save_dir, is_writable_dir,
     character_folder_name, character_export_dir, copy_saved_characters, migrate_saves_once,
     name_in_use, unique_character_name, NAME_IN_USE_MESSAGE,
+    write_backup, discard_backup, pending_backup,
 )
 from dnd_app.core.app_settings import set_custom_save_dir, get_custom_save_dir
 from dnd_app.core.pdf_sheet import export_official_pdf, TEMPLATE_PATH
@@ -170,6 +171,10 @@ class SaveLoadBridge(QObject):
     errorChanged = Signal()
     characterSaved = Signal()
     characterLoaded = Signal()
+    # Opening a save that has unsaved changes backed up beside it, from a
+    # session that ended without a save or a discard: (the character's
+    # name, when the backup was made). The load waits for finishLoad().
+    backupFound = Signal(str, str)
     toastRequested = Signal(str)
 
     def __init__(self, char: dict, parent=None):
@@ -178,24 +183,72 @@ class SaveLoadBridge(QObject):
         self._error = ""
         self._last_saved_path = ""
         self._renamed_on_load = ""
+        self._waiting_load = None       # (path, the save's data, its backup) while backupFound is asked
+        self._restored = False          # the open character is a restored backup: unsaved from the start
         self._clean_snapshot = self._serialize()
         # Saves used to live in the app's private folder -- copied into the
         # shared one once (originals left where they were).
         migrate_saves_once(_private_documents_dir(), "migrated_android_private_saves")
 
     def _serialize(self) -> str:
-        # A full JSON snapshot rather than a per-field "dirty" flag
-        # threaded through every mutating slot across every bridge
-        # (there are dozens, across race/ability/class/equipment
-        # wizards and the sheet itself) -- comparing this against a
-        # fresh snapshot at "has anything changed since the last
-        # load/save" time is the one place that needs to know, and it
-        # can't miss a mutation the way a manually-set flag could.
-        return json.dumps(self.char, sort_keys=True, default=str)
+        # A full snapshot rather than a per-field "dirty" flag threaded
+        # through every mutating slot across every bridge (there are
+        # dozens, across race/ability/class/equipment wizards and the
+        # sheet itself) -- comparing this against a fresh snapshot at "has
+        # anything changed since the last load/save" time is the one place
+        # that needs to know, and it can't miss a mutation the way a
+        # manually-set flag could.
+        #
+        # The snapshot is what a save would write (character_json): the
+        # character without its working values (_grants and the other
+        # underscore keys). Those are recalculated whenever a character is
+        # opened, so counting them made every character "unsaved" the
+        # moment it was on screen -- and leaving always warned about
+        # changes nobody had made.
+        return character_json(self.char)
 
     @Slot(result=bool)
     def hasUnsavedChanges(self) -> bool:
         return self._serialize() != self._clean_snapshot
+
+    @Slot()
+    def settleLoaded(self):
+        """A save has just been opened and shown: whatever the app itself
+        put right on the way in (a theme for a save from before themes, a
+        list put in order) isn't a change the player made, so the
+        "nothing's unsaved" baseline is taken from here. A restored backup
+        keeps the save as its baseline: its changes ARE unsaved."""
+        if not self._restored:
+            self._clean_snapshot = self._serialize()
+
+    # ── Unsaved-changes backups (core/save_load.py, as desktop) ─────────
+    def _backup_target(self) -> str:
+        """The save file this character's backup sits beside: the one it
+        was opened from, or where its first save will go."""
+        if self._last_saved_path:
+            return self._last_saved_path
+        return os.path.join(_documents_dir(), _safe_filename(self.char.get("name", "")) + ".json")
+
+    @Slot(result=bool)
+    def backupIfUnsaved(self) -> bool:
+        """The app's being left, or a minute has passed: with unsaved
+        changes on the open character, keep a backup of it beside its save
+        (Android can clear the app out of memory at any time once it's in
+        the background). With nothing unsaved, no backup is needed -- one
+        left over is removed. Opening the character next time offers a
+        backup back if the save never caught up with it."""
+        if not self._has_character():
+            return False
+        if not self.hasUnsavedChanges():
+            discard_backup(self._backup_target())
+            return False
+        return write_backup(self.char, self._backup_target())
+
+    @Slot()
+    def discardBackup(self):
+        """The changes were discarded on purpose: so is their backup."""
+        if self._has_character():
+            discard_backup(self._backup_target())
 
     @Property(str, notify=savedListChanged)
     def documentsDir(self):
@@ -303,15 +356,20 @@ class SaveLoadBridge(QObject):
     # ── Saved character list ──────────────────────────────────────────
     @Property(list, notify=savedListChanged)
     def savedCharacters(self):
-        """List of {name, classesText, modified, filepath, folder} dicts,
-        newest first (list_saved_characters() already sorts that way)."""
+        """List of {name, summary, played, classesText, modified, filepath,
+        folder} dicts, newest first (list_saved_characters() already sorts
+        that way). summary is the character in a line ("Human  |  Bard 5
+        (College of Lore)") and played is when it was last saved ("today",
+        "3 Nov"), the same as desktop's start menu shows."""
         out = []
         for entry in list_saved_characters(directory=_documents_dir()):
             classes_text = ", ".join(
                 f"{c.get('class','?')} {c.get('level','?')}" for c in entry.get("classes", [])
             )
             out.append({
-                "name": entry.get("name", "Unnamed"),
+                "name": entry.get("name") or "Unnamed",
+                "summary": entry.get("summary", "") or classes_text,
+                "played": entry.get("played", ""),
                 "classesText": classes_text,
                 "modified": entry.get("modified", ""),
                 "filepath": entry.get("filepath", ""),
@@ -416,6 +474,8 @@ class SaveLoadBridge(QObject):
             self._set_error(f"Couldn't save: {e}")
             return False
         self._set_error("")
+        discard_backup(filepath)        # (saved: no unsaved changes to keep a backup of)
+        self._restored = False
         self._clean_snapshot = self._serialize()
         self.characterSaved.emit()
         self.savedListChanged.emit()
@@ -441,8 +501,41 @@ class SaveLoadBridge(QObject):
         except (OSError, ValueError) as e:
             self._set_error(f"Couldn't load: {e}")
             return False
+        # Unsaved changes from a session that ended without a save or a
+        # discard (the app was cleared from memory, or crashed): the load
+        # waits while the player's asked whether to restore them.
+        # finishLoad() goes on from here; False meanwhile, as nothing's
+        # loaded yet.
+        backup = pending_backup(filepath)
+        if backup:
+            self._waiting_load = (filepath, data, backup)
+            self._set_error("")
+            self.backupFound.emit((data.get("name") or "").strip() or "This character", backup["when"])
+            return False
         self._apply_loaded(data, loaded_path=filepath)
         self.toastRequested.emit(self._renamed_on_load or f"Loaded {os.path.basename(filepath)}")
+        return True
+
+    @Slot(bool, result=bool)
+    def finishLoad(self, restore: bool) -> bool:
+        """backupFound's answer. Restore: the character opens as its backup
+        has it, those changes unsaved again (Save keeps them). Otherwise
+        the backup is discarded and the save opens as it stands. Returns
+        True once a character's loaded."""
+        waiting, self._waiting_load = self._waiting_load, None
+        if not waiting:
+            return False
+        filepath, data, backup = waiting
+        if restore:
+            self._apply_loaded(backup["char"], loaded_path=filepath)
+            # (the baseline is the save, so what was restored counts as unsaved)
+            self._restored = True
+            self._clean_snapshot = character_json(data)
+            self.toastRequested.emit("Unsaved changes restored")
+        else:
+            discard_backup(filepath)
+            self._apply_loaded(data, loaded_path=filepath)
+            self.toastRequested.emit(f"Loaded {os.path.basename(filepath)}")
         return True
 
     @Slot(str, result=bool)
@@ -548,6 +641,7 @@ class SaveLoadBridge(QObject):
         # saveCharacter()'s "inside our own folder" check and silently
         # overwrite that other character's file with this one's data.
         self._last_saved_path = loaded_path
+        self._restored = False
         # A fresh "nothing's changed yet" baseline for hasUnsavedChanges()
         # -- otherwise a character freshly loaded (or a brand-new one)
         # would immediately compare as "dirty" against whatever the

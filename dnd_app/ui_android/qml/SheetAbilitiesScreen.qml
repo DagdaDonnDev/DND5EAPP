@@ -112,6 +112,52 @@ Page {
                     }
                 }
             }
+
+            // ── At a glance: what desktop's Derived Stats boxes show ──
+            // (proficiency bonus, speed, senses, the passive scores,
+            // carrying capacity, a class's own die) -- a line each
+            MCard {
+                objectName: "derivedStatsCard"
+                title: "At a Glance"
+                iconName: "passive"
+                bodySpacing: 0
+
+                Repeater {
+                    model: sheetBridge.derivedStats
+                    delegate: ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 0
+                        Rectangle {
+                            visible: index > 0
+                            Layout.fillWidth: true
+                            height: 1
+                            color: Theme.border
+                        }
+                        RowLayout {
+                            objectName: "derivedStat_" + modelData.label
+                            Layout.fillWidth: true
+                            Layout.topMargin: 8
+                            Layout.bottomMargin: 8
+                            spacing: 12
+                            Label {
+                                text: modelData.label
+                                color: Theme.text2
+                                font.pixelSize: Theme.fsSmall
+                                Layout.alignment: Qt.AlignTop
+                            }
+                            Label {
+                                text: modelData.value
+                                color: Theme.text
+                                font.pixelSize: Theme.fsBody
+                                font.bold: true
+                                wrapMode: Text.WordWrap
+                                horizontalAlignment: Text.AlignRight
+                                Layout.fillWidth: true
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

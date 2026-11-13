@@ -181,7 +181,6 @@ class CombatMixin:
         you_died = _lbl("YOU DIED", "#c00000", 72, bold=True, align=Qt.AlignCenter)
         you_died.setStyleSheet(
             "color:#c00000;font-size:72px;font-weight:900;letter-spacing:12px;"
-            "text-shadow:0 0 40px #88ff0000;"
             "font-family:'Georgia','Times New Roman',serif;"
         )
         vl.addWidget(you_died)
@@ -209,6 +208,8 @@ class CombatMixin:
             overlay.deleteLater()
             if hasattr(self, "_toast_lbl"):
                 self._toast_lbl.hide()
+            from dnd_app.core.hp_undo import clear_hp_undo
+            clear_hp_undo(self.char)             # (revived: that damage stands)
             revive(self.char)                    # 1 HP, saves and exhaustion cleared
             self._hp_current_hp.setValue(1)
             if hasattr(self, "_exh_combo"):
@@ -220,6 +221,26 @@ class CombatMixin:
             self._mark_dirty()
         revive_btn.clicked.connect(_revive)
         vl.addWidget(revive_btn, alignment=Qt.AlignCenter)
+        # A mistyped number shouldn't cost a character: when it was the last
+        # Damage that did this, it can be undone from here (core/hp_undo.py)
+        from dnd_app.core.hp_undo import hp_undo_label
+        slip = hp_undo_label(self.char)
+        if slip:
+            undo_btn = QPushButton(f"Undo: {slip}")
+            undo_btn.setObjectName("deathUndo")
+            undo_btn.setCursor(Qt.PointingHandCursor)
+            undo_btn.setToolTip("Put your hit points back as they were before that damage")
+            undo_btn.setStyleSheet(
+                f"QPushButton{{background:transparent;border:1px solid #6b5a5a;border-radius:8px;"
+                f"color:#e6d3d3;font-size:{FS_BODY}px;font-weight:600;padding:8px 18px;}}"
+                f"QPushButton:hover{{border-color:#e6d3d3;color:white;}}")
+
+            def _undo():
+                if hasattr(self, "_toast_lbl"):
+                    self._toast_lbl.hide()
+                self._undo_hp()
+            undo_btn.clicked.connect(_undo)
+            vl.addWidget(undo_btn, alignment=Qt.AlignCenter)
         vl.addStretch(3)
         overlay.show()
 
@@ -238,6 +259,14 @@ class CombatMixin:
         else:
             active.discard(cond)
         self.char["conditions"] = sorted(active)
+        # its old count of rounds goes; one you can't concentrate under
+        # (stunned, unconscious...) ends the spell (core/durations.py)
+        from dnd_app.core.durations import condition_changed
+        said = condition_changed(self.char, cond)
+        if said:
+            self._refresh_concentration()
+            self._refresh_effects_list()
+            self._toast(said)
         self._refresh_active_conditions()
         self._mark_dirty()
         if hasattr(self, "_apply_turn_state"):
@@ -462,6 +491,8 @@ class CombatMixin:
         self._toast(msg)
         if not ok:
             return
+        from dnd_app.core.hp_undo import clear_hp_undo
+        clear_hp_undo(self.char)        # (another form: the last Damage or Heal stands)
         self._wildshape_shown()
 
     def _wildshape_shown(self):
@@ -515,6 +546,8 @@ class CombatMixin:
         # how long you stay shapeshifted.
         self.char["_wildshape_active"] = None
         self.char.pop("_wildshape_hp", None)
+        from dnd_app.core.hp_undo import clear_hp_undo
+        clear_hp_undo(self.char)        # (back in your own form: the last Damage or Heal stands)
         fx = self.char.get("active_effects", [])
         if "Wild Shape" in fx:
             fx.remove("Wild Shape")
@@ -540,11 +573,9 @@ class CombatMixin:
         tab = QWidget()
         root_lay = QVBoxLayout(tab); root_lay.setContentsMargins(10,10,10,10); root_lay.setSpacing(8)
 
-        splitter = QSplitter(Qt.Vertical)
+        from ...widgets import GripSplitter
+        splitter = GripSplitter(Qt.Vertical)     # (a small grip between the cards and the actions)
         splitter.setChildrenCollapsible(False)
-        splitter.setStyleSheet(f"QSplitter::handle{{background:{qa(AMBER,0x33)};height:4px;"
-                              f"border-radius:2px;margin:2px 40%;}}"
-                              f"QSplitter::handle:hover{{background:{AMBER};}}")
 
         top_half = QWidget()
         top_half_lay = QVBoxLayout(top_half); top_half_lay.setContentsMargins(0,0,0,0); top_half_lay.setSpacing(8)
@@ -577,6 +608,21 @@ class CombatMixin:
         reset_max.clicked.connect(self._reset_max_hp_override)
         title_row.addWidget(reset_max)
         title_row.addStretch()
+        # Undo for the last Damage or Heal (core/hp_undo.py): it's there
+        # from the moment one's applied until the hit points change some
+        # other way. Its tooltip says what it undoes.
+        self._hp_undo_btn = QPushButton(" Undo")
+        self._hp_undo_btn.setObjectName("hpUndo")
+        _icons.set_button_icon(self._hp_undo_btn, "undo", 13, color=TEXT2)
+        self._hp_undo_btn.setCursor(Qt.PointingHandCursor)
+        self._hp_undo_btn.setStyleSheet(
+            f"QPushButton{{background:{SURF2};border:1px solid {BORDER2};border-radius:6px;"
+            f"color:{TEXT2};font-size:{FS_TINY}px;font-weight:700;padding:0px 7px;"
+            f"min-height:18px;max-height:18px;}}"
+            f"QPushButton:hover{{color:{TEXT};border-color:{INDIGO};}}")
+        self._hp_undo_btn.setVisible(False)
+        self._hp_undo_btn.clicked.connect(self._undo_hp)
+        title_row.addWidget(self._hp_undo_btn)
         hpcl.addLayout(title_row)
 
         hp_grid = QGridLayout(); hp_grid.setHorizontalSpacing(8); hp_grid.setVerticalSpacing(3)
@@ -1103,6 +1149,8 @@ class CombatMixin:
         amt = self._hp_amt.value()
         if amt <= 0:
             return
+        from dnd_app.core.hp_undo import hp_state, remember_hp_change, clear_hp_undo
+        before = hp_state(self.char)
         if self.char.get("_wildshape_active"):
             # Wild Shape (PHB p.66): the beast's hit points take the hit.
             # Reaching 0 reverts you to your normal form, and the damage
@@ -1113,16 +1161,24 @@ class CombatMixin:
                 self._wildshape_revert()
                 lead = (f"Beast form dropped to 0 HP — reverted to normal form, "
                         f"{excess} excess damage carried over")
-                self._after_damage(take_damage(self.char, excess), lead)
+                res = take_damage(self.char, excess)
+                clear_hp_undo(self.char)      # (a change of form isn't one to undo)
+                self._after_damage(res, lead)
                 return
-            self._hp_current_hp.setValue(cur - amt)
             self.char["_wildshape_hp"] = cur - amt
+            remember_hp_change(self.char, before, f"{amt} damage to your beast form")
+            self._hp_current_hp.blockSignals(True)
+            self._hp_current_hp.setValue(cur - amt)
+            self._hp_current_hp.blockSignals(False)
+            self._update_hp_bar()
             self._mark_dirty()
             self._toast(f"Beast form took {amt} damage")
             if self.char.get("concentration", {}).get("spell"):
                 self._concentration_save_prompt(max(10, amt // 2))
             return
-        self._after_damage(take_damage(self.char, amt))
+        res = take_damage(self.char, amt)
+        remember_hp_change(self.char, before, f"{amt} damage")
+        self._after_damage(res)
 
     def _after_damage(self, res: dict, lead: str = ""):
         """Show what take_damage() did: the HP boxes, one toast, the death
@@ -1153,13 +1209,52 @@ class CombatMixin:
         if not conc_spell:
             return
         from dnd_app.core.calculator import get_saving_throw_bonus
-        self._roll_check({"kind": "concentration", "ability": "CON", "skill": "",
-                          "label": f"Concentration ({conc_spell})", "bonus": get_saving_throw_bonus(self.char, "CON"),
-                          "dc": dc, "spell": conc_spell})
+        what = {"kind": "concentration", "ability": "CON", "skill": "",
+                "label": f"Concentration ({conc_spell})", "bonus": get_saving_throw_bonus(self.char, "CON"),
+                "dc": dc, "spell": conc_spell}
+        # roll it here, or type in the d20 you rolled at the table: your
+        # bonus and everything that applies is added to it the same way
+        own = self._ask_own_roll(
+            "Concentration save",
+            f"You took damage while concentrating on <b>{conc_spell}</b>.<br>"
+            f"Constitution save, DC {dc}, to keep it.")
+        if own:
+            what["d20"] = own
+        self._roll_check(what)
         if not self.char.get("concentration", {}).get("spell"):
             self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
         self._refresh_concentration()
         self._mark_dirty()
+
+    def _ask_own_roll(self, title: str, text: str) -> int:
+        """Roll it here, or use a d20 the player rolled themselves? Returns
+        the number on their die (1-20), or 0 to roll it here (the default,
+        and what closing the question does)."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle(title)
+        lay = QVBoxLayout(dlg); lay.setContentsMargins(18, 16, 18, 14); lay.setSpacing(12)
+        lay.addWidget(_lbl(text, TEXT, FS_BODY, wrap=True))
+        roll = _btn("Roll for me", AMBER, height=34)
+        roll.setObjectName("ownRollRoll")
+        roll.clicked.connect(dlg.reject)
+        lay.addWidget(roll)
+        row = QHBoxLayout(); row.setSpacing(8)
+        row.addWidget(_lbl("I rolled", TEXT2, FS_SMALL))
+        spin = QSpinBox(); spin.setRange(1, 20); spin.setValue(10)
+        spin.setObjectName("ownRollValue")
+        spin.setAccessibleName("The number on your d20")
+        spin.setToolTip("The number on the d20 itself — your bonus is added for you")
+        row.addWidget(spin)
+        row.addWidget(_lbl("on the d20", TEXT2, FS_SMALL))
+        row.addStretch(1)
+        use = _btn("Use my roll", variant="neutral", height=30)
+        use.setObjectName("ownRollUse")
+        use.clicked.connect(dlg.accept)
+        row.addWidget(use)
+        lay.addLayout(row)
+        roll.setDefault(True)
+        roll.setFocus()
+        return spin.value() if dlg.exec() == QDialog.Accepted else 0
 
     def _roll_initiative(self):
         """Roll d20 + initiative bonus — shown as a non-blocking toast."""
@@ -1169,12 +1264,18 @@ class CombatMixin:
         amt = self._hp_amt.value()
         cur = self._hp_current_hp.value()
         wild = self.char.get("_wildshape_active")
+        from dnd_app.core.hp_undo import hp_state, remember_hp_change
+        before = hp_state(self.char)
         if wild:
             from dnd_app.data.statblocks import WILDSHAPE_BEASTS
             beast_max = WILDSHAPE_BEASTS.get(wild, {}).get("hp", cur)
             new_hp = min(beast_max, cur + amt)
-            self._hp_current_hp.setValue(new_hp)
             self.char["_wildshape_hp"] = new_hp
+            remember_hp_change(self.char, before, f"{amt} healing to your beast form")
+            self._hp_current_hp.blockSignals(True)
+            self._hp_current_hp.setValue(new_hp)
+            self._hp_current_hp.blockSignals(False)
+            self._update_hp_bar()
             self._mark_dirty()
             return
         # The dead need Revive, not a potion. Otherwise core/dying.py's
@@ -1184,10 +1285,45 @@ class CombatMixin:
             self._toast(why.replace(" -- ", " — "))
             return
         note = heal(self.char, amt)
+        remember_hp_change(self.char, before, f"{amt} healing")
         self.ctrl.update("current_hp", self.char["current_hp"], rebuild_char=False)
         self._mark_dirty()
         if note:
             self._toast(note)
+
+    def _sync_hp_undo(self):
+        """The HP card's Undo: there while the last Damage or Heal can
+        still be undone (core/hp_undo.py), saying which in its tooltip."""
+        btn = getattr(self, "_hp_undo_btn", None)
+        if btn is None:
+            return
+        from dnd_app.core.hp_undo import hp_undo_label
+        label = hp_undo_label(self.char)
+        btn.setVisible(bool(label))
+        btn.setToolTip(f"Undo: {label}" if label else "")
+        btn.setAccessibleName(f"Undo {label}" if label else "Undo")
+
+    def _undo_hp(self):
+        """Undo pressed (on the HP card, or the death screen): the hit
+        points, temp HP, death saves -- and life -- as they were before the
+        last Damage or Heal."""
+        from dnd_app.core.hp_undo import undo_hp_change
+        was_dead = bool(self.char.get("is_dead"))
+        said = undo_hp_change(self.char)
+        if not said:
+            self._sync_hp_undo()
+            return
+        if was_dead and not self.char.get("is_dead"):
+            for ov in self.findChildren(QFrame, "death_overlay"):
+                ov.setParent(None); ov.deleteLater()
+        # every HP box, the bar, the death saves and what concentration
+        # carries follow the character
+        self.ctrl.refresh()
+        self._refresh_concentration()
+        self._refresh_death_and_conditions()
+        self._update_hp_bar()
+        self._mark_dirty()
+        self._toast(said)
 
     # ═══ Turn tracker ══════════════════════════════════════════════════════
     def _turn_limit(self, bucket: str) -> int:
@@ -1248,6 +1384,24 @@ class CombatMixin:
         if new_turn(self.char):
             self._mark_dirty()
             QTimer.singleShot(0, self.ctrl.refresh)
+        # a round comes off everything that's counted, and what has run out
+        # ends: an effect, a condition, the spell being concentrated on
+        # (core/durations.py)
+        from dnd_app.core.durations import tick
+        counted = bool(self.char.get("durations"))
+        ended = tick(self.char)
+        if counted:
+            for name, cb in getattr(self, "_cond_checks", {}).items():
+                on = name in self.char.get("conditions", [])
+                if cb.isChecked() != on:
+                    cb.blockSignals(True); cb.setChecked(on); cb.blockSignals(False)
+            self._refresh_active_conditions()
+            self._refresh_effects_list()
+            self._refresh_concentration()
+            self._mark_dirty()
+            if ended:
+                self.ctrl.refresh()
+        tail = "".join(f"\n{line}" for line in ended)
         # Surprise lasts until the end of your first turn -- a new turn
         # means it's over.
         if "Surprised" in self.char.get("conditions", []):
@@ -1259,14 +1413,52 @@ class CombatMixin:
             self._mark_dirty()
             self.ctrl.refresh()
             self._apply_turn_state()
-            self._toast("New turn — no longer surprised; action, bonus & reaction ready")
+            self._toast("New turn — no longer surprised; action, bonus & reaction ready" + tail)
             return
         self._apply_turn_state()
         from dnd_app.core.calculator import get_turn_blocks
         if get_turn_blocks(self.char):
-            self._toast("New turn — still incapacitated, no actions or reactions")
+            self._toast("New turn — still incapacitated, no actions or reactions" + tail)
         else:
-            self._toast("New turn — action, bonus & reaction ready")
+            self._toast("New turn — action, bonus & reaction ready" + tail)
+
+    def _rounds_button(self, kind: str, name: str, ink: str):
+        """The hourglass at the end of an effect's or a condition's row: the
+        rounds it has left (blank while it isn't counted). A click sets
+        them; New Turn takes one off and ends it at none (core/durations.py)."""
+        from dnd_app.core.durations import rounds_left, rounds_text
+        left = rounds_left(self.char, kind, name)
+        btn = QToolButton()
+        btn.setObjectName("roundsBtn")
+        btn.setProperty("roundsFor", f"{kind}:{name}")
+        _icons.set_button_icon(btn, "hourglass", 14, color=ink)
+        btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon if left else Qt.ToolButtonIconOnly)
+        btn.setText(str(left) if left else "")
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setAutoRaise(True)
+        btn.setFixedHeight(24)
+        btn.setToolTip((f"{rounds_text(left).capitalize()}. " if left else "Not counted: it lasts until you end it. ")
+                       + "Click to set the rounds it has left — New Turn takes one off, and ends it at none.")
+        btn.setAccessibleName(f"{name}: {rounds_text(left) or 'rounds not counted'}")
+        btn.setStyleSheet(f"QToolButton{{background:transparent;border:none;border-radius:6px;color:{ink};"
+                          f"font-size:{FS_SMALL}px;font-weight:700;padding:0px 4px;}}"
+                          f"QToolButton:hover{{background:{qa(INDIGO, 0x33)};}}")
+        btn.clicked.connect(lambda _=False, k=kind, n=name: QTimer.singleShot(0, self, lambda: self._ask_rounds(k, n)))
+        return btn
+
+    def _ask_rounds(self, kind: str, name: str):
+        """Set the rounds an effect or a condition has left (0: not counted)."""
+        from dnd_app.core.durations import rounds_left, set_rounds
+        left = rounds_left(self.char, kind, name)
+        n, ok = QInputDialog.getInt(
+            self, name, "Rounds left (a minute is 10).\nNew Turn takes one off and ends it at none. "
+                        "0: not counted, it lasts until you end it.", left or 10, 0, 999)
+        if not ok:
+            return
+        set_rounds(self.char, kind, name, n)
+        self._refresh_effects_list()
+        self._refresh_active_conditions()
+        self._mark_dirty()
 
     def _apply_turn_state(self):
         """Grey out Use/Cast buttons in spent buckets; refresh chips."""
@@ -1442,6 +1634,8 @@ class CombatMixin:
         if name in fx:
             fx.remove(name)
             (self.char.get("effect_details") or {}).pop(name, None)
+            from dnd_app.core.durations import forget_ended
+            forget_ended(self.char)
             # Berserker's Frenzy: if Rage ends while frenzied, gain 1
             # level of exhaustion and Frenzy itself ends (it can't outlast
             # the rage it was part of).
@@ -1498,10 +1692,12 @@ class CombatMixin:
             row.setToolTip(f"<b>{name}</b>" + (" (concentration)" if info.get("conc") else "")
                            + f"<br>{note}<br><br><i>Right-click: end it, or read it all</i>")
             row.setAccessibleName(f"{name}: {note}")
+            rl.addWidget(self._rounds_button("effect", name, ink), 0, Qt.AlignVCenter)
 
             def _menu(pos, r=row, n=name, nt=note):
                 m = QMenu(r)
                 m.addAction(f"End {n}", lambda: QTimer.singleShot(0, self, lambda: self._remove_active_effect(n)))
+                m.addAction("Rounds left…", lambda: QTimer.singleShot(0, self, lambda: self._ask_rounds("effect", n)))
                 m.addAction("Details…", lambda: show_details(self, n, details_markdown(nt)))
                 m.exec(r.mapToGlobal(pos))
             row.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -1578,6 +1774,8 @@ class CombatMixin:
             if removable:
                 m.addAction(f"Take {cond} off",
                             lambda c=cond: QTimer.singleShot(0, self, lambda: self._cond_checks[c].setChecked(False)))
+                m.addAction("Rounds left…",
+                            lambda c=cond: QTimer.singleShot(0, self, lambda: self._ask_rounds("condition", c)))
             else:
                 a = m.addAction(f"Goes when {cause} does"); a.setEnabled(False)
             m.addAction("Details…", lambda c=cond: self._show_condition_details(c))
@@ -1596,6 +1794,8 @@ class CombatMixin:
             if icon:
                 rl.addWidget(_icons.icon_label(icon, 16, ink))
             rl.addWidget(_lbl(title, ink, FS_SMALL, bold=True, wrap=False), 1)
+            if removable:
+                rl.addWidget(self._rounds_button("condition", cond, ink), 0, Qt.AlignVCenter)
             summary = CONDITIONS.get(cond, {}).get("summary", "")
             row.setToolTip(f"<b>{cond}</b>" + (f" (from {cause})" if cause else "")
                            + (f"<br>{summary}" if summary else "")
@@ -1635,6 +1835,8 @@ class CombatMixin:
         if not self.char.get("conditions"):
             return
         self.char["conditions"] = []
+        from dnd_app.core.durations import forget_ended
+        forget_ended(self.char)
         for act in self._cond_checks.values():
             act.blockSignals(True); act.setChecked(False); act.blockSignals(False)
         self._refresh_active_conditions()
@@ -1686,6 +1888,7 @@ class CombatMixin:
         if not hasattr(self, "_hp_max_hp"): return
         self.health_changed.emit(self._hp_current_hp.value(), self._hp_max_hp.value(),
                                  self._hp_temp_hp.value(), bool(self.char.get("_wildshape_active")))
+        self._sync_hp_undo()
 
     # ── Toast notifications (non-blocking) ────────────────────────────────────
     def _spend_hit_die(self, die_key: str):
@@ -2175,6 +2378,13 @@ class CombatMixin:
                         self._mark_dirty()
                 else:
                     self.ctrl.update("current_hp", v, rebuild_char=False)
+                    # typed down to 0: you can't concentrate while you're out
+                    from dnd_app.core.durations import break_concentration
+                    said = break_concentration(self.char)
+                    if said:
+                        self._refresh_concentration()
+                        self._refresh_effects_list()
+                        self._toast(said)
                 self._update_hp_bar()
                 self._refresh_death_and_conditions()
             self._hp_current_hp.valueChanged.connect(_on_current_hp_changed)

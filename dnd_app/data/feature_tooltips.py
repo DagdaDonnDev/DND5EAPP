@@ -324,7 +324,7 @@ FEATURE_DESCS = {
     'Expert Peacemaker': "You can use your reaction to grant a creature within 60 feet advantage on a saving throw it's about to make, and you can use calming words to help end a target's fear or charm condition.",
     'Expertise': "Choose 2 skill proficiencies (or 1 skill + Thieves' Tools). Double your proficiency bonus for those skills.",
     'Explosive Cannon': 'Eldritch Cannon deals +1d8 damage and can explode (action, 3d8 force in 20 ft sphere, DEX save half) on destruction.',
-    'Extra Attack': 'Prerequisite: 6th level. You can attack twice, instead of once, whenever you take the Attack action on your turn.',
+    'Extra Attack': 'You can attack twice, instead of once, whenever you take the Attack action on your turn.',
     'Extra Attack (Bladesinging)': 'You can attack twice, instead of once, whenever you take the Attack action on your turn. Moreover, you can cast one of your cantrips in place of one of those attacks.',
     'Extra Language': 'You can speak, read, and write one extra language of your choice.',
     'Eye for Detail': 'Use a bonus action for Perception check to spot hidden things or Investigation check to uncover clues.',
@@ -1567,7 +1567,7 @@ FEATURE_DESCS.update({'Darkvision 60 ft': "You can see in dim light within 60 fe
     'Spell Resistance': 'Prerequisite: 14th level. Gain advantage on saving throws against spells, and resistance to damage from spells.',
     'Training in War and Song': 'Gain proficiency with light armor and one type of one-handed melee weapon of your choice, plus the Performance skill.',
     'Bladesong': 'As a bonus action while lightly armored/unarmored and wielding a one-handed weapon with a free hand, activate Bladesong for 1 minute: bonus to AC, +10 ft speed, advantage on Acrobatics checks, and extra concentration save bonus. Uses = INT modifier per long rest.',
-    'Extra Attack': 'Prerequisite: 6th level. You can attack twice, instead of once, whenever you take the Attack action on your turn.',
+    'Extra Attack': 'You can attack twice, instead of once, whenever you take the Attack action on your turn.',
     'Song of Defense': "Prerequisite: 10th level. While your Bladesong is active, you can use your reaction to expend a spell slot and reduce damage taken by 5 times the slot's level.",
     'Song of Victory': 'Prerequisite: 14th level. While your Bladesong is active, add your INT modifier to weapon damage rolls.',
     'Chronurgy Savant': 'The gold and time cost to copy a divination or transmutation spell tied to time into your spellbook is halved (DM discretion on qualifying spells).',
@@ -1943,6 +1943,57 @@ FEATURE_DESCS.update({
 })
 
 # ── Tool proficiencies (XGE p.78 audit, full detail) ─────────────────────────
+# ── A feature several classes have under the same name ─────────────────────
+# FEATURE_DESCS (and feature_ui_interactions' FEATURE_CONFIG) are looked up
+# by name alone, so a name more than one class uses -- "Spellcasting (CHA)"
+# is the Bard's, the Sorcerer's and the Paladin's -- gave every one of them
+# whichever class's text was written down. What each class's own says is
+# here, by (class, feature name): core/features.py looks here first.
+CLASS_FEATURE_DESCS = {
+    ("Bard", "Spellcasting (CHA)"):
+        "Charisma is your spellcasting ability. You know a set number of spells from the Bard list "
+        "(four at 1st level, more as you level up), and each time you gain a Bard level you can swap one "
+        "for another. You can cast a Bard spell you know as a ritual if it has the ritual tag, and use a "
+        "musical instrument as your spellcasting focus.",
+    ("Sorcerer", "Spellcasting (CHA)"):
+        "Charisma is your spellcasting ability. You know a set number of spells from the Sorcerer list "
+        "(two at 1st level, more as you level up), and each time you gain a Sorcerer level you can swap one "
+        "for another. You can use an arcane focus as your spellcasting focus.",
+    ("Paladin", "Spellcasting (CHA)"):
+        "Charisma is your spellcasting ability. After each long rest you prepare spells from the Paladin "
+        "list: your Charisma modifier + half your Paladin level (rounded down, at least one). Your oath "
+        "spells are always prepared and don't count against that number. You can use a holy symbol as "
+        "your spellcasting focus.",
+    ("Cleric", "Spellcasting (WIS)"):
+        "Wisdom is your spellcasting ability. After each long rest you prepare spells from the whole Cleric "
+        "list: your Wisdom modifier + your Cleric level (at least one). Your domain spells are always "
+        "prepared and don't count against that number. You can cast a prepared Cleric spell as a ritual if "
+        "it has the ritual tag, and use a holy symbol as your spellcasting focus.",
+    ("Druid", "Spellcasting (WIS)"):
+        "Wisdom is your spellcasting ability. After each long rest you prepare spells from the whole Druid "
+        "list: your Wisdom modifier + your Druid level (at least one). You can cast a prepared Druid spell "
+        "as a ritual if it has the ritual tag, and use a druidic focus as your spellcasting focus.",
+    ("Ranger", "Spellcasting (WIS)"):
+        "Wisdom is your spellcasting ability. You know a set number of spells from the Ranger list (two at "
+        "2nd level, more as you level up), and each time you gain a Ranger level you can swap one for "
+        "another. Rangers have no cantrips.",
+    ("Artificer", "Spellcasting"):
+        "Intelligence is your spellcasting ability. After each long rest you prepare spells from the "
+        "Artificer list: your Intelligence modifier + half your Artificer level (rounded down, at least "
+        "one). You cast through thieves' tools or an artisan's tool you're proficient with, and can cast a "
+        "prepared Artificer spell as a ritual if it has the ritual tag.",
+    ("Blood Hunter", "Pact Magic"):
+        "You cast spells from the Warlock list, with your Hemocraft ability as your spellcasting ability. "
+        "Your spell slots are few and all of the same level, and you regain them on a short or long rest; "
+        "the Profane Soul table gives how many you have, their level, and the cantrips and spells you know.",
+}
+
+
+def class_feature_desc(cls: str, name: str) -> str:
+    """A class's own text for a feature whose name other classes share
+    ("" if it has none of its own)."""
+    return CLASS_FEATURE_DESCS.get((cls, name), "") if cls and name else ""
+
 TOOL_TOOLTIPS = {
     "Alchemist's supplies": "Two glass beakers, a metal frame, a stirring rod, a mortar and pestle, and alchemical ingredients. Arcana: extra insight on checks involving potions and similar materials. Investigation: extra insight into chemicals/substances used in an area. Alchemical Crafting: as part of a long rest, make one dose of acid, alchemist's fire, antitoxin, oil, perfume, or soap (spend gp on raw materials, 1 lb. per 50 gp; subtract half the item's value from materials carried). Sample DCs: puff of smoke 10, identify a poison 10, identify a substance 15, start a fire 15, neutralize acid 20.",
     "Brewer's supplies": "A large glass jug, hops, a siphon, and tubing. History: extra insight on events involving alcohol. Medicine: extra insight treating alcohol poisoning or using alcohol to dull pain. Persuasion: plying someone with drink to soften them up. Potable Water: purify up to 6 gallons of water on a long rest, or 1 gallon on a short rest. Sample DCs: detect poison/impurities in a drink 10, identify alcohol 15, ignore effects of alcohol 20.",

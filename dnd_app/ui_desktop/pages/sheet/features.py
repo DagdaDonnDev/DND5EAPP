@@ -65,12 +65,72 @@ class FeaturesMixin:
     # ── Hit dice / currency event handlers ───────────────────────────────────
 
     def _build_tab_features(self):
+        from PySide6.QtGui import QIcon, QKeySequence
+        page = QWidget()
+        pl = QVBoxLayout(page); pl.setContentsMargins(0, 0, 0, 0); pl.setSpacing(0)
+        # Find a feature: a box over the list, which stays put as the list
+        # scrolls. It looks in each feature's name and in what it does.
+        bar = QWidget(); bar.setStyleSheet("background:transparent;")
+        bl = QHBoxLayout(bar); bl.setContentsMargins(16, 12, 16, 0); bl.setSpacing(12)
+        self._feat_filter = QLineEdit()
+        self._feat_filter.setPlaceholderText("Find a feature\u2026")
+        _icons.set_action_icon(self._feat_filter.addAction(QIcon(), QLineEdit.LeadingPosition), "search")
+        self._feat_filter.setClearButtonEnabled(True)
+        self._feat_filter.setAccessibleName("Find a feature")
+        self._feat_filter.setToolTip("By its name, or anything in what it does.  ("
+                                     + QKeySequence(QKeySequence.Find).toString(QKeySequence.NativeText) + ")")
+        self._feat_filter.setStyleSheet(
+            f"QLineEdit{{background:{SURF2};border:1px solid {BORDER2};border-radius:7px;"
+            f"padding:6px 10px;color:{TEXT};font-size:{FS_BODY}px;}}")
+        self._feat_filter.setMaximumWidth(460)
+        self._feat_filter.textChanged.connect(lambda *_: self._apply_feature_filter())
+        bl.addWidget(self._feat_filter, 1)
+        self._feat_count = _lbl("", TEXT3, FS_SMALL, wrap=False)
+        bl.addWidget(self._feat_count)
+        bl.addStretch(1)
+        hint = _lbl("Click a feature to read what it does", TEXT3, FS_SMALL, wrap=False)
+        bl.addWidget(hint)
+        pl.addWidget(bar)
+        # (Ctrl+F puts the cursor here: the sheet's own shortcut, which
+        # goes to the search box of whichever tab is showing)
+
         tab = QScrollArea(); tab.setWidgetResizable(True)
         w = QWidget(); tab.setWidget(w)
         self._feat_tab_lay = QVBoxLayout(w); self._feat_tab_lay.setContentsMargins(16,16,16,16); self._feat_tab_lay.setSpacing(12)
         self._feat_sections = []   # (groupbox, content_lay)
+        self._feat_rows = []       # (row, its group box, the text it's found by)
+        self._feat_extras = []     # blocks that aren't features (tables, the DM's browser): hidden while filtering
+        self._feat_none = None
         self._feat_tab_lay.addStretch()
-        return tab
+        pl.addWidget(tab, 1)
+        return page
+
+    def _apply_feature_filter(self):
+        """Show the features the box finds -- every word typed, in the
+        feature's name, what it does, or its group's heading -- and hide a
+        group with nothing found. The other blocks on the page (a surge
+        table, the DM's feat browser) step aside while something's typed."""
+        box = getattr(self, "_feat_filter", None)
+        if box is None:
+            return
+        text = box.text()
+        words = text.casefold().split()
+        per_group, shown = {}, 0
+        from dnd_app.core.features import feature_matches
+        for row, grp, hay in self._feat_rows:
+            hit = feature_matches(hay, text)
+            row.setVisible(hit)
+            per_group[grp] = per_group.get(grp, 0) + (1 if hit else 0)
+            shown += 1 if hit else 0
+        for grp, n in per_group.items():
+            grp.setVisible(n > 0)
+        for w in self._feat_extras:
+            w.setVisible(not words)
+        total = len(self._feat_rows)
+        self._feat_count.setText(f"{shown} of {total}" if words else f"{total} feature{'s' if total != 1 else ''}")
+        if self._feat_none is not None:
+            self._feat_none.setText(f"No feature matches \u201c{text.strip()}\u201d." if words and not shown else "")
+            self._feat_none.setVisible(bool(words) and not shown)
 
     @staticmethod
     def _get_subclass_feature_names(cname, subclass_display, D):
@@ -102,7 +162,16 @@ class FeaturesMixin:
         lay = self._feat_tab_lay
         while lay.count():
             item = lay.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
+            old = item.widget()
+            if old is not None:
+                # (detached first: deleteLater alone leaves it drawn, under
+                # the new ones, until the event loop comes round)
+                old.setParent(None); old.deleteLater()
+        self._feat_rows = []
+        self._feat_extras = []
+        self._feat_none = _lbl("", TEXT3, FS_BODY, align=Qt.AlignCenter)
+        self._feat_none.setVisible(False)
+        lay.addWidget(self._feat_none)
         # _add_feature_section() inserts each new section at count()-1, i.e.
         # "just before the last item" — which only produces the intended
         # top-to-bottom order (Race, then Ancestry, then Subrace, then each
@@ -156,50 +225,15 @@ class FeaturesMixin:
                                  f"Resistance: {dmg} damage"],
                                 badge_color=GOLD2)
                     except ImportError: pass
-            # Subrace traits
+            # Subrace traits: its own line in data/races.py, less its ability
+            # scores and sourcebook tag (core/features.py, as Android's)
             subrace = self.char.get("subrace","")
             if subrace and rdata:
-                import re as _re_sub
-                for sub_str in rdata.get("subraces",[]):
-                    sub_name=sub_str.split("(")[0].strip()
-                    if sub_name==subrace:
-                        inner=sub_str[sub_str.find("(")+1:sub_str.rfind(")")]
-                        # Strip leading "+ABC N" ASI clauses (shown elsewhere),
-                        # one at a time, from the front of the string.
-                        asi_pat = _re_sub.compile(r"^\s*[+][A-Z]{3}\s+\d+\s*,?\s*")
-                        remainder = inner
-                        while True:
-                            m = asi_pat.match(remainder)
-                            if not m: break
-                            remainder = remainder[m.end():]
-                        # Some traits (Eladrin's seasonal Fey Step, Shadar-kai's
-                        # Blessing, etc.) contain commas WITHIN a single trait's
-                        # description. A blind comma-split shreds those into
-                        # meaningless fragments. If the remainder contains a
-                        # semicolon, treat semicolons as the trait boundary
-                        # instead (preserving internal commas); otherwise fall
-                        # back to the original comma-split for simple lists.
-                        #
-                        # Also strip a trailing sourcebook tag (", ERLW)",
-                        # ", SCAG)", etc.) — without this it survives the
-                        # comma-split and renders as its own meaningless row
-                        # (e.g. a feature row that just says "ERLW").
-                        _SOURCE_TAGS = {"PHB","XGE","TCE","SCAG","MTOF","FTD","EGW",
-                                        "ERLW","VRGTR","BGG","MOT","DSOTDQ","WBTW","GGR"}
-                        remainder = remainder.strip().rstrip(",").strip()
-                        _last_comma = remainder.rfind(",")
-                        if _last_comma >= 0:
-                            _tail = remainder[_last_comma+1:].strip()
-                            if _tail.upper().replace("/", "") in _SOURCE_TAGS:
-                                remainder = remainder[:_last_comma].strip()
-                        if ";" in remainder:
-                            parts = [p.strip() for p in remainder.split(";") if p.strip()]
-                        else:
-                            parts = [p.strip() for p in remainder.split(",") if p.strip()]
-                        if parts:
-                            self._add_feature_section(
-                                f"Subrace: {subrace}", TEAL, parts, badge_color=TEAL)
-                        break
+                from dnd_app.core.features import subrace_traits
+                parts = subrace_traits(rdata, subrace)
+                if parts:
+                    self._add_feature_section(
+                        f"Subrace: {subrace}", TEAL, parts, badge_color=TEAL)
 
         # Background feature
         bg = get_background(self.char.get("background",""))
@@ -339,7 +373,8 @@ class FeaturesMixin:
                          for f in feats]
 
             if feats:
-                self._add_feature_section(title, color, feats, badge_color=color)
+                # (cls: a feature name other classes share reads as this class's own)
+                self._add_feature_section(title, color, feats, badge_color=color, cls=c.get("class", ""))
 
         # Chosen feats (a DM-granted one has its own section, below)
         feat_items = []
@@ -728,8 +763,10 @@ class FeaturesMixin:
         fb_body.addLayout(fb_right, 1)
         fb_cl.addLayout(fb_body)
         lay.addWidget(fb_card)
+        self._feat_extras.append(fb_card)
 
         lay.addStretch()
+        self._apply_feature_filter()
 
     @staticmethod
     def _inject_ability_modifier(item_str: str, char: dict) -> str:
@@ -819,12 +856,8 @@ class FeaturesMixin:
             chunks.append(current)
         return '<br><br>'.join(chunks)
 
-    def _add_feature_section(self, title, color, items, badge_color=None):
-        from dnd_app.data.feature_ui_interactions import FEATURE_CONFIG
-        try:
-            from dnd_app.data.feature_tooltips import FEATURE_DESCS
-        except ImportError:
-            FEATURE_DESCS = {}
+    def _add_feature_section(self, title, color, items, badge_color=None, cls=""):
+        from dnd_app.core.features import feature_detail, feature_search_text
         # Resolve '+STAT' placeholders into real numbers for every item —
         # resolve_stat_placeholders() is a no-op on text with no such
         # placeholder, so it's safe to call unconditionally. (The old
@@ -834,121 +867,82 @@ class FeaturesMixin:
         items = list(dict.fromkeys(items))   # dedupe (race vs ancestry overlap)
         items = [self._inject_ability_modifier(it, self.char) for it in items]
         grp = QGroupBox(title)
+        # (the heading at the body size: at the small size the groups were
+        # hard to tell apart down a long page. A group box's title takes
+        # the box's own font -- a size given to ::title is ignored.)
         grp.setStyleSheet(
             f"QGroupBox{{background:{SURF};border:1px solid {qa(color,0x55)};border-radius:10px;"
-            f"margin-top:16px;padding:10px 10px 10px 10px;}}"
+            f"margin-top:{FS_BODY + 8}px;padding:12px 10px 10px 10px;"
+            f"font-size:{FS_BODY}px;font-weight:700;}}"
             f"QGroupBox::title{{left:12px;top:0;background:{SURF};color:{color};"
-            f"font-size:{FS_SMALL}px;font-weight:700;letter-spacing:1px;padding:0 6px;}}"
+            f"letter-spacing:1px;padding:0 6px;}}"
         )
         gl = QVBoxLayout(grp); gl.setSpacing(6)
         for item in items:
             row = QFrame()
+            row.setObjectName("featureRow")
             row.setStyleSheet(
-                f"QFrame{{background:{SURF2};border:1px solid {BORDER};border-radius:7px;}}"
-                f"QFrame:hover{{background:{SURF3};border-color:{BORDER2};}}")
-            row.setCursor(Qt.WhatsThisCursor)
+                f"QFrame#featureRow{{background:{SURF2};border:1px solid {BORDER};border-radius:7px;}}"
+                f"QFrame#featureRow:hover{{background:{SURF3};border-color:{BORDER2};}}")
             rl = QHBoxLayout(row); rl.setContentsMargins(10,8,10,8); rl.setSpacing(8)
             feat_lbl = _lbl(item, TEXT, FS_BODY, wrap=True)
             feat_lbl.setMinimumHeight(32)
-            rl.addWidget(feat_lbl)
+            rl.addWidget(feat_lbl, 1)
 
-            # ── Tooltip lookup (multiple strategies) ──────────────────────────
-            _bracket = item.strip()
-            if _bracket.startswith("[") and "]" in _bracket:
-                raw = _bracket[_bracket.index("]")+1:].strip()
-            else:
-                raw = _bracket
-            raw_no_paren = raw.split("(")[0].strip()
-            raw_no_dash = raw.split("\u2014")[0].strip() if "\u2014" in raw else raw
-            raw_no_dash_paren = raw_no_dash.split("(")[0].strip()
-            after_colon = raw.split(":", 1)[1].strip() if ":" in raw else ""
-            after_colon_no_paren = after_colon.split("(")[0].strip() if after_colon else ""
-            # "Chosen Feats" format is "FeatName: special text…" — the name
-            # comes BEFORE the colon here, the opposite of after_colon above
-            # (which is for a different, "Label: Name" style of item).
-            before_colon = raw.split(":", 1)[0].strip() if ":" in raw else ""
-            # DM-Granted Feats (and similar) format as "<b>Name</b>  [source]
-            # <i>Req: ...</i><br>desc…" — the name is wrapped in bold tags
-            # rather than prefixed with a leading bracket, so none of the
-            # candidates above would ever match it without this.
-            bold_name = ""
-            if "<b>" in item and "</b>" in item:
-                bold_name = item.split("<b>",1)[1].split("</b>",1)[0].strip()
-            def _lu(c):
-                if not c: return ""
-                return (FEATURE_DESCS.get(c) or
-                        (FEATURE_CONFIG.get(c) or {}).get("desc","") or
-                        (FEATURE_CONFIG.get(c) or {}).get("note","") or "")
-            tip = ""
-            # Unarmored Defense needs special handling: the generic
-            # FEATURE_DESCS entry describes BOTH the Barbarian and Monk
-            # versions in one sentence (confusing when you only have one
-            # of them), and a bare formula ("10 + DEX + CON") isn't as
-            # useful as showing the character's actual current AC total
-            # first, with the breakdown of what it's made of underneath.
-            if raw_no_paren == "Unarmored Defense":
-                from dnd_app.core.calculator import get_ac, get_ac_breakdown
-                total = get_ac(self.char)
-                parts = [(lbl, val) for lbl, val in get_ac_breakdown(self.char)
-                         if "Unarmored Defense" in lbl or "modifier" in lbl.lower()]
-                if parts:
-                    breakdown_str = " + ".join(f"{v:+d} ({lbl})" if i else f"{v} ({lbl})"
-                                                for i, (lbl, v) in enumerate(parts))
-                    tip = f"Total: AC {total}<br>{breakdown_str}"
-            if not tip:
-                for _cand in [bold_name, raw, raw_no_paren, raw_no_dash, raw_no_dash_paren, before_colon, after_colon, after_colon_no_paren]:
-                    _d = _lu(_cand)
-                    if _d: tip = _d; break
-            if not tip and " + " in (after_colon or raw_no_paren):
-                _src = after_colon if after_colon else raw_no_paren
-                _parts = [p.strip().split("(")[0].strip() for p in _src.split(" + ")]
-                _pds = [f"<b>{p}</b><br>{_lu(p)}" for p in _parts if _lu(p)]
-                if _pds: tip = "<br><br>".join(_pds)
-            # NOTE: intentionally no "len(item) > 80 → tip = raw" fallback here.
-            # Background/race/subrace items already show their FULL description
-            # inline in the row label; repeating it verbatim in the tooltip is
-            # just noise. Only show a tooltip when there's a genuinely
-            # different, shorter lookup via FEATURE_DESCS.
+            # ── What's behind the row: looked up in core/features.py, the
+            # same for Android's Features screen ────────────────────────────
+            # (No tooltip that just repeats the row: background, race and
+            # subrace rows already show their whole text, so a hover only
+            # appears when something different was looked up.)
+            det = feature_detail(self.char, item, cls)
+            tip = det["tip"]
             if tip:
-                display_name = after_colon_no_paren or raw_no_paren
                 tip_formatted = self._break_long_tooltip(tip)
-                row.setToolTip(f"<b>{display_name}</b><br><br>{tip_formatted}")
+                row.setToolTip(f"<b>{det['tip_name']}</b><br><br>{tip_formatted}")
                 row.setToolTipDuration(15000)
-                feat_lbl.setToolTip(f"<b>{display_name}</b><br><br>{tip_formatted}")
+                feat_lbl.setToolTip(f"<b>{det['tip_name']}</b><br><br>{tip_formatted}")
                 feat_lbl.setToolTipDuration(15000)
 
-            # ── Right-click context menu ──────────────────────────────────────
-            # _tip is deliberately empty for race/subrace/background items
-            # (their full text is already inline, so a hover tooltip would
-            # just repeat it) — but that meant right-click found nothing to
-            # show either, since the menu action was only ever added "if
-            # _tip". Fall back to the item's own text so right-click always
-            # has something to display, for every feature row without
-            # exception, while leaving the hover-tooltip behavior alone.
-            # The details: the name, then what it does -- once. With nothing
-            # looked up, a "Name: what it does" row (a background's feature)
-            # splits at its colon; heading and text both being the whole row
-            # showed it twice.
-            if tip:
-                detail_name, detail_body = raw_no_paren, tip
-            elif before_colon and len(before_colon) <= 60:
-                detail_name, detail_body = before_colon, after_colon
-            elif len(raw_no_paren) <= 60:
-                detail_name, detail_body = raw_no_paren, ""
-            else:
-                detail_name, detail_body = "Details", raw
-            def _show_detail_menu(ev, _name=detail_name, _body=detail_body, _row=row):
+            # ── Details: the name, then what it does -- once. Right-click
+            # offers them for every row, without exception; with nothing
+            # looked up, a "Name: what it does" row splits at its colon
+            # (heading and text both being the whole row showed it twice).
+            detail_name, detail_body = det["name"], det["body"]
+            def _show_details(_name=detail_name, _body=detail_body, _row=row):
+                QMessageBox.information(
+                    _row, _name,
+                    f"<b>{_name}</b>" + (f"<br><br>{_body}" if _body else ""))
+
+            def _show_detail_menu(ev, _name=detail_name, _show=_show_details, _row=row):
                 from PySide6.QtWidgets import QMenu
                 menu = QMenu(_row)
                 act = menu.addAction(_icons.icon("features"), f"Show Details: {_name[:40]}")
-                act.triggered.connect(lambda: QMessageBox.information(
-                    _row, _name,
-                    f"<b>{_name}</b>" + (f"<br><br>{_body}" if _body else ""),
-                ))
+                act.triggered.connect(lambda: _show())
                 menu.exec(ev.globalPos())
-            row.mousePressEvent = lambda ev, f=_show_detail_menu: (
-                f(ev) if ev.button() == Qt.RightButton else None
+            # A feature with more to read than its row shows (something
+            # looked up, not just its own text again) opens on a click; a
+            # magnifying glass at its end says so, as on the spell and item
+            # lists. Right-click still offers the details for every row.
+            if tip:
+                row.setCursor(Qt.PointingHandCursor)
+                glass = QToolButton()
+                glass.setObjectName("featureInspect")
+                _icons.set_button_icon(glass, "search", 16, color=TEXT3)
+                glass.setCursor(Qt.PointingHandCursor)
+                glass.setAutoRaise(True)
+                glass.setFixedSize(28, 28)
+                glass.setToolTip("Read what it does")
+                glass.setAccessibleName(f"Read what {detail_name} does")
+                glass.setStyleSheet(f"QToolButton{{background:transparent;border:none;border-radius:6px;}}"
+                                    f"QToolButton:hover{{background:{qa(INDIGO, 0x33)};}}")
+                glass.clicked.connect(lambda _=False, f=_show_details: f())
+                rl.addWidget(glass, 0, Qt.AlignVCenter)
+            row.mousePressEvent = lambda ev, f=_show_detail_menu, g=_show_details, more=bool(tip): (
+                f(ev) if ev.button() == Qt.RightButton
+                else g() if more and ev.button() == Qt.LeftButton else None
             )
+            # what the filter finds it by: its own text, what it does, its group
+            self._feat_rows.append((row, grp, feature_search_text(item, tip, title)))
 
             gl.addWidget(row)
         self._feat_tab_lay.insertWidget(self._feat_tab_lay.count()-1, grp)
@@ -997,5 +991,6 @@ class FeaturesMixin:
         roll_btn.clicked.connect(_roll)
         gl.addWidget(table)
         self._feat_tab_lay.insertWidget(self._feat_tab_lay.count()-1, grp)
+        self._feat_extras.append(grp)
 
     # ══ TAB 6: TRAITS & NOTES ══════════════════════════════════════════════════

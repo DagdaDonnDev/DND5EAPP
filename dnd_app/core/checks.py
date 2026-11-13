@@ -471,7 +471,14 @@ def _start(char, w, pick, free, rng):
         state["notes"].append(w["note"][0].upper() + w["note"][1:])
     if pick:
         _pay_before(char, pick, state, free)
-    state["dice"] = [_d20(char, rng, state["notes"]) for _ in range(2 if state["adv"] else 1)]
+    if w.get("d20"):
+        # a d20 the player rolled themselves and typed in: it's taken as it
+        # is (what always applies to the roll is still added)
+        state["dice"] = [max(1, min(20, int(w["d20"])))]
+        state["adv"] = False
+        state["notes"].append(f"Your own roll: {state['dice'][0]}")
+    else:
+        state["dice"] = [_d20(char, rng, state["notes"]) for _ in range(2 if state["adv"] else 1)]
     dice, flat = _auto_parts(char, w, w.get("ability") or "")
     state["auto"] += dice
     state["flat"] += flat

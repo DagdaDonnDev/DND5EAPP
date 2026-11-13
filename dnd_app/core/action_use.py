@@ -52,7 +52,11 @@ POOLS = {
 # Effects that last until the start of your next turn (or to the end of
 # this one): New Turn takes them off (new_turn below).
 TURN_EFFECTS = ("Reckless Attack", "Dodge", "Agile Parry", "Kensei's Shot", "Fighting Spirit", "Steady Aim",
-                "Precise Strike", "Maelstrom Aura")
+                "Precise Strike", "Maelstrom Aura", "Shield (spell)", "Absorb Elements")
+# Effects that last until the END of your next turn: New Turn keeps them
+# through the turn that's starting, and the New Turn after that takes them
+# off.
+NEXT_TURN_EFFECTS = ("Blade Ward",)
 
 _CLASSES = ("artificer", "barbarian", "bard", "blood hunter", "cleric", "druid", "fighter",
             "monk", "paladin", "ranger", "rogue", "sorcerer", "warlock", "wizard")
@@ -2524,6 +2528,9 @@ def _use_rule(char, display, desc, spec, slot, answers, rng):
             char["sharpen_the_blade"] = {"bonus": chosen, "weapon": sharpened}
         if effect not in fx:
             fx.append(effect)
+        # (used afresh: it's no longer in the last turn of an earlier use)
+        if effect in char.get("_last_turn_effects", []):
+            char["_last_turn_effects"].remove(effect)
         note = EFFECT_TABLE.get(effect, {}).get("note", "")
         if spec.get("sharpen"):
             note = say or note
@@ -2562,7 +2569,7 @@ def leftover_effects(char) -> list:
     those end with the next New Turn anyway."""
     from dnd_app.core.effects import EFFECT_TABLE, RESOURCE_POOL_TOGGLES
     return [n for n in char.get("active_effects", [])
-            if n not in TURN_EFFECTS
+            if n not in TURN_EFFECTS and n not in NEXT_TURN_EFFECTS
             and (EFFECT_TABLE.get(n, {}).get("duration_category") == "short"
                  or n in RESOURCE_POOL_TOGGLES)]
 
@@ -2586,6 +2593,9 @@ def end_effects(char, names) -> list:
     # what each was cast on goes with it (a smite that landed, a weapon pick)
     for n in ended:
         (char.get("effect_details") or {}).pop(n, None)
+    if ended:
+        from dnd_app.core.durations import forget_ended
+        forget_ended(char)
     return ended
 
 
@@ -2594,9 +2604,15 @@ def new_turn(char) -> list:
     """Start of your turn: the effects that last until now end, and the
     once-per-turn uses come back. Returns what ended."""
     fx = char.get("active_effects", [])
-    ended = [n for n in fx if n in TURN_EFFECTS]
+    # (until the end of your next turn: on for the turn that's starting, and
+    # ended by the New Turn after it)
+    last = char.get("_last_turn_effects", [])
+    ended = [n for n in fx if n in TURN_EFFECTS or (n in NEXT_TURN_EFFECTS and n in last)]
+    char["_last_turn_effects"] = [n for n in fx if n in NEXT_TURN_EFFECTS and n not in last]
     if ended:
-        char["active_effects"] = [n for n in fx if n not in TURN_EFFECTS]
+        char["active_effects"] = [n for n in fx if n not in ended]
+        for n in ended:
+            (char.get("effect_details") or {}).pop(n, None)
     char["_turn_uses"] = []
     char["_turn_spells"] = []
     return ended

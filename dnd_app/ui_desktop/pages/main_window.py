@@ -62,7 +62,7 @@ class StartMenu(QWidget):
         root = QVBoxLayout(self); root.setContentsMargins(0,0,0,0); root.setSpacing(0)
 
         hero = QFrame(); hero.setStyleSheet(f"QFrame{{background:{SURF};}}")
-        hl = QVBoxLayout(hero); hl.setContentsMargins(60,60,60,40); hl.setSpacing(16)
+        hl = QVBoxLayout(hero); hl.setContentsMargins(60,48,60,36); hl.setSpacing(16)
         hl.setAlignment(Qt.AlignCenter)
 
         title = QLabel("MIMIC")
@@ -76,11 +76,21 @@ class StartMenu(QWidget):
         hl.addWidget(_lbl("Build, track, and play your character from creation to legend.", TEXT2, FS_BODY+2, align=Qt.AlignCenter))
 
         btn_row = QHBoxLayout(); btn_row.setSpacing(20); btn_row.setAlignment(Qt.AlignCenter)
-        new_btn = pill_btn("Create New Character", INDIGO)
-        _icons.set_button_icon(new_btn, "combat", 20, color=on_fill(INDIGO))
-        new_btn.setFixedSize(280, 54)
-        new_btn.clicked.connect(self.new_char)
-        btn_row.addWidget(new_btn)
+        # Continue: the character played last, one click away. It shows
+        # when there is one (_refresh_continue), and then Create New is the
+        # quieter button beside it.
+        self._continue_path = ""
+        self._continue_btn = pill_btn("Continue", INDIGO)
+        _icons.set_button_icon(self._continue_btn, "arrow_right", 18, color=on_fill(INDIGO))
+        self._continue_btn.setFixedHeight(54)
+        self._continue_btn.setMinimumWidth(280); self._continue_btn.setMaximumWidth(460)
+        self._continue_btn.clicked.connect(lambda: self._continue_path and self.load_char.emit(self._continue_path))
+        btn_row.addWidget(self._continue_btn)
+        self._new_btn = pill_btn("Create New Character", INDIGO)
+        self._new_primary = None           # set by _refresh_continue
+        self._new_btn.setFixedSize(280, 54)
+        self._new_btn.clicked.connect(self.new_char)
+        btn_row.addWidget(self._new_btn)
         pdf_btn = pill_btn("Import PDF Sheet", SURF3)
         _icons.set_button_icon(pdf_btn, "file", 18, color=on_fill(SURF3))
         pdf_btn.setFixedSize(220, 54)
@@ -91,11 +101,38 @@ class StartMenu(QWidget):
         root.addWidget(hero, 1)
 
         self._saved_frame = QFrame(); self._saved_frame.setStyleSheet(f"QFrame{{background:{BG};}}")
-        self._saved_layout = QVBoxLayout(self._saved_frame)
-        self._saved_layout.setContentsMargins(40, 24, 40, 24); self._saved_layout.setSpacing(12)
+        outer = QVBoxLayout(self._saved_frame)
+        outer.setContentsMargins(40, 24, 40, 24); outer.setSpacing(12)
+        # The heading and the search stay put; the list under them is what
+        # gets rebuilt (so a search survives moving or deleting a character)
+        head = QHBoxLayout(); head.setContentsMargins(0, 0, 0, 0); head.setSpacing(12)
+        head.addWidget(_lbl("Saved Characters", GOLD, FS_HEAD, bold=True))
+        head.addStretch(1)
+        self._saved_search = QLineEdit()
+        self._saved_search.setPlaceholderText("Search characters…")
+        self._saved_search.setClearButtonEnabled(True)
+        self._saved_search.setFixedWidth(280)
+        self._saved_search.setAccessibleName("Search saved characters")
+        self._saved_search.setToolTip("By name, class, subclass, race or folder.\nEnter opens the first one found.  (Ctrl+F)")
+        self._saved_search.textChanged.connect(lambda *_: self._apply_saved_filter())
+        self._saved_search.returnPressed.connect(self._open_first_found)
+        head.addWidget(self._saved_search)
+        outer.addLayout(head)
+        from PySide6.QtGui import QShortcut, QKeySequence
+        find = QShortcut(QKeySequence.Find, self)
+        find.setContext(Qt.WidgetWithChildrenShortcut)
+        find.activated.connect(lambda: (self._saved_search.setFocus(), self._saved_search.selectAll()))
+        list_host = QWidget(); list_host.setStyleSheet("background:transparent;")
+        self._saved_layout = QVBoxLayout(list_host)
+        self._saved_layout.setContentsMargins(0, 0, 0, 0); self._saved_layout.setSpacing(12)
+        outer.addWidget(list_host, 1)
         # Per-folder collapse state -- session-only (not persisted),
         # same as a typical file manager's expand/collapse.
         self._collapsed_folders: set[str] = set()
+        self._saved_rows = []          # (row, its folder, the text it's found by, its file)
+        self._folder_heads = {}        # folder -> (its heading's widgets, its chevron)
+        self._none_found = None
+        self._flat = True              # no folder in use: a plain list (set by _rebuild_saved_list)
         self._rebuild_saved_list()
         root.addWidget(self._saved_frame, 2)
 
@@ -104,20 +141,52 @@ class StartMenu(QWidget):
             item = layout.takeAt(0)
             w = item.widget()
             if w is not None:
+                # (detached first: deleteLater alone leaves it drawn until
+                # the event loop comes round)
+                w.setParent(None)
                 w.deleteLater()
 
-    def _rebuild_saved_list(self):
-        """(Re)builds the "Saved Characters" section from scratch, grouped
-        into campaign/folder sections -- named folders sorted
-        alphabetically first, then an "Uncategorized" section last for
-        characters with no folder assigned. Called from __init__ and
-        again after a "Move to Folder" action, since that can move a
-        row between sections (a plain per-row deleteLater(), as delete
-        still uses, isn't enough for that)."""
-        self._clear_layout(self._saved_layout)
-        self._saved_layout.addWidget(_lbl("Saved Characters", GOLD, FS_HEAD, bold=True))
+    def _refresh_continue(self, saved: list):
+        """The Continue button for the character played last (the list is
+        the newest first); none saved, and Create New is the main button."""
+        last = saved[0] if saved else None
+        self._continue_path = last.get("filepath", "") if last else ""
+        self._continue_btn.setVisible(last is not None)
+        if last is not None:
+            name = last.get("name") or "Unknown"
+            shown = name if len(name) <= 30 else name[:29].rstrip() + "…"
+            self._continue_btn.setText(f"Continue  ·  {shown}")
+            tip = [name, last.get("summary", "")]
+            if last.get("played"):
+                tip.append(f"Played {last['played']}")
+            self._continue_btn.setToolTip("\n".join(t for t in tip if t))
+        primary = last is None
+        if primary != self._new_primary:
+            self._new_primary = primary
+            fill = INDIGO if primary else SURF3
+            self._new_btn.setStyleSheet(pill_btn("", fill).styleSheet())
+            _icons.set_button_icon(self._new_btn, "combat", 20, color=on_fill(fill))
+            self._new_btn.setFixedSize(280 if primary else 250, 54)
 
-        saved = list_saved_characters()
+    def _rebuild_saved_list(self):
+        """(Re)builds the list under "Saved Characters" from scratch, the
+        newest first, grouped into campaign/folder sections once any
+        folder is in use -- named folders alphabetically, then
+        "Uncategorized" for the rest. Called from __init__ and again after
+        a move, rename or delete, since those can change sections, counts
+        and which character Continue opens."""
+        self._clear_layout(self._saved_layout)
+        self._saved_rows = []
+        self._folder_heads = {}
+        self._none_found = None
+        saved = [e for e in list_saved_characters()
+                 if e.get("filepath") and os.path.exists(e["filepath"])]
+        self._refresh_continue(saved)
+        # a search box once there are enough to want one
+        self._saved_search.setVisible(len(saved) > 5)
+        if len(saved) <= 5 and self._saved_search.text():
+            self._saved_search.clear()
+
         if not saved:
             # empty state: a quiet card near the top, centred
             empty = QFrame()
@@ -137,66 +206,76 @@ class StartMenu(QWidget):
             groups.setdefault(entry.get("folder", "") or "", []).append(entry)
         named_folders = sorted(f for f in groups if f)
         ordered_folders = named_folders + ([""] if "" in groups else [])
+        # No folder in use: a plain list, with no "Uncategorized" heading over it
+        self._flat = not named_folders
 
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
         inner = QWidget(); inner.setStyleSheet(f"background:{BG};")
         il = QVBoxLayout(inner); il.setSpacing(8)
         for folder in ordered_folders:
-            collapsed = folder in self._collapsed_folders
-            header_btn = QPushButton(f"  {folder or 'Uncategorized'}  ({len(groups[folder])})")
-            _icons.set_button_icon(header_btn, "folder", 18)
-            header_btn.setFlat(True)
-            header_btn.setCursor(Qt.PointingHandCursor)
-            header_btn.setStyleSheet(
-                f"QPushButton{{color:{GOLD2};background:transparent;border:none;"
-                f"font-size:{FS_BODY}px;font-weight:bold;text-align:left;padding:2px 0;}}"
-                f"QPushButton:hover{{color:{GOLD};}}"
-            )
-            header_btn.clicked.connect(lambda checked, f=folder: self._toggle_folder(f))
-            header_row = QHBoxLayout(); header_row.setSpacing(4)
-            chevron = _icons.icon_label("chevron_right" if collapsed else "chevron_down", 14)
-            header_row.addWidget(chevron)
-            header_row.addWidget(header_btn, 1)
-            # "Uncategorized" (folder == "") isn't a real campaign -- just
-            # the default bucket for characters with no folder set -- so
-            # it can't be renamed or deleted the way a named folder can.
-            if folder:
-                rename_btn = _btn("", SURF2, variant="ghost", width=28, height=24, radius=6,
-                                   border_alpha=0x55, text_color=TEXT3, font_size=12)
-                _icons.set_button_icon(rename_btn, "pencil", 14)
-                rename_btn.setToolTip("Rename folder…")
-                rename_btn.clicked.connect(lambda checked, f=folder: self._rename_folder(f))
-                header_row.addWidget(rename_btn)
-                delfolder_btn = _btn("", CRIMSON, variant="ghost", width=28, height=24, radius=6,
-                                      border_alpha=0x55, text_color=TEXT3, font_size=12)
-                _icons.set_button_icon(delfolder_btn, "trash", 14)
-                delfolder_btn.setToolTip("Delete folder…")
-                delfolder_btn.clicked.connect(
-                    lambda checked, f=folder, n=len(groups[folder]): self._delete_folder(f, n))
-                header_row.addWidget(delfolder_btn)
-            il.addLayout(header_row)
-            if collapsed:
-                continue
+            if not self._flat:
+                header_btn = QPushButton(f"  {folder or 'Uncategorized'}  ({len(groups[folder])})")
+                _icons.set_button_icon(header_btn, "folder", 18)
+                header_btn.setFlat(True)
+                header_btn.setCursor(Qt.PointingHandCursor)
+                header_btn.setStyleSheet(
+                    f"QPushButton{{color:{GOLD2};background:transparent;border:none;"
+                    f"font-size:{FS_BODY}px;font-weight:bold;text-align:left;padding:2px 0;}}"
+                    f"QPushButton:hover{{color:{GOLD};}}"
+                )
+                header_btn.clicked.connect(lambda checked, f=folder: self._toggle_folder(f))
+                header_row = QHBoxLayout(); header_row.setSpacing(4)
+                chevron = _icons.icon_label("chevron_down", 14)
+                header_row.addWidget(chevron)
+                header_row.addWidget(header_btn, 1)
+                head_widgets = [chevron, header_btn]
+                # "Uncategorized" (folder == "") isn't a real campaign -- just
+                # the default bucket for characters with no folder set -- so
+                # it can't be renamed or deleted the way a named folder can.
+                if folder:
+                    rename_btn = _btn("", SURF2, variant="ghost", width=28, height=24, radius=6,
+                                       border_alpha=0x55, text_color=TEXT3, font_size=12)
+                    _icons.set_button_icon(rename_btn, "pencil", 14)
+                    rename_btn.setToolTip("Rename folder…")
+                    rename_btn.clicked.connect(lambda checked, f=folder: self._rename_folder(f))
+                    header_row.addWidget(rename_btn)
+                    delfolder_btn = _btn("", CRIMSON, variant="ghost", width=28, height=24, radius=6,
+                                          border_alpha=0x55, text_color=TEXT3, font_size=12)
+                    _icons.set_button_icon(delfolder_btn, "trash", 14)
+                    delfolder_btn.setToolTip("Delete folder…")
+                    delfolder_btn.clicked.connect(
+                        lambda checked, f=folder, n=len(groups[folder]): self._delete_folder(f, n))
+                    header_row.addWidget(delfolder_btn)
+                    head_widgets += [rename_btn, delfolder_btn]
+                self._folder_heads[folder] = (head_widgets, chevron)
+                il.addLayout(header_row)
+            # (every row is built, a collapsed folder's too: collapsing only
+            # hides them, so a search still finds what's inside)
             for entry in groups[folder]:
-                path = entry.get("filepath", "")
-                if not path or not os.path.exists(path):
-                    continue
-                try:
-                    c = load_character(path)
-                except Exception:
-                    continue
+                path = entry["filepath"]
+                # (drawn from the list's own summary: loading every character
+                # in full just for its row slowed the start menu down)
                 row = QFrame()
-                row.setStyleSheet(f"QFrame{{background:{SURF};border:1px solid {BORDER};border-radius:10px;}}QFrame:hover{{border-color:{BORDER2};background:{SURF2};}}")
-                rl = QHBoxLayout(row); rl.setContentsMargins(16,12,16,12); rl.setSpacing(12)
+                row.setObjectName("savedRow")
+                row.setStyleSheet(f"QFrame#savedRow{{background:{SURF};border:1px solid {BORDER};border-radius:10px;}}"
+                                  f"QFrame#savedRow:hover{{border-color:{BORDER2};background:{SURF2};}}")
+                rl = QHBoxLayout(row); rl.setContentsMargins(16,10,16,10); rl.setSpacing(12)
                 col = QVBoxLayout(); col.setSpacing(3)
-                col.addWidget(_lbl(c.get("name","Unknown"), TEXT, FS_BODY+2, bold=True, wrap=False))
-                classes = c.get("classes",[])
-                cls_str = "  ·  ".join(f"{x['class']} {x['level']}" + (f" ({x['subclass']})" if x.get('subclass') else "") for x in classes)
-                race = c.get("species") or c.get("race","")
-                col.addWidget(_lbl(f"{race}  |  {cls_str}" if race else cls_str, TEXT2, FS_SMALL, wrap=False))
+                col.addWidget(_lbl(entry.get("name") or "Unknown", TEXT, FS_BODY+2, bold=True, wrap=False))
+                col.addWidget(_lbl(entry.get("summary", ""), TEXT2, FS_SMALL, wrap=False))
                 rl.addLayout(col, 1)
+                if entry.get("played"):
+                    played = _lbl(f"Played {entry['played']}", TEXT3, FS_SMALL, wrap=False)
+                    played.setToolTip("When this character was last saved")
+                    rl.addWidget(played)
+                # double-click anywhere on the row opens it, as Load does
+                row.setToolTip("Double-click to open")
+                row.mouseDoubleClickEvent = lambda e, p=path: self.load_char.emit(p)
+                self._saved_rows.append((row, folder, " ".join(
+                    (entry.get("name") or "", entry.get("summary", ""), folder)).casefold(), path))
                 load_btn = _btn("Load →", INDIGO, variant="cta", width=100, height=38,
                                  radius=8, text_color=IND2, hover_text="white", font_size=FS_SMALL)
+                load_btn.setToolTip("Open this character")
                 load_btn.clicked.connect(lambda checked, p=path: self.load_char.emit(p))
                 rl.addWidget(load_btn)
                 move_btn = _btn("", SURF2, variant="ghost", width=38, height=38, radius=8,
@@ -210,17 +289,54 @@ class StartMenu(QWidget):
                 _icons.set_button_icon(del_btn, "trash", 18)
                 del_btn.setToolTip("Delete character…")
                 del_btn.setStyleSheet(del_btn.styleSheet() + f"QPushButton:hover{{background:{qa(CRIMSON,0x55)};}}")
-                del_btn.clicked.connect(lambda checked, p=path, r=row: self._delete_saved_row(p, r))
+                del_btn.clicked.connect(lambda checked, p=path, n=entry.get("name") or "this character":
+                                        self._delete_saved_row(p, n))
                 rl.addWidget(del_btn)
                 il.addWidget(row)
+        self._none_found = _lbl("", TEXT3, FS_BODY, align=Qt.AlignCenter)
+        self._none_found.setVisible(False)
+        il.addWidget(self._none_found)
         il.addStretch(); scroll.setWidget(inner); self._saved_layout.addWidget(scroll, 1)
+        self._apply_saved_filter()
+
+    def _apply_saved_filter(self):
+        """Which rows show: with a search, the characters it finds (every
+        word typed, in the name, class, subclass, race or folder), from
+        collapsed folders too; without one, every folder that's open. A
+        folder with nothing to show while searching hides its heading."""
+        text = self._saved_search.text()
+        words = text.casefold().split()
+        shown_in = {}
+        for row, folder, hay, _path in self._saved_rows:
+            if words:
+                show = all(w in hay for w in words)
+            else:
+                show = self._flat or folder not in self._collapsed_folders
+            row.setVisible(show)
+            shown_in[folder] = shown_in.get(folder, 0) + (1 if show else 0)
+        for folder, (widgets, chevron) in self._folder_heads.items():
+            for w in widgets:
+                w.setVisible(not words or shown_in.get(folder, 0) > 0)
+            open_ = bool(words) or folder not in self._collapsed_folders
+            _icons.set_label_icon(chevron, "chevron_down" if open_ else "chevron_right", 14)
+        if self._none_found is not None:
+            none = bool(words) and not any(shown_in.values())
+            self._none_found.setText(f"No character matches “{text.strip()}”." if none else "")
+            self._none_found.setVisible(none)
+
+    def _open_first_found(self):
+        """Enter in the search box: open the first character it shows."""
+        for row, _folder, _hay, path in self._saved_rows:
+            if not row.isHidden():
+                self.load_char.emit(path)
+                return
 
     def _toggle_folder(self, folder: str):
         if folder in self._collapsed_folders:
             self._collapsed_folders.discard(folder)
         else:
             self._collapsed_folders.add(folder)
-        self._rebuild_saved_list()
+        self._apply_saved_filter()
 
     def _rename_folder(self, folder: str):
         new_name, ok = QInputDialog.getText(
@@ -232,6 +348,8 @@ class StartMenu(QWidget):
         if not new_name or new_name == folder:
             return
         rename_character_folder(None, folder, new_name)
+        if folder in self._collapsed_folders:       # it stays as it was, under its new name
+            self._collapsed_folders.discard(folder); self._collapsed_folders.add(new_name)
         self._rebuild_saved_list()
 
     def _delete_folder(self, folder: str, count: int):
@@ -250,6 +368,7 @@ class StartMenu(QWidget):
             if not ok or confirm_text.strip() != "Delete":
                 return
         delete_character_folder(None, folder)
+        self._collapsed_folders.discard(folder)
         self._rebuild_saved_list()
 
     def _move_saved_row(self, path: str, named_folders: list[str]):
@@ -270,13 +389,14 @@ class StartMenu(QWidget):
         set_character_folder(path, new_folder)
         self._rebuild_saved_list()
 
-    def _delete_saved_row(self, path: str, row: QFrame):
+    def _delete_saved_row(self, path: str, name: str = "this character"):
         if QMessageBox.question(
-            self, "Delete?", "Delete this character permanently?",
+            self, "Delete?", f"Delete {name} permanently?",
             QMessageBox.Yes | QMessageBox.No,
         ) == QMessageBox.Yes:
             delete_character(path)
-            row.deleteLater()
+            # (the whole list: its counts, and which character Continue opens)
+            self._rebuild_saved_list()
 
 
 class SettingsDialog(QDialog):
@@ -1039,6 +1159,9 @@ class CharacterCreatorApp(QMainWindow):
             self._current_theme_name = name
             if self._sheet:
                 char = self._sheet.char
+                # (what's unsaved stays unsaved on the rebuilt sheet, and a
+                # new theme is itself a change to this character)
+                unsaved = bool(self._sheet._dirty) or char.get("theme") != name
                 char["theme"] = name
                 cur_tab = self._sheet._tabs.currentIndex()
                 # This rebuilds the SAME character (just re-themed), not
@@ -1050,6 +1173,9 @@ class CharacterCreatorApp(QMainWindow):
                 self._show_sheet(char, save_path=save_path)
                 if self._sheet:
                     self._sheet._tabs.setCurrentIndex(cur_tab)
+                    if unsaved:
+                        self._sheet._mark_dirty()
+                        self._sheet._update_title()
             else:
                 # No character open (Start Menu, or mid-wizard before one
                 # exists to attach a theme to) -- this choice becomes the
@@ -1115,7 +1241,33 @@ class CharacterCreatorApp(QMainWindow):
         finally:
             self._switching_theme = False
 
+    def _ok_to_leave_sheet(self) -> bool:
+        """Before the open character is closed or replaced (another one
+        opened, a new one started, the window closed): its unsaved changes
+        are asked about -- Save, Discard or Cancel. True if it's fine to go
+        on; with no character open there's nothing to ask."""
+        return self._sheet is None or self._sheet.confirm_leave()
+
+    def closeEvent(self, event):
+        """Closing the window (its X, File > Quit, Ctrl+Q) with unsaved
+        changes asks first, the same as going back to the menu does."""
+        if not self._ok_to_leave_sheet():
+            event.ignore()
+            return
+        super().closeEvent(event)
+
     def _go_wizard(self):
+        if not self._ok_to_leave_sheet():
+            return
+        if self._sheet:
+            # (the open character is closed, as going back to the menu
+            # closes it: left behind the wizard it would still answer to
+            # Save, Export and Rest in the menus)
+            if self._dice_roller:
+                self._dice_roller.set_char(new_character())
+            self._stack.removeWidget(self._sheet); self._sheet.deleteLater()
+            self._sheet = None
+        self.setWindowTitle("MIMIC")
         self._set_health_bar(None)   # (no character's HP to show)
         self._set_menu_corner(None)
         if self._wizard:
@@ -1126,13 +1278,37 @@ class CharacterCreatorApp(QMainWindow):
         self._stack.setCurrentWidget(self._wizard)
 
     def _go_sheet_from_path(self, path: str):
+        if not self._ok_to_leave_sheet():
+            return
         if path.lower().endswith(".pdf"):
             self._import_pdf(path)
             return
         try:
-            char = load_character(path); self._show_sheet(char, save_path=path)
+            char = load_character(path)
         except Exception as e:
             QMessageBox.warning(self, "Load Error", str(e))
+            return
+        # Changes from a session that ended without a save or a discard (a
+        # crash, the power going): offered back, once. Restored, they're
+        # unsaved changes again -- Save keeps them.
+        from dnd_app.core.save_load import pending_backup, discard_backup
+        backup = pending_backup(path)
+        restored = False
+        if backup:
+            name = (char.get("name") or "").strip() or "This character"
+            when = f" from {backup['when']}" if backup["when"] else ""
+            ans = QMessageBox.question(
+                self, "Unsaved Changes Found",
+                f"{name} has changes{when} that were never saved.\n\nRestore them?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+            if ans == QMessageBox.Yes:
+                char, restored = backup["char"], True
+            else:
+                discard_backup(path)
+        self._show_sheet(char, save_path=path)
+        if restored and self._sheet is not None:
+            self._sheet._mark_dirty()
+            self._sheet._update_title()
 
     def _import_pdf_dialog(self):
         """What a PDF import can and can't do first, then the file picker."""
@@ -1168,6 +1344,10 @@ class CharacterCreatorApp(QMainWindow):
             char["name"] = os.path.splitext(os.path.basename(path))[0]
         if name_in_use(char["name"]):
             char["name"] = unique_character_name(char["name"])
+        # (it opens in place of the character that's open: its unsaved
+        # changes first)
+        if not self._ok_to_leave_sheet():
+            return
         self._show_sheet(char)
         if self._sheet is not None:
             self._sheet._auto_save()
@@ -1245,6 +1425,7 @@ class CharacterCreatorApp(QMainWindow):
                 self._dice_roller.set_char(char)
             self._stack.addWidget(self._sheet)
             self._stack.setCurrentWidget(self._sheet)
+            self._sheet._update_title()      # the window is this character's now
         except Exception:
             # Safety net: surface the real failure to the player and log
             # it, instead of letting sheet construction fail silently.
@@ -1287,6 +1468,7 @@ class CharacterCreatorApp(QMainWindow):
         if self._sheet:
             self._stack.removeWidget(self._sheet); self._sheet.deleteLater()
             self._sheet = None
+        self.setWindowTitle("MIMIC")
         self._set_health_bar(None)   # a plain menu bar again
         self._set_menu_corner(None)
         self._stack.removeWidget(self._start); self._start.deleteLater()
@@ -1358,6 +1540,8 @@ class CharacterCreatorApp(QMainWindow):
 
     def _duplicate_character(self):
         if not self._sheet: return
+        # (the copy opens in place of this one: its unsaved changes first)
+        if not self._ok_to_leave_sheet(): return
         import copy, time
         from dnd_app.core.save_load import save_character, character_filename
         from dnd_app.ui_desktop.pages.main_window import _save_recent

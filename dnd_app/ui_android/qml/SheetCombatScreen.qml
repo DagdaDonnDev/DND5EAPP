@@ -40,6 +40,14 @@ Page {
     property string ammoEditKind: ""
     property string ammoEditLabel: ""
 
+    // the rounds an effect or a condition has left (core/durations.py)
+    function askRounds(kind, name, rounds) {
+        roundsDialog.kind = kind
+        roundsDialog.name = name
+        roundsSpin.value = rounds > 0 ? rounds : 10
+        roundsDialog.open()
+    }
+
     readonly property real hpFraction: sheetBridge && sheetBridge.maxHp > 0
                                        ? Math.max(0, Math.min(1, sheetBridge.currentHp / sheetBridge.maxHp)) : 0
 
@@ -145,6 +153,19 @@ Page {
                         }
                     }
                     Item { Layout.fillWidth: true }
+                    // Undo for the last Damage or Heal: there from the
+                    // moment one's applied until the hit points change
+                    // some other way (core/hp_undo.py, as desktop's)
+                    MButton {
+                        objectName: "hpUndo"
+                        visible: sheetBridge.hpUndoLabel !== ""
+                        primary: false
+                        implicitHeight: 34
+                        iconName: "undo"
+                        iconSize: 15
+                        text: "Undo"
+                        onClicked: sheetBridge.undoHpChange()
+                    }
                 }
 
                 // HP bar: green while healthy, amber when bloodied, red near 0
@@ -175,19 +196,25 @@ Page {
                         spacing: 8
                         MIcon { name: "spells"; size: 16; color: Theme.amber2 }
                         Label {
+                            objectName: "concentrationLine"
                             text: "Concentrating: " + sheetBridge.concentratingSpell
+                                  + (sheetBridge.concentrationRoundsLeft === 1 ? " · last round"
+                                     : sheetBridge.concentrationRoundsLeft > 1
+                                       ? " · " + sheetBridge.concentrationRoundsLeft + " rounds left" : "")
                             color: Theme.amber2
                             font.pixelSize: Theme.fsSmall
                             font.bold: true
                             wrapMode: Text.WordWrap
                             Layout.fillWidth: true
                         }
-                        // took damage while concentrating: roll to keep it
+                        // took damage while concentrating: roll to keep it,
+                        // or say what you rolled yourself
                         MButton {
+                            objectName: "concSaveButton"
                             visible: sheetBridge.concentrationSaveDc > 0
                             implicitHeight: 36
                             text: "Save DC " + sheetBridge.concentrationSaveDc
-                            onClicked: sheetBridge.rollPendingConcentrationSave()
+                            onClicked: concSaveDialog.open()
                         }
                         MButton {
                             primary: false
@@ -1125,9 +1152,43 @@ Page {
                             color: Qt.rgba(Theme.crimson.r, Theme.crimson.g, Theme.crimson.b, 0.10)
                             border.color: Theme.crimson
                             implicitHeight: acCol.implicitHeight + 14
+
+                            // the rounds it has left: tap to set them (New
+                            // Turn takes one off, and ends it at none)
+                            Rectangle {
+                                id: condRounds
+                                objectName: "rounds_condition_" + modelData.cond
+                                visible: modelData.cond !== ""
+                                anchors { right: parent.right; verticalCenter: parent.verticalCenter; rightMargin: 6 }
+                                width: condRoundsRow.implicitWidth + 12
+                                height: 32
+                                radius: 6
+                                color: "transparent"
+                                border.color: Theme.crimson2
+                                border.width: modelData.rounds > 0 ? 1 : 0
+                                Row {
+                                    id: condRoundsRow
+                                    anchors.centerIn: parent
+                                    spacing: 3
+                                    MIcon { name: "hourglass"; size: 14; color: Theme.crimson2; anchors.verticalCenter: parent.verticalCenter }
+                                    Label {
+                                        visible: modelData.rounds > 0
+                                        text: modelData.rounds
+                                        color: Theme.crimson2
+                                        font.pixelSize: Theme.fsSmall
+                                        font.bold: true
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: root.askRounds("condition", modelData.cond, modelData.rounds)
+                                }
+                            }
                             Column {
                                 id: acCol
-                                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
+                                anchors { left: parent.left; right: condRounds.visible ? condRounds.left : parent.right
+                                          top: parent.top; margins: 8 }
                                 spacing: 2
                                 Label {
                                     text: modelData.name
@@ -1178,7 +1239,7 @@ Page {
                             }
                             Column {
                                 id: fxCol
-                                anchors { left: parent.left; right: fxEnd.left; top: parent.top
+                                anchors { left: parent.left; right: fxRounds.left; top: parent.top
                                           leftMargin: 14; rightMargin: 8; topMargin: 7 }
                                 spacing: 2
                                 Label {
@@ -1195,6 +1256,39 @@ Page {
                                     font.pixelSize: Theme.fsSmall - 1
                                     wrapMode: Text.WordWrap
                                     width: parent.width
+                                }
+                            }
+
+                            // the rounds it has left: tap to set them (New
+                            // Turn takes one off, and ends it at none)
+                            Rectangle {
+                                id: fxRounds
+                                objectName: "rounds_effect_" + modelData.name
+                                visible: true
+                                anchors { right: fxEnd.left; top: parent.top; topMargin: 6; rightMargin: 6 }
+                                width: fxRoundsRow.implicitWidth + 12
+                                height: 32
+                                radius: 6
+                                color: "transparent"
+                                border.color: Theme.teal2
+                                border.width: modelData.rounds > 0 ? 1 : 0
+                                Row {
+                                    id: fxRoundsRow
+                                    anchors.centerIn: parent
+                                    spacing: 3
+                                    MIcon { name: "hourglass"; size: 14; color: Theme.teal2; anchors.verticalCenter: parent.verticalCenter }
+                                    Label {
+                                        visible: modelData.rounds > 0
+                                        text: modelData.rounds
+                                        color: Theme.teal2
+                                        font.pixelSize: Theme.fsSmall
+                                        font.bold: true
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: root.askRounds("effect", modelData.name, modelData.rounds)
                                 }
                             }
                             MButton {
@@ -1242,6 +1336,143 @@ Page {
         dialogTitle: "Add an effect on you"
         options: sheetBridge.effectChoices
         onPicked: (value) => sheetBridge.addActiveEffect(value)
+    }
+
+    // How many rounds an effect or a condition has left
+    Dialog {
+        id: roundsDialog
+        objectName: "roundsDialog"
+        property string kind: ""
+        property string name: ""
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(parent ? parent.width - 32 : 340, 340)
+        padding: 16
+        background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+            Label {
+                text: roundsDialog.name
+                color: Theme.gold2
+                font.pixelSize: Theme.fsHead
+                font.bold: true
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            Label {
+                text: "Rounds left (a minute is 10). New Turn takes one off and ends it at none."
+                color: Theme.text2
+                font.pixelSize: Theme.fsSmall
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            MSpinBox {
+                id: roundsSpin
+                objectName: "roundsSpin"
+                Layout.fillWidth: true
+                implicitHeight: 48
+                from: 1
+                to: 999
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                MButton {
+                    objectName: "roundsClear"
+                    Layout.fillWidth: true
+                    primary: false
+                    text: "Don't count"
+                    onClicked: {
+                        roundsDialog.close()
+                        sheetBridge.setRoundsLeft(roundsDialog.kind, roundsDialog.name, 0)
+                    }
+                }
+                MButton {
+                    objectName: "roundsSet"
+                    Layout.fillWidth: true
+                    text: "Set"
+                    onClicked: {
+                        roundsDialog.close()
+                        sheetBridge.setRoundsLeft(roundsDialog.kind, roundsDialog.name, roundsSpin.value)
+                    }
+                }
+            }
+        }
+    }
+
+    // The concentration save: rolled here, or the number on your own d20
+    // (your bonus and everything that applies is added the same way)
+    Dialog {
+        id: concSaveDialog
+        objectName: "concSaveDialog"
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: Math.min(parent ? parent.width - 32 : 340, 340)
+        padding: 16
+        background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.amber }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+            Label {
+                text: "Concentration save"
+                color: Theme.gold2
+                font.pixelSize: Theme.fsHead
+                font.bold: true
+                Layout.fillWidth: true
+            }
+            Label {
+                text: "Constitution save, DC " + sheetBridge.concentrationSaveDc + ", to keep "
+                      + sheetBridge.concentratingSpell + "."
+                color: Theme.text
+                font.pixelSize: Theme.fsBody
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            MButton {
+                objectName: "concSaveRoll"
+                Layout.fillWidth: true
+                text: "Roll for me"
+                onClicked: {
+                    concSaveDialog.close()
+                    sheetBridge.rollPendingConcentrationSave(0)
+                }
+            }
+            Label {
+                text: "Or the number on your own d20:"
+                color: Theme.text2
+                font.pixelSize: Theme.fsSmall
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                MSpinBox {
+                    id: ownD20
+                    objectName: "concSaveOwnSpin"
+                    implicitWidth: 120
+                    implicitHeight: 44
+                    from: 1
+                    to: 20
+                    value: 10
+                }
+                MButton {
+                    objectName: "concSaveUseOwn"
+                    Layout.fillWidth: true
+                    primary: false
+                    text: "Use my roll"
+                    onClicked: {
+                        concSaveDialog.close()
+                        sheetBridge.rollPendingConcentrationSave(ownD20.value)
+                    }
+                }
+            }
+        }
     }
 
     // How much ammunition you have: type a number or use - / + (hold to
@@ -1343,6 +1574,18 @@ Page {
                 text: "Revive"
                 Layout.alignment: Qt.AlignHCenter
                 onClicked: sheetBridge.revive()
+            }
+            // A mistyped number shouldn't cost a character: when it was the
+            // last Damage that did this, it can be undone from here
+            MButton {
+                objectName: "deathUndo"
+                visible: sheetBridge.hpUndoLabel !== ""
+                primary: false
+                iconName: "undo"
+                text: "Undo: " + sheetBridge.hpUndoLabel
+                Layout.alignment: Qt.AlignHCenter
+                Layout.maximumWidth: root.width - 48
+                onClicked: sheetBridge.undoHpChange()
             }
         }
     }

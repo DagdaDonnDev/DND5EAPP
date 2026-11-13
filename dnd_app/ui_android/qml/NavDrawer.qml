@@ -194,13 +194,23 @@ Drawer {
                                     opacity: enabled ? 1.0 : 0.4
                                     contentItem: RowLayout {
                                         spacing: 8
+                                        // each screen's own icon, the same
+                                        // one desktop's tab carries
+                                        MIcon {
+                                            objectName: "navIcon_" + modelData.label
+                                            visible: !!modelData.icon
+                                            name: modelData.icon || ""
+                                            size: 20
+                                            Layout.leftMargin: 8
+                                            Layout.alignment: Qt.AlignVCenter
+                                        }
                                         Label {
                                             text: modelData.enabled ? modelData.label : modelData.label + "  (finish previous step)"
                                             color: modelData.pulse ? Theme.indigo2 : Theme.text
                                             font.pixelSize: Theme.fsBody
                                             font.bold: !!modelData.pulse
                                             verticalAlignment: Text.AlignVCenter
-                                            leftPadding: 20
+                                            leftPadding: modelData.icon ? 6 : 20
                                         }
                                         MPulseDot {
                                             objectName: "navPulse_" + modelData.label
@@ -270,7 +280,7 @@ Drawer {
                                         color: Theme.text2
                                         font.pixelSize: Theme.fsSmall
                                         verticalAlignment: Text.AlignVCenter
-                                        leftPadding: 44
+                                        leftPadding: 50
                                     }
                                     onClicked: root.sectionSelected(navRow.itemScreen, modelData)
                                 }

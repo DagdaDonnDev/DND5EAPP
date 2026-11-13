@@ -82,8 +82,15 @@ class InfusionsMixin:
             page = self._build_tab_infusions()
             self._tabs.insertTab(insert_at, page, "Infusions")
             _icons.set_tab_icon(self._tabs, page, "infusions")
+            # (the tab bar's own list of names too, or it stops fitting
+            # them to the window)
+            self._tab_names.insert(insert_at, ("Infusions", "Infusions"))
+            self._fit_tab_names(); self._refresh_tab_tips()
         elif not eligible and current_index is not None:
             self._tabs.removeTab(current_index)
+            if current_index < len(self._tab_names):
+                del self._tab_names[current_index]
+            self._fit_tab_names(); self._refresh_tab_tips()
         elif eligible and current_index is not None:
             self._refresh_infusions_tab()
 

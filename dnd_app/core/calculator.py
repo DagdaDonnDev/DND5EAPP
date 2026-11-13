@@ -750,6 +750,40 @@ def get_passive_skill(char: dict, skill: str) -> int:
     return 10 + get_skill_bonus(char, skill) + _passive_skill_adjustment(char, skill)
 
 
+def derived_stats(char: dict) -> list:
+    """The at-a-glance numbers that sit with the ability scores, the same
+    on both apps (desktop's Derived Stats boxes, Android's At a Glance
+    card): [{"label", "value"}] -- proficiency bonus, initiative, speed,
+    senses, the three passive scores, attacks per Attack action, carrying
+    capacity, and a Monk's Martial Arts die or a Barbarian's Rage Damage
+    when they have one."""
+    from .character import class_levels, subclasses
+    from .multiclass import get_extra_attacks
+
+    def sign(n):
+        return f"+{n}" if n >= 0 else str(n)
+    senses = get_character_senses(char)
+    senses_text = ", ".join(f"{k.title()} {v} ft" for k, v in senses.items() if v > 0) or "\u2014"
+    if char.get("_devils_sight", False):
+        senses_text += " (Devil's Sight: darkvision works through magical darkness too)"
+    out = [
+        {"label": "Proficiency Bonus", "value": sign(get_prof_bonus(char))},
+        {"label": "Initiative", "value": sign(get_initiative(char))},
+        {"label": "Speed", "value": f"{get_effective_speed(char)['walk']} ft"},
+        {"label": "Senses", "value": senses_text},
+        {"label": "Passive Perception", "value": str(get_passive_perception(char))},
+        {"label": "Passive Investigation", "value": str(get_passive_investigation(char))},
+        {"label": "Passive Insight", "value": str(get_passive_insight(char))},
+        # (the total with one Attack action: 1 without Extra Attack)
+        {"label": "Attacks per Action", "value": str(get_extra_attacks(class_levels(char), subclasses(char), char))},
+        {"label": "Carry Capacity", "value": f"{get_carry_capacity(char)} lb"},
+    ]
+    for label, value in (("Martial Arts", get_martial_arts_die(char)), ("Rage Damage", get_rage_damage(char))):
+        if value != "\u2014":
+            out.append({"label": label, "value": value})
+    return out
+
+
 def get_ac(char: dict) -> int:
     """Calculate AC based on armor worn and relevant abilities,
     plus any active spell effects (Haste, Shield of Faith, Barkskin…).
@@ -1113,6 +1147,10 @@ def on_effect_started(char: dict, name: str) -> str:
     can't concentrate while raging. A new one also brings back what's
     once per rage (Fanatical Focus)."""
     char.setdefault("_once_per", {})[name] = []
+    # one that lasts a minute is counted down by New Turn (core/durations.py)
+    from dnd_app.core.durations import EFFECT_ROUNDS, set_rounds
+    if name in EFFECT_ROUNDS:
+        set_rounds(char, "effect", name, EFFECT_ROUNDS[name])
     if name == "Shifting":
         # temporary hit points: your level + CON (ERLW), or twice your
         # proficiency bonus (MPMM); a beasthide shifter gets 1d6 more
@@ -1327,6 +1365,11 @@ def resolve_stat_placeholders(text: str, char: dict) -> str:
     a non-ability shorthand ('+CHA/LR' = "per long rest", not a choice)
     is unaffected by this and resolves as a normal single stat.
 
+    Uses per rest counted by an ability ('CHA mod uses/LR', 'CHA mod/LR',
+    '1+CHA/LR') become the number this character has, then the rule in
+    brackets: '3/Long Rest (CHA/LR)', '4/Long Rest (1+CHA/LR)' -- never
+    fewer than one use.
+
     Shared by the Features tab, Action-tab combat cards, and the level-up
     feature preview so all three read identically instead of only some of
     them resolving the placeholder.
@@ -1335,6 +1378,19 @@ def resolve_stat_placeholders(text: str, char: dict) -> str:
     if not text:
         return text
     _ABIL = "STR|DEX|CON|INT|WIS|CHA"
+
+    # ── Uses per rest by an ability: the number, then the rule ────────────────
+    # (set aside until the end, so the '+STAT' passes below leave the rule
+    # in its brackets alone)
+    kept = []
+    uses_pat = re.compile(rf'(?:(\d+)\s*\+\s*)?\b({_ABIL})(?:\s+mod(?:ifier)?)?(?:\s+uses)?\s*/\s*(LR|SR)\b')
+    def _uses_sub(m):
+        base, abl, rest = int(m.group(1) or 0), m.group(2), m.group(3)
+        n = max(1, base + ability_mod(char, abl))
+        rule = (f"{base}+" if base else "") + abl
+        kept.append(f"{n}/{'Long Rest' if rest == 'LR' else 'Short Rest'} ({rule}/{rest})")
+        return f"\x00{len(kept) - 1}\x00"
+    text = uses_pat.sub(_uses_sub, text)
 
     # ── Multi-ability choice: '+ABC/DEF/GHI' (2 or more) ──────────────────────
     multi_pat = re.compile(rf'\s*\+\s*((?:{_ABIL})(?:/(?:{_ABIL}))+)\b')
@@ -1355,7 +1411,8 @@ def resolve_stat_placeholders(text: str, char: dict) -> str:
         abl = m.group(1)
         mod = ability_mod(char, abl)
         return f" + {mod} ({abl})" if mod >= 0 else f" - {abs(mod)} ({abl})"
-    return pat.sub(_sub, text)
+    text = pat.sub(_sub, text)
+    return re.sub(r"\x00(\d+)\x00", lambda m: kept[int(m.group(1))], text)
 
 
 def get_spell_attack_bonus(char: dict, ability: str = None) -> int:

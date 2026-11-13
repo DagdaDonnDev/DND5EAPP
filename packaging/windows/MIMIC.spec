@@ -323,9 +323,9 @@ else:
 # Name, version, publisher and copyright, instead of a blank, unknown file --
 # Windows shows them, and antivirus heuristics read them too.
 #   1. the version is the app's one version number, kept in the Android
-#      build's dnd_app/ui_android/buildozer.spec ("version = 0.3.0"), so both
+#      build's dnd_app/ui_android/buildozer.spec ("version = 6.0.0"), so both
 #      apps always carry the same one -- bump it there
-#   2. Windows wants four numbers: 0.3.0 -> 0.3.0.0
+#   2. Windows wants four numbers: 6.0.0 -> 6.0.0.0
 _PUBLISHER = "Ethan O'Brien"    # shown as the company and in the copyright line
 
 def _app_version():

@@ -66,12 +66,15 @@ class AbilitiesMixin:
         abcl.addWidget(_lbl("ABILITY SCORES", GOLD, FS_SMALL, bold=True))
         ab_row = QHBoxLayout(); ab_row.setSpacing(10)
         self._ab_blocks = {}
+        # the six spread across the card (they were bunched at its left,
+        # half the card empty beside them)
+        ab_row.addStretch(1)
         for ab in ABILITIES:
             blk = AbilityBlock(ab, ability_score(self.char, ab), editable=False)
             blk.roll_requested.connect(
                 lambda a: self._quick_roll_toast(f"{AB_FULL[a]} check", ability_check_bonus(self.char, a), "check", a))
             ab_row.addWidget(blk); self._ab_blocks[ab] = blk
-        ab_row.addStretch()
+            ab_row.addStretch(1)
         abcl.addLayout(ab_row)
 
         # ASI note
@@ -196,7 +199,8 @@ class AbilitiesMixin:
         self._stat_boxes = {}
         pb = get_prof_bonus(self.char)
         ea = get_extra_attacks(class_levels(self.char), subclasses(self.char), self.char)
-        from dnd_app.core.calculator import get_effective_speed, get_character_senses
+        from dnd_app.core.calculator import (get_effective_speed, get_character_senses,
+                                             get_passive_investigation, get_passive_insight)
         spd = get_effective_speed(self.char)["walk"]
         senses = get_character_senses(self.char)
         senses_str = ", ".join(f"{k.title()} {v} ft" for k, v in senses.items() if v > 0) or "—"
@@ -209,7 +213,9 @@ class AbilitiesMixin:
             ("Speed", f"{spd} ft", TEXT),
             ("Senses", senses_str, TEAL2),
             ("Passive Perc.", str(get_passive_perception(self.char)), TEAL),
-            ("Extra Attacks", str(ea), GOLD),
+            ("Passive Inv.", str(get_passive_investigation(self.char)), TEAL),
+            ("Passive Ins.", str(get_passive_insight(self.char)), TEAL),
+            ("Attacks per Action", str(ea), GOLD),   # (the number is the total, not the extra ones)
             ("Carry Capacity", f"{get_carry_capacity(self.char)} lb", AMBER),
         ]
         mad = get_martial_arts_die(self.char)
@@ -217,11 +223,15 @@ class AbilitiesMixin:
         rage = get_rage_damage(self.char)
         if rage != "—": stats.append(("Rage Damage", rage, CRIM2))
 
+        # four to a row, each as wide as its share of the card
         for i, (label, val, color) in enumerate(stats):
             box = BigStatBox(label, val, color)
-            box.setFixedWidth(164)   # wide enough for "Carry Capacity"
+            box.setMinimumWidth(150)   # wide enough for "Carry Capacity"
+            box.setSizePolicy(QSizePolicy.Expanding, box.sizePolicy().verticalPolicy())
             d_grid.addWidget(box, i//4, i%4)
             self._stat_boxes[label] = box
+        for col in range(4):
+            d_grid.setColumnStretch(col, 1)
         dcl.addLayout(d_grid); lay.addWidget(der_card)
         lay.addStretch()
         return tab
@@ -384,6 +394,8 @@ class AbilitiesMixin:
             )
             pb = get_prof_bonus(self.char)
             from dnd_app.core.calculator import get_effective_speed, get_character_senses
+            from dnd_app.core.calculator import (get_passive_investigation as _passive_inv,
+                                                 get_passive_insight as _passive_ins)
             spd = get_effective_speed(self.char)["walk"]
             senses = get_character_senses(self.char)
             senses_str = ", ".join(f"{k.title()} {v} ft" for k, v in senses.items() if v > 0) or "—"
@@ -400,8 +412,10 @@ class AbilitiesMixin:
                 "Initiative": sign(get_initiative(self.char)),
                 "Speed": f"{spd} ft",
                 "Passive Perc.": str(get_passive_perception(self.char)),
+                "Passive Inv.": str(_passive_inv(self.char)),
+                "Passive Ins.": str(_passive_ins(self.char)),
                 "Senses": senses_str,
-                "Extra Attacks": str(get_extra_attacks(class_levels(self.char), subclasses(self.char), self.char)),
+                "Attacks per Action": str(get_extra_attacks(class_levels(self.char), subclasses(self.char), self.char)),
                 "Carry Capacity": f"{get_carry_capacity(self.char)} lb",
                 "Sneak Attack": get_sneak_attack(self.char),
                 "Martial Arts": martial_arts_val,
@@ -437,4 +451,8 @@ class AbilitiesMixin:
                         "From: " + ", ".join(status["disadv_reasons"]))
                 else:
                     pp_box.setToolTip("10 + Perception skill bonus")
+            for _label, _skill in (("Passive Inv.", "Investigation"), ("Passive Ins.", "Insight")):
+                _box = self._stat_boxes.get(_label)
+                if _box:
+                    _box.setToolTip(f"Passive {_skill}: 10 + {_skill} skill bonus")
 

@@ -560,6 +560,15 @@ class CharacterSheetBridge(QObject):
     def passivePerception(self):
         return get_passive_perception(self.char)
 
+    @Property(list, notify=statsChanged)
+    def derivedStats(self):
+        """The at-a-glance numbers under the ability scores ([{label,
+        value}]: proficiency bonus, speed, senses, the passive scores,
+        carrying capacity...) -- core/calculator.py derived_stats, the
+        same as desktop's Derived Stats boxes."""
+        from dnd_app.core.calculator import derived_stats
+        return derived_stats(self.char)
+
     # ── Skills ───────────────────────────────────────────────────────
     @Property(list, notify=statsChanged)
     def skills(self):
@@ -1537,6 +1546,9 @@ class CharacterSheetBridge(QObject):
         if amount <= 0:
             return
         char = self.char
+        # (what it changes is kept, for Undo: core/hp_undo.py, as desktop)
+        from dnd_app.core.hp_undo import hp_state, remember_hp_change, clear_hp_undo
+        before = hp_state(char)
         beast = self._active_wildshape_beast()
         if beast:
             # Wild Shape (PHB p.66): the beast's hit points take the hit.
@@ -1545,6 +1557,7 @@ class CharacterSheetBridge(QObject):
             cur = char.get("_wildshape_hp", beast["hp"])
             if amount < cur:
                 char["_wildshape_hp"] = cur - amount
+                remember_hp_change(char, before, f"{amount} damage to your beast form")
                 if self.isConcentrating:
                     self._pending_conc_dc = max(10, amount // 2)
                 self.toastRequested.emit(f"Beast form took {amount} damage")
@@ -1552,11 +1565,15 @@ class CharacterSheetBridge(QObject):
                 return
             excess = amount - cur
             self._revert_wildshape()
-            self._show_damage(take_damage(char, excess),
+            res = take_damage(char, excess)
+            clear_hp_undo(char)           # (a change of form isn't one to undo)
+            self._show_damage(res,
                               f"Beast form dropped to 0 HP -- reverted to normal form, "
                               f"{excess} excess damage carried over")
             return
-        self._show_damage(take_damage(char, amount))
+        res = take_damage(char, amount)
+        remember_hp_change(char, before, f"{amount} damage")
+        self._show_damage(res)
 
     def _show_damage(self, res: dict, lead: str = ""):
         """Tell the player what take_damage() did: one toast (the death
@@ -1578,10 +1595,13 @@ class CharacterSheetBridge(QObject):
         if amount <= 0:
             return
         char = self.char
+        from dnd_app.core.hp_undo import hp_state, remember_hp_change
+        before = hp_state(char)
         beast = self._active_wildshape_beast()
         if beast:
             cur = char.get("_wildshape_hp", beast["hp"])
             char["_wildshape_hp"] = min(beast["hp"], cur + amount)
+            remember_hp_change(char, before, f"{amount} healing to your beast form")
             self._changed()
             return
         # The dead need Revive, not a potion. Otherwise core/dying.py's
@@ -1591,8 +1611,31 @@ class CharacterSheetBridge(QObject):
             self.toastRequested.emit(why)
             return
         note = heal(char, amount)
+        remember_hp_change(char, before, f"{amount} healing")
         if note:
             self.toastRequested.emit(note)
+        self._changed()
+
+    # ── Undo for the last Damage or Heal (core/hp_undo.py, as desktop) ──
+    @Property(str, notify=statsChanged)
+    def hpUndoLabel(self):
+        """What Undo would undo ("12 damage"), or "" when there's nothing:
+        none applied yet, or the hit points have changed another way since."""
+        from dnd_app.core.hp_undo import hp_undo_label
+        return hp_undo_label(self.char)
+
+    @Slot()
+    def undoHpChange(self):
+        """Hit points, temp HP, death saves -- and life -- as they were
+        before the last Damage or Heal."""
+        from dnd_app.core.hp_undo import undo_hp_change
+        said = undo_hp_change(self.char)
+        if not said:
+            self._changed()
+            return
+        self._pending_conc_dc = 0         # (the save that damage asked for isn't owed)
+        self.ctrl.refresh()
+        self.toastRequested.emit(said)
         self._changed()
 
     @Slot(int)
@@ -1655,6 +1698,8 @@ class CharacterSheetBridge(QObject):
 
     @Slot()
     def revive(self):
+        from dnd_app.core.hp_undo import clear_hp_undo
+        clear_hp_undo(self.char)         # (revived: that damage stands)
         _revive_char(self.char)          # 1 HP, saves and exhaustion cleared
         self._changed()
 
@@ -1706,6 +1751,8 @@ class CharacterSheetBridge(QObject):
         if not self.char.get("conditions"):
             return
         self.char["conditions"] = []
+        from dnd_app.core.durations import forget_ended
+        forget_ended(self.char)
         self.ctrl.refresh()
         self.toastRequested.emit("Conditions cleared")
         self._changed()
@@ -1713,19 +1760,22 @@ class CharacterSheetBridge(QObject):
     @Property(list, notify=statsChanged)
     def activeConditions(self):
         active = set(self.char.get("conditions", []))
+        from dnd_app.core.durations import rounds_left
         out = [
-            {"name": name, "effectText": " ".join(CONDITIONS[name].get("effects", []))}
+            {"name": name, "cond": name, "effectText": " ".join(CONDITIONS[name].get("effects", [])),
+             "rounds": rounds_left(self.char, "condition", name)}
             for name in sorted(active) if name in CONDITIONS
         ]
         # conditions another one brings with it (Stunned -> Incapacitated,
         # Unconscious -> Prone), so a blocked turn has a visible reason
         from dnd_app.core.calculator import implied_conditions
         for name, causes in implied_conditions(self.char).items():
-            out.append({"name": f"{name} (from {', '.join(causes)})",
+            out.append({"name": f"{name} (from {', '.join(causes)})", "cond": "", "rounds": 0,
                         "effectText": " ".join(CONDITIONS.get(name, {}).get("effects", []))})
         lvl = self.exhaustionLevel
         if lvl > 0:
-            out.append({"name": f"Exhaustion ({lvl})", "effectText": _EXHAUSTION_EFFECTS.get(lvl, "")})
+            out.append({"name": f"Exhaustion ({lvl})", "cond": "", "rounds": 0,
+                        "effectText": _EXHAUSTION_EFFECTS.get(lvl, "")})
         return out
 
     @Slot(str, bool)
@@ -1736,6 +1786,13 @@ class CharacterSheetBridge(QObject):
         else:
             current.discard(name)
         self.char["conditions"] = sorted(current)
+        # its old count of rounds goes; one you can't concentrate under
+        # (stunned, unconscious...) ends the spell (core/durations.py)
+        from dnd_app.core.durations import condition_changed
+        said = condition_changed(self.char, name)
+        if said:
+            self._pending_conc_dc = 0
+            self.toastRequested.emit(said)
         # Conditions like Prone/Restrained/Petrified/Grappled feed into
         # AC, speed, and advantage/disadvantage via calculator.py's
         # update_all() -- without this refresh() the toggle only updated
@@ -1977,6 +2034,8 @@ class CharacterSheetBridge(QObject):
         char = self.char
         char["_wildshape_active"] = None
         char.pop("_wildshape_hp", None)
+        from dnd_app.core.hp_undo import clear_hp_undo
+        clear_hp_undo(char)              # (back in your own form: the last Damage or Heal stands)
         effects = char.get("active_effects", [])
         if "Wild Shape" in effects:
             effects.remove("Wild Shape")
@@ -2033,6 +2092,8 @@ class CharacterSheetBridge(QObject):
         ok, msg = wild_shape_into(self.char, beast_name)
         self.toastRequested.emit(msg)
         if ok:
+            from dnd_app.core.hp_undo import clear_hp_undo
+            clear_hp_undo(self.char)     # (another form: the last Damage or Heal stands)
             self.ctrl.refresh()
             self._changed()
 
@@ -2069,10 +2130,27 @@ class CharacterSheetBridge(QObject):
     def _build_features_sections(self):
         char = self.char
         sections = []
+        from dnd_app.core.features import feature_detail, feature_search_text
 
-        def add_section(title, items):
-            if items:
-                sections.append({"title": title, "items": list(items)})
+        def add_section(title, items, cls=""):
+            if not items:
+                return
+            # rows: each feature with whether there's more to read behind
+            # it (a tap opens it: showFeatureDetail) and what the screen's
+            # "find a feature" box looks through -- core/features.py, the
+            # same as desktop's Features tab
+            # (numbers in place of '+STAT' and 'CHA mod uses/LR' shorthand,
+            # as desktop's rows: core/calculator.py resolve_stat_placeholders)
+            from dnd_app.core.calculator import resolve_stat_placeholders
+            items = [resolve_stat_placeholders(it, char) for it in dict.fromkeys(items)]
+            rows = []
+            for it in items:
+                tip = feature_detail(char, it, cls)["tip"]
+                # (cls: the class whose section this is -- a feature name
+                # other classes share reads as this class's own)
+                rows.append({"text": it, "more": bool(tip), "cls": cls,
+                             "find": feature_search_text(it, tip, title)})
+            sections.append({"title": title, "items": list(items), "rows": rows})
 
         race = char.get("species") or char.get("race", "")
         if race:
@@ -2084,13 +2162,9 @@ class CharacterSheetBridge(QObject):
                 add_section(f"Race: {race}", race_traits_for(char))
             subrace = char.get("subrace", "")
             if subrace and rdata:
-                for sub_str in rdata.get("subraces", []):
-                    sub_name = sub_str.split("(")[0].strip()
-                    if sub_name == subrace:
-                        inner = sub_str[sub_str.find("(") + 1:sub_str.rfind(")")]
-                        parts = [p.strip() for p in inner.split(";" if ";" in inner else ",") if p.strip()]
-                        add_section(f"Subrace: {subrace}", parts)
-                        break
+                # (less its ability scores and sourcebook tag, as desktop's)
+                from dnd_app.core.features import subrace_traits
+                add_section(f"Subrace: {subrace}", subrace_traits(rdata, subrace))
 
         bg = get_background(char.get("background", ""))
         if bg and bg.get("feature"):
@@ -2163,7 +2237,7 @@ class CharacterSheetBridge(QObject):
                     feats.append("[Replicated Magic Items]  " + ", ".join(
                         f"{name} (attunement)" if needs_attunement.get(name) else name for name in learned))
 
-            add_section(title, feats)
+            add_section(title, feats, cls=cname)
 
         feat_items = []
         for fname in char.get("feats", []):
@@ -2201,6 +2275,17 @@ class CharacterSheetBridge(QObject):
     @Property(list, notify=statsChanged)
     def featuresSections(self):
         return self._build_features_sections()
+
+    @Slot(str)
+    @Slot(str, str)
+    def showFeatureDetail(self, item: str, cls: str = ""):
+        """A feature row tapped: its name and what it does, in the sheet's
+        message dialog (the same text desktop's Features tab opens). cls is
+        the class whose section the row is in, if it's a class's."""
+        from dnd_app.core.features import feature_detail
+        d = feature_detail(self.char, item, cls)
+        if d["body"]:
+            self.sheetMessage.emit(d["name"], d["body"].replace("\n", "<br>") if "<" in d["body"] else d["body"])
 
     # ── Wild Magic Surge (Barbarian d8 / Sorcerer d100) ──────────────
     # Pure "roll and show the effect" mechanic -- doesn't mutate the
@@ -2797,10 +2882,12 @@ class CharacterSheetBridge(QObject):
     @Property(list, notify=statsChanged)
     def activeEffectRows(self):
         from dnd_app.core.riders import effect_note
+        from dnd_app.core.durations import rounds_left
         out = []
         for n in self.char.get("active_effects", []):
             info = EFFECT_TABLE.get(n, {})
             out.append({"name": n, "concentration": bool(info.get("conc")),
+                        "rounds": rounds_left(self.char, "effect", n),
                         "note": effect_note(self.char, n) or info.get("note", "")
                         or "Tracked, with no numbers of its own."})
         return out
@@ -2835,6 +2922,8 @@ class CharacterSheetBridge(QObject):
             return
         fx.remove(name)
         (self.char.get("effect_details") or {}).pop(name, None)
+        from dnd_app.core.durations import forget_ended
+        forget_ended(self.char)
         msg = f"{name} ends"
         # Berserker's Frenzy can't outlast the rage: it ends too, with a
         # level of exhaustion (as desktop)
@@ -2898,18 +2987,43 @@ class CharacterSheetBridge(QObject):
         from dnd_app.core.action_use import new_turn
         if new_turn(self.char):
             self.ctrl.refresh()
+        # a round comes off everything that's counted, and what has run out
+        # ends: an effect, a condition, the spell being concentrated on
+        # (core/durations.py)
+        from dnd_app.core.durations import tick
+        ended = tick(self.char)
+        if ended:
+            if not self.isConcentrating:
+                self._pending_conc_dc = 0
+            self.ctrl.refresh()
+        tail = "".join(f"\n{line}" for line in ended)
         # Surprise lasts until the end of your first turn -- a new turn
         # means it's over.
         from dnd_app.core.calculator import get_turn_blocks
         if "Surprised" in self.char.get("conditions", []):
             self.char["conditions"] = [c for c in self.char["conditions"] if c != "Surprised"]
             self.ctrl.refresh()
-            self.toastRequested.emit("New turn -- no longer surprised; action, bonus & reaction ready")
+            self.toastRequested.emit("New turn -- no longer surprised; action, bonus & reaction ready" + tail)
         elif get_turn_blocks(self.char):
-            self.toastRequested.emit("New turn -- still incapacitated, no actions or reactions")
+            self.toastRequested.emit("New turn -- still incapacitated, no actions or reactions" + tail)
         else:
-            self.toastRequested.emit("New turn -- action, bonus & reaction ready")
+            self.toastRequested.emit("New turn -- action, bonus & reaction ready" + tail)
         self._changed()
+
+    @Slot(str, str, int)
+    def setRoundsLeft(self, kind: str, name: str, rounds: int):
+        """The rounds an effect ("effect"), a condition ("condition") or the
+        spell being concentrated on ("concentration") has left; 0: not
+        counted. New Turn takes one off and ends it at none."""
+        from dnd_app.core.durations import set_rounds
+        set_rounds(self.char, kind, name, int(rounds))
+        self._changed()
+
+    @Property(int, notify=statsChanged)
+    def concentrationRoundsLeft(self):
+        from dnd_app.core.durations import rounds_left
+        spell = (self.char.get("concentration") or {}).get("spell")
+        return rounds_left(self.char, "concentration", spell) if spell else 0
 
     def _has_beast_spells(self) -> bool:
         return any(c.get("class") == "Druid" and c.get("level", 0) >= 18
@@ -3128,17 +3242,20 @@ class CharacterSheetBridge(QObject):
         return self._pending_conc_dc if self.isConcentrating else 0
 
     @Slot()
-    def rollPendingConcentrationSave(self):
-        """Roll the save the last hit asked for (d20 + CON save bonus)."""
+    @Slot(int)
+    def rollPendingConcentrationSave(self, d20: int = 0):
+        """Roll the save the last hit asked for (d20 + CON save bonus) --
+        or, with `d20`, use the number the player rolled on their own die."""
         dc = self.concentrationSaveDc
         if not dc:
             return
         self._pending_conc_dc = 0
         # concentration_save() takes the damage; DC = max(10, damage // 2)
-        self.rollConcentrationSave(dc * 2)
+        self.rollConcentrationSave(dc * 2, d20)
 
     @Slot(int)
-    def rollConcentrationSave(self, damage: int):
+    @Slot(int, int)
+    def rollConcentrationSave(self, damage: int, d20: int = 0):
         """The CON save to keep concentrating (core/checks.py, the same as
         desktop): DC 10 or half the damage; what always applies is on the
         roll, and when it's under the DC, what you can add comes in the
@@ -3146,9 +3263,12 @@ class CharacterSheetBridge(QObject):
         spell = self.char.get("concentration", {}).get("spell")
         if not spell:
             return
-        self._roll_check({"kind": "concentration", "ability": "CON", "skill": "",
-                          "label": f"Concentration ({spell})", "bonus": get_saving_throw_bonus(self.char, "CON"),
-                          "dc": max(10, damage // 2), "spell": spell})
+        what = {"kind": "concentration", "ability": "CON", "skill": "",
+                "label": f"Concentration ({spell})", "bonus": get_saving_throw_bonus(self.char, "CON"),
+                "dc": max(10, damage // 2), "spell": spell}
+        if d20:
+            what["d20"] = int(d20)          # the player's own roll: the rest is added the same way
+        self._roll_check(what)
 
     # ── Identity (race/subrace/ancestry/background, editable post-
     # creation) -- mirrors ui_desktop's Choices tab _edit_identity(). ──
@@ -3943,6 +4063,8 @@ class CharacterSheetBridge(QObject):
         if not self.hasCharacter:
             return
         char = self.char
+        from dnd_app.core.hp_undo import clear_hp_undo
+        clear_hp_undo(char)              # (after a rest, the last Damage or Heal stands)
         hd_model = char.get("hit_dice", {})
         cur, mx = char.get("current_hp", 0), char.get("max_hp", 0)
         healed = 0
@@ -3990,6 +4112,8 @@ class CharacterSheetBridge(QObject):
             return
         char = self.char
         from dnd_app.core.character import long_rest_block_reason
+        from dnd_app.core.hp_undo import clear_hp_undo
+        clear_hp_undo(char)              # (after a rest, the last Damage or Heal stands)
         if long_rest_block_reason(char):   # backstop -- RestFlowDialog checks first
             return
         char["current_hp"] = char.get("max_hp", 0)

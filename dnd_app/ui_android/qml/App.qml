@@ -161,40 +161,40 @@ ApplicationWindow {
     // first place; the drawer is a shortcut back to an already-done
     // step, not a way to skip ahead of one that isn't.
     readonly property var wizardNavItems: [
-        { label: "Race", screen: raceListComp, enabled: true },
-        { label: "Abilities", screen: abilitiesComp,
+        { label: "Race", icon: "identity", screen: raceListComp, enabled: true },
+        { label: "Abilities", icon: "abilities", screen: abilitiesComp,
           enabled: raceBridge !== null && raceBridge.raceConfirmedOnce },
-        { label: "Class", screen: classComp,
+        { label: "Class", icon: "features", screen: classComp,
           enabled: abilityBridge !== null && abilityBridge.abilitiesConfirmedOnce },
-        { label: "Equipment", screen: equipmentComp,
+        { label: "Equipment", icon: "gear", screen: equipmentComp,
           enabled: classBridge !== null && classBridge.classConfirmedOnce },
     ]
     readonly property var sheetNavItemsBase: [
-        { label: "Combat", screen: sheetComp, enabled: true },
-        { label: "Actions", screen: sheetActionsComp, enabled: true,
+        { label: "Combat", icon: "combat", screen: sheetComp, enabled: true },
+        { label: "Actions", icon: "bolt", screen: sheetActionsComp, enabled: true,
           sections: ["Resources", "Action", "Bonus Action", "Reaction", "Passive / Other"] },
-        { label: "Abilities", screen: sheetAbilitiesComp, enabled: true },
-        { label: "Proficiencies", screen: sheetProficienciesComp, enabled: true },
-        { label: "Spells", screen: sheetSpellsComp, enabled: true,
+        { label: "Abilities", icon: "abilities", screen: sheetAbilitiesComp, enabled: true },
+        { label: "Proficiencies", icon: "skills", screen: sheetProficienciesComp, enabled: true },
+        { label: "Spells", icon: "spells", screen: sheetSpellsComp, enabled: true,
           sections: ["Spell Slots", "Known Spells", "Add a Spell"],
           pulse: window.spellsPending },
-        { label: "Equipment", screen: sheetEquipmentComp, enabled: true,
+        { label: "Equipment", icon: "gear", screen: sheetEquipmentComp, enabled: true,
           sections: ["Inventory", "Add Equipment", "Magic Items", "Add a Magic Item"] },
-        { label: "Companions", screen: sheetCompanionsComp, enabled: true,
+        { label: "Companions", icon: "paw", screen: sheetCompanionsComp, enabled: true,
           sections: ["Mounts", "Vehicles", "Summoned Creatures", "Wild Shape"] },
-        { label: "Features", screen: sheetFeaturesComp, enabled: true },
+        { label: "Features", icon: "features", screen: sheetFeaturesComp, enabled: true },
     ]
     // Infusions only makes sense for Artificers -- everyone else never
     // sees the entry at all, rather than a permanently "(finish
     // previous step)"-style disabled one that would never unlock.
     readonly property var sheetNavItems:
         (sheetBridge !== null && sheetBridge.isArtificer
-            ? sheetNavItemsBase.concat([{ label: "Infusions", screen: sheetInfusionsComp, enabled: true }])
+            ? sheetNavItemsBase.concat([{ label: "Infusions", icon: "infusions", screen: sheetInfusionsComp, enabled: true }])
             : sheetNavItemsBase
         ).concat([
-            { label: "Choices", screen: sheetChoicesComp, enabled: true,
+            { label: "Choices", icon: "choices", screen: sheetChoicesComp, enabled: true,
               pulse: window.choicesPending },
-            { label: "Notes", screen: sheetNotesComp, enabled: true,
+            { label: "Notes", icon: "notes", screen: sheetNotesComp, enabled: true,
               sections: ["Personality", "Appearance", "Backstory"].concat(
                   sheetBridge !== null ? sheetBridge.notesPages.map(p => p.title) : []) },
         ])
@@ -235,11 +235,33 @@ ApplicationWindow {
     // save" snapshot, so it's asked fresh here rather than cached --
     // this only ever runs right when the player taps Home.
     function requestGoToStartMenu() {
-        if (saveLoadBridge.hasUnsavedChanges()) {
+        leaveCharacterThen(goToStartMenu, "Exit")
+    }
+    // Before the open character is left or replaced (Home, another one
+    // opened or imported): its unsaved changes are asked about first --
+    // save, discard or stay. `then` runs once they're saved or discarded;
+    // `verb` words the buttons ("Save & Exit", "Save & Open").
+    property var unsavedThen: null
+    property string unsavedVerb: "Exit"
+    function leaveCharacterThen(then, verb) {
+        // (at the start menu no character is open: one whose changes were
+        // discarded on the way there isn't asked about a second time)
+        var atStart = stackView.currentItem !== null && stackView.currentItem.isStartMenu === true
+        if (!atStart && saveLoadBridge.hasUnsavedChanges()) {
+            unsavedThen = then
+            unsavedVerb = verb || "Exit"
             unsavedChangesDialog.open()
         } else {
-            goToStartMenu()
+            then()
         }
+    }
+    // Save & Export's own list: open another saved character in place of
+    // this one, straight to its sheet (as the start menu does)
+    function requestOpenCharacter(filepath) {
+        leaveCharacterThen(function() {
+            saveLoadDialog.close()
+            loadCharacterIntoSheet(filepath)
+        }, "Open")
     }
 
     // Start Menu / wizard-completion actions -- kept here (rather than
@@ -282,6 +304,9 @@ ApplicationWindow {
         sheetBridge.stampThemeIfMissing(Theme.currentThemeName)
         Theme.applyTheme(sheetBridge.theme)
         Theme.applyFontScale(sheetBridge.fontScale)
+        // (what the app put right on the way in isn't a change you made:
+        // "nothing's unsaved" starts from here)
+        saveLoadBridge.settleLoaded()
         characterActive = true
         stackView.replace(screenComp(sheetComp))
     }
@@ -360,11 +385,13 @@ ApplicationWindow {
             MButton {
                 objectName: "unsavedSaveAndExitButton"
                 Layout.fillWidth: true
-                text: "Save & Exit"
+                text: "Save & " + window.unsavedVerb
                 onClicked: {
                     if (saveLoadBridge.saveCharacter()) {
                         unsavedChangesDialog.close()
-                        goToStartMenu()
+                        var then = window.unsavedThen || goToStartMenu
+                        window.unsavedThen = null
+                        then()
                     }
                     // On failure saveLoadBridge already raised its own
                     // error (see errorMessage/toastRequested) -- leave
@@ -380,8 +407,16 @@ ApplicationWindow {
                     objectName: "unsavedDiscardButton"
                     Layout.fillWidth: true
                     primary: false
-                    text: "Discard & Exit"
-                    onClicked: { unsavedChangesDialog.close(); goToStartMenu() }
+                    text: "Discard & " + window.unsavedVerb
+                    onClicked: {
+                        // (discarded on purpose: their backup goes too, or
+                        // they'd be offered back next time)
+                        saveLoadBridge.discardBackup()
+                        unsavedChangesDialog.close()
+                        var then = window.unsavedThen || goToStartMenu
+                        window.unsavedThen = null
+                        then()
+                    }
                 }
                 MButton {
                     objectName: "unsavedCancelButton"
@@ -390,6 +425,90 @@ ApplicationWindow {
                     text: "Cancel"
                     onClicked: unsavedChangesDialog.close()
                 }
+            }
+        }
+    }
+
+    // ── Unsaved-changes backups ─────────────────────────────────────────
+    // While the open character has unsaved changes, a backup of it is kept
+    // beside its save: whenever the app is left (Android can clear it out
+    // of memory at any time once it's in the background) and every minute
+    // besides. A save or a deliberate discard removes it. If the app ends
+    // any other way, opening the character next time offers the changes
+    // back (restoreBackupDialog). bridge/save_load.py, core/save_load.py --
+    // the same as desktop.
+    Connections {
+        target: Qt.application
+        function onStateChanged() {
+            if (Qt.application.state !== Qt.ApplicationActive && window.characterActive && window.saveLoadBridge)
+                window.saveLoadBridge.backupIfUnsaved()
+        }
+    }
+    Timer {
+        interval: 60000
+        repeat: true
+        running: window.characterActive
+        onTriggered: if (window.saveLoadBridge) window.saveLoadBridge.backupIfUnsaved()
+    }
+    Connections {
+        target: window.saveLoadBridge
+        function onBackupFound(who, when) {
+            restoreBackupDialog.who = who
+            restoreBackupDialog.when = when
+            restoreBackupDialog.open()
+        }
+    }
+    Dialog {
+        id: restoreBackupDialog
+        objectName: "restoreBackupDialog"
+        property string who: ""
+        property string when: ""
+        function finish(restore) {
+            close()
+            if (saveLoadBridge.finishLoad(restore)) {
+                saveLoadDialog.close()
+                showLoadedCharacter()
+            }
+        }
+        parent: Overlay.overlay
+        modal: true
+        focus: true
+        closePolicy: Popup.NoAutoClose
+        width: Math.min(parent ? parent.width - 32 : 320, 340)
+        anchors.centerIn: parent
+        background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 12
+            Label {
+                text: "Unsaved Changes Found"
+                color: Theme.gold
+                font.pixelSize: Theme.fsBody
+                font.bold: true
+            }
+            Label {
+                objectName: "restoreBackupText"
+                text: restoreBackupDialog.who + " has changes"
+                      + (restoreBackupDialog.when.length > 0 ? " from " + restoreBackupDialog.when : "")
+                      + " that were never saved. Restore them?"
+                color: Theme.text2
+                font.pixelSize: Theme.fsSmall
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            MButton {
+                objectName: "restoreBackupYes"
+                Layout.fillWidth: true
+                text: "Restore"
+                onClicked: restoreBackupDialog.finish(true)
+            }
+            MButton {
+                objectName: "restoreBackupNo"
+                Layout.fillWidth: true
+                primary: false
+                text: "Discard"
+                onClicked: restoreBackupDialog.finish(false)
             }
         }
     }
@@ -1262,6 +1381,10 @@ ApplicationWindow {
     // the drawer is always reachable.
     onClosing: (close) => {
         close.accepted = false
+        // (a question that's up comes first: "restore?" needs its answer,
+        // and back is Cancel for "unsaved changes")
+        if (restoreBackupDialog.opened) return
+        if (unsavedChangesDialog.opened) { unsavedChangesDialog.close(); return }
         if (settingsDialog.opened) { settingsDialog.close(); return }
         if (saveLoadDialog.opened) { saveLoadDialog.close(); return }
         if (diceRollerDialog.opened) { diceRollerDialog.close(); return }
