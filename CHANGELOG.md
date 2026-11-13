@@ -251,6 +251,9 @@ paper characters can come with you.
 - A spell from your race or a feat uses its own ability, save DC and
   attack, and its free casts have their own counter.
 - Races, backgrounds, spells and spell slots checked against the books.
+  25 spells added (Healing Spirit, Summon Fiend, Tenser's Transformation…),
+  4 that were listed twice under a shorter name and 11 playtest spells
+  taken out: 521 spells.
   - *Designer note: a new character should start with exactly what its
     book gives it.*
 
@@ -368,6 +371,9 @@ can level by XP, and your character prints onto the official sheet.
   Warlock patron, and the Ranger conclaves and Druid circles that were
   missing them.
   - *Designer note: five Warlock patrons had no expanded spells at all.*
+- Three missing spells added (Evard's Black Tentacles, Leomund's Secret
+  Chest, Staggering Smite), and Thundering Smite renamed to Thunderous
+  Smite: 511 spells.
 - Multiclassing no longer gives the new class's saving throws.
 - A githyanki's Astral Knowledge and an astral elf's Astral Trance give
   their skill and tool until the next long rest.
@@ -413,8 +419,8 @@ your computer, offline and free.
 
 - **Step-by-step character creation:** race, ability scores (point buy,
   standard array or your own), background, class, spells and equipment.
-- **The 2014 rules:** 85 races, 14 classes with 126 subclasses, 508
-  spells, 138 feats, 99 backgrounds and 1,283 magic items.
+- **The 2014 rules:** 84 races and a custom one, 14 classes with 127
+  subclasses, 508 spells, 138 feats, 99 backgrounds and 1,283 magic items.
 - **Levelling up and multiclassing**, with each level's choices.
 - **A combat sheet** that tracks your HP, your turn, your resources, rests,
   death saves and conditions.
