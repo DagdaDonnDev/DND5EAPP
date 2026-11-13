@@ -619,6 +619,10 @@ def start_concentration(char: dict, spell_name: str, *, round_num: int = 0) -> N
         _end_concentration_effects(char, old)
     char["concentration"]["spell"] = spell_name
     char["concentration"]["since_round"] = round_num
+    # a spell of a minute or less is counted down by New Turn (core/durations.py)
+    from dnd_app.data.spells import get_spell
+    from dnd_app.core.durations import cast_rounds, set_rounds
+    set_rounds(char, "concentration", spell_name, cast_rounds(get_spell(spell_name) or {}))
 
 
 def drop_concentration(char: dict) -> None:
@@ -627,6 +631,8 @@ def drop_concentration(char: dict) -> None:
         _end_concentration_effects(char, conc["spell"])
     conc["spell"] = None
     conc["since_round"] = 0
+    from dnd_app.core.durations import forget_ended
+    forget_ended(char)
 
 
 def _end_concentration_effects(char: dict, spell_name: str) -> None:

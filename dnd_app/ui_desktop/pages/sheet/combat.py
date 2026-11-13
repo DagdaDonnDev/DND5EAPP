@@ -259,6 +259,14 @@ class CombatMixin:
         else:
             active.discard(cond)
         self.char["conditions"] = sorted(active)
+        # its old count of rounds goes; one you can't concentrate under
+        # (stunned, unconscious...) ends the spell (core/durations.py)
+        from dnd_app.core.durations import condition_changed
+        said = condition_changed(self.char, cond)
+        if said:
+            self._refresh_concentration()
+            self._refresh_effects_list()
+            self._toast(said)
         self._refresh_active_conditions()
         self._mark_dirty()
         if hasattr(self, "_apply_turn_state"):
@@ -1201,13 +1209,52 @@ class CombatMixin:
         if not conc_spell:
             return
         from dnd_app.core.calculator import get_saving_throw_bonus
-        self._roll_check({"kind": "concentration", "ability": "CON", "skill": "",
-                          "label": f"Concentration ({conc_spell})", "bonus": get_saving_throw_bonus(self.char, "CON"),
-                          "dc": dc, "spell": conc_spell})
+        what = {"kind": "concentration", "ability": "CON", "skill": "",
+                "label": f"Concentration ({conc_spell})", "bonus": get_saving_throw_bonus(self.char, "CON"),
+                "dc": dc, "spell": conc_spell}
+        # roll it here, or type in the d20 you rolled at the table: your
+        # bonus and everything that applies is added to it the same way
+        own = self._ask_own_roll(
+            "Concentration save",
+            f"You took damage while concentrating on <b>{conc_spell}</b>.<br>"
+            f"Constitution save, DC {dc}, to keep it.")
+        if own:
+            what["d20"] = own
+        self._roll_check(what)
         if not self.char.get("concentration", {}).get("spell"):
             self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
         self._refresh_concentration()
         self._mark_dirty()
+
+    def _ask_own_roll(self, title: str, text: str) -> int:
+        """Roll it here, or use a d20 the player rolled themselves? Returns
+        the number on their die (1-20), or 0 to roll it here (the default,
+        and what closing the question does)."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle(title)
+        lay = QVBoxLayout(dlg); lay.setContentsMargins(18, 16, 18, 14); lay.setSpacing(12)
+        lay.addWidget(_lbl(text, TEXT, FS_BODY, wrap=True))
+        roll = _btn("Roll for me", AMBER, height=34)
+        roll.setObjectName("ownRollRoll")
+        roll.clicked.connect(dlg.reject)
+        lay.addWidget(roll)
+        row = QHBoxLayout(); row.setSpacing(8)
+        row.addWidget(_lbl("I rolled", TEXT2, FS_SMALL))
+        spin = QSpinBox(); spin.setRange(1, 20); spin.setValue(10)
+        spin.setObjectName("ownRollValue")
+        spin.setAccessibleName("The number on your d20")
+        spin.setToolTip("The number on the d20 itself — your bonus is added for you")
+        row.addWidget(spin)
+        row.addWidget(_lbl("on the d20", TEXT2, FS_SMALL))
+        row.addStretch(1)
+        use = _btn("Use my roll", variant="neutral", height=30)
+        use.setObjectName("ownRollUse")
+        use.clicked.connect(dlg.accept)
+        row.addWidget(use)
+        lay.addLayout(row)
+        roll.setDefault(True)
+        roll.setFocus()
+        return spin.value() if dlg.exec() == QDialog.Accepted else 0
 
     def _roll_initiative(self):
         """Roll d20 + initiative bonus — shown as a non-blocking toast."""
@@ -1337,6 +1384,24 @@ class CombatMixin:
         if new_turn(self.char):
             self._mark_dirty()
             QTimer.singleShot(0, self.ctrl.refresh)
+        # a round comes off everything that's counted, and what has run out
+        # ends: an effect, a condition, the spell being concentrated on
+        # (core/durations.py)
+        from dnd_app.core.durations import tick
+        counted = bool(self.char.get("durations"))
+        ended = tick(self.char)
+        if counted:
+            for name, cb in getattr(self, "_cond_checks", {}).items():
+                on = name in self.char.get("conditions", [])
+                if cb.isChecked() != on:
+                    cb.blockSignals(True); cb.setChecked(on); cb.blockSignals(False)
+            self._refresh_active_conditions()
+            self._refresh_effects_list()
+            self._refresh_concentration()
+            self._mark_dirty()
+            if ended:
+                self.ctrl.refresh()
+        tail = "".join(f"\n{line}" for line in ended)
         # Surprise lasts until the end of your first turn -- a new turn
         # means it's over.
         if "Surprised" in self.char.get("conditions", []):
@@ -1348,14 +1413,52 @@ class CombatMixin:
             self._mark_dirty()
             self.ctrl.refresh()
             self._apply_turn_state()
-            self._toast("New turn — no longer surprised; action, bonus & reaction ready")
+            self._toast("New turn — no longer surprised; action, bonus & reaction ready" + tail)
             return
         self._apply_turn_state()
         from dnd_app.core.calculator import get_turn_blocks
         if get_turn_blocks(self.char):
-            self._toast("New turn — still incapacitated, no actions or reactions")
+            self._toast("New turn — still incapacitated, no actions or reactions" + tail)
         else:
-            self._toast("New turn — action, bonus & reaction ready")
+            self._toast("New turn — action, bonus & reaction ready" + tail)
+
+    def _rounds_button(self, kind: str, name: str, ink: str):
+        """The hourglass at the end of an effect's or a condition's row: the
+        rounds it has left (blank while it isn't counted). A click sets
+        them; New Turn takes one off and ends it at none (core/durations.py)."""
+        from dnd_app.core.durations import rounds_left, rounds_text
+        left = rounds_left(self.char, kind, name)
+        btn = QToolButton()
+        btn.setObjectName("roundsBtn")
+        btn.setProperty("roundsFor", f"{kind}:{name}")
+        _icons.set_button_icon(btn, "hourglass", 14, color=ink)
+        btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon if left else Qt.ToolButtonIconOnly)
+        btn.setText(str(left) if left else "")
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setAutoRaise(True)
+        btn.setFixedHeight(24)
+        btn.setToolTip((f"{rounds_text(left).capitalize()}. " if left else "Not counted: it lasts until you end it. ")
+                       + "Click to set the rounds it has left — New Turn takes one off, and ends it at none.")
+        btn.setAccessibleName(f"{name}: {rounds_text(left) or 'rounds not counted'}")
+        btn.setStyleSheet(f"QToolButton{{background:transparent;border:none;border-radius:6px;color:{ink};"
+                          f"font-size:{FS_SMALL}px;font-weight:700;padding:0px 4px;}}"
+                          f"QToolButton:hover{{background:{qa(INDIGO, 0x33)};}}")
+        btn.clicked.connect(lambda _=False, k=kind, n=name: QTimer.singleShot(0, self, lambda: self._ask_rounds(k, n)))
+        return btn
+
+    def _ask_rounds(self, kind: str, name: str):
+        """Set the rounds an effect or a condition has left (0: not counted)."""
+        from dnd_app.core.durations import rounds_left, set_rounds
+        left = rounds_left(self.char, kind, name)
+        n, ok = QInputDialog.getInt(
+            self, name, "Rounds left (a minute is 10).\nNew Turn takes one off and ends it at none. "
+                        "0: not counted, it lasts until you end it.", left or 10, 0, 999)
+        if not ok:
+            return
+        set_rounds(self.char, kind, name, n)
+        self._refresh_effects_list()
+        self._refresh_active_conditions()
+        self._mark_dirty()
 
     def _apply_turn_state(self):
         """Grey out Use/Cast buttons in spent buckets; refresh chips."""
@@ -1531,6 +1634,8 @@ class CombatMixin:
         if name in fx:
             fx.remove(name)
             (self.char.get("effect_details") or {}).pop(name, None)
+            from dnd_app.core.durations import forget_ended
+            forget_ended(self.char)
             # Berserker's Frenzy: if Rage ends while frenzied, gain 1
             # level of exhaustion and Frenzy itself ends (it can't outlast
             # the rage it was part of).
@@ -1587,10 +1692,12 @@ class CombatMixin:
             row.setToolTip(f"<b>{name}</b>" + (" (concentration)" if info.get("conc") else "")
                            + f"<br>{note}<br><br><i>Right-click: end it, or read it all</i>")
             row.setAccessibleName(f"{name}: {note}")
+            rl.addWidget(self._rounds_button("effect", name, ink), 0, Qt.AlignVCenter)
 
             def _menu(pos, r=row, n=name, nt=note):
                 m = QMenu(r)
                 m.addAction(f"End {n}", lambda: QTimer.singleShot(0, self, lambda: self._remove_active_effect(n)))
+                m.addAction("Rounds left…", lambda: QTimer.singleShot(0, self, lambda: self._ask_rounds("effect", n)))
                 m.addAction("Details…", lambda: show_details(self, n, details_markdown(nt)))
                 m.exec(r.mapToGlobal(pos))
             row.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -1667,6 +1774,8 @@ class CombatMixin:
             if removable:
                 m.addAction(f"Take {cond} off",
                             lambda c=cond: QTimer.singleShot(0, self, lambda: self._cond_checks[c].setChecked(False)))
+                m.addAction("Rounds left…",
+                            lambda c=cond: QTimer.singleShot(0, self, lambda: self._ask_rounds("condition", c)))
             else:
                 a = m.addAction(f"Goes when {cause} does"); a.setEnabled(False)
             m.addAction("Details…", lambda c=cond: self._show_condition_details(c))
@@ -1685,6 +1794,8 @@ class CombatMixin:
             if icon:
                 rl.addWidget(_icons.icon_label(icon, 16, ink))
             rl.addWidget(_lbl(title, ink, FS_SMALL, bold=True, wrap=False), 1)
+            if removable:
+                rl.addWidget(self._rounds_button("condition", cond, ink), 0, Qt.AlignVCenter)
             summary = CONDITIONS.get(cond, {}).get("summary", "")
             row.setToolTip(f"<b>{cond}</b>" + (f" (from {cause})" if cause else "")
                            + (f"<br>{summary}" if summary else "")
@@ -1724,6 +1835,8 @@ class CombatMixin:
         if not self.char.get("conditions"):
             return
         self.char["conditions"] = []
+        from dnd_app.core.durations import forget_ended
+        forget_ended(self.char)
         for act in self._cond_checks.values():
             act.blockSignals(True); act.setChecked(False); act.blockSignals(False)
         self._refresh_active_conditions()
@@ -2265,6 +2378,13 @@ class CombatMixin:
                         self._mark_dirty()
                 else:
                     self.ctrl.update("current_hp", v, rebuild_char=False)
+                    # typed down to 0: you can't concentrate while you're out
+                    from dnd_app.core.durations import break_concentration
+                    said = break_concentration(self.char)
+                    if said:
+                        self._refresh_concentration()
+                        self._refresh_effects_list()
+                        self._toast(said)
                 self._update_hp_bar()
                 self._refresh_death_and_conditions()
             self._hp_current_hp.valueChanged.connect(_on_current_hp_changed)

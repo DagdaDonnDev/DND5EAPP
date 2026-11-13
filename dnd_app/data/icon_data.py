@@ -534,6 +534,9 @@ ICON_PATHS = {
     # Undo: an arrow back to the left, its tail curling round from below
     "undo": _join(poly((9, 5), (5, 9), (9, 13), closed=False), "M 5 9 L 14 9",
                   arc(14, 14, 5, 5, -90, 90, move=False), "L 9.5 19"),
+    # Rounds left: an hourglass
+    "hourglass": _join(line(6, 4, 18, 4), line(6, 20, 18, 20),
+                       poly((7.5, 4), (16.5, 4), (12, 12), (16.5, 20), (7.5, 20), (12, 12))),
     "home": _join(poly((3.5, 11.5), (12, 4), (20.5, 11.5), closed=False),
                   poly((6, 10), (6, 20), (18, 20), (18, 10), closed=False),
                   poly((10, 20), (10, 15), (14, 15), (14, 20), closed=False)),

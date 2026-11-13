@@ -2593,6 +2593,9 @@ def end_effects(char, names) -> list:
     # what each was cast on goes with it (a smite that landed, a weapon pick)
     for n in ended:
         (char.get("effect_details") or {}).pop(n, None)
+    if ended:
+        from dnd_app.core.durations import forget_ended
+        forget_ended(char)
     return ended
 
 

@@ -1147,6 +1147,10 @@ def on_effect_started(char: dict, name: str) -> str:
     can't concentrate while raging. A new one also brings back what's
     once per rage (Fanatical Focus)."""
     char.setdefault("_once_per", {})[name] = []
+    # one that lasts a minute is counted down by New Turn (core/durations.py)
+    from dnd_app.core.durations import EFFECT_ROUNDS, set_rounds
+    if name in EFFECT_ROUNDS:
+        set_rounds(char, "effect", name, EFFECT_ROUNDS[name])
     if name == "Shifting":
         # temporary hit points: your level + CON (ERLW), or twice your
         # proficiency bonus (MPMM); a beasthide shifter gets 1d6 more

@@ -1751,6 +1751,8 @@ class CharacterSheetBridge(QObject):
         if not self.char.get("conditions"):
             return
         self.char["conditions"] = []
+        from dnd_app.core.durations import forget_ended
+        forget_ended(self.char)
         self.ctrl.refresh()
         self.toastRequested.emit("Conditions cleared")
         self._changed()
@@ -1758,19 +1760,22 @@ class CharacterSheetBridge(QObject):
     @Property(list, notify=statsChanged)
     def activeConditions(self):
         active = set(self.char.get("conditions", []))
+        from dnd_app.core.durations import rounds_left
         out = [
-            {"name": name, "effectText": " ".join(CONDITIONS[name].get("effects", []))}
+            {"name": name, "cond": name, "effectText": " ".join(CONDITIONS[name].get("effects", [])),
+             "rounds": rounds_left(self.char, "condition", name)}
             for name in sorted(active) if name in CONDITIONS
         ]
         # conditions another one brings with it (Stunned -> Incapacitated,
         # Unconscious -> Prone), so a blocked turn has a visible reason
         from dnd_app.core.calculator import implied_conditions
         for name, causes in implied_conditions(self.char).items():
-            out.append({"name": f"{name} (from {', '.join(causes)})",
+            out.append({"name": f"{name} (from {', '.join(causes)})", "cond": "", "rounds": 0,
                         "effectText": " ".join(CONDITIONS.get(name, {}).get("effects", []))})
         lvl = self.exhaustionLevel
         if lvl > 0:
-            out.append({"name": f"Exhaustion ({lvl})", "effectText": _EXHAUSTION_EFFECTS.get(lvl, "")})
+            out.append({"name": f"Exhaustion ({lvl})", "cond": "", "rounds": 0,
+                        "effectText": _EXHAUSTION_EFFECTS.get(lvl, "")})
         return out
 
     @Slot(str, bool)
@@ -1781,6 +1786,13 @@ class CharacterSheetBridge(QObject):
         else:
             current.discard(name)
         self.char["conditions"] = sorted(current)
+        # its old count of rounds goes; one you can't concentrate under
+        # (stunned, unconscious...) ends the spell (core/durations.py)
+        from dnd_app.core.durations import condition_changed
+        said = condition_changed(self.char, name)
+        if said:
+            self._pending_conc_dc = 0
+            self.toastRequested.emit(said)
         # Conditions like Prone/Restrained/Petrified/Grappled feed into
         # AC, speed, and advantage/disadvantage via calculator.py's
         # update_all() -- without this refresh() the toggle only updated
@@ -2870,10 +2882,12 @@ class CharacterSheetBridge(QObject):
     @Property(list, notify=statsChanged)
     def activeEffectRows(self):
         from dnd_app.core.riders import effect_note
+        from dnd_app.core.durations import rounds_left
         out = []
         for n in self.char.get("active_effects", []):
             info = EFFECT_TABLE.get(n, {})
             out.append({"name": n, "concentration": bool(info.get("conc")),
+                        "rounds": rounds_left(self.char, "effect", n),
                         "note": effect_note(self.char, n) or info.get("note", "")
                         or "Tracked, with no numbers of its own."})
         return out
@@ -2908,6 +2922,8 @@ class CharacterSheetBridge(QObject):
             return
         fx.remove(name)
         (self.char.get("effect_details") or {}).pop(name, None)
+        from dnd_app.core.durations import forget_ended
+        forget_ended(self.char)
         msg = f"{name} ends"
         # Berserker's Frenzy can't outlast the rage: it ends too, with a
         # level of exhaustion (as desktop)
@@ -2971,18 +2987,43 @@ class CharacterSheetBridge(QObject):
         from dnd_app.core.action_use import new_turn
         if new_turn(self.char):
             self.ctrl.refresh()
+        # a round comes off everything that's counted, and what has run out
+        # ends: an effect, a condition, the spell being concentrated on
+        # (core/durations.py)
+        from dnd_app.core.durations import tick
+        ended = tick(self.char)
+        if ended:
+            if not self.isConcentrating:
+                self._pending_conc_dc = 0
+            self.ctrl.refresh()
+        tail = "".join(f"\n{line}" for line in ended)
         # Surprise lasts until the end of your first turn -- a new turn
         # means it's over.
         from dnd_app.core.calculator import get_turn_blocks
         if "Surprised" in self.char.get("conditions", []):
             self.char["conditions"] = [c for c in self.char["conditions"] if c != "Surprised"]
             self.ctrl.refresh()
-            self.toastRequested.emit("New turn -- no longer surprised; action, bonus & reaction ready")
+            self.toastRequested.emit("New turn -- no longer surprised; action, bonus & reaction ready" + tail)
         elif get_turn_blocks(self.char):
-            self.toastRequested.emit("New turn -- still incapacitated, no actions or reactions")
+            self.toastRequested.emit("New turn -- still incapacitated, no actions or reactions" + tail)
         else:
-            self.toastRequested.emit("New turn -- action, bonus & reaction ready")
+            self.toastRequested.emit("New turn -- action, bonus & reaction ready" + tail)
         self._changed()
+
+    @Slot(str, str, int)
+    def setRoundsLeft(self, kind: str, name: str, rounds: int):
+        """The rounds an effect ("effect"), a condition ("condition") or the
+        spell being concentrated on ("concentration") has left; 0: not
+        counted. New Turn takes one off and ends it at none."""
+        from dnd_app.core.durations import set_rounds
+        set_rounds(self.char, kind, name, int(rounds))
+        self._changed()
+
+    @Property(int, notify=statsChanged)
+    def concentrationRoundsLeft(self):
+        from dnd_app.core.durations import rounds_left
+        spell = (self.char.get("concentration") or {}).get("spell")
+        return rounds_left(self.char, "concentration", spell) if spell else 0
 
     def _has_beast_spells(self) -> bool:
         return any(c.get("class") == "Druid" and c.get("level", 0) >= 18
@@ -3201,17 +3242,20 @@ class CharacterSheetBridge(QObject):
         return self._pending_conc_dc if self.isConcentrating else 0
 
     @Slot()
-    def rollPendingConcentrationSave(self):
-        """Roll the save the last hit asked for (d20 + CON save bonus)."""
+    @Slot(int)
+    def rollPendingConcentrationSave(self, d20: int = 0):
+        """Roll the save the last hit asked for (d20 + CON save bonus) --
+        or, with `d20`, use the number the player rolled on their own die."""
         dc = self.concentrationSaveDc
         if not dc:
             return
         self._pending_conc_dc = 0
         # concentration_save() takes the damage; DC = max(10, damage // 2)
-        self.rollConcentrationSave(dc * 2)
+        self.rollConcentrationSave(dc * 2, d20)
 
     @Slot(int)
-    def rollConcentrationSave(self, damage: int):
+    @Slot(int, int)
+    def rollConcentrationSave(self, damage: int, d20: int = 0):
         """The CON save to keep concentrating (core/checks.py, the same as
         desktop): DC 10 or half the damage; what always applies is on the
         roll, and when it's under the DC, what you can add comes in the
@@ -3219,9 +3263,12 @@ class CharacterSheetBridge(QObject):
         spell = self.char.get("concentration", {}).get("spell")
         if not spell:
             return
-        self._roll_check({"kind": "concentration", "ability": "CON", "skill": "",
-                          "label": f"Concentration ({spell})", "bonus": get_saving_throw_bonus(self.char, "CON"),
-                          "dc": max(10, damage // 2), "spell": spell})
+        what = {"kind": "concentration", "ability": "CON", "skill": "",
+                "label": f"Concentration ({spell})", "bonus": get_saving_throw_bonus(self.char, "CON"),
+                "dc": max(10, damage // 2), "spell": spell}
+        if d20:
+            what["d20"] = int(d20)          # the player's own roll: the rest is added the same way
+        self._roll_check(what)
 
     # ── Identity (race/subrace/ancestry/background, editable post-
     # creation) -- mirrors ui_desktop's Choices tab _edit_identity(). ──

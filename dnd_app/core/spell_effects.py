@@ -111,6 +111,12 @@ def cast_effect(char: dict, spell_name: str, level: int = 0, answers=None) -> di
     fx = char.setdefault("active_effects", [])
     if name not in fx:
         fx.append(name)
+    # a spell of a minute or less is counted down by New Turn
+    # (core/durations.py); the turn-long ones have their own ending
+    from dnd_app.core.durations import cast_rounds, set_rounds
+    from dnd_app.core.action_use import TURN_EFFECTS, NEXT_TURN_EFFECTS
+    if name not in TURN_EFFECTS and name not in NEXT_TURN_EFFECTS:
+        set_rounds(char, "effect", name, cast_rounds(spell))
     # a smite and the like: what your next hit carries, at the level it
     # was cast ("an extra 2d6 fire" for Searing Smite at 2nd level)
     from dnd_app.core.riders import effect_note

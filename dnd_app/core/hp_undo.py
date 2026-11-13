@@ -25,10 +25,10 @@ import copy
 
 # Everything a Damage or a Heal can alter (core/dying.py): the hit points,
 # temp HP, death saves and death itself, Relentless Rage's count, a Wild
-# Shape form's own pool, and -- dropped to 0 HP -- concentration and the
-# effects that end with it.
+# Shape form's own pool, and -- dropped to 0 HP -- concentration, the
+# effects that end with it and the rounds they had left.
 _KEYS = ("current_hp", "temp_hp", "death_saves", "is_dead", "_relentless_rage_uses",
-         "_wildshape_hp", "concentration", "active_effects", "effect_details")
+         "_wildshape_hp", "concentration", "active_effects", "effect_details", "durations")
 _ABSENT = object()
 
 

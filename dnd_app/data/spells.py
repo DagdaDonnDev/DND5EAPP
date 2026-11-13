@@ -610,6 +610,42 @@ spell("Create Magen",      7, TRN, [WIZ],               desc="Over an hour, turn
 spell("Reality Break",     8, CON, [WIZ],               concentration=True, desc="One creature: WIS save or it can't take reactions, and at the start of each of its turns rolls a d10: 1-2, 6d12 psychic and stunned until the end of the turn; 3-5, DEX save or 8d12 force (half on a save); 6-8, teleported up to 30 ft, 10d12 force and prone; 9-10, 10d12 cold and blinded until the end of the turn. It repeats the save at the end of each of its turns.", source="EGW", duration="Concentration, up to 1 minute", components="V, S, M (a crystal prism)"),
 ]
 
+# How long these last. The entries above leave the duration out for them
+# (so they read "Instantaneous", which a spell you concentrate on never
+# is); New Turn counts down the ones of a minute or less (core/durations.py).
+_DURATIONS = {
+    "1 min": (
+        "Create Bonfire", "Dancing Lights", "Friends", "Guidance", "Resistance", "Bane", "Bless", "Cause Fear",
+        "Compelled Duel", "Ensnaring Strike", "Entangle", "Faerie Fire", "Hail of Thorns", "Wrathful Smite",
+        "Zephyr Strike", "Searing Smite", "Tasha's Caustic Brew", "Thunderous Smite", "Dragon's Breath",
+        "Dust Devil", "Earthbind", "Maximilian's Earthen Grasp", "Nathair's Mischief", "Shadow Blade",
+        "Kinetic Jaunt", "Phantasmal Force", "Lightning Arrow", "Spirit Shroud", "Crusader's Mantle",
+        "Enemies Abound", "Hunger of Hadar", "Maelstrom", "Banishment", "Grasping Vine", "Storm Sphere",
+        "Watery Sphere", "Elemental Bane", "Banishing Smite", "Bigby's Hand", "Dawn", "Enervation", "Far Step",
+        "Immolation", "Swift Quiver", "Wrath of Nature", "Primordial Ward", "Tasha's Otherworldly Guise",
+        "Mental Prison", "Otto's Irresistible Dance", "Draconic Transformation", "Dark Star", "Illusory Dragon",
+        "Blade of Disaster", "Ravenous Void", "Shillelagh",
+    ),
+    "10 min": (
+        "Beast Bond", "Silent Image", "Warding Wind", "Wall of Sand", "Wall of Water", "Melf's Minute Meteors",
+        "Wall of Light",
+    ),
+    "1 hour": (
+        "Mind Spike", "Skywrite", "Summon Beast", "Wristpocket", "Beast Sense", "Summon Fey",
+        "Summon Lesser Demons", "Summon Shadowspawn", "Summon Undead", "Fast Friends", "Flame Arrows",
+        "Spirit of Death", "Summon Aberration", "Summon Construct", "Summon Elemental", "Summon Greater Demon",
+        "Danse Macabre", "Infernal Calling", "Summon Celestial", "Summon Draconic Spirit", "Control Winds",
+        "Holy Weapon", "Skill Empowerment", "Conjure Fey", "Tether Essence",
+    ),
+}
+_DURATION_OF = {"True Strike": "1 round", "Absorb Elements": "1 round", "Shield": "1 round", "Find the Path": "1 day", "Animal Shapes": "24 hours", "Aid": "8 hours", "Druid Grove": "24 hours", "Hallow": "Until dispelled", "Symbol": "Until dispelled"}
+for _length, _names in _DURATIONS.items():
+    for _n in _names:
+        _DURATION_OF[_n] = _length
+for _s in ALL_SPELLS:
+    if _s["name"] in _DURATION_OF and _s["duration"] == "Instantaneous":
+        _s["duration"] = _DURATION_OF[_s["name"]]
+
 # Build lookup structures
 SPELL_DICT = {s["name"]: s for s in ALL_SPELLS}
 

@@ -1493,9 +1493,12 @@ class SpellsMixin:
 
     def _refresh_concentration(self):
         spell = self.char.get("concentration", {}).get("spell")
+        # the rounds it has left, when it lasts a minute or less
+        from dnd_app.core.durations import rounds_left, rounds_text
+        left = rounds_text(rounds_left(self.char, "concentration", spell)) if spell else ""
         if spell:
-            self._conc_lbl.setText(spell)
-            self._conc_lbl.setToolTip(spell)
+            self._conc_lbl.setText(spell + (f"  ·  {left}" if left else ""))
+            self._conc_lbl.setToolTip(spell + (f" — {left}; New Turn takes a round off" if left else ""))
             self._conc_lbl.setStyleSheet(
                 f"color:{AMBER};font-size:{FS_BODY}px;font-weight:700;background:transparent;"
             )
@@ -1510,7 +1513,7 @@ class SpellsMixin:
                 b.setToolTip("" if spell else "Not concentrating on anything")
         if hasattr(self, "_combat_conc_lbl"):
             if spell:
-                self._combat_conc_lbl.setText(f"Concentrating: {spell}")
+                self._combat_conc_lbl.setText(f"Concentrating: {spell}" + (f"  ·  {left}" if left else ""))
                 self._combat_conc_lbl.setToolTip(f"{spell} — manage/drop concentration from the Spells tab.")
                 self._combat_conc_lbl.setVisible(True)
             else:

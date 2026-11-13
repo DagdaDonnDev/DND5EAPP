@@ -56,6 +56,9 @@ Page {
 
                     Label {
                         text: "Concentrating: " + sheetBridge.concentratingSpell
+                              + (sheetBridge.concentrationRoundsLeft === 1 ? " · last round"
+                                 : sheetBridge.concentrationRoundsLeft > 1
+                                   ? " · " + sheetBridge.concentrationRoundsLeft + " rounds left" : "")
                         color: Theme.amber
                         font.pixelSize: Theme.fsBody
                         font.bold: true
@@ -84,8 +87,31 @@ Page {
                         MButton {
                             primary: false
                             height: 32
-                            text: "Save"
-                            onClicked: sheetBridge.rollConcentrationSave(concDamage.value)
+                            text: "Roll save"
+                            onClicked: sheetBridge.rollConcentrationSave(concDamage.value, 0)
+                        }
+                        // or the number on your own d20 (0: roll it here)
+                        Label {
+                            text: "I rolled:"
+                            color: Theme.text2
+                            font.pixelSize: Theme.fsSmall
+                            height: concDamage.height
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        MSpinBox {
+                            id: concOwn
+                            objectName: "spellsConcOwnSpin"
+                            implicitWidth: 110
+                            from: 1
+                            to: 20
+                            value: 10
+                        }
+                        MButton {
+                            objectName: "spellsConcUseOwn"
+                            primary: false
+                            height: 32
+                            text: "Use my roll"
+                            onClicked: sheetBridge.rollConcentrationSave(concDamage.value, concOwn.value)
                         }
                         MButton {
                             primary: false
