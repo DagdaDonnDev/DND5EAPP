@@ -951,6 +951,7 @@ class CharacterSheetBridge(QObject):
                 "equipKind": equip_kind,
                 "equipped": equipped,
                 # holding two: "main hand" / "off hand", and swapping them
+                "hand": _hand_of(self.char, name) if wdata and equipped else "",
                 "canSwapHands": bool(wdata) and _can_swap_hands(self.char, name),
                 # Dedicated Weapon (Monk, Tasha's optional feature)
                 "canDedicate": bool(wdata) and _can_dedicate(self.char, name),

@@ -1,13 +1,13 @@
 """Every creature MIMIC knows, for the Bestiary and for whatever a character
 turns into or calls up -- read from the stat blocks in docs/reference
-(bestiary*.md), and kept as data in bestiary.json beside this file.
+(bestiary*.md), and kept as data in bestiary_data.py beside this file.
 
 Rebuilding the data (after a reference file changes):
 
     python -m dnd_app.data.bestiary
 
 reads every docs/reference/bestiary*.md, checks each stat block's numbers
-against each other, writes bestiary.json, and prints what didn't add up
+against each other, writes bestiary_data.py, and prints what didn't add up
 (and writes it to docs/reference/bestiary-checks.md) so it can be looked
 at rather than slipped in quietly.
 
@@ -34,13 +34,12 @@ Two creatures with one name in the reference: an identical copy is kept
 once; different creatures each get what tells them apart in brackets --
 "Expert (11th level)", "Amphisbaena (Huge Beast)".
 """
-import json
 import os
 import re
 from fractions import Fraction
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_JSON = os.path.join(_HERE, "bestiary.json")
+_DATA = os.path.join(_HERE, "bestiary_data.py")
 
 SIZES = ("Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan")
 ABILITIES = ("STR", "DEX", "CON", "INT", "WIS", "CHA")
@@ -458,8 +457,15 @@ def build(ref_dir=None) -> tuple:
 
 
 def write(creatures: dict, problems: dict, ref_dir=None) -> None:
-    with open(_JSON, "w", encoding="utf-8") as fh:
-        json.dump(creatures, fh, ensure_ascii=False, separators=(",", ":"))
+    # a .py like the rest of data/, one creature to a line
+    with open(_DATA, "w", encoding="utf-8") as fh:
+        fh.write('"""Every creature in the Bestiary, by name. Made by\n'
+                 '`python -m dnd_app.data.bestiary` from docs/reference/bestiary*.md;\n'
+                 'change those and rebuild rather than editing this file."""\n'
+                 "BESTIARY = {\n")
+        for name, c in creatures.items():
+            fh.write(f"    {name!r}: {c!r},\n")
+        fh.write("}\n")
     ref_dir = ref_dir or os.path.join(_HERE, "..", "..", "docs", "reference")
     lines = ["# Bestiary: what didn't add up",
              "",
@@ -486,9 +492,9 @@ def bestiary() -> dict:
     global _CACHE
     if _CACHE is None:
         try:
-            with open(_JSON, encoding="utf-8") as fh:
-                _CACHE = json.load(fh)
-        except (OSError, ValueError):
+            from dnd_app.data.bestiary_data import BESTIARY
+            _CACHE = BESTIARY
+        except ImportError:
             _CACHE = {}
     return _CACHE
 
@@ -501,5 +507,5 @@ if __name__ == "__main__":
     creatures, problems = build()
     write(creatures, problems)
     n = sum(len(v) for v in problems.values())
-    print(f"{len(creatures)} creatures written to {os.path.relpath(_JSON)}; "
+    print(f"{len(creatures)} creatures written to {os.path.relpath(_DATA)}; "
           f"{n} things to look at in {len(problems)} of them (docs/reference/bestiary-checks.md)")

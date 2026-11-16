@@ -513,7 +513,10 @@ Page {
                                         }
                                         Label {
                                             // what it is -- cut short first on a narrow row
-                                            text: [modelData.equipped ? "Equipped" : "", modelData.detail]
+                                            // holding two: which hand, in place of "Equipped"
+                                            text: [modelData.hand ? (modelData.hand === "one in each hand" ? "One in each hand"
+                                                                     : modelData.hand.charAt(0).toUpperCase() + modelData.hand.slice(1))
+                                                   : (modelData.equipped ? "Equipped" : ""), modelData.detail]
                                                   .filter(function(x) { return x.length > 0 }).join("  ·  ")
                                             visible: text.length > 0
                                             color: Theme.text3

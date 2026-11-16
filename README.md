@@ -290,9 +290,14 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
   <img src="docs/images/desktop-spells.png" width="49%" alt="Desktop: spellcasting, spell slots and metamagic">
 </p>
 <p align="center">
-  <img src="docs/images/desktop-gear.png" width="49%" alt="Desktop: gear, coins and the equipment browser">
+  <img src="docs/images/desktop-gear.png" width="49%" alt="Desktop: gear, coins, which hand each weapon is in, and the magic item browser">
   <img src="docs/images/android-spells.png" width="24%" alt="Android: spells">
   <img src="docs/images/android-equipment.png" width="24%" alt="Android: equipment">
+</p>
+<p align="center">
+  <img src="docs/images/desktop-bestiary.png" width="49%" alt="Desktop: the Bestiary, showing a creature's stat block">
+  <img src="docs/images/android-menu.png" width="24%" alt="Android: the menu, with the Bestiary and Reference">
+  <img src="docs/images/android-bestiary.png" width="24%" alt="Android: the Bestiary">
 </p>
 <p align="center"><sub>Mat Cauthon, a level 5 Half-Elf Sorcerer (Wild Magic), on desktop and Android.</sub></p>
 <!-- /github-only -->
