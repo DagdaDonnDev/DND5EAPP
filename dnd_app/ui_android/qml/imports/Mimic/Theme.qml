@@ -84,6 +84,12 @@ QtObject {
         var la = _lum(a), lb = _lum(b)
         return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
     }
+    // The veil behind a popup or the menu: in a light theme a light veil
+    // in the theme's own ink, so the page shows through and the popup
+    // stands on it; in a dark theme, near black.
+    readonly property bool light: _lum(bg) > 0.3
+    readonly property color scrim: light ? Qt.rgba(text.r, text.g, text.b, 0.3) : Qt.rgba(0, 0, 0, 0.8)
+
     function onFill(fill) {
         var best = "#ffffff", bestR = contrast("#ffffff", fill)
         var others = [bg, text]
@@ -107,6 +113,7 @@ QtObject {
         case "very rare": return _grey("#a064ea", f)   // purple
         case "legendary": return _grey("#e89828", f)   // amber
         case "artifact":  return _grey("#e24f5d", f)   // crimson
+        case "unknown":   return _grey("#8a8a8a", f)   // light grey: no rarity given
         default:          return border
         }
     }

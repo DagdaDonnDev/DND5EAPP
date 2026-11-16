@@ -662,6 +662,12 @@ def short_rest(char: dict) -> None:
     for res in char.get("resources", []):
         if res.get("reset") in ("SR", "SR/LR"):
             res["current"] = res.get("current_max") or res.get("max", 0)
+    # an item's use or charges that come back on a short rest (Gauntlets
+    # of Rage); a long rest's come back at dawn (magic_items.charges_at_dawn)
+    for pool in ("item_uses", "item_charges"):
+        for data in (char.get(pool) or {}).values():
+            if data.get("recharge") == "short":
+                data["current"] = data.get("max", 1)
     # Cleric Channel Divinity recovers 1 on SR (2024)
     for res in char.get("resources", []):
         if res.get("key") == "channel_divinity" and res.get("reset") == "LR":

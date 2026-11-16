@@ -182,6 +182,41 @@ Page {
                     }
                 }
 
+                // Resistances, immunities and vulnerabilities (½, ⊘, ×2), the
+                // same as desktop's badges; a tap says where each comes from
+                Flow {
+                    objectName: "defenseBadges"
+                    visible: sheetBridge.defenseRows.length > 0
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Repeater {
+                        model: sheetBridge.defenseRows
+                        delegate: Rectangle {
+                            readonly property color tone: modelData.kind === "resist" ? Theme.teal2
+                                                          : modelData.kind === "immune" ? Theme.gold2 : Theme.crimson2
+                            objectName: "defense_" + modelData.kind + "_" + modelData.label
+                            radius: 5
+                            color: Qt.rgba(tone.r, tone.g, tone.b, 0.18)
+                            border.color: tone
+                            implicitWidth: defLbl.implicitWidth + 14
+                            implicitHeight: defLbl.implicitHeight + 6
+                            Label {
+                                id: defLbl
+                                anchors.centerIn: parent
+                                text: (modelData.kind === "resist" ? "½ " : modelData.kind === "immune" ? "⊘ " : "×2 ")
+                                      + modelData.label
+                                color: Theme.text
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: Window.window.showToast(modelData.tip.replace("\n", ". "))
+                            }
+                        }
+                    }
+                }
+
                 // Concentration: what's being held, and a way to drop it
                 Rectangle {
                     visible: sheetBridge.isConcentrating
@@ -1243,7 +1278,8 @@ Page {
                                           leftMargin: 14; rightMargin: 8; topMargin: 7 }
                                 spacing: 2
                                 Label {
-                                    text: modelData.name + (modelData.concentration ? " (concentration)" : "")
+                                    objectName: "effectTitle_" + modelData.name
+                                    text: modelData.title + (modelData.concentration ? " (concentration)" : "")
                                     color: Theme.text
                                     font.pixelSize: Theme.fsSmall
                                     font.bold: true
@@ -1350,7 +1386,7 @@ Page {
         width: Math.min(parent ? parent.width - 32 : 340, 340)
         padding: 16
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         contentItem: ColumnLayout {
             spacing: 12
@@ -1414,7 +1450,7 @@ Page {
         width: Math.min(parent ? parent.width - 32 : 340, 340)
         padding: 16
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.amber }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         contentItem: ColumnLayout {
             spacing: 12
@@ -1486,7 +1522,7 @@ Page {
         width: Math.min(parent ? parent.width - 32 : 340, 340)
         padding: 16
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         contentItem: ColumnLayout {
             spacing: 12

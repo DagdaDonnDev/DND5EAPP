@@ -121,7 +121,8 @@ class SkillsMixin:
         skills = all_skill_bonuses(self.char)
         self._skill_rows = {}
         for skill_name, bonus in sorted(skills.items()):
-            prof_level = self.char.get("skills",{}).get(skill_name, 0)
+            from dnd_app.core.calculator import skill_prof_level
+            prof_level = skill_prof_level(self.char, skill_name)
             ab = SKILL_AB.get(skill_name,"STR")
             # Show ½ symbol for JoAT on non-proficient skills
             _disp_level = prof_level if prof_level > 0 else (1 if _jack else 0)
@@ -289,7 +290,8 @@ class SkillsMixin:
         skills = all_skill_bonuses(self.char)
         _jack = has_jack_of_all_trades(self.char)
         for sk, (row_f, sym_l, val_l, name_l, adv_badge) in self._skill_rows.items():
-            prof = self.char.get("skills",{}).get(sk,0)
+            from dnd_app.core.calculator import skill_prof_level
+            prof = skill_prof_level(self.char, sk)
             bonus = skills.get(sk,0)
             # Same display rule as the initial build: JoAT shows ½ on any
             # skill that isn't already proficient/expert.
@@ -335,7 +337,8 @@ class SkillsMixin:
         # version here that silently ignored every other source.
         self._armor_prof_lbl.setText("; ".join(sorted(set(self.char.get("armor_proficiencies", [])) - {"None"})) or "None")
         self._wpn_prof_lbl.setText("; ".join(sorted(set(self.char.get("weapon_proficiencies", [])) - {"None"})) or "None")
-        self._lang_lbl.setText(", ".join(sorted(set(self.char.get("languages", ["Common"])))) or "None")
+        from dnd_app.core.calculator import known_languages
+        self._lang_lbl.setText(", ".join(known_languages(self.char) or ["Common"]))
         self._refresh_tool_prof_chips()
 
     def _refresh_tool_prof_chips(self):

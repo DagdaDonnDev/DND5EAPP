@@ -178,6 +178,13 @@ EFFECT_TABLE: dict[str, dict] = {
         "note": "Until the end of your next turn: resistance to bludgeoning, piercing and "
                 "slashing damage dealt by weapon attacks.",
     },
+    "Armor of Agathys": {
+        # its temporary hit points come with the cast (core/spell_effects.py);
+        # it ends when they're gone (core/dying.py)
+        "caster": True,
+        "note": "While you have its temporary hit points, a creature that hits you with a melee "
+                "attack takes 5 cold damage for each level of the slot it was cast with.",
+    },
     "Shield (spell)": {
         "caster": True, "duration_category": "short",
         "ac": 5,
@@ -529,7 +536,8 @@ EFFECT_TABLE: dict[str, dict] = {
                 "necrotic, or force) once per turn on a hit.",
     },
     "Aid": {
-        "note": "+5 current and maximum HP (8 hours). Apply manually to Max HP.",
+        "note": "Your hit point maximum and current hit points are 5 higher, and 5 more for "
+                "each slot level above 2nd (8 hours).",
     },
     "Guidance": {
         "conc": True,

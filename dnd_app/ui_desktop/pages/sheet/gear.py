@@ -307,7 +307,7 @@ class GearMixin:
                                     "Hat / Helm","Boots / Slippers","Bracers / Gauntlets",
                                     "Belt","Potion","Scroll / Wand / Rod / Staff","Other"])
         self._mi_rarity_f = QComboBox()
-        self._mi_rarity_f.addItems(["All Rarities","Common","Uncommon","Rare","Very Rare","Legendary","Artifact"])
+        self._mi_rarity_f.addItems(["All Rarities","Common","Uncommon","Rare","Very Rare","Legendary","Artifact","Unknown"])
         self._mi_attune_f = QComboBox()
         self._mi_attune_f.addItems(["All","Requires Attunement","No Attunement"])
         self._mi_filters = FilterSidebar(magic_tab)
@@ -558,7 +558,7 @@ class GearMixin:
         if itype == "Weapon": return "Weapon"
         return "Other"
 
-    _RARITY_ORDER = ["Common","Uncommon","Rare","Very Rare","Legendary","Artifact"]
+    _RARITY_ORDER = ["Common","Uncommon","Rare","Very Rare","Legendary","Artifact","Unknown"]
     # dark grey -> amber, the same palette the Android app uses (one source:
     # data/magic_items.py RARITY_COLORS)
     from dnd_app.data.magic_items import RARITY_COLORS as _RARITY_COLORS
@@ -1044,8 +1044,11 @@ class GearMixin:
             # an "any sword" item (Flame Tongue, Holy Avenger...): which weapon it is
             from dnd_app.core.riders import base_weapon_options, weapon_base_of
             if base_weapon_options(_name):
-                base_act = menu.addAction(_icons.icon("combat"),
-                                          f"Which weapon is it? (now a {weapon_base_of(self.char, _name)})")
+                from dnd_app.core.magic_items import armor_base_options
+                _what = "armor" if armor_base_options(_name) else "weapon"
+                _now = weapon_base_of(self.char, _name)
+                base_act = menu.addAction(_icons.icon("shield" if _what == "armor" else "combat"),
+                                          f"Which {_what} is it?" + (f" (now {_now.lower()})" if _now else ""))
                 base_act.triggered.connect(lambda checked=False, n=_name: self._pick_weapon_base(n))
             rm_act = menu.addAction(_icons.icon("trash"), f"Remove {_name[:36]}")
             rm_act.triggered.connect(lambda: self._remove_magic_item(_uid))
@@ -1059,14 +1062,16 @@ class GearMixin:
         from dnd_app.core.riders import base_weapon_options, weapon_base_of, set_weapon_base
         opts = base_weapon_options(item_name)
         now = weapon_base_of(self.char, item_name)
-        pick, ok = QInputDialog.getItem(self, item_name, f"Which weapon is your {item_name}?",
+        from dnd_app.core.magic_items import armor_base_options
+        what = "armor" if armor_base_options(item_name) else "weapon"
+        pick, ok = QInputDialog.getItem(self, item_name, f"Which {what} is your {item_name}?",
                                         opts, opts.index(now) if now in opts else 0, False)
         if ok and set_weapon_base(self.char, item_name, pick):
             self._mark_dirty()
             self.ctrl.refresh()
             if hasattr(self, "_refresh_combat"):
                 self._refresh_combat()
-            self._toast(f"{item_name} is a {pick.lower()}")
+            self._toast(f"{item_name} is {pick.lower()}" if what == "armor" else f"{item_name} is a {pick.lower()}")
 
     def _set_item_damage_type(self, item_name: str, dmg_type):
         """Store which damage type a resistance-choice item (Ring/Armor of

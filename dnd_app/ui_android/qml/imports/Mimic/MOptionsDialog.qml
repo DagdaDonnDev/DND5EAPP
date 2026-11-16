@@ -26,7 +26,7 @@ Dialog {
     width: Math.min(parent ? parent.width - 32 : 340, 340)
     padding: 16
     background: Rectangle { color: Theme.surf; radius: 12; border.color: root.accent; border.width: Qt.colorEqual(root.accent, Theme.border) ? 1 : 2 }
-    Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+    Overlay.modal: Rectangle { color: Theme.scrim }
 
     contentItem: ColumnLayout {
         spacing: 10

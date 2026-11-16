@@ -34,6 +34,64 @@ import random
 # Author: Ethan O'Brien
 # Date: 2026-08-20
 
+def _nth(n: int) -> str:
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+# ── Which slot to cast with ──────────────────────────────────────────────
+def slot_choices(char: dict, spell: dict) -> list:
+    """The spell slots `spell` can be cast with now, lowest first:
+        [{"key": "3", "level": 3, "label": "3rd level (2 left)"},
+         {"key": "pact", "level": 5, "label": "Pact slot, 5th level (1 left)"}]
+    Both apps cast with the one picked (the first, unless asked)."""
+    lvl = int(spell.get("level", 0) or 0)
+    if lvl <= 0:
+        return []
+    maxes = char.get("spell_slots_max", [0] * 9)
+    used = char.get("spell_slots_used", [0] * 9)
+    out = []
+    for i in range(lvl - 1, 9):
+        if i < len(maxes) and maxes[i] > 0:
+            left = maxes[i] - (used[i] if i < len(used) else 0)
+            if left > 0:
+                out.append({"key": str(i + 1), "level": i + 1, "label": f"{_nth(i + 1)} level ({left} left)"})
+    pact_lvl = int(char.get("pact_slot_level", 0) or 0)
+    pact_left = int(char.get("pact_slots_max", 0) or 0) - int(char.get("pact_slots_used", 0) or 0)
+    if pact_left > 0 and pact_lvl >= lvl:
+        out.append({"key": "pact", "level": pact_lvl,
+                    "label": f"Pact slot, {_nth(pact_lvl)} level ({pact_left} left)"})
+    out.sort(key=lambda c: (c["level"], c["key"] == "pact"))
+    return out
+
+
+def slot_question(spell: dict, choices: list) -> str:
+    """What to ask before casting with a slot ("" when there's nothing to
+    ask): only for a spell that does more from a higher slot, with more
+    than one slot level to choose from. It says what the higher slot gives."""
+    from dnd_app.data.spell_upcast import AT_HIGHER_LEVELS
+    more = AT_HIGHER_LEVELS.get(spell.get("name", ""))
+    if not more or len({c["level"] for c in choices}) < 2:
+        return ""
+    return f"Cast {spell['name']} with which slot?\n\n{more}"
+
+
+def spend_slot(char: dict, key: str) -> int:
+    """Use the slot `key` names (from slot_choices). Returns the level cast
+    at, or 0 if there's none of it left."""
+    if key == "pact":
+        if char.get("pact_slots_used", 0) < char.get("pact_slots_max", 0):
+            char["pact_slots_used"] = char.get("pact_slots_used", 0) + 1
+            return int(char.get("pact_slot_level", 0) or 0)
+        return 0
+    i = int(key) - 1
+    maxes = char.get("spell_slots_max", [0] * 9)
+    used = char.setdefault("spell_slots_used", [0] * 9)
+    if 0 <= i < 9 and used[i] < maxes[i]:
+        used[i] += 1
+        return i + 1
+    return 0
+
+
 def _component_letters(spell: dict) -> set:
     """{'v','s','m'} etc. parsed from a spell's "components" field
     (e.g. "V, S, M (a pinch of salt)")."""

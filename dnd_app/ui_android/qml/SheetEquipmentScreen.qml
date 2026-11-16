@@ -125,7 +125,8 @@ Page {
         if (item.canStudy)
             opts.push({key: "study", text: "Study", icon: "spells"})
         if (item.baseOptions && item.baseOptions.length > 0)
-            opts.push({key: "base", text: "Which weapon is it? (now a " + item.base + ")", icon: "combat"})
+            opts.push({key: "base", icon: item.baseKind === "armor" ? "shield" : "combat",
+                       text: "Which " + item.baseKind + " is it?" + (item.base ? " (now " + item.base.toLowerCase() + ")" : "")})
         opts.push({key: "remove", text: "Remove", icon: "trash"})
         magicOptionsDialog.heading = item.name
         magicOptionsDialog.accent = Theme.rarityColor(item.rarity)
@@ -143,7 +144,7 @@ Page {
             else if (key === "study") sheetBridge.studyAbilityManual(it.uid)
             else if (key === "remove") sheetBridge.removeMagicItem(it.uid)
             else if (key === "base") {
-                weaponBasePicker.dialogTitle = "Which weapon is your " + it.name + "?"
+                weaponBasePicker.dialogTitle = "Which " + it.baseKind + " is your " + it.name + "?"
                 weaponBasePicker.options = it.baseOptions
                 weaponBasePicker.open()
             }
@@ -168,7 +169,7 @@ Page {
         width: Math.min(parent ? parent.width - 32 : 340, 340)
         padding: 16
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         contentItem: ColumnLayout {
             spacing: 12

@@ -1183,9 +1183,8 @@ class CombatMixin:
     def _after_damage(self, res: dict, lead: str = ""):
         """Show what take_damage() did: the HP boxes, one toast, the death
         screen, and the concentration save it asks for."""
-        # 1. Every HP widget follows the character (one controller refresh).
-        self.ctrl.update("current_hp", self.char.get("current_hp", 0), rebuild_char=False)
-        self._refresh_concentration()
+        # 1. The hit points now; the rest of the sheet once the presses stop
+        self._show_hp_change()
         self._mark_dirty()
         # 2. Dead: the YOU DIED screen says why.
         if res["died"]:
@@ -1285,11 +1284,35 @@ class CombatMixin:
             self._toast(why.replace(" -- ", " — "))
             return
         note = heal(self.char, amt)
-        remember_hp_change(self.char, before, f"{amt} healing")
-        self.ctrl.update("current_hp", self.char["current_hp"], rebuild_char=False)
+        if not remember_hp_change(self.char, before, f"{amt} healing"):
+            return                              # (already at full: nothing to do)
+        self._show_hp_change()
         self._mark_dirty()
         if note:
             self._toast(note)
+
+    def _show_hp_change(self):
+        """After Damage, Heal or Undo: the hit point boxes, the bar, the
+        death saves, concentration and Undo straight away, and the rest of
+        the sheet (what depends on your hit points) once the presses stop.
+        A full refresh on every press took half a second, so pressing Heal
+        quickly piled them up and the window froze."""
+        if hasattr(self, "_hp_current_hp") and not self.char.get("_wildshape_active"):
+            for box, key in ((self._hp_current_hp, "current_hp"), (self._hp_temp_hp, "temp_hp")):
+                box.blockSignals(True)
+                box.setValue(int(self.char.get(key, 0) or 0))
+                box.blockSignals(False)
+        self._update_hp_bar()
+        self._refresh_death_and_conditions()
+        self._refresh_concentration()
+        timer = getattr(self, "_hp_refresh_timer", None)
+        if timer is None:
+            timer = self._hp_refresh_timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.setInterval(350)
+            timer.timeout.connect(
+                lambda: self.ctrl.update("current_hp", self.char.get("current_hp", 0), rebuild_char=False))
+        timer.start()
 
     def _sync_hp_undo(self):
         """The HP card's Undo: there while the last Damage or Heal can
@@ -1621,6 +1644,14 @@ class CombatMixin:
         if name in self.char.get("active_effects", []):
             self._toast(f"{name} is already on you")
             return
+        # an ally's Aid or Magic Weapon does more from a higher slot: which?
+        from dnd_app.core.spell_effects import added_effect_levels
+        levels = added_effect_levels(name)
+        if levels:
+            got, ok = QInputDialog.getItem(self, name, f"What level was {name} cast at?", levels, 0, False)
+            if not ok:
+                return
+            self.char.setdefault("effect_details", {})[name] = {"level": int(got.split()[0][:-2])}
         self.char.setdefault("active_effects", []).append(name)
         note = on_effect_started(self.char, name)       # Rage ends concentration
         self.ctrl.refresh()          # AC pill etc. recompute
@@ -1658,7 +1689,7 @@ class CombatMixin:
         it does, and ✕ to end it. The tab says how many there are."""
         if not hasattr(self, "_fx_lay"): return
         from dnd_app.core.effects import EFFECT_TABLE
-        from dnd_app.core.riders import effect_note
+        from dnd_app.core.spell_effects import effect_view
         while self._fx_lay.count() > 1:
             it = self._fx_lay.takeAt(0)
             w = it.widget()
@@ -1684,12 +1715,13 @@ class CombatMixin:
                               f"border-radius:6px;}}")
             rl = QHBoxLayout(row); rl.setContentsMargins(8,5,8,5); rl.setSpacing(7)
             rl.addWidget(_icons.icon_label("effects", 16, ink))
-            rl.addWidget(_lbl(name + ("  ©" if info.get("conc") else ""), ink, FS_SMALL,
+            # its level, when cast above its own, and what it does at that
+            # level (core/spell_effects.py effect_view, the same on Android)
+            view = effect_view(self.char, name)
+            rl.addWidget(_lbl(view["title"] + ("  ©" if info.get("conc") else ""), ink, FS_SMALL,
                               bold=True, wrap=False), 1)
-            # a smite's dice at the level it was cast, or what's left of it on
-            # the target once it has landed (core/riders.py)
-            note = effect_note(self.char, name) or info.get("note", "Custom effect — tracked, no automatic numbers.")
-            row.setToolTip(f"<b>{name}</b>" + (" (concentration)" if info.get("conc") else "")
+            note = view["note"]
+            row.setToolTip(f"<b>{view['title']}</b>" + (" (concentration)" if info.get("conc") else "")
                            + f"<br>{note}<br><br><i>Right-click: end it, or read it all</i>")
             row.setAccessibleName(f"{name}: {note}")
             rl.addWidget(self._rounds_button("effect", name, ink), 0, Qt.AlignVCenter)
@@ -2450,19 +2482,16 @@ class CombatMixin:
             item = self._resist_lay.takeAt(0)
             if item.widget(): item.widget().setParent(None)
 
-        resistances = self.char.get("damage_resistances", [])
-        immunities  = self.char.get("damage_immunities", []) + [
-            (f"{cond} (condition)", source)
-            for cond, source in self.char.get("condition_immunities_magic", [])
-        ]
-
-        if not resistances and not immunities:
+        from dnd_app.core.calculator import defenses
+        rows = defenses(self.char)
+        if not rows:
             self._resist_frame.setVisible(False)
             self._resist_caption.setVisible(False)
             return
         self._resist_frame.setVisible(True)
         self._resist_caption.setVisible(True)
-        idx = 0
+        self._resist_caption.setText("RESISTANCES & WEAKNESSES" if any(d["kind"] == "vulnerable" for d in rows)
+                                     else "RESISTANCES")
         cols = 2   # (the HP card is two columns wide)
 
         def _badge(text, color, tooltip):
@@ -2475,70 +2504,10 @@ class CombatMixin:
             b.setToolTip(tooltip)
             return b
 
-        ALL_DAMAGE_TYPES = ["acid","bludgeoning","cold","fire","force","lightning",
-                            "necrotic","piercing","poison","psychic","radiant",
-                            "slashing","thunder"]
-
-        def _expand(dmg_type, source):
-            """'all' / 'all except X[/Y]' -> one (type, source) pair per
-            real damage type; anything else passes through unchanged."""
-            low = dmg_type.lower()
-            if low == "all":
-                return [(t, source) for t in ALL_DAMAGE_TYPES]
-            if low.startswith("all except"):
-                excluded = {e.strip() for e in low.replace("all except","").split("/")}
-                return [(t, source) for t in ALL_DAMAGE_TYPES if t not in excluded]
-            return [(dmg_type, source)]
-
-        from collections import defaultdict
-        res_by_type = defaultdict(list)
-        for dmg_type, source in resistances:
-            base = dmg_type.split(" (")[0]           # "bludgeoning (nonmagical)" -> "bludgeoning"
-            qualifier = dmg_type[len(base):].strip() # "" or "(nonmagical)"
-            for t, src in _expand(base, source):
-                label = t + (f" {qualifier}" if qualifier else "")
-                res_by_type[t].append((label, src))
-        imm_by_type = defaultdict(list)
-        for dmg_type, source in immunities:
-            if "(condition)" in dmg_type:
-                # Condition immunities (frightened, poisoned, etc.) aren't a
-                # damage type and can't be superseded by damage resistance —
-                # keep them in their own bucket, never expand/dedupe them
-                # against the damage-type table.
-                imm_by_type[dmg_type].append((dmg_type, source))
-                continue
-            base = dmg_type.split(" (")[0]
-            for t, src in _expand(base, source):
-                imm_by_type[t].append((t, src))
-
-        # Immunity supersedes resistance to the same type — D&D doesn't
-        # stack them, so don't display both for one damage type.
-        for t in list(res_by_type):
-            if t in imm_by_type:
-                del res_by_type[t]
-
-        for dmg_type, entries in sorted(res_by_type.items()):
-            # Prefer an unqualified entry (e.g. Totem Barbarian's broad,
-            # magical "all damage" resistance) over a qualified one (e.g.
-            # Lycanthropy's narrower "bludgeoning (nonmagical, non-
-            # silvered)") when both exist for the same base damage type —
-            # an unqualified resistance always covers at least as much as
-            # any qualified one, so it should win the display, not
-            # whichever entry happened to be appended to the list first.
-            unqualified = next((e for e in entries if " (" not in e[0]), None)
-            display_label = unqualified[0] if unqualified else entries[0][0]
-            sources = [s for _, s in entries]
-            tip = f"Resistance to {display_label} damage\nFrom: " + ", ".join(sources)
+        # ½ resistance, ⊘ immunity, ×2 vulnerability (core/calculator.py defenses)
+        look = {"resist": ("½", TEAL2), "immune": ("⊘", GOLD2), "vulnerable": ("×2", CRIM2)}
+        for idx, d in enumerate(rows):
+            mark, color = look[d["kind"]]
             r, c = divmod(idx, cols)
-            self._resist_lay.addWidget(_badge(f"½ {display_label}", TEAL2, tip), r, c)
-            idx += 1
-        for dmg_type, entries in sorted(imm_by_type.items()):
-            display_label = entries[0][0]
-            sources = [s for _, s in entries]
-            is_condition = "(condition)" in display_label
-            label_txt = display_label if is_condition else f"{display_label} damage"
-            tip = f"Immunity to {label_txt}\nFrom: " + ", ".join(sources)
-            r, c = divmod(idx, cols)
-            self._resist_lay.addWidget(_badge(f"⊘ {display_label}", GOLD2, tip), r, c)
-            idx += 1
+            self._resist_lay.addWidget(_badge(f"{mark} {d['label']}", color, d["tip"]), r, c)
 

@@ -372,6 +372,8 @@ def weapon_attack(char: dict, name: str) -> dict:
             named, base, w = True, nb, dict(WEAPON_DICT[nb])
             if changes.get("damage_type"):
                 w["dmg_type"] = changes["damage_type"]
+            if changes.get("die"):
+                w["damage"] = changes["die"]
             if changes.get("finesse"):
                 w["properties"] = list(w.get("properties", [])) + ["Finesse"]
     fallback = w is None

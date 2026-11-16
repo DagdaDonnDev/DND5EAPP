@@ -42,6 +42,7 @@ from dnd_app.ui_android.bridge.wizard import (
 from dnd_app.ui_android.bridge.save_load import SaveLoadBridge
 from dnd_app.ui_android.bridge.character_sheet import CharacterSheetBridge
 from dnd_app.ui_android.bridge.dice_roller import DiceRollerBridge
+from dnd_app.ui_android.bridge.bestiary import BestiaryBridge
 from dnd_app.ui_android.bridge.credits import CreditsBridge
 from dnd_app.ui_android.bridge.easter_eggs import EasterEggBridge
 from dnd_app.ui_android.bridge.app_settings import AppSettingsBridge
@@ -150,6 +151,7 @@ def main():
     sheet_bridge = CharacterSheetBridge(char)
     dice_roller_bridge = DiceRollerBridge(char)      # (the shared character: its roll history)
     credits_bridge = CreditsBridge()
+    bestiary_bridge = BestiaryBridge()
     easter_egg_bridge = EasterEggBridge()
     app.installEventFilter(easter_egg_bridge)
     app_settings_bridge = AppSettingsBridge()
@@ -173,6 +175,7 @@ def main():
     window.setProperty("sheetBridge", sheet_bridge)
     window.setProperty("diceRollerBridge", dice_roller_bridge)
     window.setProperty("creditsBridge", credits_bridge)
+    window.setProperty("bestiaryBridge", bestiary_bridge)
     window.setProperty("easterEggBridge", easter_egg_bridge)
     window.setProperty("appSettingsBridge", app_settings_bridge)
     # Applies the app's own remembered theme before the Start Menu is

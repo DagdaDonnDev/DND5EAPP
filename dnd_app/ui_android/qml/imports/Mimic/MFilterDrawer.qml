@@ -42,7 +42,7 @@ Drawer {
 
     // flat panel, dark fog behind it (like the other drawers and dialogs)
     background: Rectangle { color: Theme.surf }
-    Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+    Overlay.modal: Rectangle { color: Theme.scrim }
 
     ColumnLayout {
         anchors.fill: parent

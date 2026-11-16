@@ -43,7 +43,7 @@ numbers. The dice, and your DM's calls, stay with you.
 
 <!-- github-only -->
 
-| 84 | 14 | 127 | 521 | 138 | 99 | 1,283 | 185 |
+| 84 | 14 | 127 | 521 | 138 | 99 | 1,374 | 185 |
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | races | classes | subclasses | spells | feats | backgrounds | magic items | Wild Shape forms |
 
@@ -132,6 +132,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **Attacking:** a weapon's **Hit** button (**Roll to Hit** on Android) rolls the d20 and says what AC it hits. Under the roll is what you can add to it, each with its cost: Precision Attack, Lucky, Guided Strike, Emboldening Bond… Press **Add** and it's paid for and rolled at once, and the total updates. **If it misses** lists what can turn a miss around: Favored by the Gods, Stroke of Luck, Focused Aim… Below that is what you can add to the hit: Sneak Attack, a smite, a maneuver… The **Attack** action card asks which weapon first. On a critical hit, the dice shown are already doubled.
 - **Damage is your roll.** Every damage line says what to roll and its type; roll it yourself, or open the Dice Roller (Ctrl+D).
 - **The Dice Roller:** pick dice or type them (2d6 + 1d4 + 3, 4d6kh3), add one of your bonuses, take advantage or disadvantage on a d20, and roll. Its **history** keeps every roll the sheet makes too: checks, saves, initiative, attacks (and whether they hit), hit dice and what your actions roll, saved with the character. Click a roll of your own to roll it again.
+- **The Bestiary** (Tools → Bestiary, Ctrl+B; on Android, in the menu): every creature, 2,754 of them, to find by name or type and narrow by type, size and challenge rating, with the whole stat block. Where Monsters of the Multiverse reprinted one, both are there, the reprint marked (MPMM).
 - **Advantage and disadvantage are reminders.** Every roll is one d20, with a note of what the sheet knows applies (Reckless Attack, Poisoned, exhaustion…). Roll the second die yourself, since cover, the target and your DM can change it. Advantage you spend something on, like Inspiration, is rolled for you.
 - **Taking damage:** type the amount and press **Damage**. Halve it yourself for a resistance; yours are listed just below. Temporary hit points, concentration saves, Wild Shape hit points and death saves follow on their own.
 - **Typed the wrong number?** **Undo** on the Hit Points card puts your hit points, temp HP and death saves back as they were before the last Damage or Heal. It's there until your hit points change some other way, and on the YOU DIED screen if that's where the slip left you.
@@ -153,6 +154,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **Preparing:** tick the spell in My Spells. Spells your class, race or a feat gives you are always prepared, and can't be removed. Nor can a Cleric's, Druid's, Paladin's or Artificer's own list spells — the class knows them all — but they prepare and unprepare like any other.
 - **Where to cast:** cantrips and bonus-action and reaction spells always have a card on the Combat tab. A leveled spell that takes an action only shows there once you pin it with ☆ (on Android, press and hold → Add to favourites), so a long spell list doesn't bury your Action tab. Anything slower is cast from My Spells: right-click → Cast, or Cast as Ritual.
 - **The Spellcasting table** lists each class, your race and each feat that gives you spells, with its own ability, save DC and attack. A racial spell uses its own row, not your class's.
+- **Which slot:** a spell that does more from a higher slot (Cure Wounds, Aid, Fireball, a smite…) asks which slot to cast it with when you have more than one level free, and says what the higher slot adds. Any other spell uses the lowest slot free.
 - **Free casts** from your race or a feat have their own counter, and Cast spends it before a slot. A spell a feat gives at will (Drow High Magic's Detect Magic) never takes one, and Strixhaven Mascot's Find Familiar is cast as a ritual.
 - **The Spell Browser** shows the spells your classes can learn now: on their lists, at a level each class learns, and with room left. Once a class has learned all its spells or cantrips, the browser says so and stops offering them; remove one (a misclick, say) and that pick is free again. A spell two of your classes share counts for whichever has room, and a Wizard's spellbook never fills up. An Eldritch Knight's spells are abjuration or evocation (an Arcane Trickster's enchantment or illusion), apart from one from any school at 3rd level and one more at 8th, 14th and 20th. **Ignore restrictions** shows every spell and lifts the limits, if your DM allows it.
 - **Spell scrolls** are read from their card on the Combat tab (Actions on Android), like any other action.
@@ -243,6 +245,7 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 | Ctrl+E | Export |
 | Ctrl+Shift+D | Duplicate the character |
 | Ctrl+D | Dice Roller |
+| Ctrl+B | Bestiary |
 | Ctrl+R | Rest, short rest picked |
 | Ctrl+Shift+R | Rest, long rest picked |
 | Ctrl+1 … Ctrl+9 | Jump to that tab (each tab's tooltip says its keys) |
@@ -255,7 +258,7 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 <details>
 <summary><b>On Android</b></summary>
 
-- **The menu** has every page of the sheet, plus Rest, the Dice Roller, Settings, Save & Export and Credits.
+- **The menu** has every page of the sheet, plus Rest, the Dice Roller, the Bestiary, Settings, Save & Export and Credits.
 - **Big buttons for what you do often** (Cast, Equip, Drink, Use), a magnifying glass for details, and press and hold for the rest: preparing, favourites, attunement, removing.
 - **Favourite a spell** (press and hold → Add to favourites) to cast it from the Combat screen.
 - **Holding − or +** on a quantity or an ammunition count changes it by 5.
@@ -270,9 +273,10 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 - **14 classes**, Blood Hunter included, with **127 subclasses**
 - **521 spells** across all nine levels
 - **138 feats** and **99 backgrounds**, from the 2014 rules
-- **1,283 magic items**, with their effects working for over 99% of them; the few too situational to automate show as reminders
+- **1,374 magic items**, each wired to your sheet: AC, saves, skills, resistances, a weapon's bonus and extra damage, its spells, charges and uses. What's left to you and your DM shows as a reminder
 - **Every standard weapon and armour**, plus silvered and adamantine weapons
 - **185 Wild Shape forms**, each with its full stat block: every beast up to CR 6, and the four elementals for a Circle of the Moon druid
+- **2,754 creatures** in the Bestiary, each with its full stat block
 - **Companion stat blocks** for the Steel Defender, Wildfire Spirit, Drake Companion, Dancing Item, the Primal Companions, the Eldritch Cannon and mounts
 - **One engine, two apps** — desktop and Android build, level and save a character the same way
 
@@ -355,7 +359,7 @@ dist/                (made by the builds) MIMIC.exe and MIMIC.apk
 ## Roadmap
 
 - **Clickable cross-references** — a spell, feat or feature named in a description opens its details
-- **Monsters and a bestiary** — including the creatures you summon or conjure
+- **Summons from the Bestiary** — the creatures you summon or conjure, on your sheet while the spell lasts
 - **The 2024 rules** — further off
 
 ---

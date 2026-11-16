@@ -24,6 +24,8 @@ Popup {
     property url contentSource: ""
     // Optional frame colour (a magic item's rarity); transparent = none.
     property color accent: "transparent"
+    // what contentSource made (null until the dialog is first opened)
+    readonly property alias loadedItem: lazyContent.item
     onAboutToShow: if (contentSource.toString() !== "") lazyContent.active = true
 
     modal: true
@@ -39,7 +41,7 @@ Popup {
         border.color: root.accent
         border.width: root.accent.a > 0 ? 3 : 0
     }
-    Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+    Overlay.modal: Rectangle { color: Theme.scrim }
 
     enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 120 } }
     exit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 120 } }

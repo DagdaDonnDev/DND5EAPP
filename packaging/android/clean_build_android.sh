@@ -77,6 +77,34 @@ for WHL in $(sed -nE "s/.*'wheels' \/ '([^']+)'.*/\1/p" "$RECIPES"/*/__init__.py
 done
 PY="$(find_python311)" || die "python3.11 not found on PATH or under ${PYENV_ROOT:-$HOME/.pyenv}"
 echo "Python: $PY"
+# Cython: buildozer looks for a `cython` command on PATH ("Cython (cython)
+# not found") -- not just the module. Installed with `pip --user` it lands
+# in ~/.local/bin, which a shell started from Windows (wsl.exe bash -lc)
+# may not have on PATH. So: make sure it's installed for this Python, and
+# put that Python's script folders on PATH for the build.
+ensure_cython() {
+    if ! "$PY" -c 'import Cython' >/dev/null 2>&1; then
+        echo "Cython isn't installed for $PY -- installing it"
+        "$PY" -m pip install --user cython \
+            || "$PY" -m pip install --user --break-system-packages cython \
+            || "$PY" -m pip install cython \
+            || die "couldn't install Cython for $PY (try: $PY -m pip install --user cython)"
+    fi
+    local d
+    for d in $("$PY" -c 'import os, sysconfig
+for scheme in (os.name + "_user", sysconfig.get_default_scheme()):
+    try:
+        print(sysconfig.get_path("scripts", scheme))
+    except KeyError:
+        pass'); do
+        case ":$PATH:" in *":$d:"*) ;; *) [ -d "$d" ] && PATH="$d:$PATH" ;; esac
+    done
+    export PATH
+    command -v cython >/dev/null \
+        || die "Cython is installed for $PY but there's no 'cython' command on PATH ($PATH)"
+    echo "Cython: $(command -v cython) ($(cython --version 2>&1 | head -1))"
+}
+ensure_cython
 command -v rsync >/dev/null || die "rsync not found (sudo apt install rsync)"
 
 step "1/6 Stopping leftover build processes"

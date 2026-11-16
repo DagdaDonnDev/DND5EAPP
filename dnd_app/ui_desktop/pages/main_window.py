@@ -950,6 +950,7 @@ class CharacterCreatorApp(QMainWindow):
         self._wizard = None
         self._sheet  = None
         self._dice_roller = None
+        self._bestiary = None
 
         # Characters used to be saved in the hidden ~/.dnd_characters
         # folder; they now live in Documents/MIMIC Characters (or the
@@ -1107,6 +1108,7 @@ class CharacterCreatorApp(QMainWindow):
 
         tm = mb.addMenu("&Tools")
         a = QAction("Dice Roller", self); _icons.set_action_icon(a, "dice"); a.setShortcut("Ctrl+D"); a.triggered.connect(self._open_dice_roller); tm.addAction(a)
+        a = QAction("Bestiary", self); _icons.set_action_icon(a, "paw"); a.setShortcut("Ctrl+B"); a.triggered.connect(self._open_bestiary); tm.addAction(a)
         a = QAction("Short Rest",  self); _icons.set_action_icon(a, "short_rest"); a.setShortcut("Ctrl+R"); a.triggered.connect(self._short_rest);       tm.addAction(a)
         a = QAction("Long Rest",   self); _icons.set_action_icon(a, "long_rest"); a.setShortcut("Ctrl+Shift+R"); a.triggered.connect(self._long_rest); tm.addAction(a)
 
@@ -1579,6 +1581,23 @@ class CharacterCreatorApp(QMainWindow):
             self._dice_roller.show()
         else:
             self._dice_roller.raise_(); self._dice_roller.activateWindow()
+
+    def _open_bestiary(self, name: str = ""):
+        """Tools → Bestiary (Ctrl+B): every creature, to find and read. One
+        window; a closed one is made afresh, so it takes the current theme."""
+        from dnd_app.ui_desktop.dialogs.bestiary import BestiaryWindow
+        if self._bestiary is None or self._bestiary.isHidden():
+            if self._bestiary is not None:
+                old = self._bestiary
+                old.setParent(None); old.deleteLater()
+            self._bestiary = BestiaryWindow(self)
+            geo = self.geometry()
+            self._bestiary.move(geo.left() + 60, geo.top() + 60)
+            self._bestiary.show()
+        else:
+            self._bestiary.raise_(); self._bestiary.activateWindow()
+        if name:
+            self._bestiary.show_creature(name)
 
 
 def main(app=None, splash=None):

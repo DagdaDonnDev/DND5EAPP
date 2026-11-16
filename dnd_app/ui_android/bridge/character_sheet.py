@@ -48,6 +48,7 @@ from dnd_app.core.magic_items import (
 )
 from dnd_app.core.effects import EFFECT_TABLE, INSTANT_POTION_EFFECTS
 from dnd_app.core.riders import base_weapon_options as _base_weapon_options, weapon_base_of as _weapon_base_of
+from dnd_app.core.magic_items import armor_base_options as _armor_base_options
 from dnd_app.core.spellcasting import spell_component_block_reason, is_caster_resource
 from dnd_app.core.ammo import ammo_kind, ammo_label, ammo_count, spend_ammo, set_ammo
 from dnd_app.core.dying import (
@@ -129,7 +130,7 @@ _MI_SLOT_KEYWORDS = {
     "Scroll / Wand / Rod / Staff": ["scroll", "wand", "rod", "staff"],
 }
 
-_MI_RARITY_ORDER = ["Common", "Uncommon", "Rare", "Very Rare", "Legendary", "Artifact"]
+_MI_RARITY_ORDER = ["Common", "Uncommon", "Rare", "Very Rare", "Legendary", "Artifact", "Unknown"]
 
 
 def _mi_sort_key(rarity: str, name: str):
@@ -578,7 +579,8 @@ class CharacterSheetBridge(QObject):
         # each level maps to.
         out = []
         for skill in sorted(SKILL_ABILITY):
-            prof_level = self.char.get("skills", {}).get(skill, 0)
+            from dnd_app.core.calculator import skill_prof_level
+            prof_level = skill_prof_level(self.char, skill)
             bonus = get_skill_bonus(self.char, skill)
             out.append({
                 "name": skill,
@@ -1330,6 +1332,8 @@ class CharacterSheetBridge(QObject):
                 # an "any sword" item (Flame Tongue...): which weapon it is
                 "baseOptions": _base_weapon_options(name),
                 "base": _weapon_base_of(self.char, name) if _base_weapon_options(name) else "",
+                # "armor" for an "any armor" item (+1 Armor...), else "weapon"
+                "baseKind": "armor" if _armor_base_options(name) else "weapon",
             })
         out.sort(key=lambda i: _mi_sort_key(i["rarity"], i["name"]))
         return out
@@ -1518,7 +1522,8 @@ class CharacterSheetBridge(QObject):
         from dnd_app.core.riders import set_weapon_base
         if set_weapon_base(self.char, item_name, base):
             self.ctrl.refresh()
-            self.toastRequested.emit(f"{item_name} is a {base.lower()}")
+            self.toastRequested.emit(f"{item_name} is {base.lower()}" if _armor_base_options(item_name)
+                                     else f"{item_name} is a {base.lower()}")
             self._changed()
 
     @Slot(str, bool)
@@ -1611,7 +1616,8 @@ class CharacterSheetBridge(QObject):
             self.toastRequested.emit(why)
             return
         note = heal(char, amount)
-        remember_hp_change(char, before, f"{amount} healing")
+        if not remember_hp_change(char, before, f"{amount} healing"):
+            return                              # (already at full: nothing to do)
         if note:
             self.toastRequested.emit(note)
         self._changed()
@@ -2351,7 +2357,15 @@ class CharacterSheetBridge(QObject):
     # them for display.
     @Property(list, notify=statsChanged)
     def languages(self):
-        return list(self.char.get("languages", []))
+        from dnd_app.core.calculator import known_languages
+        return known_languages(self.char)
+
+    @Property(list, notify=statsChanged)
+    def defenseRows(self):
+        """Your resistances, immunities and vulnerabilities, the same as
+        desktop's badges under the HP card (core/calculator.py defenses)."""
+        from dnd_app.core.calculator import defenses
+        return defenses(self.char)
 
     @Property(list, notify=statsChanged)
     def toolProficiencies(self):
@@ -2881,15 +2895,16 @@ class CharacterSheetBridge(QObject):
     # (core/checks.py). ─────────────────────────────────────────────────
     @Property(list, notify=statsChanged)
     def activeEffectRows(self):
-        from dnd_app.core.riders import effect_note
+        from dnd_app.core.spell_effects import effect_view
         from dnd_app.core.durations import rounds_left
         out = []
         for n in self.char.get("active_effects", []):
             info = EFFECT_TABLE.get(n, {})
-            out.append({"name": n, "concentration": bool(info.get("conc")),
-                        "rounds": rounds_left(self.char, "effect", n),
-                        "note": effect_note(self.char, n) or info.get("note", "")
-                        or "Tracked, with no numbers of its own."})
+            # its level, when cast above its own, and what it does at that
+            # level (core/spell_effects.py effect_view, as desktop)
+            view = effect_view(self.char, n)
+            out.append({"name": n, "title": view["title"], "concentration": bool(info.get("conc")),
+                        "rounds": rounds_left(self.char, "effect", n), "note": view["note"]})
         return out
 
     @Property(list, constant=True)
@@ -2909,11 +2924,24 @@ class CharacterSheetBridge(QObject):
         if why:
             self.toastRequested.emit(f"{name}: {why}")
             return
-        fx.append(name)
-        note = on_effect_started(self.char, name)          # Rage ends concentration
-        self.ctrl.refresh()
-        self.toastRequested.emit(f"{name} is on you" + (f" -- {note}" if note else ""))
-        self._changed()
+        # an ally's Aid or Magic Weapon does more from a higher slot: which?
+        from dnd_app.core.spell_effects import added_effect_levels
+        levels = added_effect_levels(name)
+
+        def ask(answers):
+            if levels and "level" not in answers:
+                return {"ask": {"key": "level", "title": f"What level was {name} cast at?", "options": levels}}
+            return {"level": answers.get("level", "")}
+
+        def done(res):
+            if res.get("level") in levels:
+                self.char.setdefault("effect_details", {})[name] = {"level": int(res["level"].split()[0][:-2])}
+            fx.append(name)
+            note = on_effect_started(self.char, name)          # Rage ends concentration
+            self.ctrl.refresh()
+            self.toastRequested.emit(f"{name} is on you" + (f" -- {note}" if note else ""))
+            self._changed()
+        self._ask_through(name, ask, done)
 
     @Slot(str)
     def removeActiveEffect(self, name: str):
@@ -3054,7 +3082,7 @@ class CharacterSheetBridge(QObject):
         name = spell["name"]
         # what its hit adds (Genie's Wrath, Hex...)
         said = "\n".join(m for m in (said, spell_hit_note(self.char, spell)) if m)
-        if not effect_names(name):
+        if not effect_names(name) and name != "False Life":
             if said:
                 self.toastRequested.emit(said)
             return
@@ -3160,27 +3188,42 @@ class CharacterSheetBridge(QObject):
             self._maybe_apply_spell_active_effect(spell, lvl, free_cast_message(name, free, self.char))
             self._changed()
             return
-        slots_used = self.char.setdefault("spell_slots_used", [0] * 9)
-        slots_max = self.char.get("spell_slots_max", [0] * 9)
-        for i in range(lvl - 1, 9):
-            if slots_max[i] > 0 and slots_used[i] < slots_max[i]:
-                slots_used[i] += 1
-                if spell.get("concentration"):
-                    start_concentration(self.char, name)
-                self._mark_spell_cast_time(spell)
-                self._maybe_apply_spell_active_effect(spell, i + 1, f"Cast {name} -- slot expended")
-                self._changed()
-                return
-        if self.char.get("pact_slots_max", 0) > 0 and self.char.get("pact_slots_used", 0) < self.char["pact_slots_max"]:
-            self.char["pact_slots_used"] = self.char.get("pact_slots_used", 0) + 1
-            if spell.get("concentration"):
-                start_concentration(self.char, name)
-            self._mark_spell_cast_time(spell)
-            self._maybe_apply_spell_active_effect(spell, self.char.get("pact_slot_level", 0) or lvl,
-                                                  f"Cast {name} -- pact slot expended")
-            self._changed()
+        # Which slot: the lowest free, unless the spell does more from a
+        # higher one and there's a choice -- then it asks, saying what the
+        # higher slot gives (core/spellcasting.py, the same as desktop)
+        from dnd_app.core.spellcasting import slot_choices, slot_question
+        choices = slot_choices(self.char, spell)
+        if not choices:
+            self.toastRequested.emit(f"Can't cast {name} -- no level-{lvl}+ spell slots available")
             return
-        self.toastRequested.emit(f"Can't cast {name} -- no level-{lvl}+ spell slots available")
+        question = slot_question(spell, choices)
+        labels = [c["label"] for c in choices]
+
+        def ask(answers):
+            if question and "slot" not in answers:
+                return {"ask": {"key": "slot", "title": question, "options": labels}}
+            return {"pick": answers.get("slot", labels[0])}
+        self._ask_through(name, ask, lambda res: self._cast_with_slot(
+            spell, choices[labels.index(res["pick"])] if res.get("pick") in labels else choices[0]))
+
+    def _cast_with_slot(self, spell: dict, pick: dict):
+        """castSpell's last step: the slot picked is used, then what the
+        spell does at that level (core/spellcasting.py spend_slot)."""
+        from dnd_app.core.spellcasting import spend_slot
+        name, lvl = spell["name"], spell.get("level", 0)
+        at = spend_slot(self.char, pick["key"])
+        if not at:
+            self.toastRequested.emit(f"Can't cast {name} -- that slot is used up")
+            return
+        if spell.get("concentration"):
+            start_concentration(self.char, name)
+        self._mark_spell_cast_time(spell)
+        if pick["key"] == "pact":
+            msg = f"Cast {name} -- pact slot expended"
+        else:
+            msg = f"Cast {name}" + (f" at {pick['label'].split(' (')[0]}" if at > lvl else "") + " -- slot expended"
+        self._maybe_apply_spell_active_effect(spell, at, msg)
+        self._changed()
 
     @Slot(str)
     def castSpellAsRitual(self, name: str):

@@ -5,9 +5,97 @@ Quality of Life, Fixes and Known Issues.
 
 ---
 
-## v6.0 · "Keep Your Focus" · In progress
+## Next Update · In progress
 
-*On main; ships with v6.0.*
+*On main; ships with the next version.*
+
+### 🌍 Overview
+
+Adventurers, this one puts your slots in your hands. A spell that does
+more from a higher slot asks which slot to use, and what's on your sheet
+follows it: Aid's hit points, False Life's and Armor of Agathys's
+temporary hit points, the smites' dice. Every creature is in the new
+Bestiary, every magic item now does what it says on your sheet, and magic
+armor finally counts as the armor it is. Heal no longer freezes when
+pressed quickly, and popups suit the light themes.
+
+### ✨ New
+
+- **The Bestiary:** every creature, 2,754 of them, on both apps (Tools →
+  Bestiary or Ctrl+B on desktop, the menu on Android). Find one by name or
+  type, narrow the list by type, size and challenge rating, and read its
+  whole stat block, legendary and lair actions included. Monsters of the
+  Multiverse reprints are marked (MPMM), the way the races are.
+- **Pick the slot:** casting Cure Wounds, Aid, Fireball, a smite or any
+  other spell that does more from a higher slot asks which slot to use,
+  when you have more than one level free, and says what the higher slot
+  adds. Any other spell uses the lowest slot free, without asking.
+- **Temporary hit points from your spells:** False Life (1d4 + 4, and 5
+  more for each slot level above 1st) and Armor of Agathys (5 for each
+  slot level) give their temporary hit points when cast. Armor of Agathys
+  says how much cold damage it deals, and ends when they're gone.
+- **Effects at their level:** the Effects tab says the level an effect
+  was cast at ("Magic Weapon · 4th level") and what it does at that level
+  (+2, not +1). Putting on an ally's Aid, Magic Weapon or Elemental Weapon
+  asks the level it was cast at.
+- **91 more magic items,** 1,374 in all, each wired to your sheet: the
+  Ioun stones of knowledge, the Stones of Creation, Infernal Plate Armor,
+  the Silver Sword, the archdevils' weapons, Gauntlets of Rage and more.
+  Items the book gives no rarity are listed as Unknown, with a filter of
+  their own.
+- **Resistances on Android:** your resistances, immunities and now
+  vulnerabilities show as badges on the Hit Points card (½, ⊘, ×2), as on
+  desktop. Tap one to see where it comes from.
+
+### ⚖️ Rules
+
+- Magic armor is the armor it's made from: Dwarven Plate is plate (AC 18
+  and its +2), Elven Chain a chain shirt. An item that can be any armor
+  (+1 Armor, Armor of Fire Resistance...) asks which, the way Flame Tongue
+  asks which sword.
+  - *Designer note: before, magic armor was counted as no armor at all.*
+- Ioun stones of knowledge give the skill's proficiency, or +1 if you
+  have it already. Vulnerabilities (Infernal Plate Armor, the Canian
+  Fork) are tracked and shown.
+- An item use that comes back on a rest rather than at dawn (the Knife
+  of Stolen Resistance, the Ring of Treachery's charges, the True-Ice
+  Shards' Sub-Zero) comes back then, and the card says when.
+- Aid raises your hit point maximum and current hit points by 5, and 5
+  more for each slot level above 2nd. When it ends, the maximum goes back
+  down.
+  - *Designer note: before, its note asked you to add it to your maximum
+    yourself.*
+
+### 🧰 Quality of Life
+
+- **Rest buttons in reach (Android):** Cancel and Take a Rest stay at the
+  bottom of the rest screen, with the cards scrolling above them.
+- **Popups in light themes (Android):** a popup or the menu now sits on a
+  light veil in your theme's own colour, so the page still shows behind it.
+
+### 🔧 Fixes
+
+- Fixed Heal freezing the window when pressed quickly (desktop). Each
+  press now shows at once, and the rest of the sheet catches up when you
+  stop.
+- Fixed a Heal at full hit points wiping the Undo for the change before it.
+- Fixed equipping a magic shield taking off your armor: it's carried as
+  your shield now.
+- Fixed a suit of magic armor in your pack adding to your AC. Only the
+  armor you wear counts.
+- Fixed the rest screen's buttons running off the bottom of the screen
+  (Android).
+
+### ⚠️ Known Issues
+
+- Spells that last 10 minutes or longer aren't counted in rounds. End
+  them yourself.
+- PDF import only reads the official character sheet, typed in.
+- The 2024 rules aren't supported.
+
+---
+
+## v6.0 · "Keep Your Focus" · 13 November 2026
 
 ### 🌍 Overview
 

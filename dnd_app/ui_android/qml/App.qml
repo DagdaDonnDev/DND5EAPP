@@ -36,6 +36,7 @@ ApplicationWindow {
     property QtObject saveLoadBridge: null
     property QtObject sheetBridge: null
     property QtObject diceRollerBridge: null
+    property QtObject bestiaryBridge: null
     property QtObject creditsBridge: null
     property QtObject easterEggBridge: null
     property QtObject appSettingsBridge: null
@@ -351,6 +352,7 @@ ApplicationWindow {
     // out as a 2x2 tile grid in the drawer's own bottom section.
     readonly property var utilityNavItems: [
         { label: "Dice Roller", icon: "dice", enabled: true, onOpen: function() { diceRollerDialog.open() } },
+        { label: "Bestiary", icon: "paw", enabled: true, onOpen: function() { bestiaryDialog.open() } },
         { label: "Settings", icon: "settings", enabled: true, onOpen: function() { settingsDialog.open() } },
         { label: "Save & Export", icon: "save", enabled: true, onOpen: function() { saveLoadDialog.open(); window.saveLoadBridge.refresh() } },
         { label: "Credits", icon: "credits", enabled: true, onOpen: function() { creditsDialog.open() } },
@@ -364,7 +366,7 @@ ApplicationWindow {
         width: 300
         anchors.centerIn: parent
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         ColumnLayout {
             anchors.fill: parent
@@ -477,7 +479,7 @@ ApplicationWindow {
         width: Math.min(parent ? parent.width - 32 : 320, 340)
         anchors.centerIn: parent
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
         ColumnLayout {
             anchors.fill: parent
             spacing: 12
@@ -532,6 +534,12 @@ ApplicationWindow {
         contentSource: Qt.resolvedUrl("DiceRollerScreen.qml")
     }
     MFullPageDialog {
+        id: bestiaryDialog
+        objectName: "bestiaryDialog"
+        dialogTitle: "Bestiary"
+        contentSource: Qt.resolvedUrl("BestiaryScreen.qml")
+    }
+    MFullPageDialog {
         id: creditsDialog
         objectName: "creditsDialog"
         dialogTitle: "Credits"
@@ -567,7 +575,7 @@ ApplicationWindow {
         width: Math.min(parent ? parent.width - 32 : 360, 360)
         padding: 16
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
         contentItem: ColumnLayout {
             spacing: 10
             Label {
@@ -979,7 +987,7 @@ ApplicationWindow {
         height: Math.min(attackCol.implicitHeight + 32, (parent ? parent.height : 800) - 72)
         padding: 16
         background: Rectangle { color: Theme.bg; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
         contentItem: Flickable {
             clip: true
             contentHeight: attackCol.implicitHeight
@@ -1388,6 +1396,13 @@ ApplicationWindow {
         if (settingsDialog.opened) { settingsDialog.close(); return }
         if (saveLoadDialog.opened) { saveLoadDialog.close(); return }
         if (diceRollerDialog.opened) { diceRollerDialog.close(); return }
+        if (bestiaryDialog.opened) {
+            // back from a stat block goes to the list first
+            var bi = bestiaryDialog.loadedItem
+            if (bi && bi.shown !== "") bi.shown = ""
+            else bestiaryDialog.close()
+            return
+        }
         if (creditsDialog.opened) { creditsDialog.close(); return }
         if (stackView.depth > 1) {
             stackView.pop()

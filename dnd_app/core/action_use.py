@@ -2018,7 +2018,10 @@ def _use_action(char, bucket, display, desc="", answers=None, rng=random):
 # ── Magic items ───────────────────────────────────────────────────────────
 # Item effects switched on and off from the item's action card
 ITEM_TOGGLES = {"Flame Tongue": "Flame Tongue"}
-_DAILY_RE = re.compile(r"(\d+)/day|once (?:per|a) (?:day|dawn)|until the next dawn", re.I)
+_DAILY_RE = re.compile(r"(\d+)/day|once (?:per|a) (?:day|dawn)|until the next dawn"
+                       r"|once (?:per|a) (?:short or )?long rest|until you finish a (?:short or )?long rest", re.I)
+_REST_BACK = {"short": "back on a short or long rest", "long": "back on a long rest", "dawn": "back at dawn",
+              "dusk": "back at dusk", "never": "they don't come back", "none": "they don't come back"}
 _CHARGE_RE = re.compile(r"(\d+)\s*(?:ch\b|charges?\b)", re.I)
 
 
@@ -2074,6 +2077,7 @@ def _use_item(char, item, display, desc, slot, answers):
     if charges and charges.get("max", 0) > 0:
         from dnd_app.data.magic_items import get_magic_item
         have = charges.get("current", 0)
+        back = _REST_BACK.get(charges.get("recharge", "dawn"), "back at dawn")
         rules = (get_magic_item(item) or {}).get("desc", "") or ""
         spell_card = any(f"{d.get('spell')} ({item})" == display for d in char.get("item_granted_spell_details", []))
         if spell_card:
@@ -2086,7 +2090,7 @@ def _use_item(char, item, display, desc, slot, answers):
         if len(costs) > 1 or free:
             opts = (["No charge"] if free else []) + [f"{n} charge{'s' if n != 1 else ''}" for n in costs if n <= have]
             if not opts:
-                return _result(False, f"{item}: not enough charges left ({have}/{charges['max']}, back at dawn)")
+                return _result(False, f"{item}: not enough charges left ({have}/{charges['max']}, {back})")
             if answers.get("charges") not in opts:
                 return _result(False, ask={"key": "charges", "title": f"How many charges? ({have} left)",
                                            "options": opts})
@@ -2095,7 +2099,7 @@ def _use_item(char, item, display, desc, slot, answers):
             n = costs[0]
         if have < n:
             return _result(False, f"{item}: {'no' if have == 0 else 'not enough'} charges left "
-                                  f"({have}/{charges['max']}, back at dawn)")
+                                  f"({have}/{charges['max']}, {back})")
         charges["current"] = have - n
         if n:
             tail = f" ({n} charge{'s' if n != 1 else ''} spent, {charges['current']}/{charges['max']} left)"
@@ -2103,14 +2107,18 @@ def _use_item(char, item, display, desc, slot, answers):
         # once a day, or N times a day ("Verminshroud (3/day)")
         m = _DAILY_RE.search(text)
         per_day = int(m.group(1)) if m.group(1) else 1
+        said = m.group(0).lower()
+        recharge = "short" if "short" in said else "long" if "long rest" in said else "dawn"
         uses = char.setdefault("item_uses", {}).setdefault(display, {"current": per_day, "max": per_day,
-                                                                     "recharge": "dawn"})
-        uses["max"] = per_day
+                                                                     "recharge": recharge})
+        uses["max"], uses["recharge"] = per_day, recharge
+        back = _REST_BACK[recharge]
+        today = " today" if recharge == "dawn" else ""
         if uses.get("current", 0) <= 0:
-            return _result(False, f"{display}: already used today (back at dawn)")
+            return _result(False, f"{display}: already used{today} ({back})")
         uses["current"] -= 1
-        tail = (" (used for today, back at dawn)" if per_day == 1 else
-                f" ({uses['current']} of {per_day} left today, back at dawn)")
+        tail = (f" (used{' for today' if today else ''}, {back})" if per_day == 1 else
+                f" ({uses['current']} of {per_day} left{today}, {back})")
         if display == "Cursed Luckstone":
             # its curse, the same as when a check uses it (core/checks.py)
             char["_luckstone_curse"] = 2
