@@ -13,6 +13,9 @@ from dnd_app.data.bestiary import bestiary, get_creature, SIZES, ABILITIES
 # Challenge ratings in order, as the filters offer them
 CR_ORDER = ["0", "1/8", "1/4", "1/2"] + [str(n) for n in range(1, 31)]
 
+# How it moves, as the movement filter offers it: (label, speed key)
+MOVES = [("Flies", "fly"), ("Hovers", "hover"), ("Swims", "swim"), ("Climbs", "climb"), ("Burrows", "burrow")]
+
 
 def cr_value(cr: str) -> float:
     try:
@@ -35,10 +38,19 @@ def summary_line(c: dict) -> str:
     return f"{size} {kind}".strip() + f" · CR {c.get('cr', '0')}"
 
 
-def search(text: str = "", kind: str = "", size: str = "", cr_min: str = "", cr_max: str = "") -> list:
+def moves(c: dict, move: str) -> bool:
+    """Does it move that way? `move` is a MOVES label ("Flies") or key."""
+    key = dict(MOVES).get(move, move)
+    if key == "hover":
+        return bool(c.get("hover"))
+    return bool((c.get("speed") or {}).get(key))
+
+
+def search(text: str = "", kind: str = "", size: str = "", cr_min: str = "", cr_max: str = "",
+           move: str = "") -> list:
     """The names of the creatures that match, sorted: every word of `text`
-    in the name (or the type), of that type and size, within the CR range.
-    An empty filter matches everything."""
+    in the name (or the type), of that type and size, within the CR range,
+    moving that way (flies, swims...). An empty filter matches everything."""
     words = (text or "").casefold().split()
     lo = cr_value(cr_min) if cr_min else None
     hi = cr_value(cr_max) if cr_max else None
@@ -50,6 +62,8 @@ def search(text: str = "", kind: str = "", size: str = "", cr_min: str = "", cr_
             continue
         v = c.get("cr_value", 0.0)
         if lo is not None and v < lo or hi is not None and v > hi:
+            continue
+        if move and not moves(c, move):
             continue
         if words:
             hay = f"{name} {c.get('type', '')} {c.get('type_detail', '')}".casefold()

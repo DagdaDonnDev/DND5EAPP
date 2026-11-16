@@ -286,7 +286,8 @@ def ability_score(char: dict, ability: str, ignore_wildshape: bool = False) -> i
     # transformation — your own hit point maximum doesn't change while
     # wild shaped, you use the beast's separate HP pool instead.
     active_beast = char.get("_wildshape_active")
-    if active_beast and not ignore_wildshape and ability in ("STR", "DEX", "CON"):
+    from .forms import replaces_mind       # Polymorph: INT, WIS and CHA are the form's too
+    if active_beast and not ignore_wildshape and (ability in ("STR", "DEX", "CON") or replaces_mind(char)):
         from dnd_app.data.statblocks import WILDSHAPE_BEASTS
         beast = WILDSHAPE_BEASTS.get(active_beast)
         if beast and ability in beast.get("abilities", {}):

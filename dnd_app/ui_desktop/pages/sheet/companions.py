@@ -383,10 +383,10 @@ class CompanionsMixin:
         scl.addLayout(picker_row)
         self._companions_lay.addWidget(sc)
 
+        from dnd_app.core.summons import summon_statblock
         owned = self.char.get("owned_summons", [])
         for i, entry in enumerate(owned):
-            spell_name, lvl, form = entry.get("spell"), entry.get("level"), entry.get("form")
-            sb = resolve_scaling_summon(spell_name, lvl, form)
+            sb = summon_statblock(entry)      # a Bestiary creature, or a Tasha's spirit
             if not sb:
                 continue
             card = self._build_statblock_card(sb, hp_key=f"summon_{i}")

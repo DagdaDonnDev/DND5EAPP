@@ -336,16 +336,20 @@ def apply_magic_item_effect(char: dict, item_name: str) -> None:
     # An item can grant multiple simultaneous effects (e.g. an ability score
     # bonus AND a damage immunity) — represented as a list of effect dicts.
     for sub_effect in (effect if isinstance(effect, list) else [effect]):
-        if _effect_applies(char, sub_effect.get("if", "")):
+        if _effect_applies(char, sub_effect.get("if", ""), item_name):
             _apply_single_effect(char, item_name, sub_effect)
 
 
-def _effect_applies(char: dict, cond: str) -> bool:
+def _effect_applies(char: dict, cond: str, item_name: str = "") -> bool:
     """An effect that only works some of the time, when the sheet can tell:
        "no_armor_no_shield"  (Bracers of Defense's kind: no armour, no shield)
+       "off_hand"  while the item is the weapon in your off hand
        "good", "evil", "lawful", "chaotic"  (your alignment)"""
     if not cond:
         return True
+    if cond == "off_hand":
+        from dnd_app.core.weapons import hand_of
+        return hand_of(char, item_name) in ("off hand", "one in each hand")
     if cond == "no_armor_no_shield":
         armor = (char.get("armor_worn") or "No Armor").strip()
         return armor in ("No Armor", "Mage Armor (spell)") and not char.get("shield", False)
@@ -955,9 +959,10 @@ def set_owned_magic_item_equipped(char: dict, uid: str, on: bool):
         itype = "Shield"            # carried as your shield, over your armour
     if on:
         if itype == "Weapon":
-            wpns = char.setdefault("equipped_weapons", [])
-            if name not in wpns:
-                wpns.append(name)
+            # taken up the way any weapon is: two light ones, one in each
+            # hand; a two-handed one puts the rest away (core/weapons.py)
+            from dnd_app.core.weapons import equip_weapon
+            equip_weapon(char, name)
         elif itype == "Armor":
             char["armor_worn"] = name
         elif itype == "Shield":

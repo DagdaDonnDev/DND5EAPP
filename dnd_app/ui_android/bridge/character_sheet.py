@@ -49,6 +49,7 @@ from dnd_app.core.magic_items import (
 from dnd_app.core.effects import EFFECT_TABLE, INSTANT_POTION_EFFECTS
 from dnd_app.core.riders import base_weapon_options as _base_weapon_options, weapon_base_of as _weapon_base_of
 from dnd_app.core.magic_items import armor_base_options as _armor_base_options
+from dnd_app.core.weapons import hand_of as _hand_of, can_swap_hands as _can_swap_hands
 from dnd_app.core.spellcasting import spell_component_block_reason, is_caster_resource
 from dnd_app.core.ammo import ammo_kind, ammo_label, ammo_count, spend_ammo, set_ammo
 from dnd_app.core.dying import (
@@ -673,6 +674,18 @@ class CharacterSheetBridge(QObject):
         self.char["shield"] = on
         self.ctrl.refresh()
 
+    @Slot()
+    def swapHands(self):
+        """The main-hand weapon to your off hand and back (core/weapons.py,
+        the same as desktop's Swap hands)."""
+        from dnd_app.core.weapons import swap_hands, hands
+        off = swap_hands(self.char)
+        if not off:
+            return
+        self.ctrl.refresh()
+        self.toastRequested.emit(f"{hands(self.char)['main']} in your main hand, {off} in your off hand")
+        self._changed()
+
     @Slot(str, bool)
     def toggleWeaponEquipped(self, name: str, equip: bool):
         # the hands rules are shared with the desktop (core/weapons.py)
@@ -937,6 +950,8 @@ class CharacterSheetBridge(QObject):
                 "weightValue": "  ·  ".join(x for x in (weight_text(weight * qty), money_text(cost * qty)) if x),
                 "equipKind": equip_kind,
                 "equipped": equipped,
+                # holding two: "main hand" / "off hand", and swapping them
+                "canSwapHands": bool(wdata) and _can_swap_hands(self.char, name),
                 # Dedicated Weapon (Monk, Tasha's optional feature)
                 "canDedicate": bool(wdata) and _can_dedicate(self.char, name),
                 "dedicated": bool(wdata) and _weapon_base(name) == _dedicated_weapon(self.char) != "",
@@ -1334,6 +1349,9 @@ class CharacterSheetBridge(QObject):
                 "base": _weapon_base_of(self.char, name) if _base_weapon_options(name) else "",
                 # "armor" for an "any armor" item (+1 Armor...), else "weapon"
                 "baseKind": "armor" if _armor_base_options(name) else "weapon",
+                # a magic weapon held with another: which hand it's in
+                "hand": _hand_of(self.char, name) if entry.get("equipped", True) else "",
+                "canSwapHands": _can_swap_hands(self.char, name),
             })
         out.sort(key=lambda i: _mi_sort_key(i["rarity"], i["name"]))
         return out
@@ -2037,14 +2055,11 @@ class CharacterSheetBridge(QObject):
         return WILDSHAPE_BEASTS.get(active) if active else None
 
     def _revert_wildshape(self):
-        char = self.char
-        char["_wildshape_active"] = None
-        char.pop("_wildshape_hp", None)
-        from dnd_app.core.hp_undo import clear_hp_undo
-        clear_hp_undo(char)              # (back in your own form: the last Damage or Heal stands)
-        effects = char.get("active_effects", [])
-        if "Wild Shape" in effects:
-            effects.remove("Wild Shape")
+        # (core/forms.py, as desktop: a Polymorph's form ends the spell and
+        # its concentration too; back in your own form, the last Damage or
+        # Heal stands)
+        from dnd_app.core.forms import leave_form
+        leave_form(self.char)
 
     @Property(bool, notify=statsChanged)
     def isDruid(self):
@@ -2066,6 +2081,13 @@ class CharacterSheetBridge(QObject):
     @Property(str, notify=statsChanged)
     def wildShapeActiveBeast(self):
         return self.char.get("_wildshape_active") or ""
+
+    @Property(str, notify=statsChanged)
+    def formKind(self):
+        """How you're in another creature's form: "Wild Shape", "Polymorph",
+        "True Polymorph", "Shapechange" ("" when you're yourself)."""
+        from dnd_app.core.forms import form_kind
+        return form_kind(self.char)
 
     @Property(list, notify=statsChanged)
     def availableWildShapeBeasts(self):
@@ -2927,6 +2949,16 @@ class CharacterSheetBridge(QObject):
         # an ally's Aid or Magic Weapon does more from a higher slot: which?
         from dnd_app.core.spell_effects import added_effect_levels
         levels = added_effect_levels(name)
+        # an ally's Polymorph: the creature they made you (core/forms.py, as desktop)
+        from dnd_app.core import forms as _forms
+        if name in _forms.ALLY_FORMS:
+            def form_done(res):
+                msg = _forms.become_ally_form(self.char, name, res["form"])
+                self.ctrl.refresh()
+                self.toastRequested.emit(msg)
+                self._changed()
+            self._ask_through(name, lambda a: _forms.ally_form_question(self.char, name, a), form_done)
+            return
 
         def ask(answers):
             if levels and "level" not in answers:
@@ -3082,7 +3114,8 @@ class CharacterSheetBridge(QObject):
         name = spell["name"]
         # what its hit adds (Genie's Wrath, Hex...)
         said = "\n".join(m for m in (said, spell_hit_note(self.char, spell)) if m)
-        if not effect_names(name) and name != "False Life":
+        from dnd_app.core.spell_effects import has_cast_step
+        if not has_cast_step(name):
             if said:
                 self.toastRequested.emit(said)
             return
@@ -5138,8 +5171,9 @@ class CharacterSheetBridge(QObject):
     @Property(list, notify=statsChanged)
     def ownedSummons(self):
         out = []
+        from dnd_app.core.summons import summon_statblock
         for i, entry in enumerate(self.char.get("owned_summons", [])):
-            sb = resolve_scaling_summon(entry.get("spell"), entry.get("level"), entry.get("form"))
+            sb = summon_statblock(entry)      # a Bestiary creature, or a Tasha's spirit (as desktop)
             if not sb:
                 continue
             norm = self._normalize_statblock(sb, hp_key=f"summon_{i}")

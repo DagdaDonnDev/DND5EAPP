@@ -392,6 +392,10 @@ def _half_proficiency(char: dict, ability: str) -> int:
 
 def get_skill_bonus(char: dict, skill: str) -> int:
     ability = SKILL_ABILITY.get(skill, "STR")
+    from .forms import form_skill
+    own = form_skill(char, skill, ability)
+    if own is not None:
+        return own                  # Polymorphed: the form's own skill
     # Forest Sage: substitutes the player's chosen INT/WIS ability for
     # Animal Handling/Arcana/Nature/Survival checks.
     if skill in ("Animal Handling", "Arcana", "Nature", "Survival") and "Forest Sage" in char.get("feats", []):
@@ -601,6 +605,10 @@ def defenses(char: dict) -> list:
 
 
 def get_saving_throw_bonus(char: dict, ability: str) -> int:
+    from .forms import form_save
+    own = form_save(char, ability)
+    if own is not None:
+        return own                  # Polymorphed: the form's own saving throw
     mod = ability_mod(char, ability)
     pb = get_prof_bonus(char)
     cl = class_levels(char)
@@ -1013,7 +1021,8 @@ def get_ac_breakdown(char: dict) -> list[tuple[str, int]]:
         from dnd_app.data.statblocks import WILDSHAPE_BEASTS
         beast = WILDSHAPE_BEASTS.get(active_beast)
         if beast:
-            return [(f"{active_beast} (Wild Shape)", beast["ac"])]
+            from .forms import form_kind
+            return [(f"{active_beast} ({form_kind(char)})", beast["ac"])]
     from .effects import effect_ac_parts, effect_ac_floor, EFFECT_TABLE
     parts = _ac_base_parts(char) + effect_ac_parts(char)
     floor = effect_ac_floor(char)
@@ -1204,6 +1213,9 @@ def spellcasting_block_reason(char: dict) -> str:
     Petrified, Surprised). Checked before any slot or free use is spent."""
     if "Rage" in char.get("active_effects", []):
         return "you're raging"
+    from .forms import replaces_mind, form_kind, form_name
+    if replaces_mind(char):
+        return f"you're a {form_name(char)} ({form_kind(char)}: no spells)"
     active = effective_conditions(char)
     if "Incapacitated" in active:
         cause = next((c for c in INCAPACITATING if c in active), "Incapacitated")
@@ -2837,6 +2849,10 @@ def update_all(char: dict) -> dict:
     Recompute all derived stats and update the character dict.
     Returns the updated character dict.
     """
+    from .forms import keep_in_step
+    keep_in_step(char)              # a Polymorph that's ended: back to yourself
+    from .summons import keep_in_step as _summons_in_step
+    _summons_in_step(char)          # a Conjure Animals no longer held: its creatures go
     cl = class_levels(char)
     subs = subclasses(char)
     # Effective ability scores (base + ability_bonuses from ASI/racial
@@ -2982,6 +2998,10 @@ def update_all(char: dict) -> dict:
             entry = (_dmg_type, _fx_name)
             if entry not in res:
                 res.append(entry)
+        for _cond in _fx_info.get("condition_immunity", []):
+            imm = char.setdefault("condition_immunities_magic", [])
+            if (_cond, _fx_name) not in imm:
+                imm.append((_cond, _fx_name))
         for _ab, _val in _fx_info.get("ability_override", {}).items():
             overrides = char.setdefault("ability_overrides", {})
             overrides[_ab] = max(overrides.get(_ab, 0), _val)

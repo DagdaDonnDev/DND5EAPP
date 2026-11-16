@@ -345,9 +345,14 @@ class GearMixin:
         right_tabs.addTab(magic_tab, "Magic Items")
         _icons.set_tab_icon(right_tabs, magic_tab, "magic", 15)
 
-        companions_tab = self._build_companions_tab()
-        right_tabs.addTab(companions_tab, "Companions")
-        _icons.set_tab_icon(right_tabs, companions_tab, "paw", 15)
+        # an Artificer's infusions beside the item lists (your creatures --
+        # mounts, steeds, summons, companions -- are in the Bestiary's Yours
+        # tab: Tools → Your Creatures)
+        self._gear_side_tabs = right_tabs
+        if self._has_infuse_item_access():
+            infusions_tab = self._build_tab_infusions()
+            right_tabs.addTab(infusions_tab, "Infusions")
+            _icons.set_tab_icon(right_tabs, infusions_tab, "infusions", 15)
 
         splitter.addWidget(right_tabs)
         # what you carry gets two thirds of the width, the browser one third
@@ -511,13 +516,13 @@ class GearMixin:
         if not item: return
         name = item.data(0, Qt.UserRole) if hasattr(item,'data') else item
         if not name or name == "__section__": return
-        # Mounts get a real stat block in the Companions tab instead of a
+        # Mounts get a real stat block (Bestiary → Yours) instead of a
         # generic equipment line — a Warhorse's AC/HP/attacks matter in
         # play, unlike a bedroll's weight and price.
         from dnd_app.data.items import MOUNTS
         if any(row[0] == name for row in MOUNTS):
             self._add_mount(name)
-            self._toast(f"{name} added — see its stat block in the Companions tab")
+            self._toast(f"{name} added — its stat block is in the Bestiary's Yours tab (Ctrl+Shift+B)")
             return
         qty, ok = QInputDialog.getInt(self, f"Add {name}", f"How many {name}?", 1, 1, 9999, 1)
         if not ok: return
@@ -1448,6 +1453,14 @@ class GearMixin:
                         full_act = infuse_menu.addAction(
                             f"(At max active infusions: {active_count}/{max_active})")
                         full_act.setEnabled(False)
+            # holding two weapons: which is in your main hand and which in
+            # your off hand (the off hand's makes the bonus action attack)
+            if _is_weapon:
+                from dnd_app.core.weapons import can_swap_hands, hand_of
+                if can_swap_hands(self.char, _name):
+                    sw_act = menu.addAction(_icons.icon("combat"),
+                                            f"Swap hands (now in your {hand_of(self.char, _name)})")
+                    sw_act.triggered.connect(lambda checked=False: self._swap_hands())
             # Dedicated Weapon (Monk, Tasha's): pick the weapon that counts
             # as a monk weapon until the next rest
             if _is_weapon:
@@ -1716,6 +1729,19 @@ class GearMixin:
         update_all(self.char); self.ctrl.refresh()
         if hasattr(self,"_update_weight"): self._update_weight()
         self._mark_dirty()
+
+    def _swap_hands(self):
+        """The main-hand weapon to your off hand and back (core/weapons.py,
+        the same as Android's Swap hands)."""
+        from dnd_app.core.weapons import swap_hands, hands
+        off = swap_hands(self.char)
+        if not off:
+            return
+        update_all(self.char); self.ctrl.refresh()
+        self._refresh_gear_equipment()
+        self._refresh_combat_weapons()
+        self._mark_dirty()
+        self._toast(f"{hands(self.char)['main']} in your main hand, {off} in your off hand")
 
     def _set_dedicated_weapon(self, name: str):
         """Dedicated Weapon: `name` counts as a monk weapon from now on

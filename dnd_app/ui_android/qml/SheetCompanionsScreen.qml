@@ -3,13 +3,14 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Mimic
 
-// Android port of ui_desktop/pages/sheet/companions.py's Companions tab
-// (nested under Gear on desktop; a standalone top-level nav item here,
-// matching how every other desktop sheet sub-tab already got its own
-// entry in this app's single-column drawer nav).
+// Your creatures -- the Android side of ui_desktop/pages/sheet/companions.py:
+// mounts, vehicles, summoned creatures, companions and Wild Shape. Shown
+// in the Bestiary's Yours tab (BestiaryScreen.qml), as on desktop.
+// embedded: inside the Bestiary, without the sheet's own header.
 Page {
     id: root
-    readonly property string screenTitle: "Companions"
+    property bool embedded: false
+    readonly property string screenTitle: "Your Creatures"
     background: Rectangle { color: Theme.bg }
     readonly property QtObject sheetBridge: Window.window.sheetBridge
 
@@ -27,7 +28,7 @@ Page {
             width: parent.width
             spacing: 16
 
-            SheetHeader {}
+            SheetHeader { visible: !root.embedded }
 
             // ── Mounts ───────────────────────────────────────────────
             Rectangle {

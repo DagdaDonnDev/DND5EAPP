@@ -181,18 +181,17 @@ ApplicationWindow {
           pulse: window.spellsPending },
         { label: "Equipment", icon: "gear", screen: sheetEquipmentComp, enabled: true,
           sections: ["Inventory", "Add Equipment", "Magic Items", "Add a Magic Item"] },
-        { label: "Companions", icon: "paw", screen: sheetCompanionsComp, enabled: true,
-          sections: ["Mounts", "Vehicles", "Summoned Creatures", "Wild Shape"] },
-        { label: "Features", icon: "features", screen: sheetFeaturesComp, enabled: true },
     ]
-    // Infusions only makes sense for Artificers -- everyone else never
-    // sees the entry at all, rather than a permanently "(finish
-    // previous step)"-style disabled one that would never unlock.
+    // Infusions (an Artificer's) sit after Equipment, where Companions
+    // were -- your creatures (mounts, steeds, summons, companions, Wild
+    // Shape) are in the Bestiary's Yours tab. Everyone else never sees
+    // the entry at all, rather than a permanently disabled one.
     readonly property var sheetNavItems:
         (sheetBridge !== null && sheetBridge.isArtificer
             ? sheetNavItemsBase.concat([{ label: "Infusions", icon: "infusions", screen: sheetInfusionsComp, enabled: true }])
             : sheetNavItemsBase
         ).concat([
+            { label: "Features", icon: "features", screen: sheetFeaturesComp, enabled: true },
             { label: "Choices", icon: "choices", screen: sheetChoicesComp, enabled: true,
               pulse: window.choicesPending },
             { label: "Notes", icon: "notes", screen: sheetNotesComp, enabled: true,
@@ -354,6 +353,7 @@ ApplicationWindow {
         { label: "Dice Roller", icon: "dice", enabled: true, onOpen: function() { diceRollerDialog.open() } },
         { label: "Bestiary", icon: "paw", enabled: true, onOpen: function() { bestiaryDialog.open() } },
         { label: "Settings", icon: "settings", enabled: true, onOpen: function() { settingsDialog.open() } },
+        { label: "Reference", icon: "features", enabled: true, onOpen: function() { referenceDialog.open() } },
         { label: "Save & Export", icon: "save", enabled: true, onOpen: function() { saveLoadDialog.open(); window.saveLoadBridge.refresh() } },
         { label: "Credits", icon: "credits", enabled: true, onOpen: function() { creditsDialog.open() } },
     ]
@@ -538,6 +538,12 @@ ApplicationWindow {
         objectName: "bestiaryDialog"
         dialogTitle: "Bestiary"
         contentSource: Qt.resolvedUrl("BestiaryScreen.qml")
+    }
+    MFullPageDialog {
+        id: referenceDialog
+        objectName: "referenceDialog"
+        dialogTitle: "Reference"
+        contentSource: Qt.resolvedUrl("ReferenceScreen.qml")
     }
     MFullPageDialog {
         id: creditsDialog
@@ -921,6 +927,14 @@ ApplicationWindow {
         objectName: "actionQuestionDialog"
         onPicked: (key) => window.sheetBridge.answerActionQuestion(key)
     }
+    // the same question with a long list of answers: searchable
+    MPickerDialog {
+        id: actionPickerDialog
+        objectName: "actionPickerDialog"
+        property bool answered: false
+        onPicked: (value) => { answered = true; window.sheetBridge.answerActionQuestion(value) }
+        onClosed: if (!answered) window.sheetBridge.answerActionQuestion("")
+    }
     // After an attack roll (core/attacks.py attack_report, the same as
     // desktop's dialog), top to bottom:
     //   the roll: a card with the total, big; a bar down its left side says
@@ -1266,6 +1280,14 @@ ApplicationWindow {
     Connections {
         target: window.sheetBridge
         function onActionQuestion(title, question, options) {
+            if (options.length > 12) {
+                // a long list (a Polymorph's creature, a summon's): one to search
+                actionPickerDialog.dialogTitle = question
+                actionPickerDialog.options = options
+                actionPickerDialog.answered = false
+                actionPickerDialog.open()
+                return
+            }
             actionQuestionDialog.heading = title
             actionQuestionDialog.message = question
             actionQuestionDialog.options = options.map(function(o) { return {key: o, text: o} })

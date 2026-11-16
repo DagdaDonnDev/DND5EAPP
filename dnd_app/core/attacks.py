@@ -291,20 +291,24 @@ def other_attacks(char: dict) -> list:
         from dnd_app.data.statblocks import WILDSHAPE_BEASTS
         from dnd_app.core.riders import weapon_riders
         beast = WILDSHAPE_BEASTS.get(active) or {}
-        for name, desc in beast.get("actions", []):
-            if name.lower() == "multiattack":
-                continue
-            m = re.search(r"([+−-]\d+) to hit", desc)
-            dm = re.search(r"Hit: ([\dd+−-]+) (\w+) damage", desc)
+        data = beast.get("attack_data") or {}
+        for name, desc in beast.get("actions", []) + beast.get("bonus_actions", []):
+            a = data.get(name)
+            if not a or a.get("to_hit") is None:
+                continue                      # Multiattack, a breath weapon: said in the stat block
+            hits = a.get("damage") or []
+            first = hits[0] if hits else {}
             trait = next((f"{tn}: {td}" for tn, td in beast.get("traits", [])
                           if name.lower() in td.lower()
                           and any(k in tn.lower() for k in ("pounce", "charge", "dive", "trampl"))), "")
-            dtype = dm.group(2) if dm else ""
+            dtype = first.get("type", "")
+            ranged = "ranged" in (a.get("kind") or "").lower()
             out.append({
                 "name": name, "badge": active, "note": desc + (f"\n{trait}" if trait else ""), "stat": "",
-                "atk": int(m.group(1).replace("−", "-")) if m else None, "atk_extra": 0, "die": "",
-                "damage": dm.group(1).replace("−", "-") if dm else "", "damage_type": dtype,
-                "kind": "natural", "melee": True, "ranged": False, "tone": "beast",
+                "atk": int(a["to_hit"]), "atk_extra": 0, "die": "",
+                "damage": (first.get("dice") or str(first.get("avg", ""))).replace(" ", "").replace("−", "-"),
+                "damage_type": dtype,
+                "kind": "natural", "melee": not ranged, "ranged": ranged, "tone": "beast",
                 "riders": weapon_riders(char, {"name": name, "kind": "natural", "damage_type": dtype or "bludgeoning"}),
             })
     return out
@@ -692,10 +696,20 @@ def _followups(char, row, free) -> list:
         if ki is not None and cl.get("Monk", 0) >= 2 and (au._unlimited(ki) or ki.get("current", 0) >= 1):
             out.append(("Flurry of Blows", "Flurry of Blows", "2 unarmed strikes", "For 1 ki",
                         [("action", "Flurry of Blows", "Bonus Action")], ""))
-    if row.get("offhand"):
-        dmg = f"{row['offhand']} {row.get('damage_type', '')}".strip()
-        out.append(("Off-hand attack", "Off-hand attack", dmg, "With your other light weapon",
-                    BA, f"Off-hand attack with your bonus action: {dmg} on a hit"))
+    # two-weapon fighting: the weapon in your other hand (core/weapons.py
+    # hands -- the off hand's, or the main hand's after an attack with
+    # the off-hand weapon), with its own damage
+    from dnd_app.core.weapons import hands
+    h = hands(char)
+    if row.get("offhand") and row.get("kind", "weapon") == "weapon" and h["off"] \
+            and row.get("name") in (h["main"], h["off"]):
+        other = h["main"] if row.get("name") == h["off"] and h["main"] != h["off"] else h["off"]
+        orow = row if other == row.get("name") else weapon_attack(char, other)
+        if orow.get("offhand"):
+            dmg = f"{orow['offhand']} {orow.get('damage_type', '')}".strip()
+            what = f"your other {other.lower()}" if other == row.get("name") else f"your {other}"
+            out.append(("Off-hand attack", "Off-hand attack", dmg, f"With {what}",
+                        BA, f"Off-hand attack with {what}, your bonus action: {dmg} on a hit"))
     base = weapon_base(row.get("name", "")) if row.get("kind") == "weapon" else ""
     if "Polearm Master" in feats and base in ("Glaive", "Halberd", "Quarterstaff", "Spear"):
         dmg = f"1d4{_damage_mod(row)} bludgeoning"
@@ -931,6 +945,34 @@ def _miss_notes(char, row) -> list:
     return out
 
 
+GAUNTLETS = "Gauntlets of Rage"
+
+
+def _gauntlets_of_rage(char, row, hit) -> list:
+    """Gauntlets of Rage, after a melee weapon attack (an unarmed strike
+    too), hit or miss: the fury starts for 1 minute, once per short or long
+    rest (char["item_uses"]). While it lasts, each hit says the 2d8 hit
+    points it gives back. Lines for the attack's toast."""
+    from dnd_app.core.magic_items import _active_item_names
+    if not row.get("melee") or row.get("kind") not in ("weapon", "unarmed") \
+            or GAUNTLETS not in _active_item_names(char):
+        return []
+    fx = char.setdefault("active_effects", [])
+    if GAUNTLETS in fx:
+        return ([f"{GAUNTLETS}: regain 2d8 hit points if it dealt damage, and you may end one condition "
+                 f"on yourself, or the fury"] if hit else [])
+    use = char.setdefault("item_uses", {}).setdefault(GAUNTLETS, {"current": 1, "max": 1, "recharge": "short"})
+    use["recharge"] = "short"
+    if use.get("current", 0) <= 0:
+        return []
+    use["current"] = 0
+    fx.append(GAUNTLETS)
+    from dnd_app.core.durations import set_rounds
+    set_rounds(char, "effect", GAUNTLETS, 10)
+    return [f"{GAUNTLETS}: your fury starts, for 1 minute. You can't cast spells or speak, and you're immune "
+            f"to charmed and frightened. Back on a short or long rest"]
+
+
 def take_attack_options(char: dict, row: dict, picked, answers: dict, hit: bool = True,
                         roll=None) -> dict:
     """After the attack: "It hit" (hit=True) or "Missed".
@@ -1146,6 +1188,9 @@ def take_attack_options(char: dict, row: dict, picked, answers: dict, hit: bool 
             missed = _miss_notes(char, row)
             refresh = refresh or bool(missed)
             lines += missed
+        fury = _gauntlets_of_rage(char, row, hit)
+        refresh = refresh or bool(fury)
+        lines += fury
         answers["_hit:done"] = lines
     notes.extend(answers["_hit:done"])
     return result()

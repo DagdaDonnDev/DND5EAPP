@@ -454,7 +454,12 @@ class ActionTabsMixin:
                                            QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes
                 answers[ask["key"]] = opts[0] if yes else opts[1]
                 continue
-            choice, ok = QInputDialog.getItem(self, title, ask["title"], opts, 0, False)
+            if len(opts) > 12:
+                # a long list (a Polymorph's creature, a summon's): one to search
+                from dnd_app.ui_desktop.widgets import pick_from_long_list
+                choice, ok = pick_from_long_list(self, title, ask["title"], opts)
+            else:
+                choice, ok = QInputDialog.getItem(self, title, ask["title"], opts, 0, False)
             if not ok:
                 return None
             answers[ask["key"]] = choice

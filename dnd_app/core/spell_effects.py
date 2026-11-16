@@ -50,6 +50,13 @@ def _held(char):
     return out
 
 
+def has_cast_step(spell_name: str) -> bool:
+    """Does casting it ask or do something here (cast_effect)? An effect,
+    False Life's temporary hit points, or a summoning."""
+    from dnd_app.core.summons import is_summon_spell
+    return bool(effect_names(spell_name)) or spell_name == "False Life" or is_summon_spell(spell_name)
+
+
 def effect_names(spell_name: str) -> tuple:
     """The Active Effects casting this spell can put on you."""
     names = _ALIASES.get(spell_name, (spell_name,))
@@ -69,6 +76,9 @@ def cast_effect(char: dict, spell_name: str, level: int = 0, answers=None) -> di
     answers = dict(answers or {})
     if spell_name == "False Life":
         return _false_life(char, level)
+    from dnd_app.core.summons import is_summon_spell, cast_summon
+    if is_summon_spell(spell_name):
+        return cast_summon(char, spell_name, level, answers)     # Conjure Animals and the like
     names = effect_names(spell_name)
     if not names:
         return _result(True)              # nothing to track for this one
@@ -84,12 +94,27 @@ def cast_effect(char: dict, spell_name: str, level: int = 0, answers=None) -> di
     spell = get_spell(spell_name) or {}
     rng = (spell.get("range") or "").strip().lower()
     on_you = info.get("caster") or rng == "self" or rng.startswith("self")
+    # Polymorph, True Polymorph, Shapechange: into what (core/forms.py). On
+    # you, your sheet becomes the form; on someone else it's in your
+    # Effects tab, with the form, while you concentrate on it
+    from dnd_app.core.forms import SPELL_FORMS
+    form_spell = name in SPELL_FORMS
     if not on_you:
         if "target" not in answers:
             return _ask("target", f"Who is {name} on?", ["Yourself", "Someone else"])
-        if answers["target"] != "Yourself":
+        if answers["target"] != "Yourself" and not form_spell:
             return _result(True)          # on someone else's sheet, not this one
+    mine = on_you or answers.get("target") == "Yourself"
     details = {"level": int(level or spell.get("level", 0) or 0)}
+    if form_spell:
+        from dnd_app.core import forms
+        # on you, up to your own level; on someone else, theirs (the DM's call)
+        opts = forms.options(char, name) if mine else forms.options(char, name, level=30)
+        if answers.get("form") not in opts:
+            return _ask("form", f"{name}: {'you become' if mine else 'they become'} which creature?", opts)
+        details["form"] = answers["form"]
+        if not mine:
+            details["target"] = "someone else"
     extra = (EFFECT_RIDERS.get(name) or (None,) * 6)[5] or {}
     # 3. which weapon
     if extra.get("one") or name in ("Magic Weapon",):
@@ -145,6 +170,13 @@ def cast_effect(char: dict, spell_name: str, level: int = 0, answers=None) -> di
     from dnd_app.core.action_use import TURN_EFFECTS, NEXT_TURN_EFFECTS
     if name not in TURN_EFFECTS and name not in NEXT_TURN_EFFECTS:
         set_rounds(char, "effect", name, cast_rounds(spell))
+    if form_spell:
+        from dnd_app.core import forms
+        if mine:
+            ok, msg = forms.take_form(char, details["form"], name)
+            return _result(ok, msg, refresh=True)
+        return _result(True, f"{name} on someone else: they're a {details['form']} while you concentrate "
+                             f"(it's in your Effects tab)", refresh=True)
     # a smite and the like: what your next hit carries, at the level it
     # was cast ("an extra 2d6 fire" for Searing Smite at 2nd level)
     from dnd_app.core.riders import effect_note
@@ -287,6 +319,8 @@ def effect_view(char: dict, name: str) -> dict:
     title = name.replace(" (spell)", "")
     if lvl and base and lvl > base:
         title += f" · {_nth(lvl)} level"
+    if d.get("form"):                    # Polymorph and the like: into what, and on whom
+        title += f" · {d['form']}" + (" (on someone else)" if d.get("target") else "")
     return {"title": title, "level": lvl, "note": note}
 
 

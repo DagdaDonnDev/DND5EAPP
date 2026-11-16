@@ -1108,7 +1108,9 @@ class CharacterCreatorApp(QMainWindow):
 
         tm = mb.addMenu("&Tools")
         a = QAction("Dice Roller", self); _icons.set_action_icon(a, "dice"); a.setShortcut("Ctrl+D"); a.triggered.connect(self._open_dice_roller); tm.addAction(a)
-        a = QAction("Bestiary", self); _icons.set_action_icon(a, "paw"); a.setShortcut("Ctrl+B"); a.triggered.connect(self._open_bestiary); tm.addAction(a)
+        a = QAction("Bestiary", self); _icons.set_action_icon(a, "paw"); a.setShortcut("Ctrl+B"); a.triggered.connect(lambda: self._open_bestiary()); tm.addAction(a)
+        a = QAction("Your Creatures", self); _icons.set_action_icon(a, "paw"); a.setShortcut("Ctrl+Shift+B")
+        a.triggered.connect(lambda: self._open_bestiary(yours=True)); tm.addAction(a)
         a = QAction("Short Rest",  self); _icons.set_action_icon(a, "short_rest"); a.setShortcut("Ctrl+R"); a.triggered.connect(self._short_rest);       tm.addAction(a)
         a = QAction("Long Rest",   self); _icons.set_action_icon(a, "long_rest"); a.setShortcut("Ctrl+Shift+R"); a.triggered.connect(self._long_rest); tm.addAction(a)
 
@@ -1116,6 +1118,7 @@ class CharacterCreatorApp(QMainWindow):
         # inside them -- addAction() straight onto the menu bar makes
         # each a direct single-click, no dropdown to open first.
         a = QAction("Settings…", self); a.setShortcut("Ctrl+,"); a.triggered.connect(self._open_settings); mb.addAction(a)
+        a = QAction("Reference", self); a.triggered.connect(self._open_reference); mb.addAction(a)
         a = QAction("Credits", self); a.triggered.connect(self._open_credits); mb.addAction(a)
 
     def _open_settings(self):
@@ -1136,6 +1139,30 @@ class CharacterCreatorApp(QMainWindow):
             dlg.exec()
             if not getattr(dlg, "_reopen_for_theme", False):
                 break
+
+    def _open_reference(self):
+        """Reference (beside Settings): what the book codes mean."""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem, \
+            QHeaderView, QDialogButtonBox, QAbstractItemView
+        from dnd_app.data.books import book_rows
+        dlg = QDialog(self); dlg.setWindowTitle("Reference"); dlg.setObjectName("referenceDialog")
+        dlg.resize(520, 560)
+        lay = QVBoxLayout(dlg)
+        intro = QLabel("The book codes beside spells, feats, magic items and creatures, and the book each "
+                       "one means.")
+        intro.setWordWrap(True); lay.addWidget(intro)
+        rows = book_rows()
+        t = QTableWidget(len(rows), 2); t.setObjectName("referenceTable")
+        t.setHorizontalHeaderLabels(["Code", "Book"])
+        t.verticalHeader().setVisible(False)
+        t.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        t.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        t.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        for i, (code, book) in enumerate(rows):
+            t.setItem(i, 0, QTableWidgetItem(code)); t.setItem(i, 1, QTableWidgetItem(book))
+        lay.addWidget(t, 1)
+        bb = QDialogButtonBox(QDialogButtonBox.Close); bb.rejected.connect(dlg.reject); lay.addWidget(bb)
+        dlg.exec()
 
     def _open_credits(self):
         from dnd_app.ui_desktop.pages.main_window import CreditsDialog
@@ -1416,6 +1443,8 @@ class CharacterCreatorApp(QMainWindow):
             # StartMenu()/CharacterWizard() construction sites need the
             # same explicit parent, for the same reason.
             self._sheet = CharacterSheet(char, self, save_path=save_path)
+            if self._bestiary is not None and not self._bestiary.isHidden():
+                QTimer.singleShot(0, self._bestiary.follow_sheet)   # (its Yours tab: this character's)
             self._sheet.back_to_menu.connect(self._sheet_back_to_menu)
             # the menu bar has this sheet's name on it, and is its health
             # bar from here on
@@ -1582,15 +1611,16 @@ class CharacterCreatorApp(QMainWindow):
         else:
             self._dice_roller.raise_(); self._dice_roller.activateWindow()
 
-    def _open_bestiary(self, name: str = ""):
-        """Tools → Bestiary (Ctrl+B): every creature, to find and read. One
+    def _open_bestiary(self, name: str = "", yours: bool = False):
+        """Tools → Bestiary (Ctrl+B): every creature, to find and read; Tools
+        → Your Creatures (Ctrl+Shift+B): the open character's own. One
         window; a closed one is made afresh, so it takes the current theme."""
         from dnd_app.ui_desktop.dialogs.bestiary import BestiaryWindow
         if self._bestiary is None or self._bestiary.isHidden():
             if self._bestiary is not None:
                 old = self._bestiary
                 old.setParent(None); old.deleteLater()
-            self._bestiary = BestiaryWindow(self)
+            self._bestiary = BestiaryWindow(self, sheet_of=lambda: self._sheet)
             geo = self.geometry()
             self._bestiary.move(geo.left() + 60, geo.top() + 60)
             self._bestiary.show()
@@ -1598,6 +1628,10 @@ class CharacterCreatorApp(QMainWindow):
             self._bestiary.raise_(); self._bestiary.activateWindow()
         if name:
             self._bestiary.show_creature(name)
+        elif yours:
+            self._bestiary.show_yours()
+        else:
+            self._bestiary.follow_sheet()
 
 
 def main(app=None, splash=None):

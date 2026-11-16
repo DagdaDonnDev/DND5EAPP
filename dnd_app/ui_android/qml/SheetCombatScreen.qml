@@ -893,9 +893,10 @@ Page {
             // ── Wild Shape (Druids only) ────────────────────────────────
             // While transformed, the HP/AC cards above already show the
             // beast's own numbers (CharacterSheetBridge repurposes them).
+            // (anyone's, in another creature's form: Polymorph, Shapechange)
             MCard {
-                visible: sheetBridge.wildShapeAvailable
-                title: "Wild Shape"
+                visible: sheetBridge.wildShapeAvailable || sheetBridge.wildShapeActive
+                title: sheetBridge.formKind || "Wild Shape"
                 iconName: "paw"
                 accent: Theme.indigo2
 
@@ -909,14 +910,16 @@ Page {
                         width: wsCol.width
                         spacing: 6
                         Label {
-                            text: "Currently: " + sheetBridge.wildShapeActiveBeast
+                            text: (sheetBridge.formKind === "Wild Shape" ? "Currently: " : sheetBridge.formKind + ": ")
+                                  + sheetBridge.wildShapeActiveBeast
                             color: Theme.text
                             font.pixelSize: Theme.fsBody
                             font.bold: true
                         }
                         MButton {
                             primary: false
-                            text: "Revert to Normal Form"
+                            text: sheetBridge.formKind === "Wild Shape" ? "Revert to Normal Form"
+                                                                        : "End " + sheetBridge.formKind
                             onClicked: sheetBridge.revertWildShape()
                         }
                     }

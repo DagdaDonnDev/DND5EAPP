@@ -3474,7 +3474,7 @@ MAGIC_ITEM_EFFECTS.update({
         _act("Detect Gems", "Action", "Learn the kind and number of gems and jewels within 60 feet."),
     ],
     "Gauntlets of Rage": _act("Gauntlets of Rage", "Passive",
-                              "After a melee weapon attack you enter a fury for 1 minute: no spells and no speech, "
+                              "After a melee weapon attack (the sheet starts it) you enter a fury for 1 minute: no spells and no speech, "
                               "immune to charmed and frightened. Each time you deal damage, regain 2d8 hit points "
                               "and you may end a condition on yourself or the fury. Before a melee attack you can "
                               "spend a spell slot for 1d6 necrotic per slot level if it hits. Once per short or "
@@ -3681,7 +3681,7 @@ MAGIC_ITEM_EFFECTS.update({
     "The Codicil of White": {"type": "resistance", "damage_type": "cold"},
     "True-Ice Shards (Dagger)": [
         {"type": "weapon_attack_bonus", "value": 0},
-        {"type": "ac_bonus", "value": 3},
+        {"type": "ac_bonus", "value": 3, "if": "off_hand"},
         _spell("Detect Thoughts", dc=20),
         _spell("Locate Animals or Plants"), _spell("Locate Creature"), _spell("Locate Object"),
         _spell("Scrying", uses=1, dc=20), _spell("Find the Path", uses=1),

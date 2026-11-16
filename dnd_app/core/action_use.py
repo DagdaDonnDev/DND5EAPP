@@ -1325,7 +1325,9 @@ def wild_shape_into(char, beast_name):
                            else "No Wild Shape uses left -- they come back on a short or long rest")
         res["current"] -= n
         left = f" ({res['current']} of {res['current_max']} Wild Shape uses left)"
+    beast_name = WILDSHAPE_BEASTS.resolve(beast_name)     # an older save's "Dolphin": its first printing
     char["_wildshape_active"] = beast_name
+    char["_form_kind"] = "Wild Shape"
     char["_wildshape_hp"] = beast["hp"]
     fx = char.setdefault("active_effects", [])
     if "Wild Shape" not in fx:
@@ -2054,6 +2056,24 @@ def _item_for(char, display):
 
 
 def _use_item(char, item, display, desc, slot, answers):
+    """A summoning item (a Figurine of Wondrous Power, the Bag of Tricks, the
+    Horn of Valhalla...) asks what came first (core/summons.py), then is
+    used as any item is; what it brought is on your Yours tab."""
+    from dnd_app.core.summons import item_summon_step, add_summons
+    step = item_summon_step(char, item, answers)
+    if step and step.get("ask"):
+        return _result(False, ask=step["ask"])
+    res = _use_item_card(char, item, display, desc, slot, answers)
+    if step and res.get("ok"):
+        real = add_summons(char, step["creature"], step["count"], item)
+        n = step["count"]
+        res["toast"] = (res.get("toast") or display) + (
+            f". {n} × {real} on your side" if n > 1 else f". A {real} on your side") + " (Bestiary → Yours)"
+        res["refresh"] = True
+    return res
+
+
+def _use_item_card(char, item, display, desc, slot, answers):
     """Step by step:
       1. an effect the item switches on or off (Flame Tongue's flames)
       2. its charges: as many as the card says (asks when it lists several,

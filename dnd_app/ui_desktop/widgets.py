@@ -623,3 +623,42 @@ class FilterSidebar(QFrame):
             if not (self._anim and self._anim.state() == self._anim.State.Running):
                 self.setGeometry(self._target_rect())
         return False
+
+
+def pick_from_long_list(parent, title: str, label: str, options: list):
+    """A long list to choose from (a Polymorph's creature, a summon's): a
+    search box over it, as the browsers have. Returns (choice, ok)."""
+    from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QListWidget, QDialogButtonBox
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QIcon
+    from dnd_app.ui_desktop import icons as _icons
+    dlg = QDialog(parent); dlg.setWindowTitle(title); dlg.setObjectName("longPickDialog")
+    dlg.resize(420, 520)
+    lay = QVBoxLayout(dlg)
+    q = QLabel(label); q.setWordWrap(True); lay.addWidget(q)
+    search = QLineEdit(); search.setObjectName("longPickSearch")
+    search.setPlaceholderText("Search…"); search.setClearButtonEnabled(True)
+    _icons.set_action_icon(search.addAction(QIcon(), QLineEdit.LeadingPosition), "search")
+    lay.addWidget(search)
+    lst = QListWidget(); lst.setObjectName("longPickList"); lst.addItems(options); lay.addWidget(lst, 1)
+    if options:
+        lst.setCurrentRow(0)
+
+    def _filter(text):
+        words = text.casefold().split()
+        first = None
+        for i in range(lst.count()):
+            it = lst.item(i)
+            hide = bool(words) and not all(w in it.text().casefold() for w in words)
+            it.setHidden(hide)
+            if not hide and first is None:
+                first = it
+        if first is not None and (lst.currentItem() is None or lst.currentItem().isHidden()):
+            lst.setCurrentItem(first)
+    search.textChanged.connect(_filter)
+    bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+    bb.accepted.connect(dlg.accept); bb.rejected.connect(dlg.reject); lay.addWidget(bb)
+    lst.itemDoubleClicked.connect(lambda _it: dlg.accept())
+    search.returnPressed.connect(dlg.accept)
+    ok = dlg.exec() == QDialog.Accepted and lst.currentItem() is not None and not lst.currentItem().isHidden()
+    return (lst.currentItem().text() if ok else ""), ok

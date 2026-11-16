@@ -27,6 +27,17 @@ class BestiaryBridge(QObject):
     def crs(self):
         return list(_b.CR_ORDER)
 
+    @Property(list, constant=True)
+    def bookCodes(self):
+        """[{code, book}] for the Reference popup (data/books.py)."""
+        from dnd_app.data.books import book_rows
+        return [{"code": c, "book": b} for c, b in book_rows()]
+
+    @Property(list, constant=True)
+    def moves(self):
+        """"Flies", "Swims"... for the movement filter."""
+        return [label for label, _ in _b.MOVES]
+
     @Property(list, notify=resultsChanged)
     def results(self):
         """[{name, line}] for the list: 'Medium Beast · CR 1/4'."""
@@ -34,7 +45,11 @@ class BestiaryBridge(QObject):
 
     @Slot(str, str, str, str, str)
     def search(self, text, kind, size, cr_min, cr_max):
-        names = _b.search(text, kind, size, cr_min, cr_max)
+        self.searchMoving(text, kind, size, cr_min, cr_max, "")
+
+    @Slot(str, str, str, str, str, str)
+    def searchMoving(self, text, kind, size, cr_min, cr_max, move):
+        names = _b.search(text, kind, size, cr_min, cr_max, move)
         self._results = [{"name": n, "line": _b.summary_line(get_creature(n))} for n in names]
         self.resultsChanged.emit()
 

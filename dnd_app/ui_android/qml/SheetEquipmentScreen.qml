@@ -85,18 +85,21 @@ Page {
     //   How many / Make dedicated weapon (or Stop using as dedicated weapon)
     // Anything else goes straight to how many you have.
     function openInventoryHold(item) {
-        if (!item.canDedicate && !item.dedicated) {
+        if (!item.canDedicate && !item.dedicated && !item.canSwapHands) {
             openAmountDialog(item)
             return
         }
         heldItem = item
         weaponOptionsDialog.heading = item.name
-        weaponOptionsDialog.options = [
-            {key: "amount", text: "How many", icon: "package"},
-            item.dedicated
-                ? {key: "undedicate", text: "Stop using as dedicated weapon", icon: "dagger"}
-                : {key: "dedicate", text: "Make dedicated weapon", icon: "dagger"}
-        ]
+        var opts = [{key: "amount", text: "How many", icon: "package"}]
+        // holding two weapons: which is in your main hand, which in your off hand
+        if (item.canSwapHands)
+            opts.push({key: "swap", text: "Swap hands", icon: "combat"})
+        if (item.canDedicate || item.dedicated)
+            opts.push(item.dedicated
+                      ? {key: "undedicate", text: "Stop using as dedicated weapon", icon: "dagger"}
+                      : {key: "dedicate", text: "Make dedicated weapon", icon: "dagger"})
+        weaponOptionsDialog.options = opts
         weaponOptionsDialog.open()
     }
 
@@ -107,6 +110,7 @@ Page {
             var it = root.heldItem
             if (!it) return
             if (key === "amount") root.openAmountDialog(it)
+            else if (key === "swap") sheetBridge.swapHands()
             else if (key === "dedicate") sheetBridge.setDedicatedWeapon(it.name)
             else if (key === "undedicate") sheetBridge.setDedicatedWeapon("")
         }
@@ -124,6 +128,8 @@ Page {
             opts.push({key: "attune", text: item.attuned ? "End attunement" : "Attune", icon: "magic"})
         if (item.canStudy)
             opts.push({key: "study", text: "Study", icon: "spells"})
+        if (item.canSwapHands)
+            opts.push({key: "swap", text: "Swap hands (now in your " + item.hand + ")", icon: "combat"})
         if (item.baseOptions && item.baseOptions.length > 0)
             opts.push({key: "base", icon: item.baseKind === "armor" ? "shield" : "combat",
                        text: "Which " + item.baseKind + " is it?" + (item.base ? " (now " + item.base.toLowerCase() + ")" : "")})
@@ -143,6 +149,7 @@ Page {
             if (key === "attune") sheetBridge.setMagicItemAttuned(it.uid, !it.attuned)
             else if (key === "study") sheetBridge.studyAbilityManual(it.uid)
             else if (key === "remove") sheetBridge.removeMagicItem(it.uid)
+            else if (key === "swap") sheetBridge.swapHands()
             else if (key === "base") {
                 weaponBasePicker.dialogTitle = "Which " + it.baseKind + " is your " + it.name + "?"
                 weaponBasePicker.options = it.baseOptions
@@ -846,6 +853,8 @@ Page {
                         Label {
                             width: parent.width
                             text: modelData.type
+                                  + (modelData.hand ? "  ·  " + (modelData.hand === "one in each hand" ? "One in each hand"
+                                                                                     : "In your " + modelData.hand) : "")
                                   + (modelData.studied ? "  ·  Studied (its magic is spent)" : "")
                                   + (modelData.attuned ? "  ·  Attuned"
                                      : (modelData.needsAttunement ? "  ·  Requires attunement" : ""))

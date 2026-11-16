@@ -1101,8 +1101,7 @@ class BaseSheetMixin:
         _add_tab(self._build_tab_combat(),       "Combat",                  "combat")
         _add_tab(self._build_tab_gear(),         "Gear && Items",           "gear")
         self._spells_tab_page = _add_tab(self._build_tab_spells(), "Spells", "spells")
-        if self._has_infuse_item_access():
-            _add_tab(self._build_tab_infusions(), "Infusions",              "infusions")
+        # (an Artificer's infusions are in the Gear tab's side panel)
         self._choices_tab_page = _add_tab(self._build_tab_choices(), "Choices", "choices")
         _add_tab(self._build_tab_features(),     "Features",                "features")
         _add_tab(self._build_tab_traits_notes(), "Traits && Notes",         "notes")

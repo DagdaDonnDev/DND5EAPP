@@ -23,7 +23,8 @@ pressed quickly, and popups suit the light themes.
 
 - **The Bestiary:** every creature, 2,754 of them, on both apps (Tools →
   Bestiary or Ctrl+B on desktop, the menu on Android). Find one by name or
-  type, narrow the list by type, size and challenge rating, and read its
+  type, narrow the list by type, size, challenge rating and how it moves
+  (flies, swims, climbs...), and read its
   whole stat block, legendary and lair actions included. Monsters of the
   Multiverse reprints are marked (MPMM), the way the races are.
 - **Pick the slot:** casting Cure Wounds, Aid, Fireball, a smite or any
@@ -43,6 +44,42 @@ pressed quickly, and popups suit the light themes.
   the Silver Sword, the archdevils' weapons, Gauntlets of Rage and more.
   Items the book gives no rarity are listed as Unknown, with a filter of
   their own.
+- **Wild Shape from the Bestiary:** every beast in it is a form, 263 with
+  the Moon druid's elementals (it was 185), each with its full stat block
+  and its attacks read straight from it. A form from an older save still
+  opens.
+- **Polymorph, True Polymorph and Shapechange:** casting one asks for the
+  creature, from the Bestiary within the spell's limits. On you, your
+  sheet becomes it, as Wild Shape does: its scores, AC and hit points, its
+  attacks as attack rows, and its actions, bonus actions, reactions and
+  traits as cards. Polymorph takes your mind too (its Intelligence, Wisdom
+  and Charisma, saves and skills; no features or spells); Shapechange
+  keeps them. On someone else it's in your Effects tab with the creature
+  you chose for them; on their sheet, they put the spell on from their own
+  Effects tab and pick that creature. When the spell ends, or the form
+  drops to 0 hit points, you change back.
+- **Mounts and steeds from the Bestiary:** the mounts you can buy and Find
+  Steed's and Find Greater Steed's forms use the Bestiary's stat blocks,
+  the same ones you can look up.
+- **Sounds for every creature:** in the immersive spell names, each Wild
+  Shape form makes its own noise, and any other creature its family's or
+  its kind's (dragons roar, liches cackle, golems clank).
+- **Summons from the Bestiary:** casting Conjure Animals, Conjure Woodland
+  Beings, Conjure Minor Elementals, Conjure Elemental, Conjure Fey, Conjure
+  Celestial, Animate Dead, Create Undead, Danse Macabre, Find Familiar
+  (Pact of the Chain's forms too), Giant Insect, Summon Greater Demon,
+  Summon Lesser Demons or Infernal Calling asks how many and which
+  creature, within the spell's limits at the level you cast it. They're
+  on your Yours tab, each with its own hit points; a summon held by
+  concentration goes when the concentration does. The Figurines of
+  Wondrous Power, the Bag of Tricks (what the tuft became), the Horn of
+  Valhalla (how many came) and the elemental bowls and braziers summon
+  theirs the same way.
+- **Your creatures in the Bestiary:** mounts and steeds, summons,
+  companions and Wild Shape are in the Bestiary's Yours tab (Tools → Your
+  Creatures, Ctrl+Shift+B, on desktop). An Artificer's Infusions take the
+  old Companions place: beside Gear's browsers on desktop, after
+  Equipment in Android's menu.
 - **Resistances on Android:** your resistances, immunities and now
   vulnerabilities show as badges on the Hit Points card (½, ⊘, ×2), as on
   desktop. Tap one to see where it comes from.
@@ -57,6 +94,10 @@ pressed quickly, and popups suit the light themes.
 - Ioun stones of knowledge give the skill's proficiency, or +1 if you
   have it already. Vulnerabilities (Infernal Plate Armor, the Canian
   Fork) are tracked and shown.
+- Gauntlets of Rage start their fury on their own after a melee weapon
+  attack, hit or miss, once per short or long rest: 1 minute, immune to
+  charmed and frightened, and each hit says the 2d8 hit points it gives
+  back. The True-Ice dagger's +3 AC is only while it's in your off hand.
 - An item use that comes back on a rest rather than at dawn (the Knife
   of Stolen Resistance, the Ring of Treachery's charges, the True-Ice
   Shards' Sub-Zero) comes back then, and the card says when.
@@ -68,6 +109,16 @@ pressed quickly, and popups suit the light themes.
 
 ### 🧰 Quality of Life
 
+- **Long lists to search:** a question with a long list of answers (a
+  Polymorph's creature, a summon's) has a search box over it, on both apps.
+- **The Bestiary's search box** is the one the other browsers have, with
+  its magnifying glass; on desktop the filters are behind the funnel
+  button beside it, and each row has the glass that opens its stat block.
+- **Reference:** beside Settings (in the menu on Android), what every
+  book code (PHB, XGE, MPMM...) stands for.
+- **Main hand and off hand:** holding two weapons, the Gear page says
+  which is in your main hand and which in your off hand, and Swap hands
+  changes them over (right-click on desktop, press and hold on Android).
 - **Rest buttons in reach (Android):** Cancel and Take a Rest stay at the
   bottom of the rest screen, with the cards scrolling above them.
 - **Popups in light themes (Android):** a popup or the menu now sits on a
@@ -79,6 +130,11 @@ pressed quickly, and popups suit the light themes.
   press now shows at once, and the rest of the sheet catches up when you
   stop.
 - Fixed a Heal at full hit points wiping the Undo for the change before it.
+- Fixed the off-hand attack using the damage of the weapon you'd just
+  attacked with. It's the weapon in your other hand now, with its own
+  damage.
+- Fixed magic weapons ignoring how many you can hold: a two-handed one
+  (a Silver Sword) puts the others away, as any weapon does.
 - Fixed equipping a magic shield taking off your armor: it's carried as
   your shield now.
 - Fixed a suit of magic armor in your pack adding to your AC. Only the

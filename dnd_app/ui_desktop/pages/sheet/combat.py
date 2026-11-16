@@ -401,14 +401,17 @@ class CombatMixin:
         from dnd_app.data.statblocks import WILDSHAPE_BEASTS
         from dnd_app.core.calculator import get_available_wildshape_beasts
 
+        from dnd_app.core.forms import form_kind
+        kind = form_kind(self.char) or "Wild Shape"
         card = _card(qa(PURPLE, 0x55))
         cl = QVBoxLayout(card); cl.setContentsMargins(12,10,12,10); cl.setSpacing(6)
-        cl.addWidget(_lbl("WILD SHAPE", GOLD, FS_SMALL, bold=True))
+        cl.addWidget(_lbl(kind.upper(), GOLD, FS_SMALL, bold=True))
 
         active = self.char.get("_wildshape_active")
         if active and active in WILDSHAPE_BEASTS:
             beast = WILDSHAPE_BEASTS[active]
-            cl.addWidget(_lbl(f"Currently: {active}", PURP2, FS_BODY, bold=True, wrap=False))
+            cl.addWidget(_lbl(f"Currently: {active}" if kind == "Wild Shape" else f"{kind}: {active}",
+                              PURP2, FS_BODY, bold=True, wrap=False))
             cur_hp = self.char.get("_wildshape_hp", beast["hp"])
             cl.addWidget(_lbl(f"HP {cur_hp}/{beast['hp']}   AC {beast['ac']}   "
                               f"(edit HP in the card above — same pool)", TEXT2, FS_SMALL))
@@ -430,7 +433,7 @@ class CombatMixin:
                 heal_btn.setStyleSheet(pill_btn("", GOLD).styleSheet())
                 heal_btn.clicked.connect(self._wildshape_moon_heal)
                 cl.addWidget(heal_btn)
-            revert_btn = QPushButton("Revert to Normal Form")
+            revert_btn = QPushButton("Revert to Normal Form" if kind == "Wild Shape" else f"End {kind}")
             revert_btn.setStyleSheet(pill_btn("", CRIMSON).styleSheet())
             revert_btn.clicked.connect(self._wildshape_revert)
             cl.addWidget(revert_btn)
@@ -544,13 +547,11 @@ class CombatMixin:
         # Reverting early doesn't refund the use — matches the real rule
         # that the use is spent the moment you transform, not metered by
         # how long you stay shapeshifted.
-        self.char["_wildshape_active"] = None
-        self.char.pop("_wildshape_hp", None)
-        from dnd_app.core.hp_undo import clear_hp_undo
-        clear_hp_undo(self.char)        # (back in your own form: the last Damage or Heal stands)
-        fx = self.char.get("active_effects", [])
-        if "Wild Shape" in fx:
-            fx.remove("Wild Shape")
+        # (core/forms.py: a Polymorph's form ends the spell and its
+        # concentration too; back in your own form, the last Damage or
+        # Heal stands)
+        from dnd_app.core.forms import leave_form
+        leave_form(self.char)
         self._mark_dirty()
         self.ctrl.refresh()
         self._refresh_combat()
@@ -949,7 +950,10 @@ class CombatMixin:
         top_lay.addWidget(cond_card, 3)
 
         from dnd_app.core.calculator import get_wild_shape_info
-        if get_wild_shape_info(self.char) is not None:
+        from dnd_app.core.forms import form_name as _form_name
+        # a druid's Wild Shape card -- or anyone's, in another creature's form
+        # (Polymorph, Shapechange): what you are, and the way back
+        if get_wild_shape_info(self.char) is not None or _form_name(self.char):
             self._wildshape_card_container = top_lay
             self._wildshape_card_widget = self._build_wildshape_control_card()
             top_lay.addWidget(self._wildshape_card_widget, 2)
@@ -1643,6 +1647,17 @@ class CombatMixin:
             return
         if name in self.char.get("active_effects", []):
             self._toast(f"{name} is already on you")
+            return
+        # an ally's Polymorph: the creature they made you (core/forms.py)
+        from dnd_app.core import forms as _forms
+        if name in _forms.ALLY_FORMS:
+            res = self._ask_through(name, lambda a: _forms.ally_form_question(self.char, name, a))
+            if not res:
+                return
+            msg = _forms.become_ally_form(self.char, name, res["form"])
+            self._mark_dirty()
+            self.ctrl.refresh()
+            self._toast(msg)
             return
         # an ally's Aid or Magic Weapon does more from a higher slot: which?
         from dnd_app.core.spell_effects import added_effect_levels

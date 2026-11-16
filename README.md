@@ -43,7 +43,7 @@ numbers. The dice, and your DM's calls, stay with you.
 
 <!-- github-only -->
 
-| 84 | 14 | 127 | 521 | 138 | 99 | 1,374 | 185 |
+| 84 | 14 | 127 | 521 | 138 | 99 | 1,374 | 263 |
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | races | classes | subclasses | spells | feats | backgrounds | magic items | Wild Shape forms |
 
@@ -107,9 +107,8 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 | Abilities & Saves | Abilities | Scores, saving throws, and your numbers at a glance: proficiency bonus, speed, senses, passive Perception, Investigation and Insight, attacks per action, carrying capacity. The dice buttons roll; click a save to mark an extra proficiency |
 | Skills & Proficiencies | Proficiencies | Skills (right-click one to set proficiency or expertise), languages, armour, weapon and tool proficiencies, and **DM-granted proficiencies…** |
 | Combat | Combat, Actions | HP and AC, Initiative and Speed, death saves, weapons, conditions and effects, Wild Shape, everything you can do on a turn, and **New Turn** |
-| Gear & Items | Equipment, Companions | Inventory, coins, magic items and attunement, and the Equipment, Magic Items and Companions browsers |
+| Gear & Items | Equipment, Infusions | Inventory, coins, magic items and attunement, the Equipment and Magic Items browsers, and an Artificer's Infusions |
 | Spells | Spells | Slots, Spell Resources (Sorcery Points, Arcane Ward, Bardic Inspiration, Channel Divinity, free casts…), the Spellcasting table, My Spells and the Spell Browser |
-| Infusions | Infusions | Artificers only |
 | Choices | Choices | **Level Up / Multiclass**, **Level Down**, **Remove Class**, your identity, and anything still to pick |
 | Features | Features | Every class, race and feat feature, with a box to find one and what it does a click (or tap) away, and the feats and rewards your DM grants |
 | Traits & Notes | Notes | Personality, backstory and notes, and the *Imported from PDF* page |
@@ -132,7 +131,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **Attacking:** a weapon's **Hit** button (**Roll to Hit** on Android) rolls the d20 and says what AC it hits. Under the roll is what you can add to it, each with its cost: Precision Attack, Lucky, Guided Strike, Emboldening Bond… Press **Add** and it's paid for and rolled at once, and the total updates. **If it misses** lists what can turn a miss around: Favored by the Gods, Stroke of Luck, Focused Aim… Below that is what you can add to the hit: Sneak Attack, a smite, a maneuver… The **Attack** action card asks which weapon first. On a critical hit, the dice shown are already doubled.
 - **Damage is your roll.** Every damage line says what to roll and its type; roll it yourself, or open the Dice Roller (Ctrl+D).
 - **The Dice Roller:** pick dice or type them (2d6 + 1d4 + 3, 4d6kh3), add one of your bonuses, take advantage or disadvantage on a d20, and roll. Its **history** keeps every roll the sheet makes too: checks, saves, initiative, attacks (and whether they hit), hit dice and what your actions roll, saved with the character. Click a roll of your own to roll it again.
-- **The Bestiary** (Tools → Bestiary, Ctrl+B; on Android, in the menu): every creature, 2,754 of them, to find by name or type and narrow by type, size and challenge rating, with the whole stat block. Where Monsters of the Multiverse reprinted one, both are there, the reprint marked (MPMM).
+- **The Bestiary** (Tools → Bestiary, Ctrl+B; on Android, in the menu): every creature, 2,754 of them, to find by name or type and narrow by type, size, challenge rating and how it moves, with the whole stat block. Where Monsters of the Multiverse reprinted one, both are there, the reprint marked (MPMM). Its **Yours** tab (Tools → Your Creatures, Ctrl+Shift+B) has your own: mounts and steeds, what you've summoned, your companions and your Wild Shape forms.
 - **Advantage and disadvantage are reminders.** Every roll is one d20, with a note of what the sheet knows applies (Reckless Attack, Poisoned, exhaustion…). Roll the second die yourself, since cover, the target and your DM can change it. Advantage you spend something on, like Inspiration, is rolled for you.
 - **Taking damage:** type the amount and press **Damage**. Halve it yourself for a resistance; yours are listed just below. Temporary hit points, concentration saves, Wild Shape hit points and death saves follow on their own.
 - **Typed the wrong number?** **Undo** on the Hit Points card puts your hit points, temp HP and death saves back as they were before the last Damage or Heal. It's there until your hit points change some other way, and on the YOU DIED screen if that's where the slip left you.
@@ -162,9 +161,9 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 </details>
 
 <details>
-<summary><b>Gear, magic items and companions</b></summary>
+<summary><b>Gear, magic items and your creatures</b></summary>
 
-- **Adding things:** pick a browser on the right of Gear & Items (Equipment, Magic Items or Companions), then double-click a row, or select it and press **Add Selected to Inventory**.
+- **Adding things:** pick a browser on the right of Gear & Items (Equipment or Magic Items), then double-click a row, or select it and press **Add Selected to Inventory**. An Artificer's Infusions are beside them.
 - **Equip** a weapon to give it a Hit button on the Combat tab. **Wear** armour and it goes into your AC.
 - **Every item shows what it weighs and what it's worth**, for the whole stack, from the rules' tables. The same item is one row with how many you have: the trash takes one, and setting the number lower does too (on Android, press and hold → How many). A weapon, armour or shield you no longer have isn't in hand or worn any more. Your background's artisan's tools, instrument or gaming set is the one you picked for it, so its check has a card too.
 - **Using an item** is its card on the Combat tab (Actions on Android), the same as every other action: a potion, a scroll, a tinderbox, a flask to throw, a check with a tool you carry. Drinking a potion takes your action (a bonus action under the 2024 rules). The inventory only lists them, with what each one does.
@@ -172,7 +171,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - Some items ask a question when you add them: which of your own weapons a +1 goes on, which spell a scroll holds, what damage type a Ring of Resistance guards against.
 - **Manuals and tomes:** right-click → Study.
 - **Ammunition** comes out of your inventory a shot at a time. Set a magic stack's count from its right-click menu.
-- **A mount** from the Equipment browser comes with its stat block, on the Companions tab.
+- **A mount** from the Equipment browser comes with its stat block, in the Bestiary's Yours tab with your other creatures.
 
 </details>
 
@@ -246,6 +245,7 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 | Ctrl+Shift+D | Duplicate the character |
 | Ctrl+D | Dice Roller |
 | Ctrl+B | Bestiary |
+| Ctrl+Shift+B | Your creatures (the Bestiary's Yours tab) |
 | Ctrl+R | Rest, short rest picked |
 | Ctrl+Shift+R | Rest, long rest picked |
 | Ctrl+1 … Ctrl+9 | Jump to that tab (each tab's tooltip says its keys) |
@@ -258,7 +258,7 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 <details>
 <summary><b>On Android</b></summary>
 
-- **The menu** has every page of the sheet, plus Rest, the Dice Roller, the Bestiary, Settings, Save & Export and Credits.
+- **The menu** has every page of the sheet, plus Rest, the Dice Roller, the Bestiary, Settings, Reference (what the book codes stand for), Save & Export and Credits.
 - **Big buttons for what you do often** (Cast, Equip, Drink, Use), a magnifying glass for details, and press and hold for the rest: preparing, favourites, attunement, removing.
 - **Favourite a spell** (press and hold → Add to favourites) to cast it from the Combat screen.
 - **Holding − or +** on a quantity or an ammunition count changes it by 5.
@@ -275,9 +275,11 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 - **138 feats** and **99 backgrounds**, from the 2014 rules
 - **1,374 magic items**, each wired to your sheet: AC, saves, skills, resistances, a weapon's bonus and extra damage, its spells, charges and uses. What's left to you and your DM shows as a reminder
 - **Every standard weapon and armour**, plus silvered and adamantine weapons
-- **185 Wild Shape forms**, each with its full stat block: every beast up to CR 6, and the four elementals for a Circle of the Moon druid
+- **263 Wild Shape forms**: every beast in the Bestiary, and the four elementals for a Circle of the Moon druid, each with its full stat block and a sound of its own for the immersive spell names
 - **2,754 creatures** in the Bestiary, each with its full stat block
 - **Companion stat blocks** for the Steel Defender, Wildfire Spirit, Drake Companion, Dancing Item, the Primal Companions, the Eldritch Cannon and mounts
+- **Summons from the Bestiary**: Conjure Animals and the other Conjure spells, Animate Dead, Create Undead, Danse Macabre, Find Familiar, Giant Insect and the demon and devil spells, and the Figurines of Wondrous Power, Bag of Tricks, Horn of Valhalla and the elemental bowls and braziers. Each creature is on your Yours tab with its own hit points, and one held by concentration goes when it ends
+- **Polymorph, True Polymorph and Shapechange** into any creature they allow, your sheet becoming it
 - **One engine, two apps** — desktop and Android build, level and save a character the same way
 
 <!-- github-only -->
@@ -359,7 +361,6 @@ dist/                (made by the builds) MIMIC.exe and MIMIC.apk
 ## Roadmap
 
 - **Clickable cross-references** — a spell, feat or feature named in a description opens its details
-- **Summons from the Bestiary** — the creatures you summon or conjure, on your sheet while the spell lasts
 - **The 2024 rules** — further off
 
 ---

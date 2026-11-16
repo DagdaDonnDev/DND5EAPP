@@ -4,27 +4,66 @@ import QtQuick.Layouts
 import Mimic
 
 // Content for the Bestiary MFullPageDialog (see App.qml): every creature
-// MIMIC knows, to find by name or type and filter by type, size and
-// challenge rating; a tap opens its stat block, and Back returns to the
-// list. The same as desktop's Bestiary window (bridge/bestiary.py,
-// core/bestiary.py).
+// MIMIC knows, to find by name or type and filter by type, size,
+// challenge rating and how it moves; a tap opens its stat block, and Back
+// returns to the list. The Yours tab is the open character's own
+// creatures (SheetCompanionsScreen.qml). The same as desktop's Bestiary
+// window (bridge/bestiary.py, core/bestiary.py).
 Item {
     id: root
     readonly property QtObject bBridge: Window.window ? Window.window.bestiaryBridge : null
+    readonly property bool hasCharacter: Window.window ? Window.window.characterActive : false
     property string shown: ""          // the creature whose stat block is open
+    property int tab: 0                // 0 all creatures, 1 yours
     anchors.fill: parent
+
+    TabBar {
+        id: tabs
+        objectName: "bestiaryTabs"
+        anchors { left: parent.left; right: parent.right; top: parent.top }
+        currentIndex: root.tab
+        onCurrentIndexChanged: root.tab = currentIndex
+        TabButton { objectName: "bestiaryTabAll"; text: "All creatures" }
+        TabButton { objectName: "bestiaryTabYours"; text: "Yours" }
+    }
+
+    // ── yours: the open character's creatures ─────────────────────────
+    Loader {
+        id: yours
+        objectName: "bestiaryYours"
+        anchors { left: parent.left; right: parent.right; top: tabs.bottom; bottom: parent.bottom }
+        visible: root.tab === 1
+        active: root.tab === 1 && root.hasCharacter
+        source: "SheetCompanionsScreen.qml"
+        onLoaded: item.embedded = true
+    }
+    Label {
+        visible: root.tab === 1 && !root.hasCharacter
+        anchors { left: parent.left; right: parent.right; top: tabs.bottom; margins: 16 }
+        text: "Open a character to see its creatures here: its mounts and steeds, what it's "
+              + "summoned, its companions and its Wild Shape forms."
+        color: Theme.text3
+        font.pixelSize: Theme.fsSmall
+        wrapMode: Text.WordWrap
+    }
+
 
     function refresh() {
         if (!bBridge) return
-        bBridge.search(searchField.text,
-                       kindBox.currentIndex > 0 ? kindBox.currentText : "",
-                       sizeBox.currentIndex > 0 ? sizeBox.currentText : "",
-                       crMinBox.currentIndex > 0 ? crMinBox.currentText : "",
-                       crMaxBox.currentIndex > 0 ? crMaxBox.currentText : "")
+        // what's picked, read from the list: a box's currentText still says
+        // the last pick while its currentIndex changes
+        function picked(box) { return box.currentIndex > 0 ? String(box.model[box.currentIndex]) : "" }
+        bBridge.searchMoving(searchField.text, picked(kindBox), picked(sizeBox),
+                             picked(crMinBox), picked(crMaxBox), picked(moveBox))
     }
     Component.onCompleted: refresh()
     Timer { id: typing; interval: 200; onTriggered: root.refresh() }
 
+    // ── all creatures ──────────────────────────────────────────────────
+    Item {
+        id: allPage
+        anchors { left: parent.left; right: parent.right; top: tabs.bottom; bottom: parent.bottom }
+        visible: root.tab === 0
     // ── the list ───────────────────────────────────────────────────────
     ColumnLayout {
         anchors.fill: parent
@@ -36,7 +75,7 @@ Item {
             id: searchField
             objectName: "bestiarySearch"
             Layout.fillWidth: true
-            placeholderText: "Find a creature by name or type…"
+            placeholderText: "Search creatures…"
             onTextChanged: typing.restart()
         }
         GridLayout {
@@ -74,6 +113,14 @@ Item {
                 displayText: currentIndex > 0 ? "up to CR " + currentText : currentText
                 onCurrentIndexChanged: root.refresh()
             }
+            ComboBox {
+                id: moveBox
+                objectName: "bestiaryMove"
+                Layout.fillWidth: true
+                Layout.columnSpan: 2
+                model: ["Any movement"].concat(root.bBridge ? root.bBridge.moves : [])
+                onCurrentIndexChanged: root.refresh()
+            }
         }
         Label {
             objectName: "bestiaryCount"
@@ -103,7 +150,7 @@ Item {
                 Column {
                     id: rowCol
                     anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter
-                              leftMargin: 6; rightMargin: 6 }
+                              leftMargin: 6; rightMargin: 40 }
                     spacing: 2
                     Label {
                         text: modelData.name
@@ -120,6 +167,13 @@ Item {
                         elide: Text.ElideRight
                         width: parent.width
                     }
+                }
+                // View -- a magnifying glass, as the other browsers' rows have
+                MIcon {
+                    name: "search"
+                    size: 20
+                    color: Theme.text3
+                    anchors { right: parent.right; rightMargin: 10; verticalCenter: parent.verticalCenter }
                 }
                 Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.border }
                 MouseArea {
@@ -179,6 +233,7 @@ Item {
                 text: root.shown !== "" && root.bBridge ? root.bBridge.statblock(root.shown, Theme.gold2.toString()) : ""
             }
         }
+    }
     }
     onShownChanged: blockFlick.contentY = 0
 }
