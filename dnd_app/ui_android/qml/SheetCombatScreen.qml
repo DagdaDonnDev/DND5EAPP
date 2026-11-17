@@ -182,6 +182,41 @@ Page {
                     }
                 }
 
+                // Resistances, immunities and vulnerabilities (½, ⊘, ×2), the
+                // same as desktop's badges; a tap says where each comes from
+                Flow {
+                    objectName: "defenseBadges"
+                    visible: sheetBridge.defenseRows.length > 0
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Repeater {
+                        model: sheetBridge.defenseRows
+                        delegate: Rectangle {
+                            readonly property color tone: modelData.kind === "resist" ? Theme.teal2
+                                                          : modelData.kind === "immune" ? Theme.gold2 : Theme.crimson2
+                            objectName: "defense_" + modelData.kind + "_" + modelData.label
+                            radius: 5
+                            color: Qt.rgba(tone.r, tone.g, tone.b, 0.18)
+                            border.color: tone
+                            implicitWidth: defLbl.implicitWidth + 14
+                            implicitHeight: defLbl.implicitHeight + 6
+                            Label {
+                                id: defLbl
+                                anchors.centerIn: parent
+                                text: (modelData.kind === "resist" ? "½ " : modelData.kind === "immune" ? "⊘ " : "×2 ")
+                                      + modelData.label
+                                color: Theme.text
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: Window.window.showToast(modelData.tip.replace("\n", ". "))
+                            }
+                        }
+                    }
+                }
+
                 // Concentration: what's being held, and a way to drop it
                 Rectangle {
                     visible: sheetBridge.isConcentrating
@@ -477,7 +512,7 @@ Page {
 
                 Label {
                     visible: sheetBridge.weapons.length === 0
-                    text: "No weapons equipped -- equip one on the Equipment screen."
+                    text: "No weapons equipped -- equip one in your Inventory."
                     color: Theme.text3
                     font.pixelSize: Theme.fsSmall
                     wrapMode: Text.WordWrap
@@ -858,9 +893,10 @@ Page {
             // ── Wild Shape (Druids only) ────────────────────────────────
             // While transformed, the HP/AC cards above already show the
             // beast's own numbers (CharacterSheetBridge repurposes them).
+            // (anyone's, in another creature's form: Polymorph, Shapechange)
             MCard {
-                visible: sheetBridge.wildShapeAvailable
-                title: "Wild Shape"
+                visible: sheetBridge.wildShapeAvailable || sheetBridge.wildShapeActive
+                title: sheetBridge.formKind || "Wild Shape"
                 iconName: "paw"
                 accent: Theme.indigo2
 
@@ -874,14 +910,16 @@ Page {
                         width: wsCol.width
                         spacing: 6
                         Label {
-                            text: "Currently: " + sheetBridge.wildShapeActiveBeast
+                            text: (sheetBridge.formKind === "Wild Shape" ? "Currently: " : sheetBridge.formKind + ": ")
+                                  + sheetBridge.wildShapeActiveBeast
                             color: Theme.text
                             font.pixelSize: Theme.fsBody
                             font.bold: true
                         }
                         MButton {
                             primary: false
-                            text: "Revert to Normal Form"
+                            text: sheetBridge.formKind === "Wild Shape" ? "Revert to Normal Form"
+                                                                        : "End " + sheetBridge.formKind
                             onClicked: sheetBridge.revertWildShape()
                         }
                     }
@@ -1243,7 +1281,8 @@ Page {
                                           leftMargin: 14; rightMargin: 8; topMargin: 7 }
                                 spacing: 2
                                 Label {
-                                    text: modelData.name + (modelData.concentration ? " (concentration)" : "")
+                                    objectName: "effectTitle_" + modelData.name
+                                    text: modelData.title + (modelData.concentration ? " (concentration)" : "")
                                     color: Theme.text
                                     font.pixelSize: Theme.fsSmall
                                     font.bold: true
@@ -1350,7 +1389,7 @@ Page {
         width: Math.min(parent ? parent.width - 32 : 340, 340)
         padding: 16
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         contentItem: ColumnLayout {
             spacing: 12
@@ -1414,7 +1453,7 @@ Page {
         width: Math.min(parent ? parent.width - 32 : 340, 340)
         padding: 16
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.amber }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         contentItem: ColumnLayout {
             spacing: 12
@@ -1486,7 +1525,7 @@ Page {
         width: Math.min(parent ? parent.width - 32 : 340, 340)
         padding: 16
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         contentItem: ColumnLayout {
             spacing: 12

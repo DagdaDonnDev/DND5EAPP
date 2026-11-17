@@ -48,6 +48,8 @@ from dnd_app.core.magic_items import (
 )
 from dnd_app.core.effects import EFFECT_TABLE, INSTANT_POTION_EFFECTS
 from dnd_app.core.riders import base_weapon_options as _base_weapon_options, weapon_base_of as _weapon_base_of
+from dnd_app.core.magic_items import armor_base_options as _armor_base_options
+from dnd_app.core.weapons import hand_of as _hand_of, can_swap_hands as _can_swap_hands
 from dnd_app.core.spellcasting import spell_component_block_reason, is_caster_resource
 from dnd_app.core.ammo import ammo_kind, ammo_label, ammo_count, spend_ammo, set_ammo
 from dnd_app.core.dying import (
@@ -129,7 +131,7 @@ _MI_SLOT_KEYWORDS = {
     "Scroll / Wand / Rod / Staff": ["scroll", "wand", "rod", "staff"],
 }
 
-_MI_RARITY_ORDER = ["Common", "Uncommon", "Rare", "Very Rare", "Legendary", "Artifact"]
+_MI_RARITY_ORDER = ["Common", "Uncommon", "Rare", "Very Rare", "Legendary", "Artifact", "Unknown"]
 
 
 def _mi_sort_key(rarity: str, name: str):
@@ -426,8 +428,7 @@ class CharacterSheetBridge(QObject):
         for ab in ABILITIES:
             score = ability_score(self.char, ab)
             mod = ability_mod(self.char, ab)
-            is_save_prof = bool(self.char.get("saving_throws", {}).get(ab, False)) \
-                or ab in save_profs
+            is_save_prof = bool(self.char.get("saving_throws", {}).get(ab, False))
             out.append({
                 "ability": ab,
                 "score": score,
@@ -437,11 +438,44 @@ class CharacterSheetBridge(QObject):
                 # plus anything that adds to every check of it (the Fey
                 # Wanderer's Wisdom on Charisma checks).
                 "check": ability_check_bonus(self.char, ab),
+                "checkText": _mod_text(ability_check_bonus(self.char, ab)),
+                "name": {"STR": "Strength", "DEX": "Dexterity", "CON": "Constitution",
+                         "INT": "Intelligence", "WIS": "Wisdom", "CHA": "Charisma"}[ab],
                 "save": get_saving_throw_bonus(self.char, ab),
                 "saveText": _mod_text(get_saving_throw_bonus(self.char, ab)),
                 "saveProficient": is_save_prof,
+                # a class's can't be taken off (desktop's box is greyed the same)
+                "saveFromClass": ab in save_profs,
             })
         return out
+
+    @Slot(str, result=str)
+    def toolDetails(self, tool: str) -> str:
+        """What a tool is for (the XGE tool descriptions), for a tap on it."""
+        from dnd_app.data.feature_tooltips import get_tool_tooltip
+        return get_tool_tooltip(tool) or ""
+
+    @Slot(str, bool)
+    def setSaveProficiency(self, ab: str, on: bool):
+        """A saving throw proficient or not (press and hold it -- desktop's
+        right-click): kept as an override on what's granted (core/builder.py)."""
+        from dnd_app.core.builder import set_save_prof
+        set_save_prof(self.char, ab, on)
+        self.ctrl.refresh()
+        self.toastRequested.emit(f"{ab} saving throw: {'proficient' if on else 'not proficient'}")
+
+    @Slot(str)
+    def toggleSaveProficiency(self, ab: str):
+        self.setSaveProficiency(ab, not bool(self.char.get("saving_throws", {}).get(ab)))
+
+    @Slot()
+    def resetSaveProficiencies(self):
+        """Saving throws back to what's granted (desktop's Reset)."""
+        from dnd_app.core.builder import reset_save_profs
+        reset_save_profs(self.char)
+        self.ctrl.refresh()
+        self.toastRequested.emit("↺ Saving throws reset to what you're given")
+        self._changed()
 
     # ── Combat stats ─────────────────────────────────────────────────
     @Property(int, notify=statsChanged)
@@ -569,6 +603,17 @@ class CharacterSheetBridge(QObject):
         from dnd_app.core.calculator import derived_stats
         return derived_stats(self.char)
 
+    @Property(dict, notify=statsChanged)
+    def senses(self):
+        """The Overview's Senses card: {"passives": [{label, value}],
+        "chips": core/calculator.py sense_list} -- the same as desktop's."""
+        from dnd_app.core.calculator import (get_passive_perception, get_passive_investigation,
+                                             get_passive_insight, sense_list)
+        return {"passives": [{"label": "Passive Perception", "value": get_passive_perception(self.char)},
+                             {"label": "Passive Investigation", "value": get_passive_investigation(self.char)},
+                             {"label": "Passive Insight", "value": get_passive_insight(self.char)}],
+                "chips": sense_list(self.char)}
+
     # ── Skills ───────────────────────────────────────────────────────
     @Property(list, notify=statsChanged)
     def skills(self):
@@ -578,7 +623,8 @@ class CharacterSheetBridge(QObject):
         # each level maps to.
         out = []
         for skill in sorted(SKILL_ABILITY):
-            prof_level = self.char.get("skills", {}).get(skill, 0)
+            from dnd_app.core.calculator import skill_prof_level
+            prof_level = skill_prof_level(self.char, skill)
             bonus = get_skill_bonus(self.char, skill)
             out.append({
                 "name": skill,
@@ -671,6 +717,35 @@ class CharacterSheetBridge(QObject):
         self.char["shield"] = on
         self.ctrl.refresh()
 
+    @Slot()
+    def swapHands(self):
+        """The main-hand weapon to your off hand and back (core/weapons.py,
+        the same as desktop's Swap hands)."""
+        from dnd_app.core.weapons import swap_hands, hands
+        off = swap_hands(self.char)
+        if not off:
+            return
+        self.ctrl.refresh()
+        self.toastRequested.emit(f"{hands(self.char)['main']} in your main hand, {off} in your off hand")
+        self._changed()
+
+    @Slot(str)
+    def holdAnotherWeapon(self, name: str):
+        """A second one of a weapon already in hand: two daggers, one in
+        each hand (core/weapons.py, the same as desktop's)."""
+        from dnd_app.core.weapons import equip_weapon
+        equip_weapon(self.char, name, another=True)
+        self.ctrl.refresh()
+        self._changed()
+
+    @Slot(str)
+    def putAwayOneWeapon(self, name: str):
+        """One held copy back in the pack -- the other of two daggers stays."""
+        from dnd_app.core.weapons import unequip_weapon
+        unequip_weapon(self.char, name, every=False)
+        self.ctrl.refresh()
+        self._changed()
+
     @Slot(str, bool)
     def toggleWeaponEquipped(self, name: str, equip: bool):
         # the hands rules are shared with the desktop (core/weapons.py)
@@ -716,7 +791,7 @@ class CharacterSheetBridge(QObject):
 
         for a in other_attacks(char):
             card(a, {"unarmed": "Unarmed", "spell": "Spell attack"}.get(a["kind"], "Natural weapon"), {})
-        for wpn_name in char.get("equipped_weapons", []):
+        for wpn_name in dict.fromkeys(char.get("equipped_weapons", [])):   # two daggers: one card
             w = weapon_attack(char, wpn_name)
             card(w, w["category"], {
                 "magicBonus": w["magic_bonus"], "material": w["material"] or "",
@@ -897,6 +972,8 @@ class CharacterSheetBridge(QObject):
                 # "1 of 3 equipped", "dedicated weapon"
                 from dnd_app.core.weapons import inventory_notes
                 notes = inventory_notes(self.char, name, e.get("qty", 1))
+                # the inventory's own rows say which hand (inventoryGroups)
+                plain_detail = " · ".join([detail] + [n for n in notes if n == "dedicated weapon"])
                 detail = " · ".join([detail] + notes) if notes else detail
             elif adata and adata.get("type") == "shield":
                 category, icon, equip_kind = "Armor", "shield", "shield"
@@ -915,6 +992,8 @@ class CharacterSheetBridge(QObject):
                 category = "Consumables" if is_thrown_consumable(name) else "Tools & Gear"
                 icon, equip_kind = gear_icon(name) or "package", ""
                 detail, equipped = "", False
+            if not wdata:
+                plain_detail = detail
             # one of it: its own numbers or the rules' (core/inventory.py)
             weight, cost = item_weight(e), item_cost(e)
             qty = e.get("qty", 1)
@@ -924,6 +1003,7 @@ class CharacterSheetBridge(QObject):
             out.append({
                 "name": name,
                 "qty": e.get("qty", 1),
+                "plainDetail": plain_detail or (use[2] if use else ""),
                 "isPotion": is_potion,
                 "isScroll": is_scroll,
                 "category": category,
@@ -935,6 +1015,9 @@ class CharacterSheetBridge(QObject):
                 "weightValue": "  ·  ".join(x for x in (weight_text(weight * qty), money_text(cost * qty)) if x),
                 "equipKind": equip_kind,
                 "equipped": equipped,
+                # holding two: "main hand" / "off hand", and swapping them
+                "hand": _hand_of(self.char, name) if wdata and equipped else "",
+                "canSwapHands": bool(wdata) and _can_swap_hands(self.char, name),
                 # Dedicated Weapon (Monk, Tasha's optional feature)
                 "canDedicate": bool(wdata) and _can_dedicate(self.char, name),
                 "dedicated": bool(wdata) and _weapon_base(name) == _dedicated_weapon(self.char) != "",
@@ -969,8 +1052,37 @@ class CharacterSheetBridge(QObject):
             members = sorted((i for i in items if i["category"] == group),
                              key=lambda i: _mi_sort_key(i["rarity"], i["name"]) if i["rarity"] else (-1, i["name"].casefold()))
             if members:
-                out.append({"group": group, "icon": icon, "items": members})
+                rows = [r for i in members for r in self._weapon_rows(i)]
+                out.append({"group": group, "icon": icon, "items": rows, "count": len(members)})
         return out
+
+    def _weapon_rows(self, item: dict) -> list:
+        """A weapon stack with some in hand is a row for each one held --
+        saying which hand -- and a row for the rest: four daggers with one
+        in your off hand are "Dagger, Off hand" and "Dagger x3". Two held
+        (one in each hand) are a main hand row and an off hand row."""
+        from dnd_app.core.weapons import hand_of, can_hold_another
+        from dnd_app.core.inventory import money_text, weight_text
+        name, qty = item["name"], item["qty"]
+        held = (self.char.get("equipped_weapons") or []).count(name) if item["equipKind"] == "weapon" else 0
+        if not held:
+            return [dict(item, detail=item["plainDetail"], heldRow=False, heldCount=0,
+                         canHoldAnother=False, hand="", total=qty)]
+
+        def worth(n):
+            return "  ·  ".join(x for x in (weight_text(item["weight"] * n), money_text(item["cost"] * n)) if x)
+        hand = hand_of(self.char, name)
+        hands_held = ["main hand", "off hand"] if hand == "one in each hand" else [hand]
+        rows = [dict(item, qty=1, detail=item["plainDetail"], weightValue=worth(1), equipped=True,
+                     heldRow=True, heldCount=held, canHoldAnother=False, hand=h, total=qty,
+                     rowKey=f"{name}#{k}")
+                for k, h in enumerate(hands_held[:held])]
+        if qty > held:
+            rows.append(dict(item, qty=qty - held, detail=item["plainDetail"], weightValue=worth(qty - held),
+                             equipped=False, heldRow=False, heldCount=held, hand="", total=qty,
+                             canSwapHands=False,
+                             canHoldAnother=can_hold_another(self.char, name, qty)))
+        return rows
 
     @Property(dict, notify=statsChanged)
     def carryLoad(self):
@@ -1330,6 +1442,11 @@ class CharacterSheetBridge(QObject):
                 # an "any sword" item (Flame Tongue...): which weapon it is
                 "baseOptions": _base_weapon_options(name),
                 "base": _weapon_base_of(self.char, name) if _base_weapon_options(name) else "",
+                # "armor" for an "any armor" item (+1 Armor...), else "weapon"
+                "baseKind": "armor" if _armor_base_options(name) else "weapon",
+                # a magic weapon held with another: which hand it's in
+                "hand": _hand_of(self.char, name) if entry.get("equipped", True) else "",
+                "canSwapHands": _can_swap_hands(self.char, name),
             })
         out.sort(key=lambda i: _mi_sort_key(i["rarity"], i["name"]))
         return out
@@ -1518,7 +1635,8 @@ class CharacterSheetBridge(QObject):
         from dnd_app.core.riders import set_weapon_base
         if set_weapon_base(self.char, item_name, base):
             self.ctrl.refresh()
-            self.toastRequested.emit(f"{item_name} is a {base.lower()}")
+            self.toastRequested.emit(f"{item_name} is {base.lower()}" if _armor_base_options(item_name)
+                                     else f"{item_name} is a {base.lower()}")
             self._changed()
 
     @Slot(str, bool)
@@ -1611,7 +1729,8 @@ class CharacterSheetBridge(QObject):
             self.toastRequested.emit(why)
             return
         note = heal(char, amount)
-        remember_hp_change(char, before, f"{amount} healing")
+        if not remember_hp_change(char, before, f"{amount} healing"):
+            return                              # (already at full: nothing to do)
         if note:
             self.toastRequested.emit(note)
         self._changed()
@@ -2031,14 +2150,11 @@ class CharacterSheetBridge(QObject):
         return WILDSHAPE_BEASTS.get(active) if active else None
 
     def _revert_wildshape(self):
-        char = self.char
-        char["_wildshape_active"] = None
-        char.pop("_wildshape_hp", None)
-        from dnd_app.core.hp_undo import clear_hp_undo
-        clear_hp_undo(char)              # (back in your own form: the last Damage or Heal stands)
-        effects = char.get("active_effects", [])
-        if "Wild Shape" in effects:
-            effects.remove("Wild Shape")
+        # (core/forms.py, as desktop: a Polymorph's form ends the spell and
+        # its concentration too; back in your own form, the last Damage or
+        # Heal stands)
+        from dnd_app.core.forms import leave_form
+        leave_form(self.char)
 
     @Property(bool, notify=statsChanged)
     def isDruid(self):
@@ -2060,6 +2176,13 @@ class CharacterSheetBridge(QObject):
     @Property(str, notify=statsChanged)
     def wildShapeActiveBeast(self):
         return self.char.get("_wildshape_active") or ""
+
+    @Property(str, notify=statsChanged)
+    def formKind(self):
+        """How you're in another creature's form: "Wild Shape", "Polymorph",
+        "True Polymorph", "Shapechange" ("" when you're yourself)."""
+        from dnd_app.core.forms import form_kind
+        return form_kind(self.char)
 
     @Property(list, notify=statsChanged)
     def availableWildShapeBeasts(self):
@@ -2351,7 +2474,15 @@ class CharacterSheetBridge(QObject):
     # them for display.
     @Property(list, notify=statsChanged)
     def languages(self):
-        return list(self.char.get("languages", []))
+        from dnd_app.core.calculator import known_languages
+        return known_languages(self.char)
+
+    @Property(list, notify=statsChanged)
+    def defenseRows(self):
+        """Your resistances, immunities and vulnerabilities, the same as
+        desktop's badges under the HP card (core/calculator.py defenses)."""
+        from dnd_app.core.calculator import defenses
+        return defenses(self.char)
 
     @Property(list, notify=statsChanged)
     def toolProficiencies(self):
@@ -2881,15 +3012,16 @@ class CharacterSheetBridge(QObject):
     # (core/checks.py). ─────────────────────────────────────────────────
     @Property(list, notify=statsChanged)
     def activeEffectRows(self):
-        from dnd_app.core.riders import effect_note
+        from dnd_app.core.spell_effects import effect_view
         from dnd_app.core.durations import rounds_left
         out = []
         for n in self.char.get("active_effects", []):
             info = EFFECT_TABLE.get(n, {})
-            out.append({"name": n, "concentration": bool(info.get("conc")),
-                        "rounds": rounds_left(self.char, "effect", n),
-                        "note": effect_note(self.char, n) or info.get("note", "")
-                        or "Tracked, with no numbers of its own."})
+            # its level, when cast above its own, and what it does at that
+            # level (core/spell_effects.py effect_view, as desktop)
+            view = effect_view(self.char, n)
+            out.append({"name": n, "title": view["title"], "concentration": bool(info.get("conc")),
+                        "rounds": rounds_left(self.char, "effect", n), "note": view["note"]})
         return out
 
     @Property(list, constant=True)
@@ -2909,11 +3041,34 @@ class CharacterSheetBridge(QObject):
         if why:
             self.toastRequested.emit(f"{name}: {why}")
             return
-        fx.append(name)
-        note = on_effect_started(self.char, name)          # Rage ends concentration
-        self.ctrl.refresh()
-        self.toastRequested.emit(f"{name} is on you" + (f" -- {note}" if note else ""))
-        self._changed()
+        # an ally's Aid or Magic Weapon does more from a higher slot: which?
+        from dnd_app.core.spell_effects import added_effect_levels
+        levels = added_effect_levels(name)
+        # an ally's Polymorph: the creature they made you (core/forms.py, as desktop)
+        from dnd_app.core import forms as _forms
+        if name in _forms.ALLY_FORMS:
+            def form_done(res):
+                msg = _forms.become_ally_form(self.char, name, res["form"])
+                self.ctrl.refresh()
+                self.toastRequested.emit(msg)
+                self._changed()
+            self._ask_through(name, lambda a: _forms.ally_form_question(self.char, name, a), form_done)
+            return
+
+        def ask(answers):
+            if levels and "level" not in answers:
+                return {"ask": {"key": "level", "title": f"What level was {name} cast at?", "options": levels}}
+            return {"level": answers.get("level", "")}
+
+        def done(res):
+            if res.get("level") in levels:
+                self.char.setdefault("effect_details", {})[name] = {"level": int(res["level"].split()[0][:-2])}
+            fx.append(name)
+            note = on_effect_started(self.char, name)          # Rage ends concentration
+            self.ctrl.refresh()
+            self.toastRequested.emit(f"{name} is on you" + (f" -- {note}" if note else ""))
+            self._changed()
+        self._ask_through(name, ask, done)
 
     @Slot(str)
     def removeActiveEffect(self, name: str):
@@ -3054,7 +3209,8 @@ class CharacterSheetBridge(QObject):
         name = spell["name"]
         # what its hit adds (Genie's Wrath, Hex...)
         said = "\n".join(m for m in (said, spell_hit_note(self.char, spell)) if m)
-        if not effect_names(name):
+        from dnd_app.core.spell_effects import has_cast_step
+        if not has_cast_step(name):
             if said:
                 self.toastRequested.emit(said)
             return
@@ -3160,27 +3316,42 @@ class CharacterSheetBridge(QObject):
             self._maybe_apply_spell_active_effect(spell, lvl, free_cast_message(name, free, self.char))
             self._changed()
             return
-        slots_used = self.char.setdefault("spell_slots_used", [0] * 9)
-        slots_max = self.char.get("spell_slots_max", [0] * 9)
-        for i in range(lvl - 1, 9):
-            if slots_max[i] > 0 and slots_used[i] < slots_max[i]:
-                slots_used[i] += 1
-                if spell.get("concentration"):
-                    start_concentration(self.char, name)
-                self._mark_spell_cast_time(spell)
-                self._maybe_apply_spell_active_effect(spell, i + 1, f"Cast {name} -- slot expended")
-                self._changed()
-                return
-        if self.char.get("pact_slots_max", 0) > 0 and self.char.get("pact_slots_used", 0) < self.char["pact_slots_max"]:
-            self.char["pact_slots_used"] = self.char.get("pact_slots_used", 0) + 1
-            if spell.get("concentration"):
-                start_concentration(self.char, name)
-            self._mark_spell_cast_time(spell)
-            self._maybe_apply_spell_active_effect(spell, self.char.get("pact_slot_level", 0) or lvl,
-                                                  f"Cast {name} -- pact slot expended")
-            self._changed()
+        # Which slot: the lowest free, unless the spell does more from a
+        # higher one and there's a choice -- then it asks, saying what the
+        # higher slot gives (core/spellcasting.py, the same as desktop)
+        from dnd_app.core.spellcasting import slot_choices, slot_question
+        choices = slot_choices(self.char, spell)
+        if not choices:
+            self.toastRequested.emit(f"Can't cast {name} -- no level-{lvl}+ spell slots available")
             return
-        self.toastRequested.emit(f"Can't cast {name} -- no level-{lvl}+ spell slots available")
+        question = slot_question(spell, choices)
+        labels = [c["label"] for c in choices]
+
+        def ask(answers):
+            if question and "slot" not in answers:
+                return {"ask": {"key": "slot", "title": question, "options": labels}}
+            return {"pick": answers.get("slot", labels[0])}
+        self._ask_through(name, ask, lambda res: self._cast_with_slot(
+            spell, choices[labels.index(res["pick"])] if res.get("pick") in labels else choices[0]))
+
+    def _cast_with_slot(self, spell: dict, pick: dict):
+        """castSpell's last step: the slot picked is used, then what the
+        spell does at that level (core/spellcasting.py spend_slot)."""
+        from dnd_app.core.spellcasting import spend_slot
+        name, lvl = spell["name"], spell.get("level", 0)
+        at = spend_slot(self.char, pick["key"])
+        if not at:
+            self.toastRequested.emit(f"Can't cast {name} -- that slot is used up")
+            return
+        if spell.get("concentration"):
+            start_concentration(self.char, name)
+        self._mark_spell_cast_time(spell)
+        if pick["key"] == "pact":
+            msg = f"Cast {name} -- pact slot expended"
+        else:
+            msg = f"Cast {name}" + (f" at {pick['label'].split(' (')[0]}" if at > lvl else "") + " -- slot expended"
+        self._maybe_apply_spell_active_effect(spell, at, msg)
+        self._changed()
 
     @Slot(str)
     def castSpellAsRitual(self, name: str):
@@ -3419,6 +3590,29 @@ class CharacterSheetBridge(QObject):
     @Property(bool, notify=statsChanged)
     def canRemoveClass(self):
         return len(self.char.get("classes", [])) > 1
+
+    @Slot(str, result=list)
+    def otherClasses(self, class_name: str) -> list:
+        """The classes `class_name` could become (Change class): the ones
+        the character doesn't have."""
+        from dnd_app.data.classes import CLASS_DICT
+        have = {c["class"] for c in self.char.get("classes", [])}
+        return [n for n in sorted(CLASS_DICT) if n not in have]
+
+    @Slot(str, str)
+    def changeClass(self, old: str, new: str):
+        """A class's ⋯ → Change class (desktop's the same): `new` in its
+        place at the same level; its subclass and choices asked afresh."""
+        from dnd_app.core.character import change_class, get_class_entry, name_list
+        entry = get_class_entry(self.char, old)
+        lost = change_class(self.char, old, new)
+        if lost is None:
+            return
+        self.ctrl.refresh()
+        self.toastRequested.emit(f"{old} is now {new} {entry['level']}"
+                                 + (f" -- its spells went: {name_list(lost)}" if lost else ""))
+        self._changed()
+        self.autosaveRequested.emit()
 
     @Slot(str)
     def removeClass(self, class_name: str):
@@ -3674,15 +3868,13 @@ class CharacterSheetBridge(QObject):
     # ── Traits / Backstory / Appearance / Campaign Notes ────────────────
     # Ports ui_desktop's TraitsNotesMixin: 4 short trait fields (flat
     # strings), Appearance (flat string), Backstory (flat string,
-    # always present, not part of the removable page list), and
-    # Campaign Notes as up to 8 player-named, add/remove/renameable
-    # pages (char["notes_pages"], a list of {"title","text"} dicts).
+    # always present, not part of the removable page list), and the
+    # player's own pages in groups (core/notes.py).
     _NOTES_TRAIT_FIELD_MAP = {
         "personalityTraits": "personality_traits", "ideals": "ideals",
         "bonds": "bonds", "flaws": "flaws",
         "appearanceNotes": "appearance_notes", "backstory": "backstory",
     }
-    _MAX_NOTES_PAGES = 8  # excludes the always-present Backstory field
 
     @Property('QVariantMap', notify=statsChanged)
     def traitsNotes(self):
@@ -3699,61 +3891,139 @@ class CharacterSheetBridge(QObject):
         self._changed()
 
     def _notes_pages_for_char(self):
-        pages = self.char.get("notes_pages")
-        if pages:
-            return pages
-        legacy = self.char.get("notes", "")
-        if legacy:
-            # Pre-tabs characters (and the Wizard's starting-notes
-            # field) only ever wrote a single flat string -- preserved
-            # as one page rather than dropped.
-            return [{"title": "General", "text": legacy}]
-        return [{"title": t, "text": ""} for t in
-                ("Session Log", "Quest Log", "Loot & Treasure")]
+        from dnd_app.core import notes as N
+        N.groups(self.char)
+        return self.char["notes_pages"]
 
     @Property(list, notify=statsChanged)
     def notesPages(self):
-        return self._notes_pages_for_char()
+        return [{"title": p.get("title", "Notes"), "text": p.get("text", ""), "group": p.get("group", "")}
+                for p in self._notes_pages_for_char()]
+
+    @Property(list, notify=statsChanged)
+    def notesGroups(self):
+        """[{name, open, pages: [{index, title}]}] -- the Notes list's groups
+        (core/notes.py, as desktop's)."""
+        from dnd_app.core import notes as N
+        return [{"name": g["name"], "open": g["open"],
+                 "pages": [{"index": i, "title": p.get("title", "Notes")} for i, p in g["pages"]]}
+                for g in N.groups(self.char)]
 
     @Slot(int, str)
     def setNotesPageText(self, index: int, text: str):
-        pages = self._notes_pages_for_char()
-        if 0 <= index < len(pages):
-            pages[index]["text"] = text
-            self.char["notes_pages"] = pages
-            self._changed()
-
-    @Slot(str)
-    def addNotesPage(self, title: str):
-        pages = self._notes_pages_for_char()
-        if len(pages) >= self._MAX_NOTES_PAGES:
-            self.toastRequested.emit(f"Notes pages are capped at {self._MAX_NOTES_PAGES}")
-            return
-        title = (title or "").strip() or "Notes"
-        pages.append({"title": title, "text": ""})
-        self.char["notes_pages"] = pages
+        from dnd_app.core import notes as N
+        N.set_page_text(self.char, index, text)
         self._changed()
+
+    @Slot(str, result=int)
+    def addNotesPage(self, title: str):
+        """A new page in the first group (press and hold it to move it)."""
+        from dnd_app.core import notes as N
+        gs = N.groups(self.char)
+        if not gs:
+            N.add_group(self.char, N.DEFAULT_GROUP)
+            gs = N.groups(self.char)
+        return self.addNotesPageIn(gs[0]["name"], title)
+
+    @Slot(str, str, result=int)
+    def addNotesPageIn(self, group: str, title: str):
+        from dnd_app.core import notes as N
+        i = N.add_page(self.char, group, (title or "").strip() or "Notes")
+        self._changed()
+        return i
 
     @Slot(int)
     def removeNotesPage(self, index: int):
-        pages = self._notes_pages_for_char()
-        if len(pages) <= 1:
-            self.toastRequested.emit("Keep at least one notes page")
-            return
-        if 0 <= index < len(pages):
-            pages.pop(index)
-            self.char["notes_pages"] = pages
-            self._changed()
+        from dnd_app.core import notes as N
+        N.remove_page(self.char, index)
+        self._changed()
 
     @Slot(int, str)
     def renameNotesPage(self, index: int, title: str):
-        pages = self._notes_pages_for_char()
-        title = (title or "").strip()
-        if not title or not (0 <= index < len(pages)):
-            return
-        pages[index]["title"] = title
-        self.char["notes_pages"] = pages
+        from dnd_app.core import notes as N
+        N.rename_page(self.char, index, title)
         self._changed()
+
+    @Slot(int, str, result=int)
+    def moveNotesPage(self, index: int, group: str):
+        from dnd_app.core import notes as N
+        i = N.move_page(self.char, index, group)
+        self.toastRequested.emit(f"Moved to {group}")
+        self._changed()
+        return i
+
+    @Slot(str)
+    def addNotesGroup(self, name: str):
+        from dnd_app.core import notes as N
+        why = N.add_group(self.char, name)
+        if why:
+            self.toastRequested.emit(why)
+        self._changed()
+
+    @Slot(str, str)
+    def renameNotesGroup(self, old: str, new: str):
+        from dnd_app.core import notes as N
+        why = N.rename_group(self.char, old, new)
+        if why:
+            self.toastRequested.emit(why)
+        self._changed()
+
+    @Slot(str)
+    def removeNotesGroup(self, name: str):
+        from dnd_app.core import notes as N
+        n = N.remove_group(self.char, name)
+        self.toastRequested.emit(f"{name} removed" + (f", with its {n} page{'s' if n != 1 else ''}" if n else ""))
+        self._changed()
+
+    @Slot(str)
+    def toggleNotesGroup(self, name: str):
+        from dnd_app.core import notes as N
+        N.toggle_group(self.char, name)
+        self._changed()
+
+    @Slot(int, result=str)
+    def notesNewEntry(self, index: int) -> str:
+        """Today's date at the top of the page (desktop's New entry)."""
+        from dnd_app.core import notes as N
+        text = N.new_entry(self.char, index)
+        self._changed()
+        return text
+
+    # Your background's suggestions for the four boxes
+    _TRAIT_KIND = {"personalityTraits": "traits", "ideals": "ideals", "bonds": "bonds", "flaws": "flaws"}
+
+    @Property(str, notify=statsChanged)
+    def notesBackgroundLine(self):
+        from dnd_app.data.backgrounds import get_background
+        bg = self.char.get("background", "") or "No background"
+        info = get_background(self.char.get("background", "")) or {}
+        skills = info.get("skill_profs") or info.get("skills") or []
+        return bg + (f"  ·  {', '.join(skills)}" if skills else "")
+
+    @Slot(str, result=list)
+    def traitSuggestions(self, key: str) -> list:
+        from dnd_app.core import notes as N
+        return list(N.suggestions(self.char).get(self._TRAIT_KIND.get(key, ""), []))
+
+    @Slot(str, str)
+    def useTraitSuggestion(self, key: str, text: str):
+        from dnd_app.core import notes as N
+        kind = self._TRAIT_KIND.get(key)
+        if kind:
+            N.use_suggestion(self.char, kind, text)
+            self._changed()
+
+    @Slot(str)
+    def rollTraitSuggestion(self, key: str):
+        from dnd_app.core import notes as N
+        kind = self._TRAIT_KIND.get(key)
+        if not kind:
+            return
+        n, text = N.roll_suggestion(self.char, kind)
+        if n:
+            N.use_suggestion(self.char, kind, text)
+            self.toastRequested.emit(f"🎲 Rolled a {n}: {text}")
+            self._changed()
 
     # ── Infusions (Artificer only; not grantable until level 2, so an
     # empty list at level 1 is correct, not a gap) ──────────────────
@@ -4928,8 +5198,9 @@ class CharacterSheetBridge(QObject):
     # companions) -- verbatim port of ui_desktop/pages/sheet/companions.py's
     # data model and mechanics, normalized into camelCase dicts for QML.
     def _normalize_statblock(self, sb: dict, hp_key: str = None) -> dict:
+        from dnd_app.core.summons import max_hp_of, dice_average
         raw_hp = sb.get("hp")
-        max_hp = raw_hp if isinstance(raw_hp, int) else 1
+        max_hp = max_hp_of(self.char, hp_key, raw_hp) if hp_key else (raw_hp if isinstance(raw_hp, int) else 1)
         tracking = self.char.get("summon_hp_tracking", {})
         return {
             "displayName": sb.get("display_name", ""),
@@ -4956,9 +5227,22 @@ class CharacterSheetBridge(QObject):
             "reactions": [{"name": n, "desc": d} for n, d in sb.get("reactions", [])],
             "hpKey": hp_key or "",
             "maxHp": max_hp,
-            "currentHp": tracking.get(hp_key, max_hp) if hp_key else max_hp,
+            "currentHp": min(tracking.get(hp_key, max_hp), max_hp) if hp_key else max_hp,
             "hasHpTracking": bool(hp_key),
+            # its own max (the stat block's) and whether one was set in its place
+            "baseHp": raw_hp if isinstance(raw_hp, int) else max_hp,
+            "ownMax": bool(hp_key and (self.char.get("summon_hp_max") or {}).get(hp_key)),
+            "hitDiceAverage": dice_average(sb.get("hit_dice", "")),
         }
+
+    @Slot(str, int)
+    def setCreatureMaxHp(self, hp_key: str, value: int):
+        """A creature's maximum hit points, in place of its stat block's (0:
+        back to its own) -- the same as desktop's Set max HP."""
+        from dnd_app.core.summons import set_max_hp
+        if hp_key:
+            set_max_hp(self.char, hp_key, value or None)
+            self._changed()
 
     @Property(list, constant=True)
     def mountOptions(self):
@@ -5095,14 +5379,73 @@ class CharacterSheetBridge(QObject):
     @Property(list, notify=statsChanged)
     def ownedSummons(self):
         out = []
+        from dnd_app.core.summons import summon_statblock, group_of
         for i, entry in enumerate(self.char.get("owned_summons", [])):
-            sb = resolve_scaling_summon(entry.get("spell"), entry.get("level"), entry.get("form"))
+            sb = summon_statblock(entry, self.char)      # a Bestiary creature, or a Tasha's spirit (as desktop)
             if not sb:
                 continue
             norm = self._normalize_statblock(sb, hp_key=f"summon_{i}")
             norm["index"] = i
+            norm["group"] = group_of(entry)
             out.append(norm)
         return out
+
+    @Property(list, constant=True)
+    def creatureGroups(self):
+        """The groups a creature can be put in (core/summons.py GROUPS)."""
+        from dnd_app.core.summons import GROUPS
+        return list(GROUPS)
+
+    @Slot(int, str)
+    def setCreatureGroup(self, index: int, group: str):
+        from dnd_app.core.summons import set_group
+        if set_group(self.char, index, group):
+            self._changed()
+
+    @Property(list, notify=statsChanged)
+    def closedCreatureGroups(self):
+        return list(self.char.get("_closed_creature_groups", []))
+
+    @Slot(str, bool)
+    def toggleCreatureGroup(self, name: str, open_: bool):
+        """Open or close a group on the Creatures page -- kept on the
+        character, as desktop does."""
+        closed = [g for g in self.char.get("_closed_creature_groups", []) if g != name]
+        if not open_:
+            closed.append(name)
+        self.char["_closed_creature_groups"] = closed
+        self._changed()
+
+    @Slot(str, result=list)
+    def mountVehicleRows(self, query: str) -> list:
+        """The Creatures page's Mounts & Vehicles tab (core/bestiary.py, the
+        same list as desktop's)."""
+        from dnd_app.core.bestiary import mount_vehicle_rows
+        return mount_vehicle_rows(query)
+
+    @Slot(str, str, str, result=str)
+    def mountVehicleDetails(self, name: str, kind: str, heading: str) -> str:
+        from dnd_app.core.bestiary import plain_statblock_html, mount_vehicle_statblock
+        return plain_statblock_html(name, mount_vehicle_statblock(name, kind), heading)
+
+    @Slot(str, str)
+    def addMountOrVehicle(self, name: str, kind: str):
+        """A mount into Mounts, a vehicle into Vehicles, each with its stat
+        block on the Creatures page."""
+        key = "owned_mounts" if kind == "mount" else "owned_vehicles"
+        self.char.setdefault(key, []).append(name)
+        self.toastRequested.emit(f"{name} added to your creatures ({'Mounts' if kind == 'mount' else 'Vehicles'})")
+        self._changed()
+
+    @Slot(str, str)
+    def addBestiaryCreature(self, name: str, group: str = "Other"):
+        """Add to Creatures: a Bestiary creature on your page with its own
+        hit points, in the group picked -- a pet, a hireling, a mount, one
+        your DM gave (the same as desktop's Add Selected to Creatures)."""
+        from dnd_app.core.summons import add_summons
+        real = add_summons(self.char, name, 1, "From the Bestiary", group=group or "Other")
+        self.toastRequested.emit(f"{real} added to your creatures ({group or 'Other'})")
+        self._changed()
 
     @Slot(str, int, str)
     def addSummonedCreature(self, spell_name: str, level: int, form: str):

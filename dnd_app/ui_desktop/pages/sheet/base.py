@@ -387,7 +387,7 @@ class BaseSheetMixin:
         }
 
     def _rest(self, rest_type: str = "short"):
-        """The Rest button (and Tools → Short Rest / Long Rest): one dialog
+        """The Rest button (and Ctrl+R / Ctrl+Shift+R): one dialog
         to pick a short or long rest, see what it will restore, choose the
         hit dice to spend, and tick what to change on it -- then the rest."""
         from dnd_app.core.character import long_rest_block_reason
@@ -1040,6 +1040,20 @@ class BaseSheetMixin:
         refresh_btn.setFixedSize(50, 50)
         hl.addWidget(refresh_btn)
 
+        # the Dice Roller: a d20 beside Refresh
+        dice_btn = QPushButton()
+        dice_btn.setObjectName("diceRollerBtn")
+        _icons.set_button_icon(dice_btn, "dice", 24)
+        dice_btn.setToolTip("Dice Roller (Ctrl+D)")
+        dice_btn.setAccessibleName("Dice Roller")
+        dice_btn.setStyleSheet(
+            f"QPushButton{{background:{SURF2};border:1px solid {BORDER};border-radius:8px;"
+            f"padding:0;min-height:0px;}}"
+            f"QPushButton:hover{{background:{qa(TEAL,0x33)};border-color:{TEAL};}}")
+        dice_btn.clicked.connect(lambda: getattr(self.window(), "_open_dice_roller", lambda: None)())
+        dice_btn.setFixedSize(50, 50)
+        hl.addWidget(dice_btn)
+
         # Inspiration toggle
         self._insp_btn = QPushButton()
         _icons.set_button_icon(self._insp_btn, "inspiration", 22)
@@ -1087,8 +1101,7 @@ class BaseSheetMixin:
         # Each tab has a full name and a short one; _fit_tab_names() shows
         # the short ones only when the full ones don't fit the window.
         self._tab_names = []   # (full, short) per tab, in order
-        _SHORT = {"Abilities && Saves": "Abilities", "Skills && Proficiencies": "Skills",
-                  "Gear && Items": "Gear", "Traits && Notes": "Notes"}
+        _SHORT = {}
 
         def _add_tab(page, label, icon):
             idx = self._tabs.addTab(page, label)
@@ -1096,16 +1109,17 @@ class BaseSheetMixin:
             self._set_tab_tip(idx, label.replace("&&", "&"))   # the full name (if it's shortened) and its keys
             _icons.set_tab_icon(self._tabs, page, icon)
             return page
-        _add_tab(self._build_tab_abilities(),    "Abilities && Saves",      "abilities")
-        _add_tab(self._build_tab_skills(),       "Skills && Proficiencies", "skills")
+        # abilities and saves, proficiencies, skills and senses
+        _add_tab(self._build_tab_overview(),     "Overview",                "abilities")
         _add_tab(self._build_tab_combat(),       "Combat",                  "combat")
-        _add_tab(self._build_tab_gear(),         "Gear && Items",           "gear")
+        self._gear_tab_page = _add_tab(self._build_tab_gear(), "Inventory", "gear")
         self._spells_tab_page = _add_tab(self._build_tab_spells(), "Spells", "spells")
-        if self._has_infuse_item_access():
-            _add_tab(self._build_tab_infusions(), "Infusions",              "infusions")
+        # your own creatures: mounts, steeds, summons, companions, Wild Shape
+        # (an Artificer's infusions are in the Inventory tab's side panel)
+        self._creatures_tab_page = _add_tab(self._build_companions_tab(), "Creatures", "paw")
         self._choices_tab_page = _add_tab(self._build_tab_choices(), "Choices", "choices")
         _add_tab(self._build_tab_features(),     "Features",                "features")
-        _add_tab(self._build_tab_traits_notes(), "Traits && Notes",         "notes")
+        _add_tab(self._build_tab_traits_notes(), "Notes",                   "notes")
         root.addWidget(self._tabs, 1)
         self._install_choices_pulse()
         self._tabs.installEventFilter(self)   # re-fit the tab names on resize
@@ -1711,18 +1725,58 @@ class BaseSheetMixin:
         self._mark_dirty()
         self._auto_save()
 
-    def _open_remove_class(self):
-        """Remove an entire class (multiclass only — keeps at least one)."""
+    def _change_class(self, old: str):
+        """A class's ⋯ → Change class: another class in its place, at the
+        same level (core/character.py change_class). Its subclass and
+        choices are asked afresh on the Choices tab."""
+        from PySide6.QtWidgets import QInputDialog
+        from dnd_app.data.classes import CLASS_DICT
+        from dnd_app.core.character import change_class, get_class_entry, name_list
+        entry = get_class_entry(self.char, old)
+        if entry is None:
+            return
+        have = {c["class"] for c in self.char.get("classes", [])}
+        options = [n for n in sorted(CLASS_DICT) if n not in have]
+        new, ok = QInputDialog.getItem(self, "Change Class",
+                                       f"Your {old} {entry['level']} becomes which class, at level {entry['level']}?",
+                                       options, 0, False)
+        if not ok or not new:
+            return
+        if QMessageBox.question(self, "Change Class",
+                                f"{old} {entry['level']} becomes {new} {entry['level']}. Its subclass and the "
+                                f"choices it made go, and {new}'s are asked on the Choices tab. Continue?",
+                                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
+        lost = change_class(self.char, old, new)
+        if lost is None:
+            return
+        self.ctrl.refresh()
+        if lost:
+            self._populate_my_spells_from_char()
+        self._toast(f"{old} is now {new} {entry['level']}"
+                    + (f" — its spells went: {name_list(lost)}" if lost else ""))
+        self._mark_dirty()
+        self._auto_save()
+
+    def _open_remove_class(self, cls_name: str = ""):
+        """Remove an entire class (multiclass only — keeps at least one):
+        the one whose ⋯ was used, or asked."""
         from PySide6.QtWidgets import QInputDialog
         from dnd_app.core.builder import rebuild
         from dnd_app.core.calculator import update_all
         classes = self.char.get("classes", [])
         if len(classes) <= 1:
             QMessageBox.information(self, "Can't Remove", "Cannot remove the only class."); return
-        names = [f"{c['class']} (Lv{c['level']})" for c in classes]
-        choice, ok = QInputDialog.getItem(self, "Remove Class", "Remove which class?", names, 0, False)
-        if not ok: return
-        cls_name = choice.split(" (")[0]
+        if cls_name:
+            lvl = next((c["level"] for c in classes if c["class"] == cls_name), 0)
+            if QMessageBox.question(self, "Remove Class", f"Remove {cls_name} {lvl}, its levels and its spells?",
+                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                return
+        else:
+            names = [f"{c['class']} (Lv{c['level']})" for c in classes]
+            choice, ok = QInputDialog.getItem(self, "Remove Class", "Remove which class?", names, 0, False)
+            if not ok: return
+            cls_name = choice.split(" (")[0]
         # Same diff-and-prune as _open_level_down above, for the same
         # reason -- removing a class entirely is a bigger change than
         # levelling it down by one, so it needs this at least as much:
@@ -1844,6 +1898,11 @@ class BaseSheetMixin:
             ed.blockSignals(True)
             ed.setPlainText(char.get(key,""))
             ed.blockSignals(False)
+        # (the Notes list and Character page: pages can come from elsewhere,
+        # a PDF import; the suggestions follow the background)
+        if hasattr(self, "_rebuild_notes_list"):
+            self._refresh_notes_character()
+            self._open_notes(*self._notes_sel)
 
     def _refresh_stat_bar(self):
         update_all(self.char)

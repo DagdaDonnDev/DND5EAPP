@@ -1198,8 +1198,8 @@ def character_from_values(values: dict, how: str = "form") -> tuple[dict, list[s
             if not set_owned_magic_item_attuned(char, e["uid"], True):
                 auto.append(e["name"])
     if auto:
-        report.append("Attuned to " + ", ".join(auto) + " (they need attunement) -- end it on the "
-                      "Equipment screen for any you aren't attuned to.")
+        report.append("Attuned to " + ", ".join(auto) + " (they need attunement) -- end it in your "
+                      "Inventory for any you aren't attuned to.")
     if unknown_items:
         report.append("Added as custom items (not in the app's lists): " + ", ".join(unknown_items))
 

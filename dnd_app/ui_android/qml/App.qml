@@ -36,6 +36,7 @@ ApplicationWindow {
     property QtObject saveLoadBridge: null
     property QtObject sheetBridge: null
     property QtObject diceRollerBridge: null
+    property QtObject bestiaryBridge: null
     property QtObject creditsBridge: null
     property QtObject easterEggBridge: null
     property QtObject appSettingsBridge: null
@@ -97,8 +98,7 @@ ApplicationWindow {
     readonly property string equipmentComp: "EquipmentScreen.qml"
     readonly property string sheetComp: "SheetCombatScreen.qml"
     readonly property string sheetActionsComp: "SheetActionsScreen.qml"
-    readonly property string sheetAbilitiesComp: "SheetAbilitiesScreen.qml"
-    readonly property string sheetProficienciesComp: "SheetProficienciesScreen.qml"
+    readonly property string sheetOverviewComp: "SheetOverviewScreen.qml"
     readonly property string sheetSpellsComp: "SheetSpellsScreen.qml"
     readonly property string sheetEquipmentComp: "SheetEquipmentScreen.qml"
     readonly property string sheetCompanionsComp: "SheetCompanionsScreen.qml"
@@ -124,8 +124,8 @@ ApplicationWindow {
     }
     function preloadScreens() {
         var files = [sheetComp, raceListComp, abilitiesComp, classComp, equipmentComp,
-                     sheetActionsComp, sheetSpellsComp, sheetEquipmentComp, sheetAbilitiesComp,
-                     sheetProficienciesComp, sheetFeaturesComp, sheetChoicesComp, sheetNotesComp,
+                     sheetActionsComp, sheetSpellsComp, sheetEquipmentComp, sheetOverviewComp,
+                     sheetFeaturesComp, sheetChoicesComp, sheetNotesComp,
                      sheetCompanionsComp, sheetInfusionsComp]
         for (var i = 0; i < files.length; ++i) {
             if (!_screenCache[files[i]])
@@ -173,29 +173,28 @@ ApplicationWindow {
         { label: "Combat", icon: "combat", screen: sheetComp, enabled: true },
         { label: "Actions", icon: "bolt", screen: sheetActionsComp, enabled: true,
           sections: ["Resources", "Action", "Bonus Action", "Reaction", "Passive / Other"] },
-        { label: "Abilities", icon: "abilities", screen: sheetAbilitiesComp, enabled: true },
-        { label: "Proficiencies", icon: "skills", screen: sheetProficienciesComp, enabled: true },
+        { label: "Overview", icon: "abilities", screen: sheetOverviewComp, enabled: true,
+          sections: ["Skills", "Senses", "Proficiencies"] },
         { label: "Spells", icon: "spells", screen: sheetSpellsComp, enabled: true,
           sections: ["Spell Slots", "Known Spells", "Add a Spell"],
           pulse: window.spellsPending },
-        { label: "Equipment", icon: "gear", screen: sheetEquipmentComp, enabled: true,
+        { label: "Inventory", icon: "gear", screen: sheetEquipmentComp, enabled: true,
           sections: ["Inventory", "Add Equipment", "Magic Items", "Add a Magic Item"] },
-        { label: "Companions", icon: "paw", screen: sheetCompanionsComp, enabled: true,
-          sections: ["Mounts", "Vehicles", "Summoned Creatures", "Wild Shape"] },
-        { label: "Features", icon: "features", screen: sheetFeaturesComp, enabled: true },
     ]
-    // Infusions only makes sense for Artificers -- everyone else never
-    // sees the entry at all, rather than a permanently "(finish
-    // previous step)"-style disabled one that would never unlock.
+    // Infusions (an Artificer's) sit after Inventory; everyone else never
+    // sees the entry at all, rather than a permanently disabled one. Then
+    // Creatures: mounts, steeds, summons, companions, Wild Shape.
     readonly property var sheetNavItems:
         (sheetBridge !== null && sheetBridge.isArtificer
             ? sheetNavItemsBase.concat([{ label: "Infusions", icon: "infusions", screen: sheetInfusionsComp, enabled: true }])
             : sheetNavItemsBase
         ).concat([
+            { label: "Creatures", icon: "paw", screen: "SheetCompanionsScreen.qml", enabled: true },
+            { label: "Features", icon: "features", screen: sheetFeaturesComp, enabled: true },
             { label: "Choices", icon: "choices", screen: sheetChoicesComp, enabled: true,
               pulse: window.choicesPending },
             { label: "Notes", icon: "notes", screen: sheetNotesComp, enabled: true,
-              sections: ["Personality", "Appearance", "Backstory"].concat(
+              sections: ["Character", "Backstory"].concat(
                   sheetBridge !== null ? sheetBridge.notesPages.map(p => p.title) : []) },
         ])
     readonly property var navItems: sheetMode ? sheetNavItems : wizardNavItems
@@ -351,7 +350,9 @@ ApplicationWindow {
     // out as a 2x2 tile grid in the drawer's own bottom section.
     readonly property var utilityNavItems: [
         { label: "Dice Roller", icon: "dice", enabled: true, onOpen: function() { diceRollerDialog.open() } },
+        { label: "Bestiary", icon: "paw", enabled: true, onOpen: function() { bestiaryDialog.open() } },
         { label: "Settings", icon: "settings", enabled: true, onOpen: function() { settingsDialog.open() } },
+        { label: "Reference", icon: "features", enabled: true, onOpen: function() { referenceDialog.open() } },
         { label: "Save & Export", icon: "save", enabled: true, onOpen: function() { saveLoadDialog.open(); window.saveLoadBridge.refresh() } },
         { label: "Credits", icon: "credits", enabled: true, onOpen: function() { creditsDialog.open() } },
     ]
@@ -364,7 +365,7 @@ ApplicationWindow {
         width: 300
         anchors.centerIn: parent
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         ColumnLayout {
             anchors.fill: parent
@@ -477,7 +478,7 @@ ApplicationWindow {
         width: Math.min(parent ? parent.width - 32 : 320, 340)
         anchors.centerIn: parent
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
         ColumnLayout {
             anchors.fill: parent
             spacing: 12
@@ -532,6 +533,18 @@ ApplicationWindow {
         contentSource: Qt.resolvedUrl("DiceRollerScreen.qml")
     }
     MFullPageDialog {
+        id: bestiaryDialog
+        objectName: "bestiaryDialog"
+        dialogTitle: "Bestiary"
+        contentSource: Qt.resolvedUrl("BestiaryScreen.qml")
+    }
+    MFullPageDialog {
+        id: referenceDialog
+        objectName: "referenceDialog"
+        dialogTitle: "Reference"
+        contentSource: Qt.resolvedUrl("ReferenceScreen.qml")
+    }
+    MFullPageDialog {
         id: creditsDialog
         objectName: "creditsDialog"
         dialogTitle: "Credits"
@@ -567,7 +580,7 @@ ApplicationWindow {
         width: Math.min(parent ? parent.width - 32 : 360, 360)
         padding: 16
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
         contentItem: ColumnLayout {
             spacing: 10
             Label {
@@ -913,6 +926,14 @@ ApplicationWindow {
         objectName: "actionQuestionDialog"
         onPicked: (key) => window.sheetBridge.answerActionQuestion(key)
     }
+    // the same question with a long list of answers: searchable
+    MPickerDialog {
+        id: actionPickerDialog
+        objectName: "actionPickerDialog"
+        property bool answered: false
+        onPicked: (value) => { answered = true; window.sheetBridge.answerActionQuestion(value) }
+        onClosed: if (!answered) window.sheetBridge.answerActionQuestion("")
+    }
     // After an attack roll (core/attacks.py attack_report, the same as
     // desktop's dialog), top to bottom:
     //   the roll: a card with the total, big; a bar down its left side says
@@ -979,7 +1000,7 @@ ApplicationWindow {
         height: Math.min(attackCol.implicitHeight + 32, (parent ? parent.height : 800) - 72)
         padding: 16
         background: Rectangle { color: Theme.bg; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
         contentItem: Flickable {
             clip: true
             contentHeight: attackCol.implicitHeight
@@ -1258,6 +1279,14 @@ ApplicationWindow {
     Connections {
         target: window.sheetBridge
         function onActionQuestion(title, question, options) {
+            if (options.length > 12) {
+                // a long list (a Polymorph's creature, a summon's): one to search
+                actionPickerDialog.dialogTitle = question
+                actionPickerDialog.options = options
+                actionPickerDialog.answered = false
+                actionPickerDialog.open()
+                return
+            }
             actionQuestionDialog.heading = title
             actionQuestionDialog.message = question
             actionQuestionDialog.options = options.map(function(o) { return {key: o, text: o} })
@@ -1388,6 +1417,13 @@ ApplicationWindow {
         if (settingsDialog.opened) { settingsDialog.close(); return }
         if (saveLoadDialog.opened) { saveLoadDialog.close(); return }
         if (diceRollerDialog.opened) { diceRollerDialog.close(); return }
+        if (bestiaryDialog.opened) {
+            // back from a stat block goes to the list first
+            var bi = bestiaryDialog.loadedItem
+            if (bi && bi.shown !== "") bi.shown = ""
+            else bestiaryDialog.close()
+            return
+        }
         if (creditsDialog.opened) { creditsDialog.close(); return }
         if (stackView.depth > 1) {
             stackView.pop()

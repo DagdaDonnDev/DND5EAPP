@@ -41,11 +41,10 @@ Drawer {
         color: Theme.surf
     }
 
-    // Material's default modal dim is a light-toned scrim; this makes
-    // the screen the drawer covers read as black at partial opacity
-    // instead.
+    // The page behind the open menu: veiled in the theme's own scrim
+    // (light in a light theme, near black in a dark one).
     Overlay.modal: Rectangle {
-        color: Qt.rgba(0, 0, 0, 0.8)
+        color: Theme.scrim
     }
 
     ColumnLayout {

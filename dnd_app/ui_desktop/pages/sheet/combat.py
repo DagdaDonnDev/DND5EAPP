@@ -401,14 +401,17 @@ class CombatMixin:
         from dnd_app.data.statblocks import WILDSHAPE_BEASTS
         from dnd_app.core.calculator import get_available_wildshape_beasts
 
+        from dnd_app.core.forms import form_kind
+        kind = form_kind(self.char) or "Wild Shape"
         card = _card(qa(PURPLE, 0x55))
         cl = QVBoxLayout(card); cl.setContentsMargins(12,10,12,10); cl.setSpacing(6)
-        cl.addWidget(_lbl("WILD SHAPE", GOLD, FS_SMALL, bold=True))
+        cl.addWidget(_lbl(kind.upper(), GOLD, FS_SMALL, bold=True))
 
         active = self.char.get("_wildshape_active")
         if active and active in WILDSHAPE_BEASTS:
             beast = WILDSHAPE_BEASTS[active]
-            cl.addWidget(_lbl(f"Currently: {active}", PURP2, FS_BODY, bold=True, wrap=False))
+            cl.addWidget(_lbl(f"Currently: {active}" if kind == "Wild Shape" else f"{kind}: {active}",
+                              PURP2, FS_BODY, bold=True, wrap=False))
             cur_hp = self.char.get("_wildshape_hp", beast["hp"])
             cl.addWidget(_lbl(f"HP {cur_hp}/{beast['hp']}   AC {beast['ac']}   "
                               f"(edit HP in the card above — same pool)", TEXT2, FS_SMALL))
@@ -430,7 +433,7 @@ class CombatMixin:
                 heal_btn.setStyleSheet(pill_btn("", GOLD).styleSheet())
                 heal_btn.clicked.connect(self._wildshape_moon_heal)
                 cl.addWidget(heal_btn)
-            revert_btn = QPushButton("Revert to Normal Form")
+            revert_btn = QPushButton("Revert to Normal Form" if kind == "Wild Shape" else f"End {kind}")
             revert_btn.setStyleSheet(pill_btn("", CRIMSON).styleSheet())
             revert_btn.clicked.connect(self._wildshape_revert)
             cl.addWidget(revert_btn)
@@ -544,13 +547,11 @@ class CombatMixin:
         # Reverting early doesn't refund the use — matches the real rule
         # that the use is spent the moment you transform, not metered by
         # how long you stay shapeshifted.
-        self.char["_wildshape_active"] = None
-        self.char.pop("_wildshape_hp", None)
-        from dnd_app.core.hp_undo import clear_hp_undo
-        clear_hp_undo(self.char)        # (back in your own form: the last Damage or Heal stands)
-        fx = self.char.get("active_effects", [])
-        if "Wild Shape" in fx:
-            fx.remove("Wild Shape")
+        # (core/forms.py: a Polymorph's form ends the spell and its
+        # concentration too; back in your own form, the last Damage or
+        # Heal stands)
+        from dnd_app.core.forms import leave_form
+        leave_form(self.char)
         self._mark_dirty()
         self.ctrl.refresh()
         self._refresh_combat()
@@ -790,7 +791,7 @@ class CombatMixin:
         wpn_head.addStretch()
         worn = QFrame(); worn.setObjectName("wornLine")
         worn.setCursor(Qt.PointingHandCursor)
-        worn.setToolTip("Your armour and shield. Put them on or take them off in the Gear tab.")
+        worn.setToolTip("Your armour and shield. Put them on or take them off in the Inventory tab.")
         worn.setStyleSheet("QFrame#wornLine{background:transparent;border:none;}")
         wl = QHBoxLayout(worn); wl.setContentsMargins(0,0,0,0); wl.setSpacing(6)
         # (the AC they make is in the HP card, beside this one)
@@ -799,8 +800,8 @@ class CombatMixin:
         wl.addWidget(self._armor_display)
         wl.addWidget(_lbl("·", TEXT3, FS_SMALL, wrap=False))
         wl.addWidget(self._shield_display)
-        wl.addWidget(_lbl("Gear ▸", TEAL2, FS_TINY, bold=True, wrap=False))
-        worn.mousePressEvent = lambda e: self._tabs.setCurrentIndex(3)
+        wl.addWidget(_lbl("Inventory ▸", TEAL2, FS_TINY, bold=True, wrap=False))
+        worn.mousePressEvent = lambda e: self._tabs.setCurrentWidget(self._gear_tab_page)
         wpn_head.addWidget(worn)
         acl2.addLayout(wpn_head)
         # The Gear tab (for equipping weapons/armor) is one click away on
@@ -949,7 +950,10 @@ class CombatMixin:
         top_lay.addWidget(cond_card, 3)
 
         from dnd_app.core.calculator import get_wild_shape_info
-        if get_wild_shape_info(self.char) is not None:
+        from dnd_app.core.forms import form_name as _form_name
+        # a druid's Wild Shape card -- or anyone's, in another creature's form
+        # (Polymorph, Shapechange): what you are, and the way back
+        if get_wild_shape_info(self.char) is not None or _form_name(self.char):
             self._wildshape_card_container = top_lay
             self._wildshape_card_widget = self._build_wildshape_control_card()
             top_lay.addWidget(self._wildshape_card_widget, 2)
@@ -1183,9 +1187,8 @@ class CombatMixin:
     def _after_damage(self, res: dict, lead: str = ""):
         """Show what take_damage() did: the HP boxes, one toast, the death
         screen, and the concentration save it asks for."""
-        # 1. Every HP widget follows the character (one controller refresh).
-        self.ctrl.update("current_hp", self.char.get("current_hp", 0), rebuild_char=False)
-        self._refresh_concentration()
+        # 1. The hit points now; the rest of the sheet once the presses stop
+        self._show_hp_change()
         self._mark_dirty()
         # 2. Dead: the YOU DIED screen says why.
         if res["died"]:
@@ -1285,11 +1288,35 @@ class CombatMixin:
             self._toast(why.replace(" -- ", " — "))
             return
         note = heal(self.char, amt)
-        remember_hp_change(self.char, before, f"{amt} healing")
-        self.ctrl.update("current_hp", self.char["current_hp"], rebuild_char=False)
+        if not remember_hp_change(self.char, before, f"{amt} healing"):
+            return                              # (already at full: nothing to do)
+        self._show_hp_change()
         self._mark_dirty()
         if note:
             self._toast(note)
+
+    def _show_hp_change(self):
+        """After Damage, Heal or Undo: the hit point boxes, the bar, the
+        death saves, concentration and Undo straight away, and the rest of
+        the sheet (what depends on your hit points) once the presses stop.
+        A full refresh on every press took half a second, so pressing Heal
+        quickly piled them up and the window froze."""
+        if hasattr(self, "_hp_current_hp") and not self.char.get("_wildshape_active"):
+            for box, key in ((self._hp_current_hp, "current_hp"), (self._hp_temp_hp, "temp_hp")):
+                box.blockSignals(True)
+                box.setValue(int(self.char.get(key, 0) or 0))
+                box.blockSignals(False)
+        self._update_hp_bar()
+        self._refresh_death_and_conditions()
+        self._refresh_concentration()
+        timer = getattr(self, "_hp_refresh_timer", None)
+        if timer is None:
+            timer = self._hp_refresh_timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.setInterval(350)
+            timer.timeout.connect(
+                lambda: self.ctrl.update("current_hp", self.char.get("current_hp", 0), rebuild_char=False))
+        timer.start()
 
     def _sync_hp_undo(self):
         """The HP card's Undo: there while the last Damage or Heal can
@@ -1621,6 +1648,25 @@ class CombatMixin:
         if name in self.char.get("active_effects", []):
             self._toast(f"{name} is already on you")
             return
+        # an ally's Polymorph: the creature they made you (core/forms.py)
+        from dnd_app.core import forms as _forms
+        if name in _forms.ALLY_FORMS:
+            res = self._ask_through(name, lambda a: _forms.ally_form_question(self.char, name, a))
+            if not res:
+                return
+            msg = _forms.become_ally_form(self.char, name, res["form"])
+            self._mark_dirty()
+            self.ctrl.refresh()
+            self._toast(msg)
+            return
+        # an ally's Aid or Magic Weapon does more from a higher slot: which?
+        from dnd_app.core.spell_effects import added_effect_levels
+        levels = added_effect_levels(name)
+        if levels:
+            got, ok = QInputDialog.getItem(self, name, f"What level was {name} cast at?", levels, 0, False)
+            if not ok:
+                return
+            self.char.setdefault("effect_details", {})[name] = {"level": int(got.split()[0][:-2])}
         self.char.setdefault("active_effects", []).append(name)
         note = on_effect_started(self.char, name)       # Rage ends concentration
         self.ctrl.refresh()          # AC pill etc. recompute
@@ -1658,7 +1704,7 @@ class CombatMixin:
         it does, and ✕ to end it. The tab says how many there are."""
         if not hasattr(self, "_fx_lay"): return
         from dnd_app.core.effects import EFFECT_TABLE
-        from dnd_app.core.riders import effect_note
+        from dnd_app.core.spell_effects import effect_view
         while self._fx_lay.count() > 1:
             it = self._fx_lay.takeAt(0)
             w = it.widget()
@@ -1684,12 +1730,13 @@ class CombatMixin:
                               f"border-radius:6px;}}")
             rl = QHBoxLayout(row); rl.setContentsMargins(8,5,8,5); rl.setSpacing(7)
             rl.addWidget(_icons.icon_label("effects", 16, ink))
-            rl.addWidget(_lbl(name + ("  ©" if info.get("conc") else ""), ink, FS_SMALL,
+            # its level, when cast above its own, and what it does at that
+            # level (core/spell_effects.py effect_view, the same on Android)
+            view = effect_view(self.char, name)
+            rl.addWidget(_lbl(view["title"] + ("  ©" if info.get("conc") else ""), ink, FS_SMALL,
                               bold=True, wrap=False), 1)
-            # a smite's dice at the level it was cast, or what's left of it on
-            # the target once it has landed (core/riders.py)
-            note = effect_note(self.char, name) or info.get("note", "Custom effect — tracked, no automatic numbers.")
-            row.setToolTip(f"<b>{name}</b>" + (" (concentration)" if info.get("conc") else "")
+            note = view["note"]
+            row.setToolTip(f"<b>{view['title']}</b>" + (" (concentration)" if info.get("conc") else "")
                            + f"<br>{note}<br><br><i>Right-click: end it, or read it all</i>")
             row.setAccessibleName(f"{name}: {note}")
             rl.addWidget(self._rounds_button("effect", name, ink), 0, Qt.AlignVCenter)
@@ -2300,7 +2347,8 @@ class CombatMixin:
         from dnd_app.core.attacks import other_attacks
         for a in other_attacks(self.char):
             self._add_attack_row(a)
-        for idx, wpn in enumerate(self.char.get("equipped_weapons",[])):
+        # two daggers held (one in each hand) are one row
+        for idx, wpn in enumerate(dict.fromkeys(self.char.get("equipped_weapons", []))):
             self._add_weapon_row(wpn, is_offhand=(idx > 0))
         self._fit_weapons_card()
 
@@ -2450,19 +2498,16 @@ class CombatMixin:
             item = self._resist_lay.takeAt(0)
             if item.widget(): item.widget().setParent(None)
 
-        resistances = self.char.get("damage_resistances", [])
-        immunities  = self.char.get("damage_immunities", []) + [
-            (f"{cond} (condition)", source)
-            for cond, source in self.char.get("condition_immunities_magic", [])
-        ]
-
-        if not resistances and not immunities:
+        from dnd_app.core.calculator import defenses
+        rows = defenses(self.char)
+        if not rows:
             self._resist_frame.setVisible(False)
             self._resist_caption.setVisible(False)
             return
         self._resist_frame.setVisible(True)
         self._resist_caption.setVisible(True)
-        idx = 0
+        self._resist_caption.setText("RESISTANCES & WEAKNESSES" if any(d["kind"] == "vulnerable" for d in rows)
+                                     else "RESISTANCES")
         cols = 2   # (the HP card is two columns wide)
 
         def _badge(text, color, tooltip):
@@ -2475,70 +2520,10 @@ class CombatMixin:
             b.setToolTip(tooltip)
             return b
 
-        ALL_DAMAGE_TYPES = ["acid","bludgeoning","cold","fire","force","lightning",
-                            "necrotic","piercing","poison","psychic","radiant",
-                            "slashing","thunder"]
-
-        def _expand(dmg_type, source):
-            """'all' / 'all except X[/Y]' -> one (type, source) pair per
-            real damage type; anything else passes through unchanged."""
-            low = dmg_type.lower()
-            if low == "all":
-                return [(t, source) for t in ALL_DAMAGE_TYPES]
-            if low.startswith("all except"):
-                excluded = {e.strip() for e in low.replace("all except","").split("/")}
-                return [(t, source) for t in ALL_DAMAGE_TYPES if t not in excluded]
-            return [(dmg_type, source)]
-
-        from collections import defaultdict
-        res_by_type = defaultdict(list)
-        for dmg_type, source in resistances:
-            base = dmg_type.split(" (")[0]           # "bludgeoning (nonmagical)" -> "bludgeoning"
-            qualifier = dmg_type[len(base):].strip() # "" or "(nonmagical)"
-            for t, src in _expand(base, source):
-                label = t + (f" {qualifier}" if qualifier else "")
-                res_by_type[t].append((label, src))
-        imm_by_type = defaultdict(list)
-        for dmg_type, source in immunities:
-            if "(condition)" in dmg_type:
-                # Condition immunities (frightened, poisoned, etc.) aren't a
-                # damage type and can't be superseded by damage resistance —
-                # keep them in their own bucket, never expand/dedupe them
-                # against the damage-type table.
-                imm_by_type[dmg_type].append((dmg_type, source))
-                continue
-            base = dmg_type.split(" (")[0]
-            for t, src in _expand(base, source):
-                imm_by_type[t].append((t, src))
-
-        # Immunity supersedes resistance to the same type — D&D doesn't
-        # stack them, so don't display both for one damage type.
-        for t in list(res_by_type):
-            if t in imm_by_type:
-                del res_by_type[t]
-
-        for dmg_type, entries in sorted(res_by_type.items()):
-            # Prefer an unqualified entry (e.g. Totem Barbarian's broad,
-            # magical "all damage" resistance) over a qualified one (e.g.
-            # Lycanthropy's narrower "bludgeoning (nonmagical, non-
-            # silvered)") when both exist for the same base damage type —
-            # an unqualified resistance always covers at least as much as
-            # any qualified one, so it should win the display, not
-            # whichever entry happened to be appended to the list first.
-            unqualified = next((e for e in entries if " (" not in e[0]), None)
-            display_label = unqualified[0] if unqualified else entries[0][0]
-            sources = [s for _, s in entries]
-            tip = f"Resistance to {display_label} damage\nFrom: " + ", ".join(sources)
+        # ½ resistance, ⊘ immunity, ×2 vulnerability (core/calculator.py defenses)
+        look = {"resist": ("½", TEAL2), "immune": ("⊘", GOLD2), "vulnerable": ("×2", CRIM2)}
+        for idx, d in enumerate(rows):
+            mark, color = look[d["kind"]]
             r, c = divmod(idx, cols)
-            self._resist_lay.addWidget(_badge(f"½ {display_label}", TEAL2, tip), r, c)
-            idx += 1
-        for dmg_type, entries in sorted(imm_by_type.items()):
-            display_label = entries[0][0]
-            sources = [s for _, s in entries]
-            is_condition = "(condition)" in display_label
-            label_txt = display_label if is_condition else f"{display_label} damage"
-            tip = f"Immunity to {label_txt}\nFrom: " + ", ".join(sources)
-            r, c = divmod(idx, cols)
-            self._resist_lay.addWidget(_badge(f"⊘ {display_label}", GOLD2, tip), r, c)
-            idx += 1
+            self._resist_lay.addWidget(_badge(f"{mark} {d['label']}", color, d["tip"]), r, c)
 

@@ -207,6 +207,12 @@ class GearMixin:
         self._tabs.currentChanged.connect(lambda _i: QTimer.singleShot(0, self._fit_gear_split))
         left_l.addWidget(left_split, 1)
         splitter.addWidget(left_w)
+        # an item dragged over from a browser lands here (equipment asks how
+        # many, as Add does)
+        from dnd_app.ui_desktop.widgets import accept_drop
+        left_w.setObjectName("inventoryDrop")
+        accept_drop(left_w, "equipment", lambda n: self._add_mundane_from_browser(n), TEAL)
+        accept_drop(left_w, "magic-item", lambda n: self._add_magic_item_by_name(n), TEAL)
 
         # ── RIGHT: browser tabs (Mundane | Magic) ─────────────────────────────
         right_tabs = QTabWidget()
@@ -236,7 +242,7 @@ class GearMixin:
                                        f"border-radius:6px;padding:4px 8px;color:{TEXT};}}")
         self._md_cat = QComboBox()
         for cat in ["All","Weapons — Simple","Weapons — Martial","Materials (Silvered/Adamantine)","Armor",
-                     "Adventuring Gear","Tools","Mounts & Vehicles"]:
+                     "Adventuring Gear","Tools"]:
             self._md_cat.addItem(cat)
         self._md_filters = FilterSidebar(mundane_tab)
         self._md_filters.add_combo("Category", self._md_cat)
@@ -283,6 +289,10 @@ class GearMixin:
             self._md_list, self._show_item_details_for, selected_icon="#0a0d12", column=5,
             has_details=lambda name: bool(name) and name != "__section__"))
         self._md_list.itemDoubleClicked.connect(self._add_mundane_from_browser)
+        from dnd_app.ui_desktop.widgets import drag_source
+        # (dragged onto your inventory to add it)
+        drag_source(self._md_list, "equipment",
+                    lambda i: (lambda n: n if n and n != "__section__" else "")(i.siblingAtColumn(0).data(Qt.UserRole)))
         self._md_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self._md_list.customContextMenuRequested.connect(self._on_mundane_browser_ctx)
         mdt.addWidget(self._md_list,1)
@@ -307,7 +317,7 @@ class GearMixin:
                                     "Hat / Helm","Boots / Slippers","Bracers / Gauntlets",
                                     "Belt","Potion","Scroll / Wand / Rod / Staff","Other"])
         self._mi_rarity_f = QComboBox()
-        self._mi_rarity_f.addItems(["All Rarities","Common","Uncommon","Rare","Very Rare","Legendary","Artifact"])
+        self._mi_rarity_f.addItems(["All Rarities","Common","Uncommon","Rare","Very Rare","Legendary","Artifact","Unknown"])
         self._mi_attune_f = QComboBox()
         self._mi_attune_f.addItems(["All","Requires Attunement","No Attunement"])
         self._mi_filters = FilterSidebar(magic_tab)
@@ -334,6 +344,8 @@ class GearMixin:
         self._mi_browser.setItemDelegate(RarityInspectDelegate(
             self._mi_browser, self._show_item_details_for, selected_icon="#15071f"))
         self._mi_browser.itemDoubleClicked.connect(lambda item: self._add_magic_item_by_name(item.data(Qt.UserRole)))
+        from dnd_app.ui_desktop.widgets import drag_source
+        drag_source(self._mi_browser, "magic-item", lambda i: i.data(Qt.UserRole) or "")
         self._mi_browser.setContextMenuPolicy(Qt.CustomContextMenu)
         self._mi_browser.customContextMenuRequested.connect(self._on_magic_browser_ctx)
         mgt.addWidget(self._mi_browser,1)
@@ -345,9 +357,13 @@ class GearMixin:
         right_tabs.addTab(magic_tab, "Magic Items")
         _icons.set_tab_icon(right_tabs, magic_tab, "magic", 15)
 
-        companions_tab = self._build_companions_tab()
-        right_tabs.addTab(companions_tab, "Companions")
-        _icons.set_tab_icon(right_tabs, companions_tab, "paw", 15)
+        # an Artificer's infusions beside the item lists (your creatures --
+        # mounts, steeds, summons, companions -- are on the Creatures tab)
+        self._gear_side_tabs = right_tabs
+        if self._has_infuse_item_access():
+            infusions_tab = self._build_tab_infusions()
+            right_tabs.addTab(infusions_tab, "Infusions")
+            _icons.set_tab_icon(right_tabs, infusions_tab, "infusions", 15)
 
         splitter.addWidget(right_tabs)
         # what you carry gets two thirds of the width, the browser one third
@@ -417,8 +433,6 @@ class GearMixin:
             from dnd_app.data.items import TOOL_STATS
             tool_data = [(t, "Tool") + TOOL_STATS[t] for t in ALL_TOOLS if t in TOOL_STATS]
             sections.append(("Tools",          tool_data,       "tool"))
-        if cat in ("All","Mounts & Vehicles"):
-            sections.append(("Mounts",         MOUNTS,          "mount"))
 
         from dnd_app.core.inventory import money_text, weight_text
         for section_name, items, kind in sections:
@@ -493,32 +507,19 @@ class GearMixin:
                 parent.setExpanded(True)
 
     def _on_mundane_browser_ctx(self, pos):
-        """Right-click on an item in the Equipment browser: its details, or add it."""
+        """Right-click on an item in the Equipment browser: Add, or Show details."""
         item = self._md_list.itemAt(pos)
         name = item.data(0, Qt.UserRole) if item else None
         if not name or name == "__section__": return
-        from PySide6.QtWidgets import QMenu
-        menu = QMenu(self)
-        detail_act = menu.addAction(_icons.icon("features"), f"Details: {name[:36]}")
-        add_act = menu.addAction(_icons.icon("arrow_left"), "Add to Inventory")
-        action = menu.exec(self._md_list.viewport().mapToGlobal(pos))
-        if action == detail_act:
-            self._show_item_details_for(name)
-        elif action == add_act:
-            self._add_mundane_from_browser(item, 0)
+        from dnd_app.ui_desktop.widgets import browser_row_menu
+        browser_row_menu(self, self._md_list.viewport().mapToGlobal(pos), "Add to Inventory",
+                         lambda: self._add_mundane_from_browser(item, 0),
+                         lambda: self._show_item_details_for(name))
 
     def _add_mundane_from_browser(self, item, col=None):
         if not item: return
         name = item.data(0, Qt.UserRole) if hasattr(item,'data') else item
         if not name or name == "__section__": return
-        # Mounts get a real stat block in the Companions tab instead of a
-        # generic equipment line — a Warhorse's AC/HP/attacks matter in
-        # play, unlike a bedroll's weight and price.
-        from dnd_app.data.items import MOUNTS
-        if any(row[0] == name for row in MOUNTS):
-            self._add_mount(name)
-            self._toast(f"{name} added — see its stat block in the Companions tab")
-            return
         qty, ok = QInputDialog.getInt(self, f"Add {name}", f"How many {name}?", 1, 1, 9999, 1)
         if not ok: return
         # onto its row if it's already carried, with the rules' weight and
@@ -558,7 +559,7 @@ class GearMixin:
         if itype == "Weapon": return "Weapon"
         return "Other"
 
-    _RARITY_ORDER = ["Common","Uncommon","Rare","Very Rare","Legendary","Artifact"]
+    _RARITY_ORDER = ["Common","Uncommon","Rare","Very Rare","Legendary","Artifact","Unknown"]
     # dark grey -> amber, the same palette the Android app uses (one source:
     # data/magic_items.py RARITY_COLORS)
     from dnd_app.data.magic_items import RARITY_COLORS as _RARITY_COLORS
@@ -632,19 +633,14 @@ class GearMixin:
         self._add_magic_item_by_name(name)
 
     def _on_magic_browser_ctx(self, pos):
-        """Right-click on a magic item in the browser: its details, or add it."""
+        """Right-click on a magic item in the browser: Add, or Show details."""
         item = self._mi_browser.itemAt(pos)
         name = item.data(Qt.UserRole) if item else None
         if not name: return
-        from PySide6.QtWidgets import QMenu
-        menu = QMenu(self)
-        detail_act = menu.addAction(_icons.icon("features"), f"Details: {name[:36]}")
-        add_act = menu.addAction(_icons.icon("arrow_left"), "Add to Inventory")
-        action = menu.exec(self._mi_browser.viewport().mapToGlobal(pos))
-        if action == detail_act:
-            self._show_item_details_for(name)
-        elif action == add_act:
-            self._add_magic_item_by_name(name)
+        from dnd_app.ui_desktop.widgets import browser_row_menu
+        browser_row_menu(self, self._mi_browser.viewport().mapToGlobal(pos), "Add to Inventory",
+                         lambda: self._add_magic_item_by_name(name),
+                         lambda: self._show_item_details_for(name))
 
     def _show_item_details_for(self, name: str, studied: bool = False, tip: str = ""):
         """An item's magnifying glass (the browsers, the inventory, owned
@@ -1044,8 +1040,11 @@ class GearMixin:
             # an "any sword" item (Flame Tongue, Holy Avenger...): which weapon it is
             from dnd_app.core.riders import base_weapon_options, weapon_base_of
             if base_weapon_options(_name):
-                base_act = menu.addAction(_icons.icon("combat"),
-                                          f"Which weapon is it? (now a {weapon_base_of(self.char, _name)})")
+                from dnd_app.core.magic_items import armor_base_options
+                _what = "armor" if armor_base_options(_name) else "weapon"
+                _now = weapon_base_of(self.char, _name)
+                base_act = menu.addAction(_icons.icon("shield" if _what == "armor" else "combat"),
+                                          f"Which {_what} is it?" + (f" (now {_now.lower()})" if _now else ""))
                 base_act.triggered.connect(lambda checked=False, n=_name: self._pick_weapon_base(n))
             rm_act = menu.addAction(_icons.icon("trash"), f"Remove {_name[:36]}")
             rm_act.triggered.connect(lambda: self._remove_magic_item(_uid))
@@ -1059,14 +1058,16 @@ class GearMixin:
         from dnd_app.core.riders import base_weapon_options, weapon_base_of, set_weapon_base
         opts = base_weapon_options(item_name)
         now = weapon_base_of(self.char, item_name)
-        pick, ok = QInputDialog.getItem(self, item_name, f"Which weapon is your {item_name}?",
+        from dnd_app.core.magic_items import armor_base_options
+        what = "armor" if armor_base_options(item_name) else "weapon"
+        pick, ok = QInputDialog.getItem(self, item_name, f"Which {what} is your {item_name}?",
                                         opts, opts.index(now) if now in opts else 0, False)
         if ok and set_weapon_base(self.char, item_name, pick):
             self._mark_dirty()
             self.ctrl.refresh()
             if hasattr(self, "_refresh_combat"):
                 self._refresh_combat()
-            self._toast(f"{item_name} is a {pick.lower()}")
+            self._toast(f"{item_name} is {pick.lower()}" if what == "armor" else f"{item_name} is a {pick.lower()}")
 
     def _set_item_damage_type(self, item_name: str, dmg_type):
         """Store which damage type a resistance-choice item (Ring/Armor of
@@ -1443,6 +1444,22 @@ class GearMixin:
                         full_act = infuse_menu.addAction(
                             f"(At max active infusions: {active_count}/{max_active})")
                         full_act.setEnabled(False)
+            # holding two weapons: which is in your main hand and which in
+            # your off hand (the off hand's makes the bonus action attack)
+            if _is_weapon:
+                from dnd_app.core.weapons import can_swap_hands, hand_of
+                if can_swap_hands(self.char, _name):
+                    sw_act = menu.addAction(_icons.icon("combat"),
+                                            f"Swap hands (now in your {hand_of(self.char, _name)})")
+                    sw_act.triggered.connect(lambda checked=False: self._swap_hands())
+                # two daggers: a second one of the stack in the other hand
+                from dnd_app.core.weapons import can_hold_another
+                if can_hold_another(self.char, _name, _eq.get("qty", 1)):
+                    two_act = menu.addAction(_icons.icon("combat"), "Hold a second one (one in each hand)")
+                    two_act.triggered.connect(lambda checked=False, n=_name: self._hold_another(n))
+                elif self.char.get("equipped_weapons", []).count(_name) == 2:
+                    one_act = menu.addAction(_icons.icon("combat"), "Put one away")
+                    one_act.triggered.connect(lambda checked=False, n=_name: self._put_one_away(n))
             # Dedicated Weapon (Monk, Tasha's): pick the weapon that counts
             # as a monk weapon until the next rest
             if _is_weapon:
@@ -1711,6 +1728,37 @@ class GearMixin:
         update_all(self.char); self.ctrl.refresh()
         if hasattr(self,"_update_weight"): self._update_weight()
         self._mark_dirty()
+
+    def _hold_another(self, name: str):
+        """A second one of a weapon already in hand (two daggers, one in
+        each hand) -- core/weapons.py, the same as Android's."""
+        from dnd_app.core.weapons import equip_weapon
+        equip_weapon(self.char, name, another=True)
+        self._after_hands_change()
+
+    def _put_one_away(self, name: str):
+        from dnd_app.core.weapons import unequip_weapon
+        unequip_weapon(self.char, name, every=False)
+        self._after_hands_change()
+
+    def _after_hands_change(self):
+        self._refresh_combat_weapons()
+        update_all(self.char); self.ctrl.refresh()
+        self._refresh_gear_equipment()
+        self._mark_dirty()
+
+    def _swap_hands(self):
+        """The main-hand weapon to your off hand and back (core/weapons.py,
+        the same as Android's Swap hands)."""
+        from dnd_app.core.weapons import swap_hands, hands
+        off = swap_hands(self.char)
+        if not off:
+            return
+        update_all(self.char); self.ctrl.refresh()
+        self._refresh_gear_equipment()
+        self._refresh_combat_weapons()
+        self._mark_dirty()
+        self._toast(f"{hands(self.char)['main']} in your main hand, {off} in your off hand")
 
     def _set_dedicated_weapon(self, name: str):
         """Dedicated Weapon: `name` counts as a monk weapon from now on

@@ -66,7 +66,7 @@ Flickable {
         height: Math.min(implicitHeight, parent ? parent.height - 64 : 600)
         padding: 16
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         contentItem: ColumnLayout {
             spacing: 12
@@ -179,7 +179,7 @@ Flickable {
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
         // Matches MFullPageDialog.qml's dimming -- the default modal
         // overlay is a much lighter wash than this app's dark theme calls for.
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         ColumnLayout {
             anchors.fill: parent
@@ -235,7 +235,7 @@ Flickable {
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
         // Matches MFullPageDialog.qml's dimming -- the default modal
         // overlay is a much lighter wash than this app's dark theme calls for.
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         ColumnLayout {
             anchors.fill: parent
@@ -301,7 +301,7 @@ Flickable {
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
         // Matches MFullPageDialog.qml's dimming -- the default modal
         // overlay is a much lighter wash than this app's dark theme calls for.
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         ColumnLayout {
             anchors.fill: parent
@@ -389,7 +389,7 @@ Flickable {
         width: Math.min(root.width, 360)
         anchors.centerIn: parent
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
         ColumnLayout {
             anchors.fill: parent
             spacing: 10

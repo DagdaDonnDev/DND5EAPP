@@ -41,12 +41,11 @@ def hp_state(char: dict) -> dict:
 def remember_hp_change(char: dict, before: dict, label: str) -> bool:
     """Keep what just changed (since `before`, an hp_state()) so it can be
     undone; `label` says what it was ("12 damage", "8 healing"). Returns
-    False, keeping nothing, if nothing changed -- and the earlier change is
-    then forgotten too: it's no longer the last thing that happened."""
+    False if nothing changed (Heal at full hit points): the change before
+    it is kept, since nothing has happened to it."""
     after = hp_state(char)
     changed = [k for k in _KEYS if before.get(k, _ABSENT) != after.get(k, _ABSENT)]
     if not changed:
-        char.pop("_hp_undo", None)
         return False
     char["_hp_undo"] = {
         "label": label, "keys": changed,

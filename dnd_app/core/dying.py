@@ -180,6 +180,11 @@ def take_damage(char: dict, amount: int, rng=None) -> dict:
     char["temp_hp"] = temp - absorbed
     left = amount - absorbed
     out["absorbed"], out["taken"] = absorbed, left
+    if absorbed and char["temp_hp"] == 0 and "Armor of Agathys" in char.get("active_effects", []):
+        # Armor of Agathys lasts as long as its temporary hit points
+        from dnd_app.core.action_use import end_effects
+        end_effects(char, ["Armor of Agathys"])
+        out["notes"].append("Armor of Agathys ends: its temporary hit points are gone")
     if absorbed and left == 0:
         out["notes"].append(f"Temp HP absorbed all {absorbed} damage")
     elif absorbed:

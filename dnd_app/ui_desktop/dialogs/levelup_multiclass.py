@@ -71,7 +71,7 @@ class LevelUpMulticlassDialog(QDialog):
         super().__init__(parent)
         from dnd_app.ui_desktop.style.theme import sync_globals as _sg; _sg(globals())
         self.char = char
-        self.setWindowTitle("Level Up / Multiclass")
+        self.setWindowTitle("Level Up")
         self.setMinimumSize(560, 480)
         self.setStyleSheet(f"QDialog{{background:{BG};}}")
         root = QVBoxLayout(self); root.setContentsMargins(20,18,20,18); root.setSpacing(12)
@@ -84,7 +84,7 @@ class LevelUpMulticlassDialog(QDialog):
         # the redundant, unsafe early trigger.
         self._init_in_progress = True
 
-        root.addWidget(_lbl("Level Up / Multiclass", GOLD2, FS_HEAD, bold=True))
+        root.addWidget(_lbl("Level Up", GOLD2, FS_HEAD, bold=True))
         root.addWidget(_lbl(
             "Choose a class to gain a level in. Classes you don't have yet are shown "
             "as multiclass options — grayed out if you don't meet their ability score requirement.",

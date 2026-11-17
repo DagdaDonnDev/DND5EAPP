@@ -905,22 +905,22 @@ class SpellsMixin:
         show_details(self, spell["name"], spell_details_markdown(spell))
 
     def _on_spell_browser_ctx(self, pos):
-        """Right-click on spell browser — show full details."""
+        """Right-click on a spell in the browser: Add, or Show details."""
         item = self._sp_browser.itemAt(pos)
         if not item: return
         # the row's text carries its level and school too ("L3  Fireball
         # [Evo]"), so the spell comes from the row's data, not its text
         spell = item.data(Qt.UserRole)
         if not spell: return
-        from PySide6.QtWidgets import QMenu
-        menu = QMenu(self)
-        detail_act = menu.addAction(_icons.icon("features"), f"Details: {spell['name']}")
-        add_act    = menu.addAction(f"+ Add to My Spells")
-        action = menu.exec(self._sp_browser.viewport().mapToGlobal(pos))
-        if action == detail_act:
-            self._show_spell_details(spell)
-        elif action == add_act:
+        from dnd_app.ui_desktop.widgets import browser_row_menu
+
+        def add():
+            # the spell right-clicked, not whatever else was selected
+            self._sp_browser.clearSelection()
+            item.setSelected(True)
             self._add_spell_from_browser()
+        browser_row_menu(self, self._sp_browser.viewport().mapToGlobal(pos), "Add to My Spells",
+                         add, lambda: self._show_spell_details(spell))
 
     def _filter_spell_browser(self):
         q  = self._sp_search.text().lower()
@@ -1340,38 +1340,45 @@ class SpellsMixin:
             self._toast(free_cast_message(spell["name"], free, self.char).replace(" -- ", " — ")
                         + (f"\n{fx_msg}" if fx_msg else ""))
             return
-        for l in range(lvl, 10):
-            bar = self._slot_bars.get(l)
-            if bar and bar._max > 0 and bar.get_used() < bar._max:
-                bar.set_used(bar.get_used() + 1)
-                bar._update_count()
-                self._on_slot_change()
-                if spell.get("concentration"):
-                    start_concentration(self.char, spell["name"])
-                    self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
-                    self._refresh_concentration()
-                fx_msg = self._apply_spell_active_effect(spell, l)
-                self._mark_spell_cast_time(spell)
-                self._toast(f"Cast {spell['name']} — slot expended" + (f"\n{fx_msg}" if fx_msg else ""))
+        # Which slot: the lowest free, unless the spell does more from a
+        # higher one and there's a choice -- then it asks, saying what the
+        # higher slot gives (core/spellcasting.py, the same on Android)
+        from dnd_app.core.spellcasting import slot_choices, slot_question
+        choices = slot_choices(self.char, spell)
+        if not choices:
+            self._toast(f"Can't cast {spell['name']} — no level-{lvl}+ spell slots available")
+            return
+        pick = choices[0]
+        question = slot_question(spell, choices)
+        if question:
+            labels = [c["label"] for c in choices]
+            got, ok = QInputDialog.getItem(self, spell["name"], question, labels, 0, False)
+            if not ok:
                 return
-        if self._pact_bar._max > 0 and self._pact_bar.get_used() < self._pact_bar._max:
-            self._pact_bar.set_used(self._pact_bar.get_used() + 1)
-            self._pact_bar._update_count()
-            self._on_slot_change()
-            if spell.get("concentration"):
-                start_concentration(self.char, spell["name"])
-                self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
-                self._refresh_concentration()
-            fx_msg = self._apply_spell_active_effect(spell, self.char.get("pact_slot_level", 0) or lvl)
-            self._mark_spell_cast_time(spell)
+            pick = choices[labels.index(got)]
+        bar = self._pact_bar if pick["key"] == "pact" else self._slot_bars.get(pick["level"])
+        if bar is None or bar._max <= bar.get_used():
+            self._toast(f"Can't cast {spell['name']} — that slot is used up")
+            return
+        bar.set_used(bar.get_used() + 1)
+        bar._update_count()
+        self._on_slot_change()
+        if spell.get("concentration"):
+            start_concentration(self.char, spell["name"])
+            self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
+            self._refresh_concentration()
+        fx_msg = self._apply_spell_active_effect(spell, pick["level"])
+        self._mark_spell_cast_time(spell)
+        self._mark_dirty()
+        if pick["key"] == "pact":
             # A little flavor for Warlocks specifically -- Pact Magic is
             # power borrowed from your patron, unlike an ordinary prepared
             # or known spell slot, so spending one gets its own tiny nod.
             self._toast(f"Cast {spell['name']} — pact slot expended\n"
                         + (fx_msg if fx_msg else "Your patron approves."))
-            self._mark_dirty()
-            return
-        self._toast(f"Can't cast {spell['name']} — no level-{lvl}+ spell slots available")
+        else:
+            at = f" at {pick['label'].split(' (')[0]}" if pick["level"] > lvl else ""
+            self._toast(f"Cast {spell['name']}{at} — slot expended" + (f"\n{fx_msg}" if fx_msg else ""))
 
     def _check_bonus_action_spell_rule(self, is_cantrip: bool, bucket: str) -> bool:
         """The real rule: casting a spell with a bonus action means the

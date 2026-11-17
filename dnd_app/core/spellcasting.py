@@ -34,6 +34,64 @@ import random
 # Author: Ethan O'Brien
 # Date: 2026-08-20
 
+def _nth(n: int) -> str:
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+# ── Which slot to cast with ──────────────────────────────────────────────
+def slot_choices(char: dict, spell: dict) -> list:
+    """The spell slots `spell` can be cast with now, lowest first:
+        [{"key": "3", "level": 3, "label": "3rd level (2 left)"},
+         {"key": "pact", "level": 5, "label": "Pact slot, 5th level (1 left)"}]
+    Both apps cast with the one picked (the first, unless asked)."""
+    lvl = int(spell.get("level", 0) or 0)
+    if lvl <= 0:
+        return []
+    maxes = char.get("spell_slots_max", [0] * 9)
+    used = char.get("spell_slots_used", [0] * 9)
+    out = []
+    for i in range(lvl - 1, 9):
+        if i < len(maxes) and maxes[i] > 0:
+            left = maxes[i] - (used[i] if i < len(used) else 0)
+            if left > 0:
+                out.append({"key": str(i + 1), "level": i + 1, "label": f"{_nth(i + 1)} level ({left} left)"})
+    pact_lvl = int(char.get("pact_slot_level", 0) or 0)
+    pact_left = int(char.get("pact_slots_max", 0) or 0) - int(char.get("pact_slots_used", 0) or 0)
+    if pact_left > 0 and pact_lvl >= lvl:
+        out.append({"key": "pact", "level": pact_lvl,
+                    "label": f"Pact slot, {_nth(pact_lvl)} level ({pact_left} left)"})
+    out.sort(key=lambda c: (c["level"], c["key"] == "pact"))
+    return out
+
+
+def slot_question(spell: dict, choices: list) -> str:
+    """What to ask before casting with a slot ("" when there's nothing to
+    ask): only for a spell that does more from a higher slot, with more
+    than one slot level to choose from. It says what the higher slot gives."""
+    from dnd_app.data.spell_upcast import AT_HIGHER_LEVELS
+    more = AT_HIGHER_LEVELS.get(spell.get("name", ""))
+    if not more or len({c["level"] for c in choices}) < 2:
+        return ""
+    return f"Cast {spell['name']} with which slot?\n\n{more}"
+
+
+def spend_slot(char: dict, key: str) -> int:
+    """Use the slot `key` names (from slot_choices). Returns the level cast
+    at, or 0 if there's none of it left."""
+    if key == "pact":
+        if char.get("pact_slots_used", 0) < char.get("pact_slots_max", 0):
+            char["pact_slots_used"] = char.get("pact_slots_used", 0) + 1
+            return int(char.get("pact_slot_level", 0) or 0)
+        return 0
+    i = int(key) - 1
+    maxes = char.get("spell_slots_max", [0] * 9)
+    used = char.setdefault("spell_slots_used", [0] * 9)
+    if 0 <= i < 9 and used[i] < maxes[i]:
+        used[i] += 1
+        return i + 1
+    return 0
+
+
 def _component_letters(spell: dict) -> set:
     """{'v','s','m'} etc. parsed from a spell's "components" field
     (e.g. "V, S, M (a pinch of salt)")."""
@@ -788,57 +846,138 @@ def use_spell_scroll(char: dict, eq_name: str, rng=random) -> dict:
 
 # ── 1. Wild Shape beast noise ────────────────────────────────────────────────
 
-# Each entry: (keywords to substring-match against the beast name,
-# lowercased; base sound; index of the character within that base
-# sound to repeat when stretching to a longer word). Checked in order,
-# first match wins -- more specific keywords are listed earlier: "sea
-# horse" before the horses, spiders before the wolves (Giant Wolf
-# Spider), crabs before the fish (Giant Crayfish).
-_BEAST_SOUND_FAMILIES = [
+# A creature no form above names (any creature Polymorph, True Polymorph or
+# Shapechange can make you, a Totem Warrior's spirit...): the first family
+# with one of its words wins -- the more particular families first, so a
+# giant wolf spider is a spider. Words match from the start of a word
+# ("rat" is a rat, not the "rat" in Ceratops); "~" matches inside one too
+# (the "saurus" of a Brontosaurus).
+_SOUND_FAMILIES = [
+    # beasts
     (("sea horse", "seahorse"),                                   "blub",    2),
-    (("spider", "scorpion", "steeder"),                           "tsss",    1),
-    (("crab", "crayfish", "prawn"),                               "click",   2),
-    (("octopus", "squid", "rocktopus", "tentacle", "snail"),      "squelch", 3),
-    (("dolphin", "killer whale", "whale"),                        "eee",     1),
-    (("fish", "eel", "shark", "guppy", "quipper", "trout",
-      "koi"),                                                     "blub",    2),
-    (("bear",),                                                   "rawr",    1),
-    (("cat", "tiger", "panther", "leopard", "lion"),               "meow",    1),
-    (("hyena",),                                                  "haha",    3),
+    (("spider", "scorpion", "steeder", "ettercap", "phase spider"), "tsss",  1),
+    (("crab", "crayfish", "prawn", "lobster"),                    "snip",    2),
+    (("octopus", "squid", "kraken", "rocktopus", "tentacle", "snail"), "squelch", 3),
+    (("dolphin", "whale", "orca", "leviathan"),                   "eeoo",    3),
+    (("shark",),                                                  "chomp",   2),
+    (("fish", "eel", "guppy", "quipper", "trout", "koi", "piranha", "sorrowfish"), "blub", 2),
+    (("werewolf",), "awoo", 2), (("wererat",), "squeak", 4), (("werebear",), "rawr", 1),
+    (("weretiger",), "grawr", 2), (("wereboar",), "oink", 1), (("wereraven",), "nevermore", 1),
+    (("bear", "owlbear"),                                         "rawr",    1),
+    (("cat", "tiger", "panther", "leopard", "lion", "displacer", "tressym", "felidar"), "grawr", 2),
+    (("hyena", "gnoll", "yeenoghu"),                              "haha",    3),
     (("fox",),                                                    "ring",    1),
-    (("wolf", "dog", "jackal", "mastiff"),                        "ruff",    1),
+    (("wolf", "dog", "jackal", "mastiff", "hound", "worg", "warg", "barghest", "cerberus"), "awoo", 2),
     (("owl",),                                                    "hoot",    2),
-    (("eagle", "hawk", "falcon", "vulture", "raven", "crow",
-      "peacock", "rooster", "swan", "canary", "diatryma",
-      "axe beak", "mollymawk"),                                   "caw",     1),
-    (("saurus", "raptor", "lizard", "crocodile", "plesiosaur",
-      "dimetrodon", "pteranodon", "quetzalcoatlus", "triceratops",
-      "deinonychus", "clawfoot", "fastieth"),                     "RAAAWR",  2),
-    (("elephant", "mammoth", "rhinoceros", "titanothere"),        "toot",    1),
-    (("rat", "hamster", "weasel", "hare", "mouse", "almiraj"),     "squeak",  4),
-    (("bat",),                                                    "eek",     1),
-    (("frog", "toad"),                                            "ribbit",  2),
-    (("snake", "amphisbaena", "jaculi"),                          "hiss",    2),
-    (("cow", "ox", "aurochs", "yak", "rothe", "rothé", "kow"),     "moo",     1),
-    (("sheep", "goat"),                                           "baa",     1),
-    (("pig", "boar", "swine"),                                    "oink",    1),
-    (("horse", "pony", "mule", "camel", "zebra", "steed"),        "neigh",   1),
-    (("wasp", "beetle", "dragonfly", "centipede", "stirge"),      "bzzt",    1),
-    (("baboon", "ape", "monkey"),                                 "ook",     1),
-    (("turtle", "tortoise"),                                      "blip",    2),
-    (("deer", "elk", "stag", "reindeer"),                         "gronk",   2),
-    (("seal",),                                                   "arf",     1),
-    (("walrus",),                                                 "hrnk",    1),
-    (("badger",),                                                 "snarl",   2),
+    (("eagle", "hawk", "falcon", "vulture", "raven", "crow", "peacock", "rooster", "swan", "canary",
+      "parrot", "macaw", "diatryma", "axe beak", "mollymawk", "roc", "goose", "duck", "penguin"), "caw", 1),
+    (("~saurus", "~raptor", "~ceratops", "~saur", "~don", "dinosaur", "lizard", "crocodile",
+      "plesiosaur", "dimetrodon", "pteranodon", "quetzalcoatlus", "deinonychus", "clawfoot", "fastieth"), "RAAAWR", 2),
+    (("elephant", "mammoth", "rhinoceros", "titanothere", "hippopotamus", "mastodon"), "prawoo", 4),
+    (("rat", "rats", "hamster", "weasel", "hare", "mouse", "almiraj", "squirrel", "rabbit"), "squeak", 4),
+    (("bat", "bats"),                                             "eek",     1),
+    (("frog", "toad", "grung", "bullywug"),                       "ribbit",  2),
+    (("snake", "serpent", "amphisbaena", "jaculi", "naga", "yuan-ti", "couatl", "coatl"), "hiss", 2),
+    (("cow", "ox", "oxen", "aurochs", "yak", "rothe", "rothé", "kow", "bull", "bison", "buffalo"), "moo", 1),
+    (("sheep", "ram", "goat"),                                    "baa",     1),
+    (("pig", "boar", "swine", "hog"),                             "oink",    1),
+    (("horse", "pony", "mule", "donkey", "camel", "zebra", "steed", "pegasus", "unicorn",
+      "nightmare", "bariaur", "centaur"),                         "neigh",   1),
+    (("wasp", "bee", "beetle", "dragonfly", "centipede", "stirge", "fly", "mosquito", "locust",
+      "ankheg", "scarab", "insect", "kruthik", "thri-kreen", "chwinga"), "bzzt", 1),
+    (("baboon", "ape", "monkey", "girallon", "yeti", "sasquatch"), "ook",    1),
+    (("turtle", "tortoise", "dragon turtle", "zaratan"),          "blip",    2),
+    (("deer", "elk", "stag", "reindeer", "moose", "antelope"),    "bleat",   2),
+    (("seal", "sea lion"),                                        "arf",     1),
+    (("walrus",),                                                 "hrmph",   1),
+    (("badger",),                                                 "churr",   3),
     (("sloth",),                                                  "huff",    1),
-    (("bulette",),                                                "chomp",   2),
-    (("whirlwyrm",),                                              "skree",   3),
-    (("moorbounder",),                                            "grrr",    2),
-    (("air elemental",),                                          "whoosh",  2),
-    (("water elemental",),                                        "splash",  3),
-    (("earth elemental",),                                        "rumble",  1),
-    (("fire elemental",),                                         "crackle", 2),
+    (("bulette",),                                                "crunch",  2),
+    (("griffon", "gryphon", "hippogriff", "peryton", "manticore", "chimera", "harpy", "cockatrice",
+      "hippocampus", "sphinx", "lamia", "wyvern"),               "skree",   3),
+    (("basilisk", "behir", "remorhaz", "purple worm", "worm", "tarrasque", "hydra"), "hrrrk", 1),
+    (("mimic",),                                                  "chomp",   2),
+    (("medusa", "gorgon"),                                        "ssst",    2),
+    # dragons and their kin
+    (("wyrmling",),                                               "rawr",    1),
+    (("dragon", "drake", "wyrm", "dracolich", "dragonnel", "greatwyrm", "pseudodragon"), "ROOOAR", 2),
+    (("kobold",),                                                 "yip",     1),
+    # giants
+    (("ogre", "oni"),                                             "duhh",    1),
+    (("troll",),                                                  "hrrng",   2),
+    (("ettin",),                                                  "hurr",    1),
+    (("cyclops", "fomorian"),                                     "hrraw",   2),
+    (("giant", "titan"),                                          "fee fi fo", 6),
+    # undead
+    (("zombie", "ghoul", "ghast", "drowned"),                     "braaains", 3),
+    (("skeleton", "skeletal", "bone"),                            "clatter", 3),
+    (("ghost", "specter", "spectre", "wraith", "banshee", "phantom", "poltergeist", "spirit", "shadow",
+      "wight", "revenant", "eidolon"),                            "ooOOoo",  2),
+    (("vampire", "vampiric", "vampirate", "vampyre"),             "bleh",    2),
+    (("lich", "demilich", "alhoon", "deathlock"),                 "mwahaha", 3),
+    (("mummy",),                                                  "mmmrgh",  2),
+    # fiends
+    (("imp", "quasit"),                                           "heehee",  2),
+    (("devil", "abishai", "pit fiend", "erinyes", "cambion", "hellhound", "baalzebul", "zariel"), "mwahaha", 3),
+    (("demon", "balor", "marilith", "vrock", "hezrou", "glabrezu", "nalfeshnee", "dretch", "manes",
+      "babau", "chasme", "demogorgon", "orcus", "baphomet", "fiend"), "raaagh", 3),
+    (("yugoloth", "~loth"),                                       "hrrm",    1),
+    (("hag", "annis", "bheur"),                                   "cackle",  3),
+    (("succubus", "incubus"),                                     "mmm",     1),
+    (("rakshasa",),                                               "purr",    2),
+    # fey
+    (("pixie", "sprite", "faerie", "fairy", "brownie", "quickling", "blink dog"), "tinkle", 3),
+    (("dryad", "nymph", "satyr", "eladrin", "fae"),               "lalala",  3),
+    (("redcap", "boggle", "darkling", "meenlock", "korred"),      "snicker", 3),
+    # elementals and their kin
+    (("air elemental", "air", "djinni", "wind", "tempest", "invisible stalker", "whirlwind"), "whoosh", 2),
+    (("water elemental", "water", "marid", "tide", "wave", "mist"), "splash", 3),
+    (("earth elemental", "earth", "dao", "xorn", "galeb duhr", "stone", "mud", "dust"), "rumble", 1),
+    (("fire elemental", "fire", "efreeti", "salamander", "magma", "flame", "phoenix", "ash", "fire snake"), "crackle", 2),
+    (("ice", "frost", "rime"),                                    "crrrack", 2),
+    (("mephit",),                                                 "pfft",    2),
+    (("gargoyle",),                                               "grrrind", 3),
+    # constructs
+    (("golem", "colossus", "juggernaut", "iron", "steel", "bronze"), "CLANK", 2),
+    (("clockwork", "modron", "thopter", "mechanical", "robot", "inevitable", "quadrone", "drone"), "beep boop", 1),
+    (("animated", "armor", "rug", "broom", "book", "books", "statue", "object", "scarecrow", "homunculus"), "creak", 2),
+    # oozes
+    (("ooze", "jelly", "pudding", "cube", "oblex", "slime", "plasmoid", "blob", "gelatinous"), "blorp", 2),
+    # plants
+    (("treant", "tree", "wood", "~wood", "blight", "shambling", "mound", "vine", "shrub", "thorn",
+      "vegepygmy", "myconid", "fungus", "spore", "flower", "violet", "dandylion", "mandrake"), "rustle", 2),
+    # aberrations
+    (("beholder", "spectator", "death tyrant", "gauth", "gazer", "eye"), "glare", 3),
+    (("mind flayer", "illithid", "elder brain", "brain", "ulitharid", "intellect devourer", "cranium"), "slurp", 2),
+    (("aboleth", "chuul", "kraken", "ixitxachitl", "kuo-toa", "sahuagin", "merrow", "merfolk"), "glub glub", 2),
+    (("slaad",),                                                  "croak",   3),
+    (("neogi", "nothic", "otyugh", "gibbering", "choker", "cloaker", "grell", "star spawn",
+      "far realm", "horror", "aberrant"),                         "gibber",  2),
+    # celestials
+    (("angel", "deva", "planetar", "solar", "archon", "empyrean", "ki-rin", "guardinal", "couatl"), "aaahh", 2),
+    # humanoids, by folk
+    (("goblin", "boggart"),                                       "nyeh",    2),
+    (("hobgoblin",),                                              "hut hut", 1),
+    (("bugbear",),                                                "grumble", 3),
+    (("orc", "orog", "half-orc"),                                 "waaagh",  2),
+    (("dwarf", "duergar"),                                        "hmph",    1),
+    (("elf", "drow", "githyanki", "githzerai", "eladrin"),        "hmm",     1),
+    (("lizardfolk", "tortle", "yuan-ti", "kenku", "aarakocra", "tabaxi", "minotaur", "gnoll"), "hrrm", 1),
+    (("knight", "guard", "soldier", "warrior", "champion", "captain", "gladiator", "veteran",
+      "berserker"),                                               "hyah",    2),
+    (("mage", "wizard", "warlock", "priest", "cultist", "spellcaster", "druid", "sorcerer", "archmage",
+      "apprentice", "professor"),                                 "hocus pocus", 2),
+    (("thief", "assassin", "spy", "bandit", "thug", "pirate", "scout"), "psst",   2),
+    (("commoner", "noble", "merchant", "peasant", "child", "acolyte"), "hullo", 2),
 ]
+
+# A creature no family names: a sound for its kind
+_TYPE_SOUNDS = {
+    "Beast": ("grrr", 2), "Monstrosity": ("grrowl", 3), "Dragon": ("ROOOAR", 2), "Giant": ("hrrm", 1),
+    "Undead": ("ooOOoo", 2), "Fiend": ("mwahaha", 3), "Celestial": ("aaahh", 2), "Fey": ("tinkle", 3),
+    "Elemental": ("whoosh", 2), "Construct": ("CLANK", 2), "Ooze": ("blorp", 2), "Plant": ("rustle", 2),
+    "Aberration": ("gibber", 2), "Humanoid": ("hmm", 1), "Swarm": ("skitter", 3),
+}
 
 # Every Wild Shape form's own noise (data/statblocks.py WILDSHAPE_BEASTS):
 # {(sound, index of the letter that stretches): forms that make it}. The
@@ -960,20 +1099,91 @@ _FORM_SOUNDS = {
     ("rumble", 1):   ("Earth Elemental",),
     ("crackle", 2):  ("Fire Elemental",),
 }
+
+_MORE_FORM_SOUNDS = {
+    # the Bestiary's other beasts (Ixalan, Dominaria, Theros, Spelljammer...)
+    ("RAAAWR", 2):   ("Tyrannosaurus Rex", "Ferocidon", "Tyrant", "Hammerskull", "Two-Headed Plesiosaurus",
+                      "Gishath, Sun's Avatar", "Bhaal, Ravager"),
+    ("skraw", 3):    ("Frilled Deathspitter", "Sailback"),
+    ("hooom", 2):    ("Brontodon", "Altisaur", "Terastodon", "Terra Stomper"),
+    ("bwoom", 2):    ("Hadrosaur",),
+    ("thwack", 3):   ("Armasaur", "Aegisaur"),
+    ("snort", 2):    ("Ceratops", "Cerodon", "Hippopotamus"),
+    ("kraa", 2):     ("Aerosaur",),
+    ("hrrr", 1):     ("Two-Headed Crocodile",),
+    ("grawr", 2):    ("Great Cat", "Serpopard"),
+    ("awoo", 2):     ("Wolf of the Overworld",),
+    ("rawr", 1):     ("Awakened Brown Bear",),
+    ("hwee", 2):     ("Awakened Elk",),
+    ("hrooo", 3):    ("Awakened White Moose",),
+    ("bzzz", 2):     ("Awakened Giant Wasp", "Giant Fly"),
+    ("squeak", 4):   ("Awakened Rat",),
+    ("whine", 2):    ("Heartstabber Mosquito",),
+    ("wahoo", 3):    ("Boontu Monkey",),
+    ("ook", 1):      ("Giant Ape",),
+    ("ribbit", 2):   ("Horned Frog", "Spiderfrog"),
+    ("snip", 2):     ("Huge Giant Crab",),
+    ("moo", 1):      ("Oxen",),
+    ("eeoo", 3):     ("Sky Whale", "Sperm Whale", "Sky Leviathan"),
+    ("tsss", 1):     ("Deep Spider", "Sword Spider"),
+    ("thoom", 2):    ("Baloth", "Woodcrasher Baloth", "Kavu Predator", "Steel Leaf Kavu", "Gnarlid"),
+    ("hrrrk", 1):    ("Drake", "Large Drake", "Small Drake"),
+    ("rrraw", 3):    ("Beast of the Land",),
+    ("splosh", 3):   ("Beast of the Sea", "River Serpent", "Shoal Serpent"),
+    ("kree", 2):     ("Beast of the Sky",),
+    ("grrowl", 3):   ("Bestial Spirit", "Ammit"),
+    ("hehe", 2):     ("Gremlin",),
+    ("squawk", 3):   ("Macaw", "Parrot"),
+    ("chomp", 2):    ("Piranha",),
+    ("skitter", 3):  ("Trilobite",),
+}
+# added to the forms above (a sound both lists use keeps all its forms)
+for _snd, _forms in _MORE_FORM_SOUNDS.items():
+    _FORM_SOUNDS[_snd] = tuple(_FORM_SOUNDS.get(_snd, ())) + _forms
 _SOUND_OF_FORM = {form: sound for sound, forms in _FORM_SOUNDS.items() for form in forms}
 
-# Fallback for a beast neither table names: a generic beast noise.
+# Fallback for a creature nothing above names: a generic beast noise.
 _DEFAULT_SOUND = ("grrr", 2)
 
 
+_PREFIXES = ("giant ", "huge ", "young ", "awakened ", "elder ", "chimeric ", "dire ", "large ", "small ",
+             "reduced-threat ", "fiendish ", "celestial ", "deep ", "space ", "ancient ", "adult ")
+
+
+def _family_sound(name: str):
+    low = name.lower()
+    for keywords, sound, idx in _SOUND_FAMILIES:
+        for kw in keywords:
+            if kw.startswith("~"):
+                if kw[1:] in low:
+                    return sound, idx
+            elif re.search(rf"\b{re.escape(kw)}", low):
+                return sound, idx
+    return None
+
+
 def _get_beast_sound_profile(beast_name: str) -> tuple[str, int]:
-    if beast_name in _SOUND_OF_FORM:
-        return _SOUND_OF_FORM[beast_name]
-    name = (beast_name or "").lower()
-    for keywords, sound, idx in _BEAST_SOUND_FAMILIES:
-        if any(kw in name for kw in keywords):
-            return sound, idx
-    return _DEFAULT_SOUND
+    """The noise a creature's spell names become, in the immersive Spells
+    tab: its own (_FORM_SOUNDS), or the same without its printing or size
+    ("Dolphin (version 1)", "Giant Ape"), or its family's (any word of
+    its name), or its kind's (an unnamed fiend mwahahas)."""
+    name = (beast_name or "").strip()
+    base = re.sub(r"\s*\([^)]*\)", "", name).strip()
+    for n in (name, base):
+        if n in _SOUND_OF_FORM:
+            return _SOUND_OF_FORM[n]
+    bare = base
+    for pre in _PREFIXES:
+        if bare.lower().startswith(pre):
+            bare = bare[len(pre):]
+    if bare.title() in _SOUND_OF_FORM or bare in _SOUND_OF_FORM:
+        return _SOUND_OF_FORM.get(bare) or _SOUND_OF_FORM[bare.title()]
+    got = _family_sound(base)
+    if got:
+        return got
+    from dnd_app.data.bestiary import get_creature
+    kind = ((get_creature(name) or get_creature(base) or {}).get("type") or "")
+    return _TYPE_SOUNDS.get(kind.split(" or ")[0], _DEFAULT_SOUND)
 
 
 def _stretch_word(word: str, base_sound: str, stretch_idx: int) -> str:

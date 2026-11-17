@@ -5,7 +5,7 @@ import Mimic
 
 Page {
     id: root
-    readonly property string screenTitle: "Equipment"
+    readonly property string screenTitle: "Inventory"
     background: Rectangle { color: Theme.bg }
     readonly property QtObject sheetBridge: Window.window.sheetBridge
 
@@ -77,7 +77,8 @@ Page {
     // (magic ammunition uses the same dialog -- its stack has a uid)
     function openAmountDialog(item) {
         heldItem = item
-        amountQty.value = Math.max(1, item.qty || 1)
+        // the whole stack, held ones included (a row may be only the spares)
+        amountQty.value = Math.max(1, item.total || item.qty || 1)
         amountDialog.open()
     }
 
@@ -85,18 +86,21 @@ Page {
     //   How many / Make dedicated weapon (or Stop using as dedicated weapon)
     // Anything else goes straight to how many you have.
     function openInventoryHold(item) {
-        if (!item.canDedicate && !item.dedicated) {
+        if (!item.canDedicate && !item.dedicated && !item.canSwapHands) {
             openAmountDialog(item)
             return
         }
         heldItem = item
         weaponOptionsDialog.heading = item.name
-        weaponOptionsDialog.options = [
-            {key: "amount", text: "How many", icon: "package"},
-            item.dedicated
-                ? {key: "undedicate", text: "Stop using as dedicated weapon", icon: "dagger"}
-                : {key: "dedicate", text: "Make dedicated weapon", icon: "dagger"}
-        ]
+        var opts = [{key: "amount", text: "How many", icon: "package"}]
+        // holding two weapons: which is in your main hand, which in your off hand
+        if (item.canSwapHands)
+            opts.push({key: "swap", text: "Swap hands", icon: "combat"})
+        if (item.canDedicate || item.dedicated)
+            opts.push(item.dedicated
+                      ? {key: "undedicate", text: "Stop using as dedicated weapon", icon: "dagger"}
+                      : {key: "dedicate", text: "Make dedicated weapon", icon: "dagger"})
+        weaponOptionsDialog.options = opts
         weaponOptionsDialog.open()
     }
 
@@ -107,6 +111,7 @@ Page {
             var it = root.heldItem
             if (!it) return
             if (key === "amount") root.openAmountDialog(it)
+            else if (key === "swap") sheetBridge.swapHands()
             else if (key === "dedicate") sheetBridge.setDedicatedWeapon(it.name)
             else if (key === "undedicate") sheetBridge.setDedicatedWeapon("")
         }
@@ -124,8 +129,11 @@ Page {
             opts.push({key: "attune", text: item.attuned ? "End attunement" : "Attune", icon: "magic"})
         if (item.canStudy)
             opts.push({key: "study", text: "Study", icon: "spells"})
+        if (item.canSwapHands)
+            opts.push({key: "swap", text: "Swap hands (now in your " + item.hand + ")", icon: "combat"})
         if (item.baseOptions && item.baseOptions.length > 0)
-            opts.push({key: "base", text: "Which weapon is it? (now a " + item.base + ")", icon: "combat"})
+            opts.push({key: "base", icon: item.baseKind === "armor" ? "shield" : "combat",
+                       text: "Which " + item.baseKind + " is it?" + (item.base ? " (now " + item.base.toLowerCase() + ")" : "")})
         opts.push({key: "remove", text: "Remove", icon: "trash"})
         magicOptionsDialog.heading = item.name
         magicOptionsDialog.accent = Theme.rarityColor(item.rarity)
@@ -142,8 +150,9 @@ Page {
             if (key === "attune") sheetBridge.setMagicItemAttuned(it.uid, !it.attuned)
             else if (key === "study") sheetBridge.studyAbilityManual(it.uid)
             else if (key === "remove") sheetBridge.removeMagicItem(it.uid)
+            else if (key === "swap") sheetBridge.swapHands()
             else if (key === "base") {
-                weaponBasePicker.dialogTitle = "Which weapon is your " + it.name + "?"
+                weaponBasePicker.dialogTitle = "Which " + it.baseKind + " is your " + it.name + "?"
                 weaponBasePicker.options = it.baseOptions
                 weaponBasePicker.open()
             }
@@ -168,7 +177,7 @@ Page {
         width: Math.min(parent ? parent.width - 32 : 340, 340)
         padding: 16
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         contentItem: ColumnLayout {
             spacing: 12
@@ -182,8 +191,11 @@ Page {
             }
             Label {
                 text: "How many do you have?"
+                      + (root.heldItem && root.heldItem.heldCount > 0
+                         ? " (" + (root.heldItem.heldCount === 1 ? "one is" : "two are") + " in your hands)" : "")
                 color: Theme.text2
                 font.pixelSize: Theme.fsSmall
+                wrapMode: Text.WordWrap
                 Layout.fillWidth: true
             }
             MSpinBox {
@@ -450,7 +462,7 @@ Page {
                                 font.bold: true
                             }
                             Label {
-                                text: modelData.items.length
+                                text: modelData.count
                                 color: Theme.text3
                                 font.pixelSize: Theme.fsSmall
                             }
@@ -459,7 +471,8 @@ Page {
                         Repeater {
                             model: modelData.items
                             delegate: Rectangle {
-                                objectName: "invRow_" + modelData.name
+                                // a weapon in hand has a row for each hand, the rest one of their own
+                                objectName: "invRow_" + (modelData.rowKey || modelData.name)
                                 Layout.fillWidth: true
                                 implicitHeight: invRow.implicitHeight + 14
                                 radius: 8
@@ -475,7 +488,7 @@ Page {
                                 // (or, for a monk, pick the Dedicated Weapon)
                                 MouseArea {
                                     id: invHold
-                                    objectName: "invHold_" + modelData.name
+                                    objectName: "invHold_" + (modelData.rowKey || modelData.name)
                                     anchors.fill: parent
                                     pressAndHoldInterval: 450
                                     onPressAndHold: root.openInventoryHold(modelData)
@@ -505,7 +518,9 @@ Page {
                                         }
                                         Label {
                                             // what it is -- cut short first on a narrow row
-                                            text: [modelData.equipped ? "Equipped" : "", modelData.detail]
+                                            // in hand: which hand ("Off hand"), or Equipped
+                                            text: [modelData.hand ? modelData.hand.charAt(0).toUpperCase() + modelData.hand.slice(1)
+                                                   : (modelData.equipped ? "Equipped" : ""), modelData.detail]
                                                   .filter(function(x) { return x.length > 0 }).join("  ·  ")
                                             visible: text.length > 0
                                             color: Theme.text3
@@ -530,14 +545,22 @@ Page {
                                     // Equip/Wear. Using an item -- a potion, a scroll,
                                     // a tinderbox -- is its card on the Actions screen.
                                     MButton {
+                                        objectName: "equipButton_" + (modelData.rowKey || modelData.name)
+                                        // the rest of a stack with one in hand: Equip
+                                        // only when a second can go in the other hand
                                         visible: modelData.equipKind !== ""
+                                                 && !(modelData.heldCount > 0 && !modelData.equipped && !modelData.canHoldAnother)
                                         primary: false
                                         implicitWidth: 86
                                         implicitHeight: 34
                                         text: modelData.equipKind === "weapon" ? (modelData.equipped ? "Unequip" : "Equip")
                                               : (modelData.equipped ? "Take off" : (modelData.equipKind === "shield" ? "Equip" : "Wear"))
                                         onClicked: {
-                                            if (modelData.equipKind === "weapon")
+                                            if (modelData.equipKind === "weapon" && modelData.heldRow)
+                                                sheetBridge.putAwayOneWeapon(modelData.name)
+                                            else if (modelData.equipKind === "weapon" && modelData.heldCount > 0)
+                                                sheetBridge.holdAnotherWeapon(modelData.name)
+                                            else if (modelData.equipKind === "weapon")
                                                 sheetBridge.toggleWeaponEquipped(modelData.name, !modelData.equipped)
                                             else if (modelData.equipKind === "shield")
                                                 sheetBridge.toggleShieldWorn(!modelData.equipped)
@@ -845,6 +868,8 @@ Page {
                         Label {
                             width: parent.width
                             text: modelData.type
+                                  + (modelData.hand ? "  ·  " + (modelData.hand === "one in each hand" ? "One in each hand"
+                                                                                     : "In your " + modelData.hand) : "")
                                   + (modelData.studied ? "  ·  Studied (its magic is spent)" : "")
                                   + (modelData.attuned ? "  ·  Attuned"
                                      : (modelData.needsAttunement ? "  ·  Requires attunement" : ""))

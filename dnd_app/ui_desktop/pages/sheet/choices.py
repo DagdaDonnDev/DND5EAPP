@@ -219,10 +219,13 @@ class ChoicesMixin:
             subs      = cdata.get("subclasses", [])
             sub_level = cdata.get("subclass_level", 3)
 
-            col = QWidget()
-            cl  = QVBoxLayout(col); cl.setContentsMargins(0,0,0,0); cl.setSpacing(2)
-            cl.addWidget(_lbl(f"{cname} subclass:", TEXT3, FS_TINY, bold=True))
-
+            col = QFrame(); col.setObjectName(f"classRow_{cname}")
+            col.setStyleSheet(f"QFrame#classRow_{cname}{{background:{SURF2};border:1px solid {BORDER};"
+                              f"border-radius:8px;}} QLabel{{background:transparent;border:none;}}")
+            cl = QHBoxLayout(col); cl.setContentsMargins(12, 6, 8, 6); cl.setSpacing(10)
+            name_lbl = _lbl(f"{cname} {clvl}", TEXT, FS_BODY, bold=True, wrap=False)
+            name_lbl.setMinimumWidth(120)
+            cl.addWidget(name_lbl)
             from dnd_app.core.character import clean_subclass_name
             combo = QComboBox()
             combo.addItem("— (none chosen) —", "")
@@ -239,9 +242,11 @@ class ChoicesMixin:
             combo.setEnabled(clvl >= sub_level)
             combo.setToolTip(f"Unlocked at level {sub_level}" if clvl < sub_level
                              else f"{cname} subclass — choose your path")
+            if clvl < sub_level:
+                combo.setItemText(0, f"— a subclass at level {sub_level} —")
             combo.setStyleSheet(
-                f"QComboBox{{background:{SURF2};border:1px solid {BORDER2};border-radius:5px;"
-                f"color:{TEXT};font-size:{FS_SMALL}px;padding:3px 6px;}}"
+                f"QComboBox{{background:{SURF};border:1px solid {BORDER2};border-radius:6px;"
+                f"color:{TEXT};font-size:{FS_BODY}px;padding:4px 8px;min-height:22px;}}"
                 f"QComboBox:focus{{border-color:{INDIGO};}}")
 
             def _on_change(idx, cn=cname, cb=combo):
@@ -269,7 +274,26 @@ class ChoicesMixin:
 
             combo.currentIndexChanged.connect(_on_change)
             self._subclass_combos[cname] = combo
-            cl.addWidget(combo)
+            cl.addWidget(combo, 1)
+            # ⋯ : change this class for another (same level), or remove it
+            more = QToolButton(); more.setObjectName(f"classMore_{cname}")
+            more.setText("⋯"); more.setToolTip(f"Change or remove {cname}")
+            more.setAccessibleName(f"More for {cname}")
+            more.setPopupMode(QToolButton.InstantPopup)
+            more.setFixedSize(36, 32)
+            more.setStyleSheet(f"QToolButton{{background:{SURF};border:1px solid {BORDER2};border-radius:6px;"
+                               f"color:{TEXT};font-size:{FS_HEAD}px;font-weight:700;padding:0 0 4px 0;}}"
+                               f"QToolButton:hover{{border-color:{INDIGO};background:{qa(INDIGO, 0x22)};}}"
+                               f"QToolButton::menu-indicator{{image:none;width:0px;}}")
+            menu = QMenu(more)
+            menu.addAction(_icons.icon("refresh"), f"Change class… (stays level {clvl})",
+                           lambda cn=cname: self._change_class(cn))
+            rm = menu.addAction(_icons.icon("trash"), f"Remove {cname}",
+                                lambda cn=cname: self._open_remove_class(cn))
+            if len(classes) <= 1:
+                rm.setEnabled(False); rm.setText(f"Remove {cname} (your only class)")
+            more.setMenu(menu)
+            cl.addWidget(more)
             target.addWidget(col)
 
     def _build_tab_choices(self):
@@ -302,7 +326,7 @@ class ChoicesMixin:
         cls_card.setStyleSheet(
             f"QFrame{{background:{SURF};border:1px solid {qa(INDIGO,0x44)};border-radius:10px;}}")
         cls_cl = QVBoxLayout(cls_card)
-        cls_cl.setContentsMargins(12, 8, 12, 8); cls_cl.setSpacing(6)
+        cls_cl.setContentsMargins(14, 10, 14, 12); cls_cl.setSpacing(8)
 
         # Title row
         title_row = QHBoxLayout()
@@ -310,14 +334,16 @@ class ChoicesMixin:
         title_row.addStretch()
         # Class action buttons
         for label, fn, color, tip, icon in [
-            ("Level Up / Multiclass", self._open_level_up_or_multiclass, GOLD,
-             "Gain a level in an existing class, or add a new one", "arrow_up"),
-            ("Level Down",        self._open_level_down,      CRIMSON,"Remove one level", "arrow_down"),
-            ("Remove Class",      self._open_remove_class,    CRIMSON,"Remove an entire class (multiclass only)", "trash"),
+            ("Level Up", self._open_level_up_or_multiclass, GOLD,
+             "Gain a level in one of your classes, or in a new one", "arrow_up"),
+            ("Level Down", self._open_level_down, CRIMSON, "Take a level off", "arrow_down"),
         ]:
-            b = _btn(label, color, variant="chip", height=28, font_size=FS_TINY, tooltip=tip)
+            b = _btn(label, color, variant="chip", height=32, font_size=FS_SMALL, tooltip=tip,
+                     padding="2px 14px", min_height0=True)
+            b.setObjectName("levelUpBtn" if label == "Level Up" else "levelDownBtn")
+            b.setStyleSheet(b.styleSheet() + "QPushButton{min-height:26px;max-height:26px;}")
             if icon:
-                _icons.set_button_icon(b, icon, 13)
+                _icons.set_button_icon(b, icon, 15)
             b.clicked.connect(fn)
             title_row.addWidget(b)
             # kept so _refresh_class_buttons() can grey out the ones that
@@ -325,8 +351,9 @@ class ChoicesMixin:
             self.__dict__.setdefault("_class_action_btns", {})[label] = (b, tip)
         cls_cl.addLayout(title_row)
 
-        # Subclass selectors — one per active class
-        self._subclass_area_card = QHBoxLayout(); self._subclass_area_card.setSpacing(8)
+        # A row per class: its name and level, its subclass, and ⋯ (change
+        # it for another class, or remove it)
+        self._subclass_area_card = QVBoxLayout(); self._subclass_area_card.setSpacing(6)
         cls_cl.addLayout(self._subclass_area_card)
         self._subclass_combos = {}
 
@@ -384,11 +411,12 @@ class ChoicesMixin:
         # _refresh_identity_buttons) without crowding.
         id_card = QFrame()
         id_card.setStyleSheet(f"QFrame{{background:{SURF};border:1px solid {qa(TEAL,0x33)};border-radius:10px;}}")
-        id_cl = QVBoxLayout(id_card); id_cl.setContentsMargins(12,8,12,8); id_cl.setSpacing(6)
+        id_cl = QVBoxLayout(id_card); id_cl.setContentsMargins(14,10,14,12); id_cl.setSpacing(8)
         id_cl.addWidget(_icons.icon_header("identity", _lbl("IDENTITY", TEAL2, FS_SMALL, bold=True)))
-        id_btn_row = QHBoxLayout(); id_btn_row.setSpacing(8)
+        id_btn_row = QHBoxLayout(); id_btn_row.setSpacing(10)
         self._identity_btns = {}
         self._identity_btn_labels = {}
+        self._identity_fields = {}
         for label, slot, color in [
             ("Race",       "race",       TEAL),
             ("Subrace",    "subrace",    TEAL),
@@ -396,12 +424,19 @@ class ChoicesMixin:
             ("Background", "background", AMBER),
             ("Alignment",  "alignment",  INDIGO),
         ]:
-            b = _btn(f"✎  {label}", color, variant="chip", height=28, font_size=FS_TINY)
+            # its name over it, and the value to click and change
+            field = QWidget(); fl = QVBoxLayout(field); fl.setContentsMargins(0, 0, 0, 0); fl.setSpacing(3)
+            fl.addWidget(_lbl(label.upper(), TEXT3, FS_TINY, bold=True, wrap=False))
+            b = _btn("", color, variant="chip", height=36, font_size=FS_BODY, padding="2px 12px",
+                     tooltip=f"Change your {label.lower()}", min_height0=True)
+            b.setObjectName(f"identity_{slot}")
+            b.setStyleSheet(b.styleSheet() + "QPushButton{text-align:left;min-height:28px;max-height:28px;}")
             b.clicked.connect(lambda checked=False, s=slot: self._edit_identity(s))
-            id_btn_row.addWidget(b)
+            fl.addWidget(b)
+            id_btn_row.addWidget(field, 1)
             self._identity_btns[slot] = b
             self._identity_btn_labels[slot] = label
-        id_btn_row.addStretch()
+            self._identity_fields[slot] = field
         id_cl.addLayout(id_btn_row)
         layout.addWidget(id_card)
         self._refresh_identity_buttons()
@@ -445,19 +480,18 @@ class ChoicesMixin:
         return tab
 
     def _refresh_class_buttons(self):
-        """Level Up / Level Down / Remove Class only when they can act:
-        no levelling past character level 20, no levelling down a single
-        level-1 class, no removing your only class."""
+        """Level Up and Level Down only when they can act: no levelling
+        past character level 20, no levelling down a single level-1 class.
+        (Removing your only class is greyed in its ⋯ menu.)"""
         btns = getattr(self, "_class_action_btns", {})
         if not btns:
             return
         from dnd_app.core.character import level_up_block_reason
         classes = self.char.get("classes", [])
         states = {
-            "Level Up / Multiclass": level_up_block_reason(self.char),
+            "Level Up": level_up_block_reason(self.char),
             "Level Down": ("" if any(c.get("level", 1) > 1 for c in classes)
                            else "Every class is at level 1 — nothing to level down"),
-            "Remove Class": "" if len(classes) > 1 else "You can't remove your only class",
         }
         for label, (b, tip) in btns.items():
             why = states.get(label, "")
@@ -589,7 +623,8 @@ class ChoicesMixin:
             if not btn:
                 continue
             val = values.get(slot, "")
-            btn.setText(f"✎  {label}: {val}" if val else f"✎  {label}")
-        if "ancestry" in self._identity_btns:
-            self._identity_btns["ancestry"].setVisible(self.char.get("race", "") == "Dragonborn")
+            btn.setText(f"✎  {val}" if val else "✎  Choose…")
+        fields = getattr(self, "_identity_fields", self._identity_btns)
+        if "ancestry" in fields:
+            fields["ancestry"].setVisible(self.char.get("race", "") == "Dragonborn")
 

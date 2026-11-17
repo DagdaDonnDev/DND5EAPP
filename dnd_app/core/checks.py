@@ -81,11 +81,8 @@ def _mod(char, ability):
 def _skill_prof(char, skill):
     """0 none, 1 half, 2 proficient, 3 expertise -- with a githyanki's or
     astral elf's skill for the day."""
-    level = (char.get("skills") or {}).get(skill, 0)
-    astral = (char.get("_choices") or {}).get("astral_knowledge_skill") or []
-    if astral and astral[0] == skill:
-        level = max(level, 2)
-    return level
+    from dnd_app.core.calculator import skill_prof_level
+    return skill_prof_level(char, skill)
 
 
 def _res(char, *names):

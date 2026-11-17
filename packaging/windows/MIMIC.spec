@@ -218,7 +218,10 @@ STDLIB_EXCLUDES = [
     'setuptools',
     'pkg_resources',
     'email',
-    'html',
+    # NOTE: do not add 'html' to this list. The app escapes text with it
+    # (the Bestiary's stat blocks, the dice roller, the rest screen), so a
+    # build without it fails with "No module named 'html'" on opening a
+    # character. It's a few kilobytes.
     'http',
     # NOTE: do not add 'urllib' to this list. PyInstaller's own runtime
     # hooks (pyi_rth_inspect -> zipfile._path -> pathlib) import it

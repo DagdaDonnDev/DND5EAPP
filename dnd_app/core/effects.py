@@ -178,6 +178,13 @@ EFFECT_TABLE: dict[str, dict] = {
         "note": "Until the end of your next turn: resistance to bludgeoning, piercing and "
                 "slashing damage dealt by weapon attacks.",
     },
+    "Armor of Agathys": {
+        # its temporary hit points come with the cast (core/spell_effects.py);
+        # it ends when they're gone (core/dying.py)
+        "caster": True,
+        "note": "While you have its temporary hit points, a creature that hits you with a melee "
+                "attack takes 5 cold damage for each level of the slot it was cast with.",
+    },
     "Shield (spell)": {
         "caster": True, "duration_category": "short",
         "ac": 5,
@@ -489,10 +496,21 @@ EFFECT_TABLE: dict[str, dict] = {
     },
     "Shapechange": {
         "conc": True,
-        "note": "Your game statistics are replaced by an average example of a creature you've "
-                "seen (CR \u2264 your level, not a construct/undead) \u2014 keeping your alignment, "
-                "INT/WIS/CHA, and languages. Retains full mechanical detail beyond this app's "
-                "scope; consult the new form's own stat block.",
+        "note": "You're a creature you've seen (CR up to your level, not a construct or undead), "
+                "keeping your Intelligence, Wisdom, Charisma, class features and spells if the form "
+                "can cast. You use its hit points; at 0 you change back. Your sheet is the form's.",
+    },
+    "Polymorph": {
+        "conc": True,
+        "note": "A beast (CR up to the target's level). All its statistics replace the target's, "
+                "Intelligence, Wisdom and Charisma too: no features or spells, no speech or hands. "
+                "Its hit points take the damage; at 0 it changes back, the rest carrying over.",
+    },
+    "True Polymorph": {
+        "conc": True,
+        "note": "Any creature (CR up to the target's level). All its statistics replace the "
+                "target's: no features or spells. Its hit points take the damage; at 0 it changes "
+                "back, the rest carrying over. Held for the full hour, it's permanent.",
     },
     "Draconic Transformation": {
         "conc": False,
@@ -529,7 +547,8 @@ EFFECT_TABLE: dict[str, dict] = {
                 "necrotic, or force) once per turn on a hit.",
     },
     "Aid": {
-        "note": "+5 current and maximum HP (8 hours). Apply manually to Max HP.",
+        "note": "Your hit point maximum and current hit points are 5 higher, and 5 more for "
+                "each slot level above 2nd (8 hours).",
     },
     "Guidance": {
         "conc": True,
@@ -754,6 +773,13 @@ EFFECT_TABLE: dict[str, dict] = {
         "note": "Resistance to radiant damage for 1 hour."},
     "Potion of Thunder Resistance": {"resistance": ["thunder"], "duration_category": "short",
         "note": "Resistance to thunder damage for 1 hour."},
+    "Gauntlets of Rage": {
+        "condition_immunity": ["charmed", "frightened"],
+        "duration_category": "short",
+        "note": "Furious for 1 minute: no spells, no speech, immune to charmed and frightened. Each time "
+                "you deal damage, regain 2d8 hit points (and you may end a condition, or the fury). Before "
+                "a melee attack you can spend a spell slot: +1d6 necrotic per slot level if it hits.",
+    },
     "Potion of Invulnerability": {
         "resistance": ["acid","bludgeoning","cold","fire","force","lightning","necrotic",
                        "piercing","poison","psychic","radiant","slashing","thunder"],

@@ -423,7 +423,7 @@ class ChoiceWidget(QFrame):
             if not met:
                 item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
                 item.setForeground(QColor(TEXT3))
-            item.setToolTip(f"<b>{ft['name']}</b>  [{ft.get('source','')}]"
+            item.setToolTip(f"<b>{ft['name']}</b>" + (f"  [{ft['source']}]" if ft.get('source') else "")
                            + (f"<br><i>Requires: {prereq}</i>" if prereq else "")
                            + (f"<br><b>Prerequisite not met</b>" if not met else "")
                            + f"<br>{ft.get('special','')[:200]}")

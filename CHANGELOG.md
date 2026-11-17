@@ -5,9 +5,193 @@ Quality of Life, Fixes and Known Issues.
 
 ---
 
-## v6.0 · "Keep Your Focus" · In progress
+## v7.0 · "Call of the Wild" · 17 November 2026
 
-*On main; ships with v6.0.*
+### 🌍 Overview
+
+Adventurers, this one is about creatures and slots. The new Bestiary has
+every creature, 2,754 of them, and everything that turns you into one or
+calls one up now uses it: Wild Shape, Polymorph, summons, mounts and
+steeds. Your own creatures get a page of their own. A spell that does
+more from a higher slot asks which slot to use, every magic item does
+what it says, and magic armor counts as the armor it is.
+
+### ✨ New
+
+- **The Bestiary** (Tools → Bestiary or Ctrl+B on desktop, the menu on
+  Android): every creature with its whole stat block, legendary and lair
+  actions included. Search by name or type, and filter by type, size,
+  challenge rating and how it moves. Monsters of the Multiverse reprints
+  are marked (MPMM).
+- **Creatures page:** every stat block of yours in one place, in groups
+  you open and close: Mounts, Companions, Familiars, Summons, Wild Shape,
+  Vehicles and Other. Beside them is the Bestiary: press Add on any
+  creature (a pet, a hireling, one your DM gave you) and pick its group.
+  Its Mounts & Vehicles tab adds a mount or a vehicle. Each creature is a
+  slim card with its AC and speed, and HP you count down and back up,
+  opening to its whole stat block. Right-click one (press and hold on
+  Android) to move it to another group, set its max HP or remove it (on
+  desktop, the Creatures tab, Ctrl+Shift+B).
+- **Wild Shape:** every beast in the Bestiary is a form, 263 with the Moon
+  druid's elementals (it was 185). A form from an older save still opens.
+- **Polymorph, True Polymorph and Shapechange:** pick the creature, within
+  the spell's limits. On you, your sheet becomes it, as with Wild Shape:
+  its scores, AC, hit points, attacks, actions and traits. Polymorph
+  replaces your mind too; Shapechange keeps it. Cast on someone else, the
+  spell goes in your Effects with the creature you chose, and they add it
+  from their own Effects tab. You change back when the spell ends or the
+  form drops to 0 hit points.
+- **Summons:** the Conjure spells, Animate Dead, Create Undead, Danse
+  Macabre, Find Familiar, Giant Insect and the demon and devil spells ask
+  which creature and how many, within the spell's limits at its level. So
+  do the Figurines of Wondrous Power, the Bag of Tricks, the Horn of
+  Valhalla and the elemental bowls and braziers. Summon Beast, Summon Fey
+  and the other spirit spells ask the form, and the spirit's numbers are
+  the spell's at that level, with your spell attack bonus and save DC
+  in its attacks. Each creature has its own hit points, and one held by
+  concentration goes when it ends.
+- **Familiars:** a beast familiar asks whether it's a celestial, a fey or
+  a fiend, and its card says what a familiar can do: no attacks (Pact of
+  the Chain lets it attack with its reaction), telepathy, seeing through
+  its senses, delivering touch spells.
+- **Steeds:** casting Find Steed or Find Greater Steed asks the form and
+  whether it's a celestial, a fey or a fiend, and puts the steed in
+  Mounts, one at a time. A steed of INT 5 or lower has INT 6, and it
+  understands one language you speak.
+- **Pick the slot:** a spell that does more from a higher slot (Cure
+  Wounds, Aid, Fireball, a smite...) asks which slot when more than one
+  level is free, and says what the higher slot adds. Other spells use the
+  lowest free slot.
+- **Temporary hit points from spells:** False Life and Armor of Agathys
+  give theirs when cast, at the slot's level. Armor of Agathys says its
+  cold damage, and ends when the hit points are gone.
+- **Effects at their level:** the Effects tab says the level ("Magic
+  Weapon · 4th level") and what it does at that level. Adding an ally's
+  Aid, Magic Weapon or Elemental Weapon asks the level.
+- **91 more magic items,** 1,374 in all: the Ioun stones of knowledge, the
+  Stones of Creation, Infernal Plate Armor, the Silver Sword, the
+  archdevils' weapons, Gauntlets of Rage and more. Items with no rarity in
+  the book are listed as Unknown, with their own filter.
+- **The Overview page:** abilities and saving throws, skills, senses and
+  proficiencies on one page, in place of Abilities and Proficiencies. Each
+  ability is its score with two rows under it, its check and its save,
+  each clicked (tapped) to roll; the skills sit in two columns.
+- **Every sense:** darkvision, Devil's Sight, blindsight, tremorsense,
+  truesight, See Invisibility, Witch Sight, Ghostly Gaze and Umbral Sight,
+  each with its range and where it's from. One another covers (darkvision
+  beside Devil's Sight) stays listed, greyed.
+- **Two of the same weapon:** a second dagger can go in your other hand
+  (any two light weapons, or any one-handed pair with Dual Wielder).
+- **Reference:** beside Settings (in the menu on Android), what each book
+  code (PHB, XGE, MPMM...) stands for, and on desktop every keyboard
+  shortcut.
+- **Change a class:** the ⋯ beside a class on the Choices tab changes it
+  for another at the same level (its subclass and choices are asked
+  afresh), or removes it. Removing is greyed for your only class.
+- **The Notes page, redone:** a list of pages down the side (on Android,
+  a list to tap through): Character, Backstory, then your own pages in
+  groups you open and close, name and make. Character has your
+  appearance, your background, and your personality traits, ideals, bonds
+  and flaws, each with **Suggestions** from your background's tables (95
+  backgrounds) and a roll of its die. **New entry** starts a page's notes
+  for today with the date (and the session's number on a session log).
+  Drag a page onto a group to move it (press and hold → Move to on
+  Android); right-click for a new page or group, or to rename or remove
+  one.
+- **Drag to add:** drag an item from the Equipment or Magic Items browser
+  onto your inventory, or a creature from the Bestiary (or a mount or
+  vehicle) onto your creatures. Dropped on a group, a creature goes in it.
+- **A sound for every creature** in the immersive spell names: each Wild
+  Shape form has its own, and any other creature its family's (dragons
+  roar, liches cackle, golems clank).
+
+### ⚖️ Rules
+
+- Magic armor is the armor it's made from: Dwarven Plate is plate (AC 18
+  and its +2), Elven Chain a chain shirt. An item that can be any armor
+  (+1 Armor, Armor of Fire Resistance...) asks which, as Flame Tongue asks
+  which sword.
+  - *Designer note: before, magic armor counted as no armor at all.*
+- Ioun stones of knowledge give the skill's proficiency, or +1 if you
+  already have it. Vulnerabilities (Infernal Plate Armor, the Canian Fork)
+  are tracked and shown.
+- Gauntlets of Rage start their fury after a melee weapon attack, hit or
+  miss, once per short or long rest: 1 minute, immune to charmed and
+  frightened, and each hit gives back 2d8 hit points. The True-Ice
+  dagger's +3 AC only counts while it's in your off hand.
+- Item uses that come back on a rest rather than at dawn (the Knife of
+  Stolen Resistance, the Ring of Treachery, the True-Ice Shards'
+  Sub-Zero) come back on that rest, and the card says when.
+- Aid raises your hit point maximum and current hit points by 5, and 5
+  more for each slot level above 2nd. The maximum goes back down when it
+  ends.
+  - *Designer note: before, you had to add it to your maximum yourself.*
+
+### 🧰 Quality of Life
+
+- **Shorter tab names (desktop):** Inventory and Notes, which leaves room
+  for Creatures. Android's Equipment is now Inventory too.
+- **Save proficiency:** right-click a save on the Overview (press and hold
+  on Android) to make it proficient or not, any save, as a skill's.
+  **Reset** puts them back to what you're given.
+- **No Tools menu (desktop):** the Dice Roller is the d20 beside Refresh,
+  Rest has its button and the Bestiary the Creatures tab; their keys still
+  work.
+- **Choices tab:** Level Up and Level Down at the top, a row per class with
+  its subclass, and your race, background and alignment each in a field
+  of its own.
+- **Right-click in a browser** (items, spells, creatures) for Add or Show
+  details, the same in each. Adding a spell this way adds the one you
+  clicked.
+- **Tool details:** hover a tool on the Overview (tap it on Android) for
+  what it's for.
+- **Main hand and off hand:** holding two weapons, your inventory says
+  which hand each is in, and Swap hands changes them over (right-click on
+  desktop, press and hold on Android). On Android each weapon in hand has
+  its own row.
+- **Search long lists:** a question with many answers (a Polymorph's
+  creature, a summon's) has a search box over it.
+- **Resistances on Android:** resistances, immunities and vulnerabilities
+  show as badges on the Hit Points card (½, ⊘, ×2), as on desktop. Tap one
+  to see where it comes from.
+- **Infusions** sit beside the item browsers on desktop, and after
+  Inventory in Android's menu.
+- **Rest buttons in reach (Android):** Cancel and Take a Rest stay at the
+  bottom of the rest screen while the cards scroll.
+- **Popups in light themes (Android):** popups and the menu sit on a light
+  veil in your theme's colour, so the page still shows behind them.
+
+### 🔧 Fixes
+
+- Fixed 129 Bestiary creatures (the Alhoon, the Elemental Spirit…)
+  listing their condition immunities as damage immunities, and the
+  Tasha's spirits' text reading "summonSpellLevel".
+- Fixed a Dwarf, Elf or other race with no subrace picked getting the
+  first subrace's darkvision (a Duergar's or Drow's 120 ft).
+- Fixed Umbral Sight not giving a Gloom Stalker darkvision.
+- Fixed Heal freezing the window when pressed quickly (desktop). Each
+  press now shows at once, and the rest of the sheet catches up when you
+  stop.
+- Fixed a Heal at full hit points wiping the Undo for the change before it.
+- Fixed the off-hand attack using the damage of the weapon you'd just
+  attacked with. It's the weapon in your other hand now, with its own
+  damage.
+- Fixed magic weapons ignoring how many you can hold: a two-handed one
+  (a Silver Sword) puts the others away, as any weapon does.
+- Fixed equipping a magic shield taking off your armor: it's carried as
+  your shield now.
+- Fixed a suit of magic armor in your pack adding to your AC. Only the
+  armor you wear counts.
+- Fixed the rest screen's buttons running off the bottom of the screen
+  (Android).
+
+### ⚠️ Known Issues
+
+- The 2024 rules aren't supported.
+
+---
+
+## v6.0 · "Keep Your Focus" · 13 November 2026
 
 ### 🌍 Overview
 
@@ -105,9 +289,6 @@ the app.
 
 ### ⚠️ Known Issues
 
-- Spells that last 10 minutes or longer aren't counted in rounds. End
-  them yourself.
-- PDF import only reads the official character sheet, typed in.
 - The 2024 rules aren't supported.
 
 ---
@@ -207,7 +388,6 @@ and every theme is easier on the eyes.
 
 ### ⚠️ Known Issues
 
-- PDF import only reads the official character sheet, typed in.
 - The 2024 rules aren't supported.
 
 ---
@@ -283,8 +463,6 @@ paper characters can come with you.
 
 ### ⚠️ Known Issues
 
-- PDF import only reads the official character sheet, typed in. Scanned or
-  handwritten sheets can't be read.
 - The 2024 rules aren't supported.
 
 ---
