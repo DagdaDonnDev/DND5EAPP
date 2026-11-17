@@ -88,6 +88,8 @@ Dialog {
                         iconName: modelData.icon || ""
                         iconSize: 16
                         text: modelData.text
+                        // an option that can't be used now shows greyed
+                        enabled: modelData.enabled !== false
                         onClicked: {
                             var key = modelData.key
                             root.close()

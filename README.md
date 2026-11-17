@@ -109,9 +109,9 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 | Inventory | Inventory, Infusions | Your gear, coins, magic items and attunement, the Equipment and Magic Items browsers, and an Artificer's Infusions |
 | Spells | Spells | Slots, Spell Resources (Sorcery Points, Arcane Ward, Bardic Inspiration, Channel Divinity, free casts…), the Spellcasting table, My Spells and the Spell Browser |
 | Creatures | Creatures | Every stat block of yours, in groups to open and close: Mounts, Companions, Familiars, Summons, Wild Shape, Vehicles and Other. Beside them, the Bestiary (press Add on any creature and pick its group) and Mounts & Vehicles. Right-click a creature (press and hold on Android) to move it, set its max HP or remove it |
-| Choices | Choices | **Level Up / Multiclass**, **Level Down**, **Remove Class**, your identity, and anything still to pick |
+| Choices | Choices | **Level Up** and **Level Down**, a row per class with its subclass and ⋯ (change the class, or remove it), your identity, and anything still to pick |
 | Features | Features | Every class, race and feat feature, with a box to find one and what it does a click (or tap) away, and the feats and rewards your DM grants |
-| Notes | Notes | Personality, backstory and notes, and the *Imported from PDF* page |
+| Notes | Notes | Character (appearance, background, and personality, ideals, bonds and flaws with your background's suggestions to pick or roll), Backstory, and your own pages in groups you make; drag a page onto a group to move it |
 
 - **The magnifying glass opens the details** of a spell, item or feat, on both apps.
 - **On desktop, right-click a row** for everything else it can do (Cast, Study, Remove…) and hover anything for its numbers. **On Android, press and hold.**
@@ -129,9 +129,9 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **Rounds left:** a spell of a minute or less counts its own rounds once it's cast (Bless, Hold Person, a smite…), and so do Rage and the other one-minute class features. Give any effect or condition a count with its hourglass. Each New Turn takes a round off and ends what has run out, saying so. Longer spells (10 minutes, an hour) last until you end them.
 - **Use** (or **Cast**) on a card spends what it costs — a slot, ki, a use — turns its effect on, and says what it did and what's left. When there's a choice to make, it asks.
 - **Attacking:** a weapon's **Hit** button (**Roll to Hit** on Android) rolls the d20 and says what AC it hits. Under the roll is what you can add to it, each with its cost: Precision Attack, Lucky, Guided Strike, Emboldening Bond… Press **Add** and it's paid for and rolled at once, and the total updates. **If it misses** lists what can turn a miss around: Favored by the Gods, Stroke of Luck, Focused Aim… Below that is what you can add to the hit: Sneak Attack, a smite, a maneuver… The **Attack** action card asks which weapon first. On a critical hit, the dice shown are already doubled.
-- **Damage is your roll.** Every damage line says what to roll and its type; roll it yourself, or open the Dice Roller (Ctrl+D).
+- **Damage is your roll.** Every damage line says what to roll and its type; roll it yourself, or open the Dice Roller (the d20 at the top of the sheet, Ctrl+D).
 - **The Dice Roller:** pick dice or type them (2d6 + 1d4 + 3, 4d6kh3), add one of your bonuses, take advantage or disadvantage on a d20, and roll. Its **history** keeps every roll the sheet makes too: checks, saves, initiative, attacks (and whether they hit), hit dice and what your actions roll, saved with the character. Click a roll of your own to roll it again.
-- **The Bestiary** (Tools → Bestiary, Ctrl+B; on Android, in the menu): every creature, 2,754 of them, to find by name or type and narrow by type, size, challenge rating and how it moves, with the whole stat block. Where Monsters of the Multiverse reprinted one, both are there, the reprint marked (MPMM). Your own creatures are on the **Creatures** tab (Tools → Your Creatures, Ctrl+Shift+B).
+- **The Bestiary** (beside your creatures on the Creatures tab, or Ctrl+B for a window of its own; on Android, in the menu): every creature, 2,754 of them, to find by name or type and narrow by type, size, challenge rating and how it moves, with the whole stat block. Where Monsters of the Multiverse reprinted one, both are there, the reprint marked (MPMM). Your own creatures are on the **Creatures** tab (Ctrl+Shift+B).
 - **Advantage and disadvantage are reminders.** Every roll is one d20, with a note of what the sheet knows applies (Reckless Attack, Poisoned, exhaustion…). Roll the second die yourself, since cover, the target and your DM can change it. Advantage you spend something on, like Inspiration, is rolled for you.
 - **Taking damage:** type the amount and press **Damage**. Halve it yourself for a resistance; yours are listed just below. Temporary hit points, concentration saves, Wild Shape hit points and death saves follow on their own.
 - **Typed the wrong number?** **Undo** on the Hit Points card puts your hit points, temp HP and death saves back as they were before the last Damage or Heal. It's there until your hit points change some other way, and on the YOU DIED screen if that's where the slip left you.
@@ -178,12 +178,12 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 <details>
 <summary><b>Levelling up, and changing your mind</b></summary>
 
-- **Level Up / Multiclass** is on the Choices tab: pick the class to level or add (it shows what the level adds: hit points, spell slots, spells to learn), then make that level's choices. A new class needs the multiclassing scores, for your current classes and the new one (Monk: Dexterity 13 and Wisdom 13; Fighter: Strength 13 or Dexterity 13). One you can't take yet is greyed, with what it needs.
+- **Level Up** is on the Choices tab: pick the class to level or add (it shows what the level adds: hit points, spell slots, spells to learn), then make that level's choices. A new class needs the multiclassing scores, for your current classes and the new one (Monk: Dexterity 13 and Wisdom 13; Fighter: Strength 13 or Dexterity 13). One you can't take yet is greyed, with what it needs.
 - **Swapping a spell:** a Bard, Sorcerer, Warlock, Ranger, Eldritch Knight or Arcane Trickster gaining a level can replace one of its spells with another it can learn at the new level, right in the level-up (on Android, on the Choices tab once the level is gained). A **Wizard** adds two spells to its spellbook there, free, or later from the Spell Browser.
 - **Spells to learn:** while a class has cantrips or spells left to learn (a Wizard's free spellbook spells too), a card on the Choices tab says how many, with a button to the Spell Browser. It counts as a pending choice until they're learned.
-- **Level Down** and **Remove Class** take a level or a whole class away, with everything it brought: invocations, maneuvers, the spells it alone gave. Level back up and you're asked again.
+- **Level Down** takes a level away, and a class's **⋯ → Remove** the whole class, with everything it brought: invocations, maneuvers, the spells it alone gave. Level back up and you're asked again. **⋯ → Change class** swaps it for another at the same level; the new class's subclass and choices wait on Choices.
 - Change your race, subrace, background, alignment or a feat later and the same clean-up happens. Anything new to pick waits on Choices (a new alignment asks for Divinely Favored's spell again).
-- Your own edits on the Skills tab stay until you press **↺ Reset Manual Changes**.
+- Your own edits to skills and saves on the Overview stay until you press their **↺ Reset**.
 - **Levelling by XP?** Settings → Advancement → Leveling → Experience Points adds an XP tracker and tells you when you can level. Levelling up is still your click.
 
 </details>
@@ -234,7 +234,7 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 </details>
 
 <details>
-<summary><b>Keyboard shortcuts</b> (desktop; ⌘ in place of Ctrl on a Mac)</summary>
+<summary><b>Keyboard shortcuts</b> (desktop; ⌘ in place of Ctrl on a Mac; also under Reference → Shortcuts)</summary>
 
 | Keys | Does |
 |---|---|
@@ -243,8 +243,8 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 | Ctrl+S | Save |
 | Ctrl+E | Export |
 | Ctrl+Shift+D | Duplicate the character |
-| Ctrl+D | Dice Roller |
-| Ctrl+B | Bestiary |
+| Ctrl+D | Dice Roller (the d20 at the top of the sheet) |
+| Ctrl+B | Bestiary, in a window of its own |
 | Ctrl+Shift+B | Your creatures (the Creatures tab) |
 | Ctrl+R | Rest, short rest picked |
 | Ctrl+Shift+R | Rest, long rest picked |

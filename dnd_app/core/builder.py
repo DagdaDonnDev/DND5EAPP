@@ -802,6 +802,10 @@ def rebuild(char: dict) -> None:
 
     # ── The player's own skill edits go on top (see "Skills are rebuilt") ──
     _apply_skill_overrides(char, old_skills, stale_expertise)
+    # ── and their own saving throw edits (the Overview's right-click) ──
+    for ab, on in (char.get("save_overrides") or {}).items():
+        if ab in ABILITIES:
+            char["saving_throws"][ab] = bool(on)
 
 
 def _drop_stale_expertise(char: dict) -> set:
@@ -853,6 +857,34 @@ def set_skill_level(char: dict, skill: str, level: int) -> None:
 def reset_skill_levels(char: dict) -> None:
     """Drop every Skills-tab edit: skills are just what's granted again."""
     char["skill_overrides"] = {}
+    rebuild(char)
+
+
+def set_save_prof(char: dict, ability: str, on: bool) -> None:
+    """The player marks a saving throw proficient or not (the Overview's
+    right-click, press and hold on Android). Kept as an override on top of
+    what's granted -- unless it's what the character gets anyway."""
+    overrides = char.setdefault("save_overrides", {})
+    overrides.pop(ability, None)
+    rebuild(char)
+    if bool(char["saving_throws"].get(ability)) != bool(on):
+        overrides[ability] = bool(on)
+        char["saving_throws"][ability] = bool(on)
+
+
+def reset_save_profs(char: dict) -> None:
+    """Saving throws back to what's granted: the player's own edits go,
+    and so does a proficiency ticked by hand before there were edits
+    (kept with Resilient's in _choices.extra_save_profs) -- Resilient's
+    own stays."""
+    char["save_overrides"] = {}
+    store = char.setdefault("_choices", {})
+    keep = set()
+    if "Resilient" in char.get("feats", []):
+        pick = store.get("feat_ability_resilient")
+        keep.update(pick if isinstance(pick, list) else [pick] if pick else [])
+    if "extra_save_profs" in store:
+        store["extra_save_profs"] = [a for a in store["extra_save_profs"] if a in keep]
     rebuild(char)
 
 

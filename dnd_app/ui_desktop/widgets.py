@@ -410,6 +410,155 @@ class InspectButtonDelegate(QStyledItemDelegate):
 
 
 
+# ── Drag and drop: a browser's row (or a notes page) dragged onto where it
+# goes. drag_source() on a list starts the drag; accept_drop() on a target
+# takes it. The data is a short string (a name, an index) of `kind`.
+DRAG_MIME = "application/x-mimic-"
+
+
+def drag_source(view, kind: str, data_for):
+    """Rows of `view` (a list or tree) can be dragged: data_for(index) gives
+    the string to carry, or "" for a row that can't go (a heading)."""
+    from PySide6.QtCore import QObject, QEvent, QMimeData, QPoint
+    from PySide6.QtGui import QDrag
+    from PySide6.QtWidgets import QApplication
+
+    class Src(QObject):
+        def __init__(self):
+            super().__init__(view)
+            self.start, self.index = None, None
+
+        def eventFilter(self, obj, ev):
+            t = ev.type()
+            if t == QEvent.MouseButtonPress and ev.button() == Qt.LeftButton:
+                self.start = ev.position().toPoint()
+                self.index = view.indexAt(self.start)
+            elif t == QEvent.MouseButtonRelease:
+                self.start = None
+            elif (t == QEvent.MouseMove and self.start is not None and ev.buttons() & Qt.LeftButton
+                  and (ev.position().toPoint() - self.start).manhattanLength() >= QApplication.startDragDistance()):
+                idx, self.start = self.index, None
+                text = data_for(idx) if idx is not None and idx.isValid() else ""
+                if text:
+                    md = QMimeData(); md.setData(DRAG_MIME + kind, text.encode("utf-8"))
+                    md.setText(text)
+                    drag = QDrag(view)
+                    drag.setMimeData(md)
+                    rect = view.visualRect(idx)
+                    pm = view.viewport().grab(rect)
+                    drag.setPixmap(pm); drag.setHotSpot(QPoint(16, pm.height() // 2))
+                    drag.exec(Qt.CopyAction | Qt.MoveAction)
+                    return True
+            return False
+
+    src = Src()
+    view.viewport().installEventFilter(src)
+    view._drag_source = src
+    return src
+
+
+def drag_widget(widget, kind: str, text: str):
+    """A single widget (a notes page's button) that can be dragged."""
+    from PySide6.QtCore import QObject, QEvent, QMimeData, QPoint
+    from PySide6.QtGui import QDrag
+    from PySide6.QtWidgets import QApplication
+
+    class Src(QObject):
+        start = None
+
+        def eventFilter(self, obj, ev):
+            t = ev.type()
+            if t == QEvent.MouseButtonPress and ev.button() == Qt.LeftButton:
+                self.start = ev.position().toPoint()
+            elif t == QEvent.MouseButtonRelease:
+                self.start = None
+            elif (t == QEvent.MouseMove and self.start is not None and ev.buttons() & Qt.LeftButton
+                  and (ev.position().toPoint() - self.start).manhattanLength() >= QApplication.startDragDistance()):
+                self.start = None
+                md = QMimeData(); md.setData(DRAG_MIME + kind, text.encode("utf-8"))
+                drag = QDrag(widget); drag.setMimeData(md)
+                pm = widget.grab(); drag.setPixmap(pm); drag.setHotSpot(QPoint(16, pm.height() // 2))
+                if isinstance(widget, QPushButton):
+                    widget.setDown(False)
+                drag.exec(Qt.MoveAction)
+                return True
+            return False
+
+    src = Src(widget)
+    widget.installEventFilter(src)
+    widget._drag_src = src
+    return src
+
+
+def accept_drop(widget, kind: str, on_drop, highlight: str = None):
+    """`widget` takes a drag of `kind`: on_drop(text) when it's let go over
+    it. While it's over, the widget's edge lights up (`highlight`, a
+    colour; its objectName is used for the rule)."""
+    from PySide6.QtCore import QObject, QEvent
+    widget.setAcceptDrops(True)
+    mime = DRAG_MIME + kind
+    name = widget.objectName() or f"drop{id(widget)}"
+    widget.setObjectName(name)
+
+    class Dst(QObject):
+        saved = None
+
+        def _hot(self, on):
+            if not highlight:
+                return
+            if on and self.saved is None:
+                self.saved = widget.styleSheet()
+                widget.setStyleSheet(self.saved + f"#{name}{{border:2px dashed {highlight};"
+                                                  f"background:{qa(highlight, 0x22)};border-radius:8px;}}")
+            elif not on and self.saved is not None:
+                widget.setStyleSheet(self.saved); self.saved = None
+
+        def eventFilter(self, obj, ev):
+            t = ev.type()
+            if t in (QEvent.DragEnter, QEvent.DragMove):
+                if ev.mimeData().hasFormat(mime):
+                    ev.acceptProposedAction(); self._hot(True)
+                    return True
+                return False
+            if t == QEvent.DragLeave:
+                self._hot(False); return False
+            if t == QEvent.Drop and ev.mimeData().hasFormat(mime):
+                self._hot(False)
+                text = bytes(ev.mimeData().data(mime)).decode("utf-8")
+                ev.acceptProposedAction()
+                # once the drag is over, not inside it
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(0, lambda: on_drop(text))
+                return True
+            return False
+
+    dst = Dst(widget)
+    widget.installEventFilter(dst)
+    widget.__dict__.setdefault("_drop_targets", []).append(dst)
+    return dst
+
+
+def exec_menu(menu, global_pos):
+    """Shows a menu and returns the action picked (one place, so a test
+    can stand in for the person picking)."""
+    return menu.exec(global_pos)
+
+
+def browser_row_menu(parent, global_pos, add_text: str, on_add, on_details):
+    """Right-click on a browser's row (items, spells, creatures): Add and
+    Show details, the same menu in every browser."""
+    from PySide6.QtWidgets import QMenu
+    from dnd_app.ui_desktop import icons as _ic
+    menu = QMenu(parent)
+    add_act = menu.addAction(_ic.icon("arrow_left"), add_text)
+    det_act = menu.addAction(_ic.icon("search"), "Show details")
+    act = exec_menu(menu, global_pos)
+    if act == add_act:
+        on_add()
+    elif act == det_act:
+        on_details()
+
+
 class AddButtonDelegate(InspectButtonDelegate):
     """An "Add" button at the right end of each row, beside the glass:
     pressing it calls on_add with the row's data (the Creatures page's

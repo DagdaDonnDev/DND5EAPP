@@ -100,7 +100,8 @@ class SkillsMixin:
         reset_skills_btn.setStyleSheet(
             _btn("", CRIMSON, variant="danger", bg_alpha=0x22, border_width=1,
                  text_color=CRIM2, hover_text="white", font_size=FS_SMALL,
-                 padding="3px 12px").styleSheet())
+                 padding="2px 12px", min_height0=True).styleSheet())
+        reset_skills_btn.setFixedHeight(28)
         reset_skills_btn.clicked.connect(self._reset_manual_skill_changes)
         leg.addWidget(reset_skills_btn)
         skcl.addLayout(leg)

@@ -109,8 +109,13 @@ class CompanionsMixin:
         splitter = QSplitter(Qt.Horizontal); splitter.setChildrenCollapsible(False)
         scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        inner = QWidget(); inner.setStyleSheet(f"background:{BG};")
+        inner = QWidget(); inner.setObjectName("creaturesDrop"); inner.setStyleSheet(f"QWidget#creaturesDrop{{background:{BG};}}")
         self._companions_lay = QVBoxLayout(inner); self._companions_lay.setSpacing(10)
+        # a creature dragged over from the Bestiary: onto a group, into it
+        # (see _fill_companions_tab); anywhere else, the group is asked
+        from dnd_app.ui_desktop.widgets import accept_drop
+        accept_drop(inner, "creature", self._drop_creature)
+        accept_drop(inner, "mount-vehicle", self._drop_mount_vehicle)
         scroll.setWidget(inner)
         splitter.addWidget(scroll)
         from dnd_app.ui_desktop.dialogs.bestiary import CreatureBrowser
@@ -147,6 +152,19 @@ class CompanionsMixin:
         else:
             self._add_vehicle(name)
         self._toast(f"{name} added to your creatures ({'Mounts' if kind == 'mount' else 'Vehicles'})")
+
+    def _drop_creature(self, name: str):
+        """A creature dropped on the page but not on a group: which group?"""
+        from dnd_app.core.summons import GROUPS
+        from dnd_app.ui_desktop.dialogs.bestiary import pick_group
+        g = pick_group(self, name, GROUPS)
+        if g:
+            self._add_creature_from_browser(name, g)
+
+    def _drop_mount_vehicle(self, text: str):
+        name, _, kind = text.partition("|")
+        if name and kind in ("mount", "vehicle"):
+            self._add_mount_or_vehicle(name, kind)
 
     def _add_creature_from_browser(self, name: str, group: str = "Other"):
         """Add Selected to Creatures: a Bestiary creature on your page with
@@ -469,8 +487,18 @@ class CompanionsMixin:
         closed = set(self.char.get("_closed_creature_groups", []))
         made = []
 
+        from dnd_app.core.summons import GROUPS
+        from dnd_app.ui_desktop.widgets import accept_drop
+
         def group(name, build):
             box = CreatureGroup(name, name not in closed, self._toggle_creature_group)
+            box.setObjectName(f"creatureGroup_{name.replace(' ', '')}")
+            box.setStyleSheet(f"QFrame#{box.objectName()}{{background:transparent;border:none;}}")
+            if name in GROUPS:
+                accept_drop(box, "creature", lambda n, g=name: self._add_creature_from_browser(n, g), TEAL)
+            else:
+                accept_drop(box, "creature", self._drop_creature)
+            accept_drop(box, "mount-vehicle", self._drop_mount_vehicle)
             self._companions_lay = box.body
             try:
                 build()

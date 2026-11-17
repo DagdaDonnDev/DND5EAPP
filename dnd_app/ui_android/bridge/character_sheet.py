@@ -428,8 +428,7 @@ class CharacterSheetBridge(QObject):
         for ab in ABILITIES:
             score = ability_score(self.char, ab)
             mod = ability_mod(self.char, ab)
-            is_save_prof = bool(self.char.get("saving_throws", {}).get(ab, False)) \
-                or ab in save_profs
+            is_save_prof = bool(self.char.get("saving_throws", {}).get(ab, False))
             out.append({
                 "ability": ab,
                 "score": score,
@@ -439,6 +438,9 @@ class CharacterSheetBridge(QObject):
                 # plus anything that adds to every check of it (the Fey
                 # Wanderer's Wisdom on Charisma checks).
                 "check": ability_check_bonus(self.char, ab),
+                "checkText": _mod_text(ability_check_bonus(self.char, ab)),
+                "name": {"STR": "Strength", "DEX": "Dexterity", "CON": "Constitution",
+                         "INT": "Intelligence", "WIS": "Wisdom", "CHA": "Charisma"}[ab],
                 "save": get_saving_throw_bonus(self.char, ab),
                 "saveText": _mod_text(get_saving_throw_bonus(self.char, ab)),
                 "saveProficient": is_save_prof,
@@ -453,21 +455,26 @@ class CharacterSheetBridge(QObject):
         from dnd_app.data.feature_tooltips import get_tool_tooltip
         return get_tool_tooltip(tool) or ""
 
+    @Slot(str, bool)
+    def setSaveProficiency(self, ab: str, on: bool):
+        """A saving throw proficient or not (press and hold it -- desktop's
+        right-click): kept as an override on what's granted (core/builder.py)."""
+        from dnd_app.core.builder import set_save_prof
+        set_save_prof(self.char, ab, on)
+        self.ctrl.refresh()
+        self.toastRequested.emit(f"{ab} saving throw: {'proficient' if on else 'not proficient'}")
+
     @Slot(str)
     def toggleSaveProficiency(self, ab: str):
-        """An extra saving throw proficiency (a feat's, the DM's) on or off --
-        kept in _choices.extra_save_profs, which a rebuild reads (the same
-        as desktop's box on the ability card). A class's isn't changed."""
-        if ab in get_saving_throw_profs(class_levels(self.char)):
-            return
-        current = list(self.char.setdefault("_choices", {}).get("extra_save_profs", []))
-        if ab in current:
-            current.remove(ab)
-        else:
-            current.append(ab)
-        self.ctrl.update("_choices.extra_save_profs", current)
-        on = ab in current
-        self.toastRequested.emit(f"{ab} saving throw: {'proficient' if on else 'not proficient'}")
+        self.setSaveProficiency(ab, not bool(self.char.get("saving_throws", {}).get(ab)))
+
+    @Slot()
+    def resetSaveProficiencies(self):
+        """Saving throws back to what's granted (desktop's Reset)."""
+        from dnd_app.core.builder import reset_save_profs
+        reset_save_profs(self.char)
+        self.ctrl.refresh()
+        self.toastRequested.emit("↺ Saving throws reset to what you're given")
         self._changed()
 
     # ── Combat stats ─────────────────────────────────────────────────
@@ -3584,6 +3591,29 @@ class CharacterSheetBridge(QObject):
     def canRemoveClass(self):
         return len(self.char.get("classes", [])) > 1
 
+    @Slot(str, result=list)
+    def otherClasses(self, class_name: str) -> list:
+        """The classes `class_name` could become (Change class): the ones
+        the character doesn't have."""
+        from dnd_app.data.classes import CLASS_DICT
+        have = {c["class"] for c in self.char.get("classes", [])}
+        return [n for n in sorted(CLASS_DICT) if n not in have]
+
+    @Slot(str, str)
+    def changeClass(self, old: str, new: str):
+        """A class's ⋯ → Change class (desktop's the same): `new` in its
+        place at the same level; its subclass and choices asked afresh."""
+        from dnd_app.core.character import change_class, get_class_entry, name_list
+        entry = get_class_entry(self.char, old)
+        lost = change_class(self.char, old, new)
+        if lost is None:
+            return
+        self.ctrl.refresh()
+        self.toastRequested.emit(f"{old} is now {new} {entry['level']}"
+                                 + (f" -- its spells went: {name_list(lost)}" if lost else ""))
+        self._changed()
+        self.autosaveRequested.emit()
+
     @Slot(str)
     def removeClass(self, class_name: str):
         classes = self.char.get("classes", [])
@@ -3838,15 +3868,13 @@ class CharacterSheetBridge(QObject):
     # ── Traits / Backstory / Appearance / Campaign Notes ────────────────
     # Ports ui_desktop's TraitsNotesMixin: 4 short trait fields (flat
     # strings), Appearance (flat string), Backstory (flat string,
-    # always present, not part of the removable page list), and
-    # Campaign Notes as up to 8 player-named, add/remove/renameable
-    # pages (char["notes_pages"], a list of {"title","text"} dicts).
+    # always present, not part of the removable page list), and the
+    # player's own pages in groups (core/notes.py).
     _NOTES_TRAIT_FIELD_MAP = {
         "personalityTraits": "personality_traits", "ideals": "ideals",
         "bonds": "bonds", "flaws": "flaws",
         "appearanceNotes": "appearance_notes", "backstory": "backstory",
     }
-    _MAX_NOTES_PAGES = 8  # excludes the always-present Backstory field
 
     @Property('QVariantMap', notify=statsChanged)
     def traitsNotes(self):
@@ -3863,61 +3891,139 @@ class CharacterSheetBridge(QObject):
         self._changed()
 
     def _notes_pages_for_char(self):
-        pages = self.char.get("notes_pages")
-        if pages:
-            return pages
-        legacy = self.char.get("notes", "")
-        if legacy:
-            # Pre-tabs characters (and the Wizard's starting-notes
-            # field) only ever wrote a single flat string -- preserved
-            # as one page rather than dropped.
-            return [{"title": "General", "text": legacy}]
-        return [{"title": t, "text": ""} for t in
-                ("Session Log", "Quest Log", "Loot & Treasure")]
+        from dnd_app.core import notes as N
+        N.groups(self.char)
+        return self.char["notes_pages"]
 
     @Property(list, notify=statsChanged)
     def notesPages(self):
-        return self._notes_pages_for_char()
+        return [{"title": p.get("title", "Notes"), "text": p.get("text", ""), "group": p.get("group", "")}
+                for p in self._notes_pages_for_char()]
+
+    @Property(list, notify=statsChanged)
+    def notesGroups(self):
+        """[{name, open, pages: [{index, title}]}] -- the Notes list's groups
+        (core/notes.py, as desktop's)."""
+        from dnd_app.core import notes as N
+        return [{"name": g["name"], "open": g["open"],
+                 "pages": [{"index": i, "title": p.get("title", "Notes")} for i, p in g["pages"]]}
+                for g in N.groups(self.char)]
 
     @Slot(int, str)
     def setNotesPageText(self, index: int, text: str):
-        pages = self._notes_pages_for_char()
-        if 0 <= index < len(pages):
-            pages[index]["text"] = text
-            self.char["notes_pages"] = pages
-            self._changed()
-
-    @Slot(str)
-    def addNotesPage(self, title: str):
-        pages = self._notes_pages_for_char()
-        if len(pages) >= self._MAX_NOTES_PAGES:
-            self.toastRequested.emit(f"Notes pages are capped at {self._MAX_NOTES_PAGES}")
-            return
-        title = (title or "").strip() or "Notes"
-        pages.append({"title": title, "text": ""})
-        self.char["notes_pages"] = pages
+        from dnd_app.core import notes as N
+        N.set_page_text(self.char, index, text)
         self._changed()
+
+    @Slot(str, result=int)
+    def addNotesPage(self, title: str):
+        """A new page in the first group (press and hold it to move it)."""
+        from dnd_app.core import notes as N
+        gs = N.groups(self.char)
+        if not gs:
+            N.add_group(self.char, N.DEFAULT_GROUP)
+            gs = N.groups(self.char)
+        return self.addNotesPageIn(gs[0]["name"], title)
+
+    @Slot(str, str, result=int)
+    def addNotesPageIn(self, group: str, title: str):
+        from dnd_app.core import notes as N
+        i = N.add_page(self.char, group, (title or "").strip() or "Notes")
+        self._changed()
+        return i
 
     @Slot(int)
     def removeNotesPage(self, index: int):
-        pages = self._notes_pages_for_char()
-        if len(pages) <= 1:
-            self.toastRequested.emit("Keep at least one notes page")
-            return
-        if 0 <= index < len(pages):
-            pages.pop(index)
-            self.char["notes_pages"] = pages
-            self._changed()
+        from dnd_app.core import notes as N
+        N.remove_page(self.char, index)
+        self._changed()
 
     @Slot(int, str)
     def renameNotesPage(self, index: int, title: str):
-        pages = self._notes_pages_for_char()
-        title = (title or "").strip()
-        if not title or not (0 <= index < len(pages)):
-            return
-        pages[index]["title"] = title
-        self.char["notes_pages"] = pages
+        from dnd_app.core import notes as N
+        N.rename_page(self.char, index, title)
         self._changed()
+
+    @Slot(int, str, result=int)
+    def moveNotesPage(self, index: int, group: str):
+        from dnd_app.core import notes as N
+        i = N.move_page(self.char, index, group)
+        self.toastRequested.emit(f"Moved to {group}")
+        self._changed()
+        return i
+
+    @Slot(str)
+    def addNotesGroup(self, name: str):
+        from dnd_app.core import notes as N
+        why = N.add_group(self.char, name)
+        if why:
+            self.toastRequested.emit(why)
+        self._changed()
+
+    @Slot(str, str)
+    def renameNotesGroup(self, old: str, new: str):
+        from dnd_app.core import notes as N
+        why = N.rename_group(self.char, old, new)
+        if why:
+            self.toastRequested.emit(why)
+        self._changed()
+
+    @Slot(str)
+    def removeNotesGroup(self, name: str):
+        from dnd_app.core import notes as N
+        n = N.remove_group(self.char, name)
+        self.toastRequested.emit(f"{name} removed" + (f", with its {n} page{'s' if n != 1 else ''}" if n else ""))
+        self._changed()
+
+    @Slot(str)
+    def toggleNotesGroup(self, name: str):
+        from dnd_app.core import notes as N
+        N.toggle_group(self.char, name)
+        self._changed()
+
+    @Slot(int, result=str)
+    def notesNewEntry(self, index: int) -> str:
+        """Today's date at the top of the page (desktop's New entry)."""
+        from dnd_app.core import notes as N
+        text = N.new_entry(self.char, index)
+        self._changed()
+        return text
+
+    # Your background's suggestions for the four boxes
+    _TRAIT_KIND = {"personalityTraits": "traits", "ideals": "ideals", "bonds": "bonds", "flaws": "flaws"}
+
+    @Property(str, notify=statsChanged)
+    def notesBackgroundLine(self):
+        from dnd_app.data.backgrounds import get_background
+        bg = self.char.get("background", "") or "No background"
+        info = get_background(self.char.get("background", "")) or {}
+        skills = info.get("skill_profs") or info.get("skills") or []
+        return bg + (f"  ·  {', '.join(skills)}" if skills else "")
+
+    @Slot(str, result=list)
+    def traitSuggestions(self, key: str) -> list:
+        from dnd_app.core import notes as N
+        return list(N.suggestions(self.char).get(self._TRAIT_KIND.get(key, ""), []))
+
+    @Slot(str, str)
+    def useTraitSuggestion(self, key: str, text: str):
+        from dnd_app.core import notes as N
+        kind = self._TRAIT_KIND.get(key)
+        if kind:
+            N.use_suggestion(self.char, kind, text)
+            self._changed()
+
+    @Slot(str)
+    def rollTraitSuggestion(self, key: str):
+        from dnd_app.core import notes as N
+        kind = self._TRAIT_KIND.get(key)
+        if not kind:
+            return
+        n, text = N.roll_suggestion(self.char, kind)
+        if n:
+            N.use_suggestion(self.char, kind, text)
+            self.toastRequested.emit(f"🎲 Rolled a {n}: {text}")
+            self._changed()
 
     # ── Infusions (Artificer only; not grantable until level 2, so an
     # empty list at level 1 is correct, not a gap) ──────────────────

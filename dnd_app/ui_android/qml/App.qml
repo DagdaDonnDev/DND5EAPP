@@ -194,7 +194,7 @@ ApplicationWindow {
             { label: "Choices", icon: "choices", screen: sheetChoicesComp, enabled: true,
               pulse: window.choicesPending },
             { label: "Notes", icon: "notes", screen: sheetNotesComp, enabled: true,
-              sections: ["Personality", "Appearance", "Backstory"].concat(
+              sections: ["Character", "Backstory"].concat(
                   sheetBridge !== null ? sheetBridge.notesPages.map(p => p.title) : []) },
         ])
     readonly property var navItems: sheetMode ? sheetNavItems : wizardNavItems

@@ -14,6 +14,21 @@ Page {
 
     Component.onCompleted: sheetBridge.refresh()
 
+    // press and hold a save: Not proficient / Proficient, the current one ticked
+    property string _saveAb: ""
+    function saveOptions(ab, on) {
+        _saveAb = ab
+        saveDialog.heading = ab + " saving throw"
+        saveDialog.options = [{key: "off", text: (on ? "" : "✓ ") + "Not proficient", icon: ""},
+                              {key: "on", text: (on ? "✓ " : "") + "Proficient", icon: ""}]
+        saveDialog.open()
+    }
+    MOptionsDialog {
+        id: saveDialog
+        objectName: "saveOptionsDialog"
+        onPicked: (key) => sheetBridge.setSaveProficiency(root._saveAb, key === "on")
+    }
+
     function joinOrNone(list) {
         return list.length > 0 ? list.join(", ") : "None"
     }
@@ -63,9 +78,21 @@ Page {
 
             // ── Abilities and saving throws: tap the score to roll a check,
             // the save line to roll the save (a teal border: proficient)
-            Label { text: "Abilities and Saving Throws"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true }
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: "Abilities and Saving Throws"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true
+                        Layout.fillWidth: true }
+                MButton {
+                    objectName: "resetSaveProfs"
+                    primary: false
+                    danger: true
+                    implicitHeight: 32
+                    text: "Reset"
+                    onClicked: sheetBridge.resetSaveProficiencies()
+                }
+            }
             Label {
-                text: "Tap a score to roll a check, a save to roll it. Press and hold a save to mark an extra proficiency in it."
+                text: "Tap a check or a save to roll it. Press and hold a save to change its proficiency."
                 color: Theme.text3
                 font.pixelSize: Theme.fsSmall
                 wrapMode: Text.WordWrap
@@ -86,51 +113,71 @@ Page {
                         readonly property int abCheck: modelData.check
                         readonly property int abSave: modelData.save
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 92
+                        implicitHeight: abCol.implicitHeight + 16
                         radius: 10
                         color: Theme.surf
-                        border.color: modelData.saveProficient ? Theme.teal : Theme.border
-                        clip: true
+                        border.color: Theme.border
 
-                        RowLayout {
-                            anchors { left: parent.left; right: parent.right; top: parent.top
-                                      leftMargin: 12; rightMargin: 10; topMargin: 8 }
-                            ColumnLayout {
-                                spacing: 0
-                                Label { text: abCard.abName; color: Theme.text3; font.pixelSize: Theme.fsSmall; font.bold: true }
-                                Label { text: String(modelData.score); color: Theme.text; font.pixelSize: Theme.fsHead; font.bold: true }
+                        // as desktop's: the name and score, then the check and
+                        // the save as two matching rows to tap
+                        ColumnLayout {
+                            id: abCol
+                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
+                            spacing: 6
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label { text: modelData.name ? modelData.name.toUpperCase() : abCard.abName
+                                        color: Theme.gold2; font.pixelSize: Theme.fsSmall; font.bold: true
+                                        Layout.fillWidth: true; elide: Text.ElideRight }
+                                // (the word goes on a narrow phone, where the name needs the room)
+                                Label { text: "score"; color: Theme.text3; font.pixelSize: Theme.fsSmall
+                                        visible: abCard.width >= 210 }
+                                Label { text: String(modelData.score); color: Theme.text; font.pixelSize: Theme.fsTitle; font.bold: true }
                             }
-                            Item { Layout.fillWidth: true }
-                            Label { text: modelData.modText; color: Theme.gold2; font.pixelSize: Theme.fsTitle; font.bold: true }
-                        }
-                        MouseArea {
-                            anchors { top: parent.top; left: parent.left; right: parent.right }
-                            height: parent.height - 26
-                            onClicked: sheetBridge.rollQuickCheck(abCard.abName + " Check", abCard.abCheck)
-                        }
-                        Rectangle {
-                            anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
-                            height: 26
-                            color: modelData.saveProficient ? Qt.rgba(Theme.teal.r, Theme.teal.g, Theme.teal.b, 0.18) : Theme.surf2
-                            Label {
-                                anchors.centerIn: parent
-                                text: (modelData.saveProficient ? "● " : "○ ") + "Save " + modelData.saveText
-                                color: modelData.saveProficient ? Theme.teal2 : Theme.text2
-                                font.pixelSize: Theme.fsSmall
-                                font.bold: modelData.saveProficient
-                            }
-                            // tap: roll the save; press and hold: an extra
-                            // proficiency in it on or off (not a class's)
-                            MouseArea {
-                                objectName: "saveTap_" + abCard.abName
-                                anchors.fill: parent
-                                pressAndHoldInterval: 450
-                                onClicked: sheetBridge.rollQuickCheck(abCard.abName + " Save", abCard.abSave)
-                                onPressAndHold: {
-                                    if (modelData.saveFromClass)
-                                        Window.window.showToast(abCard.abName + " save proficiency comes from your class")
-                                    else
-                                        sheetBridge.toggleSaveProficiency(abCard.abName)
+                            Repeater {
+                                model: [{kind: "check", word: "Check", value: modelData.check, text: modelData.checkText,
+                                         prof: false},
+                                        {kind: "save", word: "Save", value: modelData.save, text: modelData.saveText,
+                                         prof: modelData.saveProficient}]
+                                delegate: Rectangle {
+                                    objectName: (modelData.kind === "save" ? "saveTap_" : "checkTap_") + abCard.abName
+                                    Layout.fillWidth: true
+                                    implicitHeight: 40
+                                    radius: 8
+                                    color: rollTap.pressed ? Qt.rgba(Theme.teal.r, Theme.teal.g, Theme.teal.b, 0.3)
+                                         : modelData.prof ? Qt.rgba(Theme.indigo.r, Theme.indigo.g, Theme.indigo.b, 0.12)
+                                         : Theme.surf2
+                                    border.color: modelData.prof ? Theme.indigo : Theme.border
+                                    RowLayout {
+                                        anchors { fill: parent; leftMargin: 10; rightMargin: 8 }
+                                        spacing: 6
+                                        Label {
+                                            visible: modelData.kind === "save"
+                                            text: modelData.prof ? "◆" : "—"
+                                            color: modelData.prof ? Theme.indigo2 : Theme.text3
+                                            font.pixelSize: Theme.fsBody; font.bold: true
+                                        }
+                                        Label { text: modelData.word; color: Theme.text2; font.pixelSize: Theme.fsBody
+                                                Layout.fillWidth: true }
+                                        Label {
+                                            text: modelData.text
+                                            color: modelData.value > 0 ? Theme.teal2 : modelData.value < 0 ? Theme.crimson2 : Theme.text2
+                                            font.pixelSize: Theme.fsTitle; font.bold: true
+                                        }
+                                        MIcon { name: "dice"; size: 18; color: Theme.teal2 }
+                                    }
+                                    // tap: roll it; press and hold the save: proficient
+                                    // or not (desktop's right-click)
+                                    MouseArea {
+                                        id: rollTap
+                                        anchors.fill: parent
+                                        pressAndHoldInterval: 450
+                                        onClicked: modelData.kind === "save"
+                                                   ? sheetBridge.rollQuickCheck(abCard.abName + " Save", abCard.abSave)
+                                                   : sheetBridge.rollQuickCheck(abCard.abName + " Check", abCard.abCheck)
+                                        onPressAndHold: if (modelData.kind === "save")
+                                                            root.saveOptions(abCard.abName, modelData.prof)
+                                    }
                                 }
                             }
                         }
@@ -144,7 +191,8 @@ Page {
                 Label { text: "Skills"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true; Layout.fillWidth: true }
                 MButton {
                     primary: false
-                    height: 28
+                    danger: true
+                    implicitHeight: 32
                     text: "Reset"
                     onClicked: sheetBridge.resetSkillProficiencies()
                 }

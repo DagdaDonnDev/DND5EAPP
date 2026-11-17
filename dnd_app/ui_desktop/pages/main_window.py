@@ -49,6 +49,25 @@ def _save_recent(path: str):
 _lbl = h
 
 
+
+# Every keyboard shortcut on desktop, for Reference (and the README's list)
+SHORTCUTS = [
+    ("Ctrl+N", "New character"),
+    ("Ctrl+O", "Open a character file"),
+    ("Ctrl+S", "Save"),
+    ("Ctrl+E", "Export"),
+    ("Ctrl+Shift+D", "Duplicate the character"),
+    ("Ctrl+D", "Dice Roller (the d20 at the top of the sheet)"),
+    ("Ctrl+B", "Bestiary, in a window of its own"),
+    ("Ctrl+Shift+B", "Your creatures (the Creatures tab)"),
+    ("Ctrl+R", "Rest, short rest picked"),
+    ("Ctrl+Shift+R", "Rest, long rest picked"),
+    ("Ctrl+1 … Ctrl+9", "Jump to that tab"),
+    ("Ctrl+F", "The search box of the tab you're on, or the start screen's"),
+    ("Ctrl+,", "Settings"),
+    ("Ctrl+Q", "Quit"),
+]
+
 class StartMenu(QWidget):
     new_char  = Signal()
     load_char = Signal(str)
@@ -1106,13 +1125,12 @@ class CharacterCreatorApp(QMainWindow):
         fm.addSeparator()
         a = QAction("Quit", self);           a.setShortcut("Ctrl+Q"); a.triggered.connect(self.close); fm.addAction(a)
 
-        tm = mb.addMenu("&Tools")
-        a = QAction("Dice Roller", self); _icons.set_action_icon(a, "dice"); a.setShortcut("Ctrl+D"); a.triggered.connect(self._open_dice_roller); tm.addAction(a)
-        a = QAction("Bestiary", self); _icons.set_action_icon(a, "paw"); a.setShortcut("Ctrl+B"); a.triggered.connect(lambda: self._open_bestiary()); tm.addAction(a)
-        a = QAction("Your Creatures", self); _icons.set_action_icon(a, "paw"); a.setShortcut("Ctrl+Shift+B")
-        a.triggered.connect(self._open_creatures); tm.addAction(a)
-        a = QAction("Short Rest",  self); _icons.set_action_icon(a, "short_rest"); a.setShortcut("Ctrl+R"); a.triggered.connect(self._short_rest);       tm.addAction(a)
-        a = QAction("Long Rest",   self); _icons.set_action_icon(a, "long_rest"); a.setShortcut("Ctrl+Shift+R"); a.triggered.connect(self._long_rest); tm.addAction(a)
+        # No Tools menu: the Dice Roller has its d20 beside Refresh, Rest its
+        # button, the Bestiary the Creatures tab. Their keys still work (the
+        # window's own actions), and Reference lists them (SHORTCUTS).
+        for keys, slot in (("Ctrl+D", self._open_dice_roller), ("Ctrl+B", lambda: self._open_bestiary()),
+                           ("Ctrl+Shift+B", self._open_creatures)):
+            a = QAction(self); a.setShortcut(keys); a.triggered.connect(slot); self.addAction(a)
 
         # Settings/Credits are single actions, not menus with one item
         # inside them -- addAction() straight onto the menu bar makes
@@ -1141,26 +1159,38 @@ class CharacterCreatorApp(QMainWindow):
                 break
 
     def _open_reference(self):
-        """Reference (beside Settings): what the book codes mean."""
+        """Reference (beside Settings): what the book codes mean, and the
+        keyboard shortcuts."""
         from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem, \
-            QHeaderView, QDialogButtonBox, QAbstractItemView
+            QHeaderView, QDialogButtonBox, QAbstractItemView, QTabWidget, QWidget
+        from PySide6.QtGui import QKeySequence
         from dnd_app.data.books import book_rows
         dlg = QDialog(self); dlg.setWindowTitle("Reference"); dlg.setObjectName("referenceDialog")
-        dlg.resize(520, 560)
+        dlg.resize(540, 600)
         lay = QVBoxLayout(dlg)
-        intro = QLabel("The book codes beside spells, feats, magic items and creatures, and the book each "
-                       "one means.")
-        intro.setWordWrap(True); lay.addWidget(intro)
-        rows = book_rows()
-        t = QTableWidget(len(rows), 2); t.setObjectName("referenceTable")
-        t.setHorizontalHeaderLabels(["Code", "Book"])
-        t.verticalHeader().setVisible(False)
-        t.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        t.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        t.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        for i, (code, book) in enumerate(rows):
-            t.setItem(i, 0, QTableWidgetItem(code)); t.setItem(i, 1, QTableWidgetItem(book))
-        lay.addWidget(t, 1)
+        tabs = QTabWidget(); tabs.setObjectName("referenceTabs")
+
+        def table(name, intro, heads, rows):
+            page = QWidget(); pl = QVBoxLayout(page); pl.setContentsMargins(8, 10, 8, 8)
+            lbl = QLabel(intro); lbl.setWordWrap(True); pl.addWidget(lbl)
+            t = QTableWidget(len(rows), 2); t.setObjectName(name)
+            t.setHorizontalHeaderLabels(heads)
+            t.verticalHeader().setVisible(False)
+            t.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            t.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+            t.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+            for i, (a_, b_) in enumerate(rows):
+                t.setItem(i, 0, QTableWidgetItem(a_)); t.setItem(i, 1, QTableWidgetItem(b_))
+            pl.addWidget(t, 1)
+            return page
+
+        tabs.addTab(table("referenceTable", "The book codes beside spells, feats, magic items and creatures, "
+                          "and the book each one means.", ["Code", "Book"], book_rows()), "Book codes")
+        # (the keys as this computer writes them: ⌘ on a Mac)
+        native = lambda k: QKeySequence(k).toString(QKeySequence.NativeText) if "…" not in k else k
+        tabs.addTab(table("shortcutsTable", "What the keyboard does on desktop.", ["Keys", "Does"],
+                          [(native(k), d) for k, d in SHORTCUTS]), "Shortcuts")
+        lay.addWidget(tabs, 1)
         bb = QDialogButtonBox(QDialogButtonBox.Close); bb.rejected.connect(dlg.reject); lay.addWidget(bb)
         dlg.exec()
 
@@ -1610,13 +1640,13 @@ class CharacterCreatorApp(QMainWindow):
             self._dice_roller.raise_(); self._dice_roller.activateWindow()
 
     def _open_creatures(self):
-        """Tools → Your Creatures (Ctrl+Shift+B): the open sheet's Creatures tab."""
+        """Ctrl+Shift+B: the open sheet's Creatures tab."""
         sheet = getattr(self, "_sheet", None)
         if sheet is not None and self._stack.currentWidget() is sheet:
             sheet._tabs.setCurrentWidget(sheet._creatures_tab_page)
 
     def _open_bestiary(self, name: str = ""):
-        """Tools → Bestiary (Ctrl+B): every creature, to find and read. One
+        """Ctrl+B: the Bestiary window, every creature to find and read. One
         window; a closed one is made afresh, so it takes the current theme."""
         from dnd_app.ui_desktop.dialogs.bestiary import BestiaryWindow
         if self._bestiary is None or self._bestiary.isHidden():

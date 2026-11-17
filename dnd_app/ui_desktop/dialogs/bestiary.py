@@ -1,4 +1,4 @@
-"""The Bestiary window (Tools → Bestiary, Ctrl+B): every creature MIMIC
+"""The Bestiary window (Ctrl+B): every creature MIMIC
 knows, to find by name or type and filter by type, size, challenge
 rating and how it moves, with its stat block beside the list. The finding
 and the stat block are core/bestiary.py's, the same as Android's Bestiary
@@ -270,6 +270,11 @@ class CreatureBrowser(QWidget):
         self.tree.setItemDelegateForColumn(4, AddButtonDelegate(
             self.tree, self._add_name, selected_icon="#0a0d12", column=4))
         self.tree.itemDoubleClicked.connect(lambda it, _c: self._add(it))
+        self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._row_menu)
+        # dragged onto your creatures (onto a group: into it)
+        from dnd_app.ui_desktop.widgets import drag_source
+        drag_source(self.tree, "creature", lambda i: i.siblingAtColumn(0).data(Qt.UserRole) or "")
         lay.addWidget(self.tree, 1)
         self._groups = tuple(groups)
         self._timer = QTimer(self); self._timer.setSingleShot(True); self._timer.setInterval(150)
@@ -298,6 +303,16 @@ class CreatureBrowser(QWidget):
     def _add(self, item):
         if item is not None and item.data(0, Qt.UserRole):
             self._add_name(item.data(0, Qt.UserRole))
+
+    def _row_menu(self, pos):
+        """Right-click a creature: Add, or Show details (as every browser)."""
+        item = self.tree.itemAt(pos)
+        name = item.data(0, Qt.UserRole) if item is not None else None
+        if not name:
+            return
+        from dnd_app.ui_desktop.widgets import browser_row_menu
+        browser_row_menu(self, self.tree.viewport().mapToGlobal(pos), "Add to Creatures",
+                         lambda: self._add_name(name), lambda: show_creature_details(self, name))
 
     def _add_name(self, name):
         """Add (the row's button, or a double-click): the group from the
@@ -372,6 +387,14 @@ class MountVehicleBrowser(QWidget):
             self.tree, lambda n: self._add(self._find(n)), selected_icon="#0a0d12", column=3,
             has_details=lambda d: bool(d) and d != "__section__"))
         self.tree.itemDoubleClicked.connect(lambda it, _c: self._add(it))
+        self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._row_menu)
+        from dnd_app.ui_desktop.widgets import drag_source
+
+        def _carry(i):
+            name = i.siblingAtColumn(0).data(Qt.UserRole)
+            return f"{name}|{i.siblingAtColumn(0).data(Qt.UserRole + 1)}" if name and name != "__section__" else ""
+        drag_source(self.tree, "mount-vehicle", _carry)
         lay.addWidget(self.tree, 1)
         self.refresh()
 
@@ -420,6 +443,16 @@ class MountVehicleBrowser(QWidget):
         it = self._find(name)
         if it is not None:
             show_plain_details(self, name, self.statblock(name, it.data(0, Qt.UserRole + 1)))
+
+    def _row_menu(self, pos):
+        """Right-click a mount or vehicle: Add, or Show details."""
+        item = self.tree.itemAt(pos)
+        name = item.data(0, Qt.UserRole) if item is not None else None
+        if name in (None, "__section__"):
+            return
+        from dnd_app.ui_desktop.widgets import browser_row_menu
+        browser_row_menu(self, self.tree.viewport().mapToGlobal(pos), "Add to Creatures",
+                         lambda: self._add(item), lambda: self._inspect(name))
 
     def _add(self, item):
         if item is None or item.data(0, Qt.UserRole) in (None, "__section__"):

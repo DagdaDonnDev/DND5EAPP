@@ -905,22 +905,22 @@ class SpellsMixin:
         show_details(self, spell["name"], spell_details_markdown(spell))
 
     def _on_spell_browser_ctx(self, pos):
-        """Right-click on spell browser — show full details."""
+        """Right-click on a spell in the browser: Add, or Show details."""
         item = self._sp_browser.itemAt(pos)
         if not item: return
         # the row's text carries its level and school too ("L3  Fireball
         # [Evo]"), so the spell comes from the row's data, not its text
         spell = item.data(Qt.UserRole)
         if not spell: return
-        from PySide6.QtWidgets import QMenu
-        menu = QMenu(self)
-        detail_act = menu.addAction(_icons.icon("features"), f"Details: {spell['name']}")
-        add_act    = menu.addAction(f"+ Add to My Spells")
-        action = menu.exec(self._sp_browser.viewport().mapToGlobal(pos))
-        if action == detail_act:
-            self._show_spell_details(spell)
-        elif action == add_act:
+        from dnd_app.ui_desktop.widgets import browser_row_menu
+
+        def add():
+            # the spell right-clicked, not whatever else was selected
+            self._sp_browser.clearSelection()
+            item.setSelected(True)
             self._add_spell_from_browser()
+        browser_row_menu(self, self._sp_browser.viewport().mapToGlobal(pos), "Add to My Spells",
+                         add, lambda: self._show_spell_details(spell))
 
     def _filter_spell_browser(self):
         q  = self._sp_search.text().lower()

@@ -350,6 +350,27 @@ def remove_class(char: dict, class_name: str) -> None:
     char["classes"] = [c for c in char["classes"] if c["class"] != class_name]
 
 
+def change_class(char: dict, old: str, new: str):
+    """A class swapped for another at the same level, in the same place
+    (a first class stays first, with its saves). The new class has no
+    subclass yet; the old one's spells that the new classes can't have go,
+    and so do its choices -- the new class's are asked on the Choices tab,
+    as a level up's are. Returns the spells that went, or None when the
+    swap can't be made (no such class, or the new one is already there)."""
+    from dnd_app.core.choices import _all_relevant_choice_ids, _prune_stale_choices
+    entry = get_class_entry(char, old)
+    if entry is None or not new or new == old or get_class_entry(char, new):
+        return None
+    old_ids = _all_relevant_choice_ids(char)
+    removed = dict(entry)
+    entry.update({"class": new, "subclass": "", "hit_die": _lookup_hit_die(new)})
+    lost = drop_spells_of_removed_class(char, removed)
+    char.get("_choices", {}).pop(f"{old}_subclass", None)
+    new_ids = _all_relevant_choice_ids(char)
+    _prune_stale_choices(char, old_ids - new_ids)
+    return lost
+
+
 def set_class_level(char: dict, class_name: str, level: int) -> None:
     entry = get_class_entry(char, class_name)
     if entry:

@@ -74,7 +74,8 @@ what it says, and magic armor counts as the armor it is.
   the book are listed as Unknown, with their own filter.
 - **The Overview page:** abilities and saving throws, skills, senses and
   proficiencies on one page, in place of Abilities and Proficiencies. Each
-  ability card has its save under it; the skills sit in two columns.
+  ability is its score with two rows under it, its check and its save,
+  each clicked (tapped) to roll; the skills sit in two columns.
 - **Every sense:** darkvision, Devil's Sight, blindsight, tremorsense,
   truesight, See Invisibility, Witch Sight, Ghostly Gaze and Umbral Sight,
   each with its range and where it's from. One another covers (darkvision
@@ -82,7 +83,24 @@ what it says, and magic armor counts as the armor it is.
 - **Two of the same weapon:** a second dagger can go in your other hand
   (any two light weapons, or any one-handed pair with Dual Wielder).
 - **Reference:** beside Settings (in the menu on Android), what each book
-  code (PHB, XGE, MPMM...) stands for.
+  code (PHB, XGE, MPMM...) stands for, and on desktop every keyboard
+  shortcut.
+- **Change a class:** the ⋯ beside a class on the Choices tab changes it
+  for another at the same level (its subclass and choices are asked
+  afresh), or removes it. Removing is greyed for your only class.
+- **The Notes page, redone:** a list of pages down the side (on Android,
+  a list to tap through): Character, Backstory, then your own pages in
+  groups you open and close, name and make. Character has your
+  appearance, your background, and your personality traits, ideals, bonds
+  and flaws, each with **Suggestions** from your background's tables (95
+  backgrounds) and a roll of its die. **New entry** starts a page's notes
+  for today with the date (and the session's number on a session log).
+  Drag a page onto a group to move it (press and hold → Move to on
+  Android); right-click for a new page or group, or to rename or remove
+  one.
+- **Drag to add:** drag an item from the Equipment or Magic Items browser
+  onto your inventory, or a creature from the Bestiary (or a mount or
+  vehicle) onto your creatures. Dropped on a group, a creature goes in it.
 - **A sound for every creature** in the immersive spell names: each Wild
   Shape form has its own, and any other creature its family's (dragons
   roar, liches cackle, golems clank).
@@ -113,8 +131,18 @@ what it says, and magic armor counts as the armor it is.
 
 - **Shorter tab names (desktop):** Inventory and Notes, which leaves room
   for Creatures. Android's Equipment is now Inventory too.
-- **Saves on Android:** press and hold a save on the Overview to mark an
-  extra proficiency in it (a feat's, your DM's), as desktop's box does.
+- **Save proficiency:** right-click a save on the Overview (press and hold
+  on Android) to make it proficient or not, any save, as a skill's.
+  **Reset** puts them back to what you're given.
+- **No Tools menu (desktop):** the Dice Roller is the d20 beside Refresh,
+  Rest has its button and the Bestiary the Creatures tab; their keys still
+  work.
+- **Choices tab:** Level Up and Level Down at the top, a row per class with
+  its subclass, and your race, background and alignment each in a field
+  of its own.
+- **Right-click in a browser** (items, spells, creatures) for Add or Show
+  details, the same in each. Adding a spell this way adds the one you
+  clicked.
 - **Tool details:** hover a tool on the Overview (tap it on Android) for
   what it's for.
 - **Main hand and off hand:** holding two weapons, your inventory says

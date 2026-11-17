@@ -207,6 +207,12 @@ class GearMixin:
         self._tabs.currentChanged.connect(lambda _i: QTimer.singleShot(0, self._fit_gear_split))
         left_l.addWidget(left_split, 1)
         splitter.addWidget(left_w)
+        # an item dragged over from a browser lands here (equipment asks how
+        # many, as Add does)
+        from dnd_app.ui_desktop.widgets import accept_drop
+        left_w.setObjectName("inventoryDrop")
+        accept_drop(left_w, "equipment", lambda n: self._add_mundane_from_browser(n), TEAL)
+        accept_drop(left_w, "magic-item", lambda n: self._add_magic_item_by_name(n), TEAL)
 
         # ── RIGHT: browser tabs (Mundane | Magic) ─────────────────────────────
         right_tabs = QTabWidget()
@@ -283,6 +289,10 @@ class GearMixin:
             self._md_list, self._show_item_details_for, selected_icon="#0a0d12", column=5,
             has_details=lambda name: bool(name) and name != "__section__"))
         self._md_list.itemDoubleClicked.connect(self._add_mundane_from_browser)
+        from dnd_app.ui_desktop.widgets import drag_source
+        # (dragged onto your inventory to add it)
+        drag_source(self._md_list, "equipment",
+                    lambda i: (lambda n: n if n and n != "__section__" else "")(i.siblingAtColumn(0).data(Qt.UserRole)))
         self._md_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self._md_list.customContextMenuRequested.connect(self._on_mundane_browser_ctx)
         mdt.addWidget(self._md_list,1)
@@ -334,6 +344,8 @@ class GearMixin:
         self._mi_browser.setItemDelegate(RarityInspectDelegate(
             self._mi_browser, self._show_item_details_for, selected_icon="#15071f"))
         self._mi_browser.itemDoubleClicked.connect(lambda item: self._add_magic_item_by_name(item.data(Qt.UserRole)))
+        from dnd_app.ui_desktop.widgets import drag_source
+        drag_source(self._mi_browser, "magic-item", lambda i: i.data(Qt.UserRole) or "")
         self._mi_browser.setContextMenuPolicy(Qt.CustomContextMenu)
         self._mi_browser.customContextMenuRequested.connect(self._on_magic_browser_ctx)
         mgt.addWidget(self._mi_browser,1)
@@ -495,19 +507,14 @@ class GearMixin:
                 parent.setExpanded(True)
 
     def _on_mundane_browser_ctx(self, pos):
-        """Right-click on an item in the Equipment browser: its details, or add it."""
+        """Right-click on an item in the Equipment browser: Add, or Show details."""
         item = self._md_list.itemAt(pos)
         name = item.data(0, Qt.UserRole) if item else None
         if not name or name == "__section__": return
-        from PySide6.QtWidgets import QMenu
-        menu = QMenu(self)
-        detail_act = menu.addAction(_icons.icon("features"), f"Details: {name[:36]}")
-        add_act = menu.addAction(_icons.icon("arrow_left"), "Add to Inventory")
-        action = menu.exec(self._md_list.viewport().mapToGlobal(pos))
-        if action == detail_act:
-            self._show_item_details_for(name)
-        elif action == add_act:
-            self._add_mundane_from_browser(item, 0)
+        from dnd_app.ui_desktop.widgets import browser_row_menu
+        browser_row_menu(self, self._md_list.viewport().mapToGlobal(pos), "Add to Inventory",
+                         lambda: self._add_mundane_from_browser(item, 0),
+                         lambda: self._show_item_details_for(name))
 
     def _add_mundane_from_browser(self, item, col=None):
         if not item: return
@@ -626,19 +633,14 @@ class GearMixin:
         self._add_magic_item_by_name(name)
 
     def _on_magic_browser_ctx(self, pos):
-        """Right-click on a magic item in the browser: its details, or add it."""
+        """Right-click on a magic item in the browser: Add, or Show details."""
         item = self._mi_browser.itemAt(pos)
         name = item.data(Qt.UserRole) if item else None
         if not name: return
-        from PySide6.QtWidgets import QMenu
-        menu = QMenu(self)
-        detail_act = menu.addAction(_icons.icon("features"), f"Details: {name[:36]}")
-        add_act = menu.addAction(_icons.icon("arrow_left"), "Add to Inventory")
-        action = menu.exec(self._mi_browser.viewport().mapToGlobal(pos))
-        if action == detail_act:
-            self._show_item_details_for(name)
-        elif action == add_act:
-            self._add_magic_item_by_name(name)
+        from dnd_app.ui_desktop.widgets import browser_row_menu
+        browser_row_menu(self, self._mi_browser.viewport().mapToGlobal(pos), "Add to Inventory",
+                         lambda: self._add_magic_item_by_name(name),
+                         lambda: self._show_item_details_for(name))
 
     def _show_item_details_for(self, name: str, studied: bool = False, tip: str = ""):
         """An item's magnifying glass (the browsers, the inventory, owned

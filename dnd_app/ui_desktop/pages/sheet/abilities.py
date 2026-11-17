@@ -56,11 +56,54 @@ from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
 
 
+class RollRow(QPushButton):
+    """One roll on an ability's card -- its check or its save -- as a whole
+    row to click: what it is on the left, the bonus and a d20 on the
+    right. The check and the save are the same row, so the card reads as
+    two rolls of one ability."""
+
+    def __init__(self, word: str, tooltip: str, parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip(tooltip); self.setAccessibleName(tooltip)
+        self.setFixedHeight(40)
+        row = QHBoxLayout(self); row.setContentsMargins(10, 0, 8, 0); row.setSpacing(6)
+        self.sym = _lbl("", TEXT3, FS_BODY, bold=True, wrap=False)
+        self.sym.setVisible(False)
+        row.addWidget(self.sym)
+        self.word = _lbl(word, TEXT2, FS_BODY, wrap=False)
+        row.addWidget(self.word)
+        self.badges = QHBoxLayout(); self.badges.setSpacing(4)
+        row.addLayout(self.badges)
+        row.addStretch()
+        self.value = _lbl("", TEXT2, FS_TITLE, bold=True, wrap=False)
+        row.addWidget(self.value)
+        self.die = QLabel(); self.die.setStyleSheet("background:transparent;border:none;")
+        self.die.setPixmap(_icons.pixmap("dice", _icons.scaled(18), TEAL2))
+        row.addWidget(self.die)
+        self.set_marked(False)
+
+    def set_marked(self, on: bool):
+        """A proficient save: an indigo edge and tint, as a proficient skill."""
+        edge, fill = (qa(INDIGO, 0xaa), qa(INDIGO, 0x1c)) if on else (BORDER, SURF)
+        self.setStyleSheet(
+            f"QPushButton{{background:{fill};border:1px solid {edge};border-radius:8px;"
+            f"padding:0;min-height:40px;max-height:40px;text-align:left;}}"
+            f"QPushButton:hover{{background:{qa(TEAL, 0x2a)};border-color:{TEAL};}}"
+            f"QPushButton:pressed{{background:{qa(TEAL, 0x55)};}}"
+            f"QLabel{{background:transparent;border:none;}}")
+
+    def set_value(self, val: int):
+        self.value.setText(sign(val))
+        col = TEAL2 if val > 0 else (CRIM2 if val < 0 else TEXT2)
+        self.value.setStyleSheet(f"color:{col};font-size:{FS_TITLE}px;font-weight:700;background:transparent;border:none;")
+
+
 class AbilityCard(QFrame):
-    """One ability on the Overview: its name, score and modifier (the
-    modifier rolls the check), and under them its saving throw -- the
-    proficiency box, the bonus, any advantage or condition badge, and the
-    dice that roll it."""
+    """One ability on the Overview: its name and score, then its two rolls
+    as matching rows -- the check, and the saving throw (◆ when proficient;
+    right-click it to change that) with any advantage or condition badge.
+    Click either row to roll it."""
     roll_requested = Signal(str)
 
     def __init__(self, ab, score, parent=None):
@@ -70,35 +113,40 @@ class AbilityCard(QFrame):
         self.setStyleSheet(f"QFrame#abilityCard{{background:{SURF2};border:1px solid {BORDER};border-radius:10px;}}"
                            f"QFrame#abilityCard QLabel{{background:transparent;border:none;}}")
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        lay = QVBoxLayout(self); lay.setContentsMargins(12, 8, 10, 8); lay.setSpacing(4)
-        lay.addWidget(_lbl(AB_FULL[ab].upper(), TEXT2, FS_TINY, bold=True, wrap=False))
-        top = QHBoxLayout(); top.setSpacing(8)
-        self._score = _lbl("", TEXT, FS_STAT, bold=True, wrap=False)
-        top.addWidget(self._score); top.addStretch()
-        self._mod = QPushButton()
-        self._mod.setObjectName(f"abilityMod_{ab}")
-        self._mod.setCursor(Qt.PointingHandCursor)
-        self._mod.setToolTip(f"Roll a {AB_FULL[ab]} check")
-        self._mod.setAccessibleName(f"Roll a {AB_FULL[ab]} check")
-        self._mod.clicked.connect(lambda: self.roll_requested.emit(self.ab))
-        top.addWidget(self._mod, 0, Qt.AlignVCenter)
-        lay.addLayout(top)
+        lay = QVBoxLayout(self); lay.setContentsMargins(10, 6, 10, 10); lay.setSpacing(6)
+        # the name, and the score with what it is beside it
+        head = QHBoxLayout(); head.setSpacing(6)
+        head.addWidget(_lbl(AB_FULL[ab].upper(), GOLD2, FS_SMALL, bold=True, wrap=False), 0, Qt.AlignVCenter)
+        head.addStretch()
+        head.addWidget(_lbl("score", TEXT3, FS_SMALL, wrap=False), 0, Qt.AlignVCenter)
+        self._score = _lbl("", TEXT, FS_TITLE, bold=True, wrap=False)
+        self._score.setToolTip(f"Your {AB_FULL[ab]} score")
+        head.addWidget(self._score, 0, Qt.AlignVCenter)
+        lay.addLayout(head)
         lay.addStretch(1)
-        line = QFrame(); line.setFixedHeight(1); line.setStyleSheet(f"background:{BORDER};border:none;")
-        lay.addWidget(line)
-        self.save_row = QHBoxLayout(); self.save_row.setSpacing(6); self.save_row.setContentsMargins(0, 2, 0, 0)
-        lay.addLayout(self.save_row)
+        self.check_btn = RollRow("Check", f"Roll a {AB_FULL[ab]} check")
+        self.check_btn.setObjectName(f"abilityCheck_{ab}")
+        self.check_btn.clicked.connect(lambda: self.roll_requested.emit(self.ab))
+        self._mod = self.check_btn.value
+        lay.addWidget(self.check_btn)
+        self.save_btn = RollRow("Save", f"Roll a {AB_FULL[ab]} save · right-click to change its proficiency")
+        self.save_btn.setObjectName(f"saveRoll_{ab}")
+        self.save_btn.sym.setVisible(True)
+        self.save_btn.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.save_frame = self.save_btn          # (right-clicked for the proficiency)
+        lay.addWidget(self.save_btn)
         self.set_score(score)
 
     def set_score(self, score):
-        mod = (score - 10) // 2
         self._score.setText(str(score))
-        col = TEAL2 if mod > 0 else (CRIM2 if mod < 0 else TEXT2)
-        self._mod.setText(sign(mod))
-        self._mod.setStyleSheet(
-            f"QPushButton{{color:{col};font-size:{FS_TITLE}px;font-weight:700;background:{SURF};"
-            f"border:1px solid {BORDER};border-radius:8px;padding:2px 12px;min-height:0px;}}"
-            f"QPushButton:hover{{border-color:{TEAL};background:{qa(TEAL, 0x22)};}}")
+        self.check_btn.set_value((score - 10) // 2)
+
+    def set_save(self, val: int, proficient: bool):
+        self.save_btn.set_value(val)
+        self.save_btn.set_marked(proficient)
+        self.save_btn.sym.setText("◆" if proficient else "—")
+        self.save_btn.sym.setStyleSheet(f"color:{INDIGO if proficient else TEXT3};font-size:{FS_BODY}px;"
+                                        f"font-weight:700;background:transparent;border:none;")
 
 
 class AbilitiesMixin:
@@ -121,60 +169,51 @@ class AbilitiesMixin:
 
     def _build_abilities_card(self):
         ab_card = _card(); abcl = QVBoxLayout(ab_card); abcl.setContentsMargins(16,14,16,16); abcl.setSpacing(8)
-        abcl.addWidget(_lbl("ABILITIES AND SAVING THROWS", GOLD, FS_SMALL, bold=True))
+        head = QHBoxLayout(); head.setSpacing(8)
+        head.addWidget(_lbl("ABILITIES AND SAVING THROWS", GOLD, FS_SMALL, bold=True, wrap=False))
+        head.addStretch()
+        # Reset, as the skills have (their legend says what ◆ and — are)
+        reset_btn = _btn("↺ Reset", CRIMSON, variant="danger", bg_alpha=0x22, border_width=1,
+                         text_color=CRIM2, hover_text="white", font_size=FS_SMALL, padding="2px 12px",
+                         height=28, min_height0=True,
+                         tooltip="Saving throws back to what your class, feats and features give you: "
+                                 "undoes every change made by right-clicking")
+        reset_btn.setObjectName("resetSaveProfs")
+        reset_btn.setAccessibleName("Reset saving throw proficiencies")
+        reset_btn.clicked.connect(self._reset_save_profs)
+        head.addWidget(reset_btn)
+        abcl.addLayout(head)
         grid = QGridLayout(); grid.setSpacing(10)
         self._ab_blocks = {}
         self._save_widgets = {}
         self._save_adv_badges, self._save_cond_badges = {}, {}
         saves = all_saving_throw_bonuses(self.char)
-        profs = get_saving_throw_profs(class_levels(self.char))
         for i, ab in enumerate(ABILITIES):
             card = AbilityCard(ab, ability_score(self.char, ab))
             card.roll_requested.connect(
                 lambda a: self._quick_roll_toast(f"{AB_FULL[a]} check", ability_check_bonus(self.char, a), "check", a))
             self._ab_blocks[ab] = card
+            card.check_btn.set_value(ability_check_bonus(self.char, ab))
             grid.addWidget(card, i // 3, i % 3)
-            val = saves.get(ab, 0)
-            is_class = ab in profs
-            is_p = is_class or self.char.get("saving_throws", {}).get(ab, False)
-            rl = card.save_row
-            # the save's proficiency: a class's can't be taken off here; one
-            # from elsewhere (a feat) can -- the box or a click on the row
-            dot = QCheckBox(); dot.setChecked(is_p)
-            dot.setEnabled(not is_class)
-            dot.setStyleSheet(f"QCheckBox::indicator{{width:13px;height:13px;border-radius:4px;border:2px solid {BORDER2};background:{BG};}}"
-                              f"QCheckBox::indicator:checked{{background:{TEAL};border-color:{TEAL2};}}")
-            save_word = _lbl("Save", TEXT2, FS_SMALL, wrap=False)
-            val_lbl = _lbl(sign(val), TEAL2 if val > 0 else (CRIM2 if val < 0 else TEXT2), FS_LABEL, bold=True, wrap=False)
-            rl.addWidget(dot); rl.addWidget(save_word); rl.addWidget(val_lbl)
+            rl = card.save_btn.badges
             # advantage (a race's, a class's) and a condition's auto-fail or
             # disadvantage: parented before they're shown (see the badge
             # functions below), so none flashes up as a window of its own
             adv_badge = _icons.icon_label("adv", 16, "GREEN2")
             rl.addWidget(adv_badge); self._save_adv_badges[ab] = adv_badge
             self._update_save_advantage_badge(ab)
-            cond_badge = _lbl("", CRIM2, FS_TINY, bold=True, wrap=False)
+            cond_badge = _lbl("", CRIM2, FS_SMALL, bold=True, wrap=False)
             rl.addWidget(cond_badge); self._save_cond_badges[ab] = cond_badge
             self._update_save_condition_badge(ab)
             if self.char.get("_paladin_aura"):
-                rl.addWidget(_lbl(f"+{max(1, ability_mod(self.char, 'CHA'))} Aura", PURP2, FS_TINY, wrap=False))
-            rl.addStretch()
-            roll_btn = _btn("", TEAL, variant="ghost", width=26, height=22, radius=5,
-                            font_size=FS_SMALL, tooltip=f"Roll a {AB_FULL[ab]} save")
-            _icons.set_button_icon(roll_btn, "dice", 14)
-            roll_btn.clicked.connect(lambda checked=False, a=ab:
-                                     self._quick_roll_toast(f"{AB_FULL[a]} save",
-                                                            all_saving_throw_bonuses(self.char).get(a, 0), "save", a))
-            rl.addWidget(roll_btn)
-            if is_class:
-                save_word.setToolTip(f"{AB_FULL[ab]} save proficiency comes from your class")
-            else:
-                for wdg in (save_word, val_lbl):
-                    wdg.setCursor(Qt.PointingHandCursor)
-                    wdg.setToolTip(f"Click to toggle {AB_FULL[ab]} save proficiency")
-                    wdg.mousePressEvent = lambda e, a=ab: self._toggle_save_prof(a)
-                dot.toggled.connect(lambda checked, a=ab: self._toggle_save_prof(a, checked))
-            self._save_widgets[ab] = (dot, val_lbl)
+                rl.addWidget(_lbl(f"+{max(1, ability_mod(self.char, 'CHA'))} Aura", PURP2, FS_SMALL, wrap=False))
+            card.save_btn.clicked.connect(lambda checked=False, a=ab:
+                                          self._quick_roll_toast(f"{AB_FULL[a]} save",
+                                                                 all_saving_throw_bonuses(self.char).get(a, 0), "save", a))
+            card.save_btn.customContextMenuRequested.connect(
+                lambda pos, a=ab, f=card.save_btn: self._show_save_prof_menu(a, f.mapToGlobal(pos)))
+            self._save_widgets[ab] = (card.save_btn.sym, card.save_btn.value)
+            self._style_save(ab, saves.get(ab, 0))
         for r in range(2):
             grid.setRowStretch(r, 1)
         abcl.addLayout(grid, 1)
@@ -255,24 +294,41 @@ class AbilitiesMixin:
         lay.setColumnStretch(2, 1)
 
     # ══ TAB 2: SKILLS & PROFICIENCIES ══════════════════════════════════════════
-    def _toggle_save_prof(self, ability, checked=None):
-        """Toggle a manually-granted saving throw proficiency (e.g. from a
-        feat). char['saving_throws'] itself is a fully DERIVED field —
-        builder.rebuild() overwrites it from scratch every call based on
-        class grants plus this list — so writing to saving_throws directly
-        would just get stomped on the next rebuild. _choices.extra_save_profs
-        is the actual persistent source or truth for a manual addition;
-        class-granted proficiencies aren't stored here at all, so this can't
-        accidentally remove a real class feature."""
-        choices = self.char.setdefault("_choices", {})
-        current = list(choices.get("extra_save_profs", []))
-        is_extra = ability in current
-        new_state = (not is_extra) if checked is None else checked
-        if new_state and ability not in current:
-            current.append(ability)
-        elif not new_state and ability in current:
-            current.remove(ability)
-        self.ctrl.update("_choices.extra_save_profs", current)
+    def _style_save(self, ab, val):
+        """A save's ◆ or —, its bonus, and its row's edge."""
+        self._ab_blocks[ab].set_save(val, bool(self.char.get("saving_throws", {}).get(ab)))
+
+    def _show_save_prof_menu(self, ability, global_pos):
+        """Right-click a save: Not Proficient or Proficient, the current
+        one ticked -- as a skill's menu."""
+        from PySide6.QtWidgets import QMenu
+        on = bool(self.char.get("saving_throws", {}).get(ability))
+        menu = QMenu(self)
+        for state, label in ((False, "Not Proficient"), (True, "Proficient")):
+            act = menu.addAction(("\u2713 " if state == on else "    ") + label)
+            act.triggered.connect(lambda checked=False, st=state: self._set_save_prof(ability, st))
+        menu.exec(global_pos)
+
+    def _set_save_prof(self, ability, on):
+        # kept as an override on top of what's granted (core/builder.py),
+        # so a rebuild doesn't undo it
+        from dnd_app.core.builder import set_save_prof
+        set_save_prof(self.char, ability, on)
+        self.ctrl.refresh()
+        self._mark_dirty()
+
+    def _reset_save_profs(self):
+        from PySide6.QtWidgets import QMessageBox as _QMB
+        if _QMB.question(self, "Reset Saving Throws",
+                         "Your saving throw proficiencies go back to what your class, feats and features "
+                         "give you, undoing every change made by right-clicking. Continue?",
+                         _QMB.Yes | _QMB.No, _QMB.No) != _QMB.Yes:
+            return
+        from dnd_app.core.builder import reset_save_profs
+        reset_save_profs(self.char)
+        self.ctrl.refresh()
+        self._mark_dirty()
+        self._toast("↺ Saving throws reset to what you're given")
 
     def _quick_roll_toast(self, label: str, bonus: int, kind: str = "check", ability: str = ""):
         """Roll a check, a save or initiative (core/checks.py, the same on
@@ -389,17 +445,13 @@ class AbilitiesMixin:
             score = ability_score(self.char, ab)
             if ab in self._ab_blocks:
                 self._ab_blocks[ab].set_score(score)
+                # (what the check rolls: the modifier and anything added to it)
+                self._ab_blocks[ab].check_btn.set_value(ability_check_bonus(self.char, ab))
         # Saves
         saves = all_saving_throw_bonuses(self.char)
-        profs = get_saving_throw_profs(class_levels(self.char))
-        for ab, (dot, val_lbl) in self._save_widgets.items():
-            val = saves.get(ab,0)
-            color = TEAL2 if val>0 else (CRIM2 if val<0 else TEXT2)
-            val_lbl.setText(sign(val))
+        for ab in self._save_widgets:
+            self._style_save(ab, saves.get(ab, 0))
             self._update_save_advantage_badge(ab)
             self._update_save_condition_badge(ab)
-            val_lbl.setStyleSheet(f"color:{color};font-size:{FS_LABEL}px;font-weight:700;background:transparent;border:none;")
-            is_p = ab in profs or self.char.get("saving_throws",{}).get(ab,False)
-            dot.setChecked(is_p)
 
         self._refresh_senses()
