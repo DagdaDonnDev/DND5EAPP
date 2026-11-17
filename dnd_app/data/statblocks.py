@@ -1425,6 +1425,65 @@ SCALING_SUMMONS = {
         },
         "action_shared": "Maul — Melee Weapon Attack: spell attack mod to hit, reach 5 ft. Hit: 1d8+4+spell level piercing damage.",
     },
+    # Summon Aberration, Construct and Elemental (Tasha's): the Bestiary's
+    # Aberrant, Construct and Elemental Spirit, one form at a time
+    "Summon Aberration": {
+        "base_level": 4, "size": "Medium", "creature_type": "aberration",
+        "ac_base": 11, "hp_base": 40, "hp_per_level": 10,
+        "speed": "30 ft.",
+        "abilities": {"STR": 16, "DEX": 10, "CON": 15, "INT": 16, "WIS": 10, "CHA": 6},
+        "damage_immunities": "psychic",
+        "senses": "darkvision 60 ft.", "languages": "Deep Speech, understands the languages you speak",
+        "attacks_formula": "half_level",
+        "forms": {
+            "Beholderkin": {"speed": "30 ft., fly 30 ft. (hover)",
+                            "action": "Eye Ray — Ranged Spell Attack: spell attack mod to hit, range 150 ft., one creature. Hit: 1d8+3+spell level psychic damage."},
+            "Slaad": {"trait": "Regeneration — regains 5 hit points at the start of its turn if it has at least 1 hit point.",
+                      "action": "Claws — Melee Weapon Attack: spell attack mod to hit, reach 5 ft. Hit: 1d10+3+spell level slashing damage; a creature hit can't regain hit points until the start of the aberration's next turn."},
+            "Star Spawn": {"trait": "Whispering Aura — at the start of each of its turns, each creature within 5 ft makes a WIS save vs your spell save DC or takes 2d6 psychic damage, unless the aberration is incapacitated.",
+                           "action": "Psychic Slam — Melee Spell Attack: spell attack mod to hit, reach 5 ft., one creature. Hit: 1d8+3+spell level psychic damage."},
+        },
+    },
+    "Summon Construct": {
+        "base_level": 4, "size": "Medium", "creature_type": "construct",
+        "ac_base": 13, "hp_base": 40, "hp_per_level": 15,
+        "speed": "30 ft.",
+        "abilities": {"STR": 18, "DEX": 10, "CON": 18, "INT": 14, "WIS": 11, "CHA": 5},
+        "damage_resistances": "poison",
+        "condition_immunities": "charmed, exhaustion, frightened, incapacitated, paralyzed, petrified, poisoned",
+        "senses": "darkvision 60 ft.", "languages": "understands the languages you speak",
+        "attacks_formula": "half_level",
+        "forms": {
+            "Clay": {"reaction": "Berserk Lashing — when it takes damage, it makes a slam attack against a random creature within 5 ft; if none is in reach, it moves up to half its speed toward an enemy it can see, without provoking opportunity attacks."},
+            "Metal": {"trait": "Heated Body — a creature that touches it or hits it with a melee attack while within 5 ft takes 1d10 fire damage."},
+            "Stone": {"trait": "Stony Lethargy — when a creature it can see starts its turn within 10 ft, it can force a WIS save vs your spell save DC; on a fail, the target can't use reactions and its speed is halved until the start of its next turn."},
+        },
+        "action_shared": "Slam — Melee Weapon Attack: spell attack mod to hit, reach 5 ft. Hit: 1d8+4+spell level bludgeoning damage.",
+    },
+    "Summon Elemental": {
+        "base_level": 4, "size": "Medium", "creature_type": "elemental",
+        # "Fire Elemental" is a Bestiary creature of its own
+        "name": "Elemental Spirit",
+        "ac_base": 11, "hp_base": 50, "hp_per_level": 10,
+        "abilities": {"STR": 18, "DEX": 15, "CON": 17, "INT": 4, "WIS": 10, "CHA": 16},
+        "damage_immunities": "poison",
+        "condition_immunities": "exhaustion, paralyzed, petrified, poisoned, unconscious",
+        "senses": "darkvision 60 ft.", "languages": "Primordial, understands the languages you speak",
+        "attacks_formula": "half_level",
+        "forms": {
+            "Air": {"speed": "40 ft., fly 40 ft. (hover)", "damage_resistances": "lightning, thunder",
+                    "trait": "Amorphous Form — can move through a space as narrow as 1 inch wide without squeezing.",
+                    "action": "Slam — Melee Weapon Attack: spell attack mod to hit, reach 5 ft. Hit: 1d10+4+spell level bludgeoning damage."},
+            "Earth": {"speed": "40 ft., burrow 40 ft.", "damage_resistances": "piercing, slashing",
+                      "action": "Slam — Melee Weapon Attack: spell attack mod to hit, reach 5 ft. Hit: 1d10+4+spell level bludgeoning damage."},
+            "Fire": {"speed": "40 ft.", "damage_immunities": "fire, poison",
+                     "trait": "Amorphous Form — can move through a space as narrow as 1 inch wide without squeezing.",
+                     "action": "Slam — Melee Weapon Attack: spell attack mod to hit, reach 5 ft. Hit: 1d10+4+spell level fire damage."},
+            "Water": {"speed": "40 ft., swim 40 ft.", "damage_resistances": "acid",
+                      "trait": "Amorphous Form — can move through a space as narrow as 1 inch wide without squeezing.",
+                      "action": "Slam — Melee Weapon Attack: spell attack mod to hit, reach 5 ft. Hit: 1d10+4+spell level bludgeoning damage."},
+        },
+    },
     "Spirit of Death": {
         "base_level": 4, "size": "Medium", "creature_type": "undead",
         "ac_base": 11, "hp_base": 40, "hp_per_level": 10,
@@ -1442,7 +1501,8 @@ SCALING_SUMMONS = {
 }
 
 
-def resolve_scaling_summon(spell_name: str, cast_level: int, form: str, spell_attack_mod: int = 0) -> dict | None:
+def resolve_scaling_summon(spell_name: str, cast_level: int, form: str, spell_attack_mod: int | None = None,
+                           save_dc: int | None = None) -> dict | None:
     """Compute the actual stat block for one of the SCALING_SUMMONS at the
     specific level it was cast, in the same shape mount/wildshape card
     rendering expects. cast_level must be >= the spell's base_level (the
@@ -1480,17 +1540,30 @@ def resolve_scaling_summon(spell_name: str, cast_level: int, form: str, spell_at
         traits.append(("Note", spell["extra_note"]))
     if form_data.get("bonus_action") or spell.get("bonus_action"):
         traits.append(("Bonus Action", form_data.get("bonus_action") or spell.get("bonus_action")))
+    if form_data.get("reaction") or spell.get("reaction"):
+        traits.append(("Reaction", form_data.get("reaction") or spell.get("reaction")))
+
+    # the caster's numbers, when known: "+7 to hit", "DC 15"
+    def _yours(text):
+        if spell_attack_mod is not None:
+            text = text.replace("spell attack mod to hit",
+                                f"{spell_attack_mod:+d} to hit")
+        if save_dc is not None:
+            text = text.replace("your spell save DC", f"DC {save_dc}")
+        return text
+    actions = [(n, _yours(d)) for n, d in actions]
+    traits = [(n, _yours(d)) for n, d in traits]
 
     return {
-        "display_name": f"{form} {spell_name.replace('Summon ', '').replace('Spirit of Death', 'Reaper Spirit')}",
+        "display_name": f"{form} {spell.get('name') or spell_name.replace('Summon ', '').replace('Spirit of Death', 'Reaper Spirit')}",
         "source": f"{spell_name} (cast at level {lvl})",
         "size": spell["size"], "creature_type": spell["creature_type"],
         "ac": str(ac), "hp": hp, "hit_dice": f"(computed, not rolled — {hp} HP at this level)",
         "speed": form_data.get("speed", spell.get("speed", "30 ft.")),
         "abilities": spell["abilities"], "saves": [], "skills": [],
         "damage_resistances": form_data.get("damage_resistances", spell.get("damage_resistances", "")),
-        "damage_immunities": spell.get("damage_immunities", ""),
-        "condition_immunities": spell.get("condition_immunities", ""),
+        "damage_immunities": form_data.get("damage_immunities", spell.get("damage_immunities", "")),
+        "condition_immunities": form_data.get("condition_immunities", spell.get("condition_immunities", "")),
         "senses": spell.get("senses", ""), "languages": spell.get("languages", ""),
         "traits": traits, "actions": actions,
     }

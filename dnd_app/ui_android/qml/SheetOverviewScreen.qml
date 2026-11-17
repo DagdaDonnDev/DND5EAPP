@@ -64,6 +64,13 @@ Page {
             // ── Abilities and saving throws: tap the score to roll a check,
             // the save line to roll the save (a teal border: proficient)
             Label { text: "Abilities and Saving Throws"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true }
+            Label {
+                text: "Tap a score to roll a check, a save to roll it. Press and hold a save to mark an extra proficiency in it."
+                color: Theme.text3
+                font.pixelSize: Theme.fsSmall
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
             GridLayout {
                 Layout.fillWidth: true
                 columns: root.width >= 500 ? 3 : 2
@@ -112,9 +119,19 @@ Page {
                                 font.pixelSize: Theme.fsSmall
                                 font.bold: modelData.saveProficient
                             }
+                            // tap: roll the save; press and hold: an extra
+                            // proficiency in it on or off (not a class's)
                             MouseArea {
+                                objectName: "saveTap_" + abCard.abName
                                 anchors.fill: parent
+                                pressAndHoldInterval: 450
                                 onClicked: sheetBridge.rollQuickCheck(abCard.abName + " Save", abCard.abSave)
+                                onPressAndHold: {
+                                    if (modelData.saveFromClass)
+                                        Window.window.showToast(abCard.abName + " save proficiency comes from your class")
+                                    else
+                                        sheetBridge.toggleSaveProficiency(abCard.abName)
+                                }
                             }
                         }
                     }
@@ -287,8 +304,7 @@ Page {
                 Repeater {
                     model: [["Languages", sheetBridge.languages, Theme.teal2],
                             ["Armor", sheetBridge.armorProficiencies, Theme.gold2],
-                            ["Weapons", sheetBridge.weaponProficiencies, Theme.indigo2],
-                            ["Tools", sheetBridge.toolProficiencies, Theme.amber2]]
+                            ["Weapons", sheetBridge.weaponProficiencies, Theme.indigo2]]
                     delegate: ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 2
@@ -299,6 +315,38 @@ Page {
                             font.pixelSize: Theme.fsSmall
                             wrapMode: Text.WordWrap
                             Layout.fillWidth: true
+                        }
+                    }
+                }
+                // tools: a chip each -- tap one for what it's for
+                Label { text: "Tools"; color: Theme.amber2; font.pixelSize: Theme.fsSmall; font.bold: true }
+                Label {
+                    visible: sheetBridge.toolProficiencies.length === 0
+                    text: "None"
+                    color: Theme.text
+                    font.pixelSize: Theme.fsSmall
+                }
+                Flow {
+                    objectName: "toolChips"
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Repeater {
+                        model: sheetBridge.toolProficiencies
+                        delegate: Rectangle {
+                            objectName: "toolChip_" + modelData
+                            radius: 7
+                            color: Theme.surf2
+                            border.color: Theme.border
+                            implicitWidth: toolText.implicitWidth + 16
+                            implicitHeight: toolText.implicitHeight + 10
+                            Label { id: toolText; anchors.centerIn: parent; text: modelData; color: Theme.text; font.pixelSize: Theme.fsSmall }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    var d = sheetBridge.toolDetails(modelData)
+                                    Window.window.showToast(modelData + (d ? ": " + d : ""))
+                                }
+                            }
                         }
                     }
                 }

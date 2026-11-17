@@ -487,13 +487,52 @@ def write(creatures: dict, problems: dict, ref_dir=None) -> None:
 _CACHE = None
 
 
+# What the reference files left in the text: a web page's tags (an
+# italic "; " between damage and condition immunities, a link) and the
+# Tasha's spirits' "summonSpellLevel".
+_SPLIT_IMMUNE = '<span class="ve-italic">; </span>'
+_TAG = re.compile(r"<[^>]+>")
+
+
+def _tidy_text(s: str) -> str:
+    if "<" in s:
+        s = _TAG.sub("", s)
+    if "summonSpellLevel" in s:
+        s = s.replace("summonSpellLevel", "the spell's level")
+    return s
+
+
+def _tidy(v):
+    if isinstance(v, str):
+        return _tidy_text(v) if ("<" in v or "summonSpellLevel" in v) else v
+    if isinstance(v, list):
+        return [_tidy(x) for x in v]
+    if isinstance(v, dict):
+        return {k: _tidy(x) for k, x in v.items()}
+    return v
+
+
+def _tidy_creature(c: dict) -> dict:
+    """The immunities split back into damage and conditions, and the
+    tags and tokens taken out of every line."""
+    imm = c.get("immune") or ""
+    if _SPLIT_IMMUNE in imm:
+        damage, _, conds = imm.partition(_SPLIT_IMMUNE)
+        c = dict(c, immune=damage.strip())
+        if not c.get("condition_immune"):
+            c["condition_immune"] = [x.strip() for x in _TAG.sub("", conds).split(",") if x.strip()]
+    return _tidy(c)
+
+
 def bestiary() -> dict:
     """Every creature by name (loaded the first time it's asked for)."""
     global _CACHE
     if _CACHE is None:
         try:
             from dnd_app.data.bestiary_data import BESTIARY
-            _CACHE = BESTIARY
+            import json as _json
+            _CACHE = {n: (_tidy_creature(c) if ("<" in (r := _json.dumps(c)) or "summonSpellLevel" in r) else c)
+                      for n, c in BESTIARY.items()}
         except ImportError:
             _CACHE = {}
     return _CACHE

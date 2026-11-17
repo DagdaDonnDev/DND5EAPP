@@ -139,3 +139,68 @@ def statblock_html(c: dict, heading: str = "") -> str:
 def creature_html(name: str, heading: str = "") -> str:
     c = get_creature(name)
     return statblock_html(c, heading) if c else ""
+
+
+# ── Mounts and vehicles (not in the Bestiary as such) ──────────────────
+def _rows(items):
+    """Traits or actions as (name, text) pairs, from tuples or dicts."""
+    out = []
+    for t in items or []:
+        if isinstance(t, (list, tuple)) and len(t) >= 2:
+            out.append((str(t[0]), str(t[1])))
+        elif isinstance(t, dict):
+            out.append((str(t.get("name", "")), str(t.get("text") or t.get("desc") or "")))
+    return out
+
+
+def plain_statblock_html(name: str, sb: dict, heading: str) -> str:
+    """A mount's or a vehicle's stat block as the glass shows it (vehicles
+    aren't in the Bestiary; a mount's numbers are its stat block's)."""
+    import html as _html
+    e = _html.escape
+    lines = [f'<p style="color:{heading}"><b>{e(name)}</b></p>']
+    sub = ", ".join(x for x in (sb.get("size", ""), str(sb.get("type", "") or "")) if x)
+    if sub:
+        lines.append(f"<p><i>{e(sub)}</i></p>")
+    facts = [("Armor Class", sb.get("ac")), ("Hit Points", f"{sb.get('hp', '')}" + (f" ({sb['hit_dice']})" if sb.get("hit_dice") else "")),
+             ("Speed", sb.get("speed")), ("Crew", sb.get("crew")), ("Passengers", sb.get("passengers")),
+             ("Cargo", sb.get("cargo")), ("Damage Immunities", sb.get("damage_immunities")),
+             ("Condition Immunities", sb.get("condition_immunities")), ("Senses", sb.get("senses"))]
+    lines.append("<p>" + "<br>".join(f"<b>{k}</b> {e(str(v))}" for k, v in facts if v not in (None, "", "—")) + "</p>")
+    ab = sb.get("abilities") or {}
+    if isinstance(ab, dict) and any(ab.values()):
+        lines.append("<p>" + " · ".join(f"<b>{k}</b> {v}" for k, v in ab.items()) + "</p>")
+    for title, key in (("Traits", "traits"), ("Actions", "actions"), ("Reactions", "reactions")):
+        rows = _rows(sb.get(key))
+        if rows:
+            lines.append(f'<p style="color:{heading}"><b>{title.upper()}</b></p>')
+            lines.append("".join(f"<p><b><i>{e(n)}.</i></b> {e(t)}</p>" for n, t in rows))
+    return "".join(lines)
+
+
+def mount_vehicle_rows(query: str = "") -> list:
+    """Both apps' Mounts & Vehicles list: [{"name", "kind" ("mount" |
+    "vehicle"), "section", "line"}], mounts first, then vehicles by kind."""
+    from dnd_app.data import items as I
+    from dnd_app.data.statblocks import get_mount_statblock, get_vehicle_statblock
+    q = (query or "").strip().lower()
+    secs = [("Mounts", "mount", [r[0] for r in I.MOUNTS]),
+            ("Land vehicles", "vehicle", I.VEHICLES_LAND), ("Water vehicles", "vehicle", I.VEHICLES_WATER),
+            ("Air vehicles", "vehicle", I.VEHICLES_AIR), ("Spelljamming vessels", "vehicle", I.VEHICLES_SPELLJAMMING),
+            ("Astral vehicles", "vehicle", I.VEHICLES_ASTRAL), ("Combat vehicles", "vehicle", I.VEHICLES_BGDIA),
+            ("Magic item vehicles", "vehicle", I.VEHICLES_MAGIC)]
+    out = []
+    for title, kind, names in secs:
+        for n in names:
+            if q and q not in n.lower():
+                continue
+            sb = (get_mount_statblock(n) if kind == "mount" else get_vehicle_statblock(n)) or {}
+            line = " · ".join(x for x in (title[:-1] if title.endswith("s") else title,
+                                          f"Speed {sb['speed']}" if sb.get("speed") else "") if x)
+            out.append({"name": n, "kind": kind, "section": title, "line": line})
+    return out
+
+
+def mount_vehicle_statblock(name: str, kind: str) -> dict:
+    from dnd_app.data.statblocks import get_mount_statblock, get_vehicle_statblock
+    return (get_mount_statblock(name) if kind == "mount" else get_vehicle_statblock(name)) or {}

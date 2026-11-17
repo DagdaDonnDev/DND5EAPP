@@ -442,8 +442,33 @@ class CharacterSheetBridge(QObject):
                 "save": get_saving_throw_bonus(self.char, ab),
                 "saveText": _mod_text(get_saving_throw_bonus(self.char, ab)),
                 "saveProficient": is_save_prof,
+                # a class's can't be taken off (desktop's box is greyed the same)
+                "saveFromClass": ab in save_profs,
             })
         return out
+
+    @Slot(str, result=str)
+    def toolDetails(self, tool: str) -> str:
+        """What a tool is for (the XGE tool descriptions), for a tap on it."""
+        from dnd_app.data.feature_tooltips import get_tool_tooltip
+        return get_tool_tooltip(tool) or ""
+
+    @Slot(str)
+    def toggleSaveProficiency(self, ab: str):
+        """An extra saving throw proficiency (a feat's, the DM's) on or off --
+        kept in _choices.extra_save_profs, which a rebuild reads (the same
+        as desktop's box on the ability card). A class's isn't changed."""
+        if ab in get_saving_throw_profs(class_levels(self.char)):
+            return
+        current = list(self.char.setdefault("_choices", {}).get("extra_save_profs", []))
+        if ab in current:
+            current.remove(ab)
+        else:
+            current.append(ab)
+        self.ctrl.update("_choices.extra_save_profs", current)
+        on = ab in current
+        self.toastRequested.emit(f"{ab} saving throw: {'proficient' if on else 'not proficient'}")
+        self._changed()
 
     # ── Combat stats ─────────────────────────────────────────────────
     @Property(int, notify=statsChanged)
@@ -5067,8 +5092,9 @@ class CharacterSheetBridge(QObject):
     # companions) -- verbatim port of ui_desktop/pages/sheet/companions.py's
     # data model and mechanics, normalized into camelCase dicts for QML.
     def _normalize_statblock(self, sb: dict, hp_key: str = None) -> dict:
+        from dnd_app.core.summons import max_hp_of, dice_average
         raw_hp = sb.get("hp")
-        max_hp = raw_hp if isinstance(raw_hp, int) else 1
+        max_hp = max_hp_of(self.char, hp_key, raw_hp) if hp_key else (raw_hp if isinstance(raw_hp, int) else 1)
         tracking = self.char.get("summon_hp_tracking", {})
         return {
             "displayName": sb.get("display_name", ""),
@@ -5095,9 +5121,22 @@ class CharacterSheetBridge(QObject):
             "reactions": [{"name": n, "desc": d} for n, d in sb.get("reactions", [])],
             "hpKey": hp_key or "",
             "maxHp": max_hp,
-            "currentHp": tracking.get(hp_key, max_hp) if hp_key else max_hp,
+            "currentHp": min(tracking.get(hp_key, max_hp), max_hp) if hp_key else max_hp,
             "hasHpTracking": bool(hp_key),
+            # its own max (the stat block's) and whether one was set in its place
+            "baseHp": raw_hp if isinstance(raw_hp, int) else max_hp,
+            "ownMax": bool(hp_key and (self.char.get("summon_hp_max") or {}).get(hp_key)),
+            "hitDiceAverage": dice_average(sb.get("hit_dice", "")),
         }
+
+    @Slot(str, int)
+    def setCreatureMaxHp(self, hp_key: str, value: int):
+        """A creature's maximum hit points, in place of its stat block's (0:
+        back to its own) -- the same as desktop's Set max HP."""
+        from dnd_app.core.summons import set_max_hp
+        if hp_key:
+            set_max_hp(self.char, hp_key, value or None)
+            self._changed()
 
     @Property(list, constant=True)
     def mountOptions(self):
@@ -5234,24 +5273,72 @@ class CharacterSheetBridge(QObject):
     @Property(list, notify=statsChanged)
     def ownedSummons(self):
         out = []
-        from dnd_app.core.summons import summon_statblock
+        from dnd_app.core.summons import summon_statblock, group_of
         for i, entry in enumerate(self.char.get("owned_summons", [])):
-            sb = summon_statblock(entry)      # a Bestiary creature, or a Tasha's spirit (as desktop)
+            sb = summon_statblock(entry, self.char)      # a Bestiary creature, or a Tasha's spirit (as desktop)
             if not sb:
                 continue
             norm = self._normalize_statblock(sb, hp_key=f"summon_{i}")
             norm["index"] = i
+            norm["group"] = group_of(entry)
             out.append(norm)
         return out
 
-    @Slot(str)
-    def addBestiaryCreature(self, name: str):
+    @Property(list, constant=True)
+    def creatureGroups(self):
+        """The groups a creature can be put in (core/summons.py GROUPS)."""
+        from dnd_app.core.summons import GROUPS
+        return list(GROUPS)
+
+    @Slot(int, str)
+    def setCreatureGroup(self, index: int, group: str):
+        from dnd_app.core.summons import set_group
+        if set_group(self.char, index, group):
+            self._changed()
+
+    @Property(list, notify=statsChanged)
+    def closedCreatureGroups(self):
+        return list(self.char.get("_closed_creature_groups", []))
+
+    @Slot(str, bool)
+    def toggleCreatureGroup(self, name: str, open_: bool):
+        """Open or close a group on the Creatures page -- kept on the
+        character, as desktop does."""
+        closed = [g for g in self.char.get("_closed_creature_groups", []) if g != name]
+        if not open_:
+            closed.append(name)
+        self.char["_closed_creature_groups"] = closed
+        self._changed()
+
+    @Slot(str, result=list)
+    def mountVehicleRows(self, query: str) -> list:
+        """The Creatures page's Mounts & Vehicles tab (core/bestiary.py, the
+        same list as desktop's)."""
+        from dnd_app.core.bestiary import mount_vehicle_rows
+        return mount_vehicle_rows(query)
+
+    @Slot(str, str, str, result=str)
+    def mountVehicleDetails(self, name: str, kind: str, heading: str) -> str:
+        from dnd_app.core.bestiary import plain_statblock_html, mount_vehicle_statblock
+        return plain_statblock_html(name, mount_vehicle_statblock(name, kind), heading)
+
+    @Slot(str, str)
+    def addMountOrVehicle(self, name: str, kind: str):
+        """A mount into Mounts, a vehicle into Vehicles, each with its stat
+        block on the Creatures page."""
+        key = "owned_mounts" if kind == "mount" else "owned_vehicles"
+        self.char.setdefault(key, []).append(name)
+        self.toastRequested.emit(f"{name} added to your creatures ({'Mounts' if kind == 'mount' else 'Vehicles'})")
+        self._changed()
+
+    @Slot(str, str)
+    def addBestiaryCreature(self, name: str, group: str = "Other"):
         """Add to Creatures: a Bestiary creature on your page with its own
-        hit points -- a pet, a hireling, a mount, one your DM gave (the
-        same as desktop's Add Selected to Creatures)."""
+        hit points, in the group picked -- a pet, a hireling, a mount, one
+        your DM gave (the same as desktop's Add Selected to Creatures)."""
         from dnd_app.core.summons import add_summons
-        real = add_summons(self.char, name, 1, "From the Bestiary")
-        self.toastRequested.emit(f"{real} added to your creatures")
+        real = add_summons(self.char, name, 1, "From the Bestiary", group=group or "Other")
+        self.toastRequested.emit(f"{real} added to your creatures ({group or 'Other'})")
         self._changed()
 
     @Slot(str, int, str)

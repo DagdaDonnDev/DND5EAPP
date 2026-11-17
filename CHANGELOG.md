@@ -5,9 +5,7 @@ Quality of Life, Fixes and Known Issues.
 
 ---
 
-## Next Update · In progress
-
-*On main; ships with the next version.*
+## v7.0 · "Call of the Wild" · 17 November 2026
 
 ### 🌍 Overview
 
@@ -25,9 +23,14 @@ what it says, and magic armor counts as the armor it is.
   actions included. Search by name or type, and filter by type, size,
   challenge rating and how it moves. Monsters of the Multiverse reprints
   are marked (MPMM).
-- **Creatures page:** your mounts and steeds, summons, companions and Wild
-  Shape forms, each with its stat block, and the Bestiary beside them to
-  add any creature from: a pet, a hireling, one your DM gave you (on
+- **Creatures page:** every stat block of yours in one place, in groups
+  you open and close: Mounts, Companions, Familiars, Summons, Wild Shape,
+  Vehicles and Other. Beside them is the Bestiary: press Add on any
+  creature (a pet, a hireling, one your DM gave you) and pick its group.
+  Its Mounts & Vehicles tab adds a mount or a vehicle. Each creature is a
+  slim card with its AC and speed, and HP you count down and back up,
+  opening to its whole stat block. Right-click one (press and hold on
+  Android) to move it to another group, set its max HP or remove it (on
   desktop, the Creatures tab, Ctrl+Shift+B).
 - **Wild Shape:** every beast in the Bestiary is a form, 263 with the Moon
   druid's elementals (it was 185). A form from an older save still opens.
@@ -42,10 +45,19 @@ what it says, and magic armor counts as the armor it is.
   Macabre, Find Familiar, Giant Insect and the demon and devil spells ask
   which creature and how many, within the spell's limits at its level. So
   do the Figurines of Wondrous Power, the Bag of Tricks, the Horn of
-  Valhalla and the elemental bowls and braziers. Each creature has its own
-  hit points, and one held by concentration goes when it ends.
-- **Mounts and steeds:** mounts you buy and Find Steed's and Find Greater
-  Steed's forms use the Bestiary's stat blocks.
+  Valhalla and the elemental bowls and braziers. Summon Beast, Summon Fey
+  and the other spirit spells ask the form, and the spirit's numbers are
+  the spell's at that level, with your spell attack bonus and save DC
+  in its attacks. Each creature has its own hit points, and one held by
+  concentration goes when it ends.
+- **Familiars:** a beast familiar asks whether it's a celestial, a fey or
+  a fiend, and its card says what a familiar can do: no attacks (Pact of
+  the Chain lets it attack with its reaction), telepathy, seeing through
+  its senses, delivering touch spells.
+- **Steeds:** casting Find Steed or Find Greater Steed asks the form and
+  whether it's a celestial, a fey or a fiend, and puts the steed in
+  Mounts, one at a time. A steed of INT 5 or lower has INT 6, and it
+  understands one language you speak.
 - **Pick the slot:** a spell that does more from a higher slot (Cure
   Wounds, Aid, Fireball, a smite...) asks which slot when more than one
   level is free, and says what the higher slot adds. Other spells use the
@@ -101,6 +113,10 @@ what it says, and magic armor counts as the armor it is.
 
 - **Shorter tab names (desktop):** Inventory and Notes, which leaves room
   for Creatures. Android's Equipment is now Inventory too.
+- **Saves on Android:** press and hold a save on the Overview to mark an
+  extra proficiency in it (a feat's, your DM's), as desktop's box does.
+- **Tool details:** hover a tool on the Overview (tap it on Android) for
+  what it's for.
 - **Main hand and off hand:** holding two weapons, your inventory says
   which hand each is in, and Swap hands changes them over (right-click on
   desktop, press and hold on Android). On Android each weapon in hand has
@@ -119,6 +135,9 @@ what it says, and magic armor counts as the armor it is.
 
 ### 🔧 Fixes
 
+- Fixed 129 Bestiary creatures (the Alhoon, the Elemental Spirit…)
+  listing their condition immunities as damage immunities, and the
+  Tasha's spirits' text reading "summonSpellLevel".
 - Fixed a Dwarf, Elf or other race with no subrace picked getting the
   first subrace's darkvision (a Duergar's or Drow's 120 ft).
 - Fixed Umbral Sight not giving a Gloom Stalker darkvision.

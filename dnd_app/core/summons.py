@@ -78,7 +78,69 @@ SUMMON_SPELLS = {
                                                         + ([("Mummy", 2)] if l >= 9 else []))},
     "Find Familiar":            {"level": 1, "names": _FAMILIARS, "count": lambda l: 1, "conc": False,
                                  "familiar": True},
+    # a steed: one at a time, whichever spell brought it, in your Mounts
+    "Find Steed":               {"level": 2, "names": ("Warhorse", "Pony", "Camel", "Elk", "Mastiff"),
+                                 "count": lambda l: 1, "conc": False, "steed": True},
+    "Find Greater Steed":       {"level": 4, "names": ("Griffon", "Pegasus", "Peryton", "Dire Wolf", "Rhinoceros",
+                                                       "Saber-Toothed Tiger"),
+                                 "count": lambda l: 1, "conc": False, "steed": True},
 }
+_STEED_SPELLS = ("Find Steed", "Find Greater Steed")
+SPIRIT_KINDS = ("Celestial", "Fey", "Fiend")
+
+
+def _is_beast(name: str) -> bool:
+    from dnd_app.data.bestiary import get_creature
+    return ((get_creature(_real(name)) or {}).get("type") or "").lower() == "beast"
+
+
+def _has_chain_pact(char: dict) -> bool:
+    pact = (char.get("_choices") or {}).get("warlock_pact_boon") or [""]
+    return "chain" in str(pact[0]).lower()
+
+
+def caster_numbers(char: dict | None, spell_name: str):
+    """(spell attack bonus, spell save DC) a spell of yours uses: the
+    class that has it on its list (the best, if more than one does),
+    else your best casting class. (None, None) without a caster."""
+    if not char:
+        return None, None
+    from dnd_app.core.spellcasting import spellcasting_rows
+    from dnd_app.data.spells import get_spell
+    rows = [r for r in spellcasting_rows(char) if r["kind"] == "class" and r["attack"] is not None]
+    if not rows:
+        return None, None
+    classes = set((get_spell(spell_name) or {}).get("classes", []))
+    own = [r for r in rows if r["source"].split(" (")[0] in classes]
+    best = max(own or rows, key=lambda r: r["attack"])
+    return best["attack"], best["dc"]
+
+# The groups the Creatures page shows its creatures in (both apps); one
+# can be moved to another. Mounts you buy and vehicles keep their own.
+GROUPS = ("Mounts", "Companions", "Familiars", "Summons", "Other")
+
+
+def group_of(entry: dict) -> str:
+    """Which group an owned creature is in: the one it was put in, or by
+    what brought it -- a familiar, a steed, a summon, or Other for one
+    added from the Bestiary."""
+    if entry.get("group") in GROUPS:
+        return entry["group"]
+    src = entry.get("from") or entry.get("spell") or ""
+    if SUMMON_SPELLS.get(src, {}).get("familiar"):
+        return "Familiars"
+    if src in _STEED_SPELLS:
+        return "Mounts"
+    if src == "From the Bestiary":
+        return "Other"
+    return "Summons"
+
+
+def is_spirit_spell(name: str) -> bool:
+    """The Tasha's summons (Summon Beast, Summon Fey...): a spirit whose
+    numbers come from the spell's level, in the form you pick."""
+    from dnd_app.data.statblocks import SCALING_SUMMONS
+    return name in SCALING_SUMMONS
 
 # item: what it brings -- [(creature, how many)], or a choice of them;
 # "ask_count": the player rolls how many
@@ -115,7 +177,7 @@ ITEM_SUMMONS = {
 
 
 def is_summon_spell(name: str) -> bool:
-    return name in SUMMON_SPELLS
+    return name in SUMMON_SPELLS or is_spirit_spell(name)
 
 
 def _creatures(kinds=(), detail="", max_cr=30.0):
@@ -143,13 +205,26 @@ def _real(name):
     return next((n for n in sorted(bestiary()) if n.startswith(f"{name} (")), name)
 
 
-def add_summons(char, creature, count, source, conc=False):
-    """`count` of `creature` into char["owned_summons"]."""
+def add_summons(char, creature, count, source, conc=False, group=""):
+    """`count` of `creature` into char["owned_summons"] (in `group` if
+    given, else the one what brought it puts it in)."""
     real = _real(creature)
     owned = char.setdefault("owned_summons", [])
     for _ in range(max(1, int(count))):
-        owned.append({"creature": real, "from": source, "conc": bool(conc)})
+        e = {"creature": real, "from": source, "conc": bool(conc)}
+        if group in GROUPS:
+            e["group"] = group
+        owned.append(e)
     return real
+
+
+def set_group(char, index: int, group: str) -> bool:
+    """Move an owned creature to another group."""
+    owned = char.get("owned_summons", [])
+    if not (0 <= index < len(owned)) or group not in GROUPS:
+        return False
+    owned[index]["group"] = group
+    return True
 
 
 def dismiss(char, source: str) -> int:
@@ -165,7 +240,7 @@ def keep_in_step(char: dict) -> None:
     """A summon held by concentration goes when the concentration does."""
     conc = (char.get("concentration") or {}).get("spell")
     owned = char.get("owned_summons", [])
-    keep = [e for e in owned if not (e.get("creature") and e.get("conc") and e.get("from") != conc)]
+    keep = [e for e in owned if not (e.get("conc") and (e.get("from") or e.get("spell")) != conc)]
     if len(keep) != len(owned):
         char["owned_summons"] = keep
 
@@ -175,6 +250,8 @@ def cast_summon(char, spell_name, level, answers) -> dict:
     cast_effect hands it here): how many of what CR, which creature, and
     they're on your Creatures page. Same question protocol as cast_effect."""
     from dnd_app.core.spell_effects import _ask, _result
+    if is_spirit_spell(spell_name):
+        return _cast_spirit(char, spell_name, level, answers)
     spec = SUMMON_SPELLS[spell_name]
     lvl = max(spec["level"], int(level or spec["level"]))
     conc = spec.get("conc", False)
@@ -205,12 +282,48 @@ def cast_summon(char, spell_name, level, answers) -> dict:
         if answers.get("creature") not in opts:
             return _ask("creature", f"{spell_name}: {_plural(n)} of which?", opts)
         creature = answers["creature"]
+    # a familiar (of a beast) or a steed is a celestial, fey or fiend
+    # instead, the caster's pick (Find Familiar; Find Steed and Find
+    # Greater Steed, whatever its type)
+    kind = ""
+    if spec.get("steed") or (spec.get("familiar") and _is_beast(creature)):
+        if answers.get("kind") not in SPIRIT_KINDS:
+            return _ask("kind", f"{spell_name}: your {creature} is a celestial, a fey or a fiend?", list(SPIRIT_KINDS))
+        kind = answers["kind"]
     if spec.get("familiar"):
         dismiss(char, spell_name)            # one familiar at a time: the new one replaces it
+    if spec.get("steed"):
+        for s_ in _STEED_SPELLS:             # one steed at a time, from either spell
+            dismiss(char, s_)
     real = add_summons(char, creature, n, spell_name, conc)
+    if kind:
+        char["owned_summons"][-1]["kind"] = kind
     held = " while you concentrate" if conc else ""
     return _result(True, f"{spell_name}: {_plural(n, real) if n == 1 else f'{n} × {real}'} on your side{held}. "
                          f"They're on your Creatures page, each with its hit points", refresh=True)
+
+
+def _cast_spirit(char, spell_name, level, answers):
+    """Summon Beast, Summon Fey and the rest: which form; the spirit's
+    numbers are the spell's at the level it's cast (data/statblocks.py
+    resolve_scaling_summon). Held by concentration, as the spells are."""
+    from dnd_app.core.spell_effects import _ask, _result
+    from dnd_app.data.statblocks import SCALING_SUMMONS
+    from dnd_app.data.spells import get_spell
+    spec = SCALING_SUMMONS[spell_name]
+    lvl = max(spec["base_level"], int(level or spec["base_level"]))
+    forms = list(spec.get("forms", {}))
+    if len(forms) > 1 and answers.get("form") not in forms:
+        return _ask("form", f"{spell_name}: which form?", forms)
+    form = answers.get("form") if len(forms) > 1 else forms[0]
+    conc = bool((get_spell(spell_name) or {}).get("concentration", True))
+    dismiss(char, spell_name)                # casting it again: the new spirit replaces the old
+    char.setdefault("owned_summons", []).append(
+        {"spell": spell_name, "level": lvl, "form": form, "from": spell_name, "conc": conc})
+    held = " while you concentrate" if conc else ""
+    article = "an" if form[:1].upper() in "AEIOU" else "a"
+    return _result(True, f"{spell_name}: {article} {form} spirit on your side{held}. "
+                         f"It's on your Creatures page with its hit points", refresh=True)
 
 
 def item_summon_step(char, item, answers):
@@ -235,30 +348,98 @@ def item_summon_step(char, item, answers):
     return {"creature": spec["creature"], "count": int(answers["count"])}
 
 
-def summon_statblock(entry: dict) -> dict | None:
+def summon_statblock(entry: dict, char: dict | None = None) -> dict | None:
     """An owned summon as the Creatures page's card shows it -- a Bestiary
-    creature, or a Tasha's spirit (data/statblocks.py resolve_scaling_summon)."""
+    creature, or a Tasha's spirit (data/statblocks.py resolve_scaling_summon)
+    with your spell attack bonus and save DC in it when `char` is given.
+    A familiar or a steed is the type you picked, with its spell's rules;
+    a steed of INT 5 or lower has INT 6 and understands a language of yours."""
     if entry.get("creature"):
         from dnd_app.data.statblocks import WILDSHAPE_BEASTS
         sb = WILDSHAPE_BEASTS.get(entry["creature"])
         if not sb:
             return None
-        return {
-            "display_name": entry["creature"], "source": entry.get("from", ""),
-            "size": sb["size"], "creature_type": (sb.get("type") or "").lower(),
-            "ac": str(sb["ac"]) + (f" ({sb['ac_note']})" if sb.get("ac_note") else ""),
-            "hp": sb["hp"], "hit_dice": sb["hit_dice"], "speed": sb["speed"],
-            "abilities": sb["abilities"], "saves": [], "skills": sb["skills"],
-            "damage_resistances": sb.get("damage_resistances", ""),
-            "damage_immunities": sb.get("damage_immunities", ""),
-            "condition_immunities": sb.get("condition_immunities", ""),
-            "senses": sb["senses"], "languages": sb.get("languages", "") or "—",
-            "traits": sb["traits"], "actions": sb["actions"] + sb.get("bonus_actions", []),
-            "reactions": sb.get("reactions", []),
-        }
+        out = _bestiary_card(entry, sb)
+        src = entry.get("from", "")
+        if entry.get("kind"):
+            out["creature_type"] = entry["kind"].lower()
+        if SUMMON_SPELLS.get(src, {}).get("familiar"):
+            chain = char is not None and _has_chain_pact(char)
+            out["traits"] = [("Familiar",
+                              "It can't attack, but can take other actions. "
+                              + ("When you take the Attack action, you can give up one of your attacks "
+                                 "for it to make one attack with its reaction (Pact of the Chain). "
+                                 if chain else "")
+                              + "While it's within 100 feet you talk to it telepathically, and as an "
+                              "action you see and hear through it until your next turn. It can deliver "
+                              "a touch spell you cast.")] + list(out["traits"])
+        elif src in _STEED_SPELLS:
+            abil = dict(out["abilities"])
+            if abil.get("INT", 10) <= 5:
+                abil["INT"] = 6
+            out["abilities"] = abil
+            langs = out.get("languages") or "—"
+            out["languages"] = ("understands one language you speak" if langs in ("—", "-", "")
+                                else f"{langs}; understands one language you speak")
+            out["traits"] = [("Steed",
+                              "You talk to it telepathically within 1 mile. A spell you cast that targets "
+                              "only you can target it too while it's within 5 feet of you.")] + list(out["traits"])
+        return out
     from dnd_app.data.statblocks import resolve_scaling_summon
-    return resolve_scaling_summon(entry.get("spell"), entry.get("level"), entry.get("form"))
+    atk, dc = caster_numbers(char, entry.get("spell"))
+    return resolve_scaling_summon(entry.get("spell"), entry.get("level"), entry.get("form"),
+                                  spell_attack_mod=atk, save_dc=dc)
+
+
+def _bestiary_card(entry: dict, sb: dict) -> dict:
+    """A Bestiary creature of yours, in the card's shape."""
+    return {
+        "display_name": entry["creature"], "source": entry.get("from", ""),
+        "size": sb["size"], "creature_type": (sb.get("type") or "").lower(),
+        "ac": str(sb["ac"]) + (f" ({sb['ac_note']})" if sb.get("ac_note") else ""),
+        "hp": sb["hp"], "hit_dice": sb["hit_dice"], "speed": sb["speed"],
+        "abilities": sb["abilities"], "saves": [], "skills": sb["skills"],
+        "damage_resistances": sb.get("damage_resistances", ""),
+        "damage_immunities": sb.get("damage_immunities", ""),
+        "condition_immunities": sb.get("condition_immunities", ""),
+        "senses": sb["senses"], "languages": sb.get("languages", "") or "—",
+        "traits": sb["traits"], "actions": sb["actions"] + sb.get("bonus_actions", []),
+        "reactions": sb.get("reactions", []),
+    }
 
 
 def _nth(n):
     return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
+# ── A creature's maximum hit points: its stat block's, or the one you set
+# (rolled from its hit dice, say) -- for any creature card with hit points
+def max_hp_of(char: dict, hp_key: str, base) -> int:
+    """`base` (the stat block's) unless one was set for this creature."""
+    own = (char.get("summon_hp_max") or {}).get(hp_key)
+    if isinstance(own, int) and own > 0:
+        return own
+    return base if isinstance(base, int) else (int(base) if str(base).isdigit() else 1)
+
+
+def set_max_hp(char: dict, hp_key: str, value) -> None:
+    """Set a creature's maximum (None or 0: back to its stat block's).
+    Its current hit points stay as they are, but never above the new
+    maximum."""
+    maxes = char.setdefault("summon_hp_max", {})
+    if not value:
+        maxes.pop(hp_key, None)
+        return
+    maxes[hp_key] = int(value)
+    cur = (char.get("summon_hp_tracking") or {}).get(hp_key)
+    if isinstance(cur, int) and cur > int(value):
+        char["summon_hp_tracking"][hp_key] = int(value)
+
+
+def dice_average(dice: str) -> int:
+    """'2d10 + 2' -> 13 (rounded down, as a stat block's are)."""
+    from dnd_app.data.bestiary import dice_avg
+    try:
+        return dice_avg(str(dice or ""))
+    except Exception:
+        return 0

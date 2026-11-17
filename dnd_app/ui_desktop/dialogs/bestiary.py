@@ -169,15 +169,49 @@ def show_creature_details(parent, name: str):
     return dlg
 
 
+def pick_group(parent, name: str, groups) -> str:
+    """Add's popup: the creature's name at the top, a button for each
+    group to put it in, Cancel at the bottom. Returns the group, or ""."""
+    win = parent.window() if parent is not None else None
+    dlg = QDialog(win); dlg.setObjectName("pickGroupDialog")
+    dlg.setWindowTitle(f"Add {name}")
+    dlg.setStyleSheet(f"QDialog#pickGroupDialog{{background:{SURF};}}")
+    lay = QVBoxLayout(dlg); lay.setContentsMargins(18, 16, 18, 14); lay.setSpacing(8)
+    lay.addWidget(_h(name, GOLD2, FS_HEAD, True))
+    lay.addWidget(_h("Add it to which group?", TEXT2, FS_SMALL))
+    picked = {"g": ""}
+    for g in groups:
+        b = QPushButton(g); b.setObjectName(f"pickGroup_{g}")
+        b.setMinimumHeight(36); b.setCursor(Qt.PointingHandCursor)
+        b.setStyleSheet(f"QPushButton{{background:{SURF2};border:1px solid {BORDER2};border-radius:8px;color:{TEXT};"
+                        f"font-size:{FS_BODY}px;font-weight:700;}}"
+                        f"QPushButton:hover{{border-color:{TEAL};background:{qa(TEAL, 0x22)};}}")
+        b.clicked.connect(lambda checked=False, gg=g: (picked.__setitem__("g", gg), dlg.accept()))
+        lay.addWidget(b)
+    lay.addSpacing(6)
+    from dnd_app.ui_desktop.shared import _btn
+    # backing out: red, as the other negative buttons
+    cancel = _btn("Cancel", CRIMSON, variant="danger", height=36, border_width=1,
+                  bg_alpha=0x22, border_alpha=0x88, text_color=CRIM2, hover_text="white",
+                  font_size=FS_BODY, radius=8)
+    cancel.setObjectName("pickGroupCancel")
+    cancel.clicked.connect(dlg.reject)
+    lay.addWidget(cancel)
+    dlg.setMinimumWidth(280)
+    dlg.exec()
+    return picked["g"]
+
+
 class CreatureBrowser(QWidget):
     """The Bestiary as a browser beside your own list, the way the Spell
     Browser sits beside My Spells and the item browsers beside your
     inventory: the search box with its magnifying glass, the filters
     behind the funnel, a row per creature (type and challenge rating) with
-    the glass that opens its stat block, and an Add button under it.
-    on_add(name) -- what Add (or a double-click) does with the creature."""
+    the glass that opens its stat block and Add beside it.
+    on_add(name) -- what Add (or a double-click) does with the creature;
+    with `groups`, on_add(name, group), the group picked in a popup."""
 
-    def __init__(self, on_add, add_text="Add Selected", parent=None):
+    def __init__(self, on_add, add_text="Add Selected", parent=None, groups=(), group="Other"):
         super().__init__(parent)
         from dnd_app.ui_desktop.style.theme import sync_globals as _sg; _sg(globals())
         from PySide6.QtGui import QIcon
@@ -209,7 +243,7 @@ class CreatureBrowser(QWidget):
         lay.addWidget(self.count)
         self.tree = QTreeWidget()
         self.tree.setObjectName("creatureBrowserList")
-        self.tree.setHeaderLabels(["Name", "Type", "CR", ""])
+        self.tree.setHeaderLabels(["Name", "Type", "CR", "", ""])
         self.tree.setRootIsDecorated(False)
         self.tree.setUniformRowHeights(True)
         self.tree.setAlternatingRowColors(True)
@@ -226,17 +260,18 @@ class CreatureBrowser(QWidget):
         hdr.setSectionResizeMode(1, QHeaderView.Interactive); self.tree.setColumnWidth(1, 120)
         hdr.setSectionResizeMode(2, QHeaderView.Fixed); self.tree.setColumnWidth(2, 48)
         hdr.setSectionResizeMode(3, QHeaderView.Fixed); self.tree.setColumnWidth(3, 32)
+        hdr.setSectionResizeMode(4, QHeaderView.Fixed); self.tree.setColumnWidth(4, 48)
         hdr.setStyleSheet(f"QHeaderView::section{{background:{SURF2};color:{GOLD2};font-weight:700;"
                           f"font-size:{FS_SMALL}px;padding:6px;border:1px solid {BORDER};}}")
         self.tree.setItemDelegateForColumn(3, InspectButtonDelegate(
             self.tree, lambda n: show_creature_details(self, n), selected_icon="#0a0d12", column=3))
+        # Add, to the right of the glass: which group, in a popup
+        from dnd_app.ui_desktop.widgets import AddButtonDelegate
+        self.tree.setItemDelegateForColumn(4, AddButtonDelegate(
+            self.tree, self._add_name, selected_icon="#0a0d12", column=4))
         self.tree.itemDoubleClicked.connect(lambda it, _c: self._add(it))
         lay.addWidget(self.tree, 1)
-        self.add_btn = pill_btn(add_text, TEAL)
-        self.add_btn.setObjectName("creatureBrowserAdd")
-        _icons.set_button_icon(self.add_btn, "arrow_left", 16, color=on_fill(TEAL))
-        self.add_btn.clicked.connect(lambda: self._add(self.tree.currentItem()))
-        lay.addWidget(self.add_btn)
+        self._groups = tuple(groups)
         self._timer = QTimer(self); self._timer.setSingleShot(True); self._timer.setInterval(150)
         self._timer.timeout.connect(self.refresh)
         self.search.textChanged.connect(lambda _t: self._timer.start())
@@ -252,7 +287,7 @@ class CreatureBrowser(QWidget):
         rows = []
         for n in names:
             c = get_creature(n) or {}
-            it = QTreeWidgetItem([n, c.get("type", ""), c.get("cr", ""), ""])
+            it = QTreeWidgetItem([n, c.get("type", ""), c.get("cr", ""), "", ""])
             it.setData(0, Qt.UserRole, n)
             it.setToolTip(0, _b.summary_line(c) if c else n)
             rows.append(it)
@@ -262,4 +297,131 @@ class CreatureBrowser(QWidget):
 
     def _add(self, item):
         if item is not None and item.data(0, Qt.UserRole):
-            self._on_add(item.data(0, Qt.UserRole))
+            self._add_name(item.data(0, Qt.UserRole))
+
+    def _add_name(self, name):
+        """Add (the row's button, or a double-click): the group from the
+        popup when there are groups to put it in."""
+        if self._groups:
+            group = pick_group(self, name, self._groups)
+            if group:
+                self._on_add(name, group)
+        else:
+            self._on_add(name)
+
+
+def show_plain_details(parent, name: str, sb: dict):
+    win = parent.window() if parent is not None else None
+    dlg = QDialog(win); dlg.setWindowTitle(name); dlg.resize(560, 620)
+    lay = QVBoxLayout(dlg)
+    view = QTextBrowser(); view.setOpenLinks(False); view.setObjectName("plainDetails")
+    view.setHtml(_b.plain_statblock_html(name, sb, GOLD2))
+    lay.addWidget(view)
+    buttons = QDialogButtonBox(QDialogButtonBox.Close); buttons.rejected.connect(dlg.reject)
+    lay.addWidget(buttons)
+    dlg.setAttribute(Qt.WA_DeleteOnClose); dlg.show()
+    return dlg
+
+
+class MountVehicleBrowser(QWidget):
+    """Mounts and vehicles beside the Bestiary on the Creatures page: the
+    mounts you can buy and every vehicle, grouped, each with the glass for
+    its stat block and Add beside it -- a mount goes in Mounts, a vehicle
+    in Vehicles. on_add(name, "mount" | "vehicle")."""
+
+    def __init__(self, on_add, parent=None):
+        super().__init__(parent)
+        from dnd_app.ui_desktop.style.theme import sync_globals as _sg; _sg(globals())
+        from PySide6.QtGui import QIcon
+        from dnd_app.ui_desktop import icons as _icons
+        from dnd_app.ui_desktop.widgets import InspectButtonDelegate
+        from dnd_app.ui_desktop.shared import pill_btn
+        from dnd_app.ui_desktop.style.theme import on_fill
+        self._on_add = on_add
+        lay = QVBoxLayout(self); lay.setContentsMargins(8, 8, 8, 8); lay.setSpacing(6)
+        self.search = QLineEdit(); self.search.setObjectName("mountVehicleSearch")
+        self.search.setPlaceholderText("Search mounts and vehicles…")
+        self.search.setClearButtonEnabled(True)
+        _icons.set_action_icon(self.search.addAction(QIcon(), QLineEdit.LeadingPosition), "search")
+        self.search.setStyleSheet(f"QLineEdit{{background:{SURF2};border:1px solid {BORDER2};"
+                                  f"border-radius:6px;padding:4px 8px;color:{TEXT};}}")
+        self.search.textChanged.connect(lambda _t: self.refresh())
+        lay.addWidget(self.search)
+        self.tree = QTreeWidget(); self.tree.setObjectName("mountVehicleList")
+        self.tree.setHeaderLabels(["Name", "Speed", "", ""])
+        self.tree.setIndentation(14)
+        self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.tree.setStyleSheet(
+            f"QTreeWidget{{background:{BG};border:1px solid {BORDER};border-radius:6px;alternate-background-color:{SURF};}}"
+            f"QTreeWidget::item{{padding:4px 2px;font-size:{FS_BODY}px;color:{TEXT};}}"
+            f"QTreeWidget::item:selected{{background:{TEAL};color:#0a0d12;font-weight:700;}}"
+            f"QTreeWidget::item:selected:!active{{background:{TEAL};color:#0a0d12;}}")
+        hdr = self.tree.header(); hdr.setStretchLastSection(False)
+        hdr.setSectionResizeMode(0, QHeaderView.Stretch)
+        hdr.setSectionResizeMode(1, QHeaderView.Interactive); self.tree.setColumnWidth(1, 170)
+        hdr.setSectionResizeMode(2, QHeaderView.Fixed); self.tree.setColumnWidth(2, 32)
+        hdr.setSectionResizeMode(3, QHeaderView.Fixed); self.tree.setColumnWidth(3, 48)
+        hdr.setStyleSheet(f"QHeaderView::section{{background:{SURF2};color:{GOLD2};font-weight:700;"
+                          f"font-size:{FS_SMALL}px;padding:6px;border:1px solid {BORDER};}}")
+        self.tree.setItemDelegateForColumn(2, InspectButtonDelegate(
+            self.tree, self._inspect, selected_icon="#0a0d12", column=2,
+            has_details=lambda d: bool(d) and d != "__section__"))
+        # Add, to the right of the glass: a mount into Mounts, a vehicle into Vehicles
+        from dnd_app.ui_desktop.widgets import AddButtonDelegate
+        self.tree.setItemDelegateForColumn(3, AddButtonDelegate(
+            self.tree, lambda n: self._add(self._find(n)), selected_icon="#0a0d12", column=3,
+            has_details=lambda d: bool(d) and d != "__section__"))
+        self.tree.itemDoubleClicked.connect(lambda it, _c: self._add(it))
+        lay.addWidget(self.tree, 1)
+        self.refresh()
+
+    @staticmethod
+    def sections():
+        from dnd_app.data import items as I
+        return [("Mounts", "mount", [r[0] for r in I.MOUNTS]),
+                ("Land vehicles", "vehicle", I.VEHICLES_LAND), ("Water vehicles", "vehicle", I.VEHICLES_WATER),
+                ("Air vehicles", "vehicle", I.VEHICLES_AIR), ("Spelljamming vessels", "vehicle", I.VEHICLES_SPELLJAMMING),
+                ("Astral vehicles", "vehicle", I.VEHICLES_ASTRAL), ("Combat vehicles", "vehicle", I.VEHICLES_BGDIA),
+                ("Magic item vehicles", "vehicle", I.VEHICLES_MAGIC)]
+
+    @staticmethod
+    def statblock(name, kind):
+        from dnd_app.data.statblocks import get_mount_statblock, get_vehicle_statblock
+        return (get_mount_statblock(name) if kind == "mount" else get_vehicle_statblock(name)) or {}
+
+    def refresh(self):
+        q = self.search.text().strip().lower()
+        self.tree.clear()
+        bold = self.tree.font(); bold.setBold(True)
+        for title, kind, names in self.sections():
+            hits = [n for n in names if not q or q in n.lower()]
+            if not hits:
+                continue
+            head = QTreeWidgetItem([title]); head.setFont(0, bold)
+            head.setForeground(0, __import__("PySide6.QtGui", fromlist=["QColor"]).QColor(GOLD2))
+            head.setData(0, Qt.UserRole, "__section__")
+            for n in hits:
+                sb = self.statblock(n, kind)
+                it = QTreeWidgetItem([n, str(sb.get("speed", "") or "—"), "", ""])
+                it.setData(0, Qt.UserRole, n); it.setData(0, Qt.UserRole + 1, kind)
+                head.addChild(it)
+            self.tree.addTopLevelItem(head)
+            head.setFirstColumnSpanned(True); head.setExpanded(True)
+
+    def _find(self, name):
+        for i in range(self.tree.topLevelItemCount()):
+            head = self.tree.topLevelItem(i)
+            for j in range(head.childCount()):
+                if head.child(j).data(0, Qt.UserRole) == name:
+                    return head.child(j)
+        return None
+
+    def _inspect(self, name):
+        it = self._find(name)
+        if it is not None:
+            show_plain_details(self, name, self.statblock(name, it.data(0, Qt.UserRole + 1)))
+
+    def _add(self, item):
+        if item is None or item.data(0, Qt.UserRole) in (None, "__section__"):
+            return
+        self._on_add(item.data(0, Qt.UserRole), item.data(0, Qt.UserRole + 1))

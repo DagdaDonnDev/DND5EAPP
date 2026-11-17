@@ -62,6 +62,8 @@ BOOKS = {
     "KGV": "Keys from the Golden Vault",
     "QIS": "Quests from the Infinite Staircase",
     "VEOR": "Vecna: Eve of Ruin",
+    "HAT": "Honor Among Thieves",
+    "DC": "Divine Contention",
 }
 
 

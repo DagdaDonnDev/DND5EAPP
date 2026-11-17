@@ -246,6 +246,7 @@ class InspectButtonDelegate(QStyledItemDelegate):
       selected-text colour, since the accent can vanish on the highlight."""
 
     BTN_W, BTN_H, ICON = 28, 24, 18
+    TIP = "Details"
     RARITY_BAR = False   # RarityInspectDelegate: RarityBarDelegate's bar on the left too
 
     def __init__(self, view, on_inspect, selected_icon=None, column=0, has_details=None):
@@ -327,6 +328,11 @@ class InspectButtonDelegate(QStyledItemDelegate):
             painter.setBrush(QColor(qa(QColor(edge).name(), 0x33)))
             painter.drawRoundedRect(QRectF(btn).adjusted(0.5, 0.5, -0.5, -0.5), 5, 5)
             painter.restore()
+        self._paint_face(painter, btn, selected)
+
+    def _paint_face(self, painter, btn, selected):
+        """What's on the button: the magnifying glass."""
+        from dnd_app.ui_desktop import icons as _icons
         size = _icons.scaled(self.ICON)
         colour = self._selected_icon if selected else _icons.accent()
         key = (colour, size, _icons._dpr())
@@ -340,7 +346,7 @@ class InspectButtonDelegate(QStyledItemDelegate):
         from PySide6.QtCore import QEvent
         if (event.type() == QEvent.ToolTip and self._has_button(index)
                 and self._button_rect(option.rect).contains(event.pos())):
-            QToolTip.showText(event.globalPos(), "Details", view)
+            QToolTip.showText(event.globalPos(), self.TIP, view)
             return True
         return super().helpEvent(event, view, option, index)
 
@@ -402,6 +408,29 @@ class InspectButtonDelegate(QStyledItemDelegate):
                 return True
         return False
 
+
+
+class AddButtonDelegate(InspectButtonDelegate):
+    """An "Add" button at the right end of each row, beside the glass:
+    pressing it calls on_add with the row's data (the Creatures page's
+    browsers). Drawn the same way as the glass, worded."""
+    BTN_W = 42
+    TIP = "Add"
+
+    def _paint_face(self, painter, btn, selected):
+        from PySide6.QtGui import QColor, QPainter
+        from PySide6.QtCore import QRectF
+        from dnd_app.ui_desktop.style import theme as _theme
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing)
+        ink = QColor(self._selected_icon if selected else _theme.TEAL2)
+        painter.setPen(QColor(qa(ink.name(), 0x88)))
+        painter.setBrush(QColor(qa(ink.name(), 0x1c)))
+        painter.drawRoundedRect(QRectF(btn).adjusted(0.5, 0.5, -0.5, -0.5), 5, 5)
+        f = painter.font(); f.setBold(True); painter.setFont(f)
+        painter.setPen(ink)
+        painter.drawText(btn, Qt.AlignCenter, "Add")
+        painter.restore()
 
 class RarityInspectDelegate(InspectButtonDelegate):
     """The magic item browser's rows: the rarity bar on the left and the

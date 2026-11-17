@@ -509,7 +509,7 @@ class FeaturesMixin:
                     pre = ft.get("prereq","")
                     desc = feat_summary(ft)   # headline; full text in Show Details
                     feat_items.append(
-                        f"<b>{fname}</b>  [{src_tag}]"
+                        f"<b>{fname}</b>" + (f"  [{src_tag}]" if src_tag else "")
                         + (f"  <i>Req: {pre}</i>" if pre else "")
                         + (f"<br>{desc}" if desc else "")
                     )
@@ -617,7 +617,7 @@ class FeaturesMixin:
             # somehow has no dedicated tooltip entry.
             desc = _FEAT_DESCS.get(ft["name"]) or ft.get("special","")[:250]
             item.setToolTip(
-                f"<b>{ft['name']}</b>  [{source}]"
+                f"<b>{ft['name']}</b>" + (f"  [{source}]" if source else "")
                 + (f"<br><i>Requires: {prereq}</i>" if prereq else "")
                 + (f"<br>{desc}" if desc else ""))
             if already:
@@ -706,7 +706,7 @@ class FeaturesMixin:
                 pre = ft.get("prereq",""); src_tag=ft.get("source","")
                 full_desc = _FEAT_DESCS2.get(fname) or ft.get('special','')
                 info.setText(
-                    f"<b>{fname}</b>  <i>[{src_tag}]</i>"
+                    f"<b>{fname}</b>" + (f"  <i>[{src_tag}]</i>" if src_tag else "")
                     + (f"<br><span style='color:{AMBER};'>Requires: {pre}</span>" if pre else "")
                     + f"<br><br>{self._format_multi_para(full_desc)}")
         fb_list.currentItemChanged.connect(lambda cur,prev: _on_feat_select(cur))

@@ -13,7 +13,7 @@
 
 <!-- github-only -->
 <p align="center">
-  <img alt="Version 6.0.0" src="https://img.shields.io/badge/version-6.0.0-d4a820?style=for-the-badge">
+  <img alt="Version 7.0.0" src="https://img.shields.io/badge/version-7.0.0-d4a820?style=for-the-badge">
   <img alt="Runs on Windows, macOS, Linux and Android" src="https://img.shields.io/badge/runs%20on-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux%20%C2%B7%20Android-5b7af5?style=for-the-badge">
   <img alt="D&D 5e, 2014 rules" src="https://img.shields.io/badge/rules-D%26D%205e%20(2014)-d44040?style=for-the-badge">
   <img alt="Works offline" src="https://img.shields.io/badge/works-offline-18b28a?style=for-the-badge">
@@ -75,7 +75,7 @@ python dnd_app/run_dnd_creator.py
 - **Android** — `packaging\android\clean_build_android.bat` makes `dist\MIMIC.apk`, ready to copy to your phone
 - **A new computer** — double-click `packaging\setup_new_computer.bat` once first: it installs what both builds need (Python; WSL, Java and the Android tools)
 
-The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Android](packaging/android/README.md) — cover first-time setup. The version, **6.0.0**, is set in one place (`dnd_app/ui_android/buildozer.spec`), and both the APK and the Windows EXE (right-click → Properties → Details) carry it.
+The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Android](packaging/android/README.md) — cover first-time setup. The version, **7.0.0**, is set in one place (`dnd_app/ui_android/buildozer.spec`), and both the APK and the Windows EXE (right-click → Properties → Details) carry it.
 
 ### Troubleshooting
 
@@ -108,7 +108,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 | Combat | Combat, Actions | HP and AC, Initiative and Speed, death saves, weapons, conditions and effects, Wild Shape, everything you can do on a turn, and **New Turn** |
 | Inventory | Inventory, Infusions | Your gear, coins, magic items and attunement, the Equipment and Magic Items browsers, and an Artificer's Infusions |
 | Spells | Spells | Slots, Spell Resources (Sorcery Points, Arcane Ward, Bardic Inspiration, Channel Divinity, free casts…), the Spellcasting table, My Spells and the Spell Browser |
-| Creatures | Creatures | Your own creatures, each with its stat block: mounts and steeds, what you've summoned, your companions and your Wild Shape forms, with the Bestiary beside them to add any creature from |
+| Creatures | Creatures | Every stat block of yours, in groups to open and close: Mounts, Companions, Familiars, Summons, Wild Shape, Vehicles and Other. Beside them, the Bestiary (press Add on any creature and pick its group) and Mounts & Vehicles. Right-click a creature (press and hold on Android) to move it, set its max HP or remove it |
 | Choices | Choices | **Level Up / Multiclass**, **Level Down**, **Remove Class**, your identity, and anything still to pick |
 | Features | Features | Every class, race and feat feature, with a box to find one and what it does a click (or tap) away, and the feats and rewards your DM grants |
 | Notes | Notes | Personality, backstory and notes, and the *Imported from PDF* page |
@@ -171,7 +171,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - Some items ask a question when you add them: which of your own weapons a +1 goes on, which spell a scroll holds, what damage type a Ring of Resistance guards against.
 - **Manuals and tomes:** right-click → Study.
 - **Ammunition** comes out of your inventory a shot at a time. Set a magic stack's count from its right-click menu.
-- **A mount** from the Equipment browser comes with its stat block, on the Creatures tab with your other creatures.
+- **A mount or a vehicle**: the Mounts & Vehicles tab beside the Bestiary on the Creatures page adds it, with its stat block, in Mounts or Vehicles.
 
 </details>
 
@@ -278,7 +278,7 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 - **263 Wild Shape forms**: every beast in the Bestiary, and the four elementals for a Circle of the Moon druid, each with its full stat block and a sound of its own for the immersive spell names
 - **2,754 creatures** in the Bestiary, each with its full stat block
 - **Companion stat blocks** for the Steel Defender, Wildfire Spirit, Drake Companion, Dancing Item, the Primal Companions, the Eldritch Cannon and mounts
-- **Summons from the Bestiary**: Conjure Animals and the other Conjure spells, Animate Dead, Create Undead, Danse Macabre, Find Familiar, Giant Insect and the demon and devil spells, and the Figurines of Wondrous Power, Bag of Tricks, Horn of Valhalla and the elemental bowls and braziers. Each creature is on your Creatures page with its own hit points, and one held by concentration goes when it ends
+- **Summons from the Bestiary**: Conjure Animals and the other Conjure spells, Animate Dead, Create Undead, Danse Macabre, Find Familiar, Find Steed and Find Greater Steed, Giant Insect, the demon and devil spells and Summon Beast, Summon Fey and the other spirit spells, and the Figurines of Wondrous Power, Bag of Tricks, Horn of Valhalla and the elemental bowls and braziers. Each creature is on your Creatures page with its own hit points, and one held by concentration goes when it ends
 - **Polymorph, True Polymorph and Shapechange** into any creature they allow, your sheet becoming it
 - **One engine, two apps** — desktop and Android build, level and save a character the same way
 
@@ -295,9 +295,9 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
   <img src="docs/images/android-equipment.png" width="24%" alt="Android: inventory">
 </p>
 <p align="center">
-  <img src="docs/images/desktop-creatures.png" width="49%" alt="Desktop: the Creatures tab, your creatures beside the Bestiary">
+  <img src="docs/images/desktop-creatures.png" width="49%" alt="Desktop: the Creatures tab, your creatures in groups beside the Bestiary">
   <img src="docs/images/android-menu.png" width="24%" alt="Android: the menu, with the Bestiary and Reference">
-  <img src="docs/images/android-bestiary.png" width="24%" alt="Android: the Bestiary">
+  <img src="docs/images/android-overview.png" width="24%" alt="Android: the Overview">
 </p>
 <p align="center"><sub>Mat Cauthon, a level 5 Half-Elf Sorcerer (Wild Magic), on desktop and Android.</sub></p>
 <!-- /github-only -->

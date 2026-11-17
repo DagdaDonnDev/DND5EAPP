@@ -333,8 +333,29 @@ class SkillsMixin:
         lbl = getattr(self, "_tool_prof_lbl", None)
         if lbl is None:
             return
-        from dnd_app.data.feature_tooltips import get_tool_tooltip
+        import html
         tools = sorted(set(self.char.get("tool_proficiencies", [])))
-        lbl.setText(", ".join(tools) or "None")
-        tips = [f"{t}: {get_tool_tooltip(t)}" for t in tools if get_tool_tooltip(t)]
-        lbl.setToolTip("\n\n".join(tips))
+        if not tools:
+            lbl.setTextFormat(Qt.PlainText); lbl.setText("None")
+            return
+        # each tool its own hover target: a link, drawn as plain text, whose
+        # hover shows that tool's details (_tool_hovered)
+        lbl.setTextFormat(Qt.RichText)
+        lbl.setText(", ".join(
+            f'<a href="{html.escape(t, quote=True)}" style="color:{TEXT};text-decoration:none">{html.escape(t)}</a>'
+            for t in tools))
+        if not getattr(lbl, "_hover_wired", False):
+            lbl.setTextInteractionFlags(Qt.LinksAccessibleByMouse)
+            lbl.linkHovered.connect(self._tool_hovered)
+            lbl._hover_wired = True
+
+    def _tool_hovered(self, tool: str):
+        """A tool's details on hover (the XGE tool descriptions)."""
+        from PySide6.QtWidgets import QToolTip
+        from PySide6.QtGui import QCursor
+        if not tool:
+            QToolTip.hideText()
+            return
+        from dnd_app.data.feature_tooltips import get_tool_tooltip
+        QToolTip.showText(QCursor.pos(), f"<b>{tool}</b><br>{get_tool_tooltip(tool) or 'No details for this tool.'}",
+                          self._tool_prof_lbl)

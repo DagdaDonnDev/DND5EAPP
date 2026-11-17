@@ -236,7 +236,7 @@ class GearMixin:
                                        f"border-radius:6px;padding:4px 8px;color:{TEXT};}}")
         self._md_cat = QComboBox()
         for cat in ["All","Weapons — Simple","Weapons — Martial","Materials (Silvered/Adamantine)","Armor",
-                     "Adventuring Gear","Tools","Mounts & Vehicles"]:
+                     "Adventuring Gear","Tools"]:
             self._md_cat.addItem(cat)
         self._md_filters = FilterSidebar(mundane_tab)
         self._md_filters.add_combo("Category", self._md_cat)
@@ -421,8 +421,6 @@ class GearMixin:
             from dnd_app.data.items import TOOL_STATS
             tool_data = [(t, "Tool") + TOOL_STATS[t] for t in ALL_TOOLS if t in TOOL_STATS]
             sections.append(("Tools",          tool_data,       "tool"))
-        if cat in ("All","Mounts & Vehicles"):
-            sections.append(("Mounts",         MOUNTS,          "mount"))
 
         from dnd_app.core.inventory import money_text, weight_text
         for section_name, items, kind in sections:
@@ -515,14 +513,6 @@ class GearMixin:
         if not item: return
         name = item.data(0, Qt.UserRole) if hasattr(item,'data') else item
         if not name or name == "__section__": return
-        # Mounts get a real stat block (the Creatures tab) instead of a
-        # generic equipment line — a Warhorse's AC/HP/attacks matter in
-        # play, unlike a bedroll's weight and price.
-        from dnd_app.data.items import MOUNTS
-        if any(row[0] == name for row in MOUNTS):
-            self._add_mount(name)
-            self._toast(f"{name} added — its stat block is on the Creatures tab")
-            return
         qty, ok = QInputDialog.getInt(self, f"Add {name}", f"How many {name}?", 1, 1, 9999, 1)
         if not ok: return
         # onto its row if it's already carried, with the rules' weight and

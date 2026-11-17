@@ -17,6 +17,8 @@ Dialog {
     property color accent: Theme.border
     // the last button's text ("OK" for a message with no options)
     property string cancelText: "Cancel"
+    // a red Cancel, as the other negative buttons
+    property bool cancelDanger: false
 
     signal picked(string key)
 
@@ -99,6 +101,7 @@ Dialog {
             objectName: "optionsCancel"
             Layout.fillWidth: true
             primary: false
+            danger: root.cancelDanger
             text: root.cancelText
             onClicked: root.close()
         }
