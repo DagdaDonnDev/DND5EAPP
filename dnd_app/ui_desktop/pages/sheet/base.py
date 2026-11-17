@@ -1087,8 +1087,7 @@ class BaseSheetMixin:
         # Each tab has a full name and a short one; _fit_tab_names() shows
         # the short ones only when the full ones don't fit the window.
         self._tab_names = []   # (full, short) per tab, in order
-        _SHORT = {"Abilities && Saves": "Abilities", "Skills && Proficiencies": "Skills",
-                  "Gear && Items": "Gear", "Traits && Notes": "Notes"}
+        _SHORT = {}
 
         def _add_tab(page, label, icon):
             idx = self._tabs.addTab(page, label)
@@ -1096,15 +1095,17 @@ class BaseSheetMixin:
             self._set_tab_tip(idx, label.replace("&&", "&"))   # the full name (if it's shortened) and its keys
             _icons.set_tab_icon(self._tabs, page, icon)
             return page
-        _add_tab(self._build_tab_abilities(),    "Abilities && Saves",      "abilities")
-        _add_tab(self._build_tab_skills(),       "Skills && Proficiencies", "skills")
+        # abilities and saves, proficiencies, skills and senses
+        _add_tab(self._build_tab_overview(),     "Overview",                "abilities")
         _add_tab(self._build_tab_combat(),       "Combat",                  "combat")
-        _add_tab(self._build_tab_gear(),         "Gear && Items",           "gear")
+        self._gear_tab_page = _add_tab(self._build_tab_gear(), "Inventory", "gear")
         self._spells_tab_page = _add_tab(self._build_tab_spells(), "Spells", "spells")
-        # (an Artificer's infusions are in the Gear tab's side panel)
+        # your own creatures: mounts, steeds, summons, companions, Wild Shape
+        # (an Artificer's infusions are in the Inventory tab's side panel)
+        self._creatures_tab_page = _add_tab(self._build_companions_tab(), "Creatures", "paw")
         self._choices_tab_page = _add_tab(self._build_tab_choices(), "Choices", "choices")
         _add_tab(self._build_tab_features(),     "Features",                "features")
-        _add_tab(self._build_tab_traits_notes(), "Traits && Notes",         "notes")
+        _add_tab(self._build_tab_traits_notes(), "Notes",                   "notes")
         root.addWidget(self._tabs, 1)
         self._install_choices_pulse()
         self._tabs.installEventFilter(self)   # re-fit the tab names on resize

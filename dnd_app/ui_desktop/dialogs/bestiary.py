@@ -1,11 +1,9 @@
 """The Bestiary window (Tools → Bestiary, Ctrl+B): every creature MIMIC
 knows, to find by name or type and filter by type, size, challenge
-rating and how it moves, with its stat block beside the list -- and, in
-its Yours tab (Tools → Your Creatures, Ctrl+Shift+B), the open
-character's own creatures: mounts, steeds, summons, companions and Wild
-Shape. The finding and the stat block are core/bestiary.py's, the same as
-Android's Bestiary screen; the Yours tab is the sheet's own creatures page
-(pages/sheet/companions.py), so it changes with the sheet.
+rating and how it moves, with its stat block beside the list. The finding
+and the stat block are core/bestiary.py's, the same as Android's Bestiary
+screen. A character's own creatures (mounts, steeds, summons, companions,
+Wild Shape) are on its sheet's Creatures tab (pages/sheet/companions.py).
 """
 from PySide6.QtWidgets import *
 from PySide6.QtCore import Qt, QTimer
@@ -28,11 +26,8 @@ class BestiaryWindow(QWidget):
     """Search and filters on the left with the list under them; the
     chosen creature's stat block on the right."""
 
-    def __init__(self, parent=None, sheet_of=None):
+    def __init__(self, parent=None):
         super().__init__(parent, Qt.Window)
-        self._sheet_of = sheet_of          # () -> the open CharacterSheet, or None
-        self._yours_sheet = None
-        self._yours_page = None
         from dnd_app.ui_desktop.style.theme import sync_globals as _sg; _sg(globals())
         self.setWindowTitle("Bestiary")
         self.setObjectName("bestiaryWindow")
@@ -45,16 +40,8 @@ class BestiaryWindow(QWidget):
             f"QListWidget::item:selected{{background:{qa(GOLD, 0x33)};color:{TEXT};}}"
             f"QTextBrowser{{background:{SURF};border:1px solid {BORDER};border-radius:8px;color:{TEXT};"
             f"font-size:{FS_BODY}px;padding:10px;}}")
-        outer = QVBoxLayout(self); outer.setContentsMargins(8, 8, 8, 8)
-        self._tabs = QTabWidget(); self._tabs.setObjectName("bestiaryTabs")
-        outer.addWidget(self._tabs)
-        all_page = QWidget()
-        root = QHBoxLayout(all_page); root.setContentsMargins(6, 10, 6, 6); root.setSpacing(12)
-        self._tabs.addTab(all_page, "All creatures")
-        self._yours_box = QWidget()
-        self._yours_lay = QVBoxLayout(self._yours_box); self._yours_lay.setContentsMargins(0, 0, 0, 0)
-        self._tabs.addTab(self._yours_box, "Yours")
-        self._tabs.currentChanged.connect(lambda i: self.follow_sheet() if i == 1 else None)
+        all_page = self
+        root = QHBoxLayout(self); root.setContentsMargins(14, 14, 14, 14); root.setSpacing(12)
 
         left = QVBoxLayout(); left.setSpacing(8)
         # the search box as the other browsers have it (a magnifying glass at
@@ -150,46 +137,129 @@ class BestiaryWindow(QWidget):
         self._block.setHtml(_b.statblock_html(c, GOLD2) if c else
                             f'<span style="color:{TEXT3}">No creature matches. Try fewer words or another filter.</span>')
 
-    def show_yours(self):
-        """Open on the Yours tab."""
-        self._tabs.setCurrentIndex(1)
-        self.follow_sheet()
-
-    def follow_sheet(self):
-        """The Yours tab shows the open character's creatures page (made
-        afresh for a new character; "open a character" without one)."""
-        sheet = self._sheet_of() if self._sheet_of else None
-        if sheet is self._yours_sheet and (self._yours_page is not None or sheet is None):
-            return
-        self._drop_yours()
-        self._yours_sheet = sheet
-        if sheet is None:
-            self._yours_page = _h("Open a character to see its creatures here: its mounts and steeds, "
-                                  "what it's summoned, its companions and its Wild Shape forms.", TEXT3, FS_SMALL)
-            self._yours_page.setWordWrap(True)
-        else:
-            self._yours_page = sheet._build_companions_tab()
-            # (a closed sheet's page goes with it)
-            sheet.destroyed.connect(self._sheet_gone)
-        self._yours_lay.addWidget(self._yours_page)
-
-    def _sheet_gone(self, *_):
-        self._yours_page = None             # (deleted with the sheet)
-        self._yours_sheet = None
-        self.follow_sheet()
-
-    def _drop_yours(self):
-        if self._yours_page is not None:
-            self._yours_lay.removeWidget(self._yours_page)
-            self._yours_page.setParent(None)
-            self._yours_page.deleteLater()
-            self._yours_page = None
-
     def show_creature(self, name: str):
         """Open on one creature (a summon, a Wild Shape form)."""
-        self._tabs.setCurrentIndex(0)
         self._search.setText(name)
         self._refresh()
         rows = self._list.findItems(name, Qt.MatchExactly)
         if rows:
             self._list.setCurrentItem(rows[0])
+
+
+def show_creature_details(parent, name: str):
+    """A creature's magnifying glass: its stat block in a window of its
+    own, as an item's or a spell's glass opens its details."""
+    c = get_creature(name)
+    if not c:
+        return
+    win = parent.window() if parent is not None else None
+    dlg = QDialog(win)
+    dlg.setWindowTitle(name)
+    dlg.resize(640, 720)
+    lay = QVBoxLayout(dlg)
+    view = QTextBrowser(); view.setOpenLinks(False)
+    view.setObjectName("creatureDetails")
+    view.setHtml(_b.statblock_html(c, GOLD2))
+    lay.addWidget(view)
+    buttons = QDialogButtonBox(QDialogButtonBox.Close)
+    buttons.rejected.connect(dlg.reject)
+    lay.addWidget(buttons)
+    dlg.setAttribute(Qt.WA_DeleteOnClose)
+    dlg.show()
+    return dlg
+
+
+class CreatureBrowser(QWidget):
+    """The Bestiary as a browser beside your own list, the way the Spell
+    Browser sits beside My Spells and the item browsers beside your
+    inventory: the search box with its magnifying glass, the filters
+    behind the funnel, a row per creature (type and challenge rating) with
+    the glass that opens its stat block, and an Add button under it.
+    on_add(name) -- what Add (or a double-click) does with the creature."""
+
+    def __init__(self, on_add, add_text="Add Selected", parent=None):
+        super().__init__(parent)
+        from dnd_app.ui_desktop.style.theme import sync_globals as _sg; _sg(globals())
+        from PySide6.QtGui import QIcon
+        from dnd_app.ui_desktop import icons as _icons
+        from dnd_app.ui_desktop.widgets import FilterSidebar, InspectButtonDelegate
+        from dnd_app.ui_desktop.shared import pill_btn
+        from dnd_app.ui_desktop.style.theme import on_fill
+        self._on_add = on_add
+        lay = QVBoxLayout(self); lay.setContentsMargins(8, 8, 8, 8); lay.setSpacing(6)
+        self.search = QLineEdit()
+        self.search.setObjectName("creatureBrowserSearch")
+        self.search.setPlaceholderText("Search creatures…")
+        self.search.setClearButtonEnabled(True)
+        self.search.setAccessibleName("Search creatures by name or type")
+        _icons.set_action_icon(self.search.addAction(QIcon(), QLineEdit.LeadingPosition), "search")
+        self.search.setStyleSheet(f"QLineEdit{{background:{SURF2};border:1px solid {BORDER2};"
+                                  f"border-radius:6px;padding:4px 8px;color:{TEXT};}}")
+        self._kind = _combo(_b.kinds(), "Any type", "Creature type")
+        self._size = _combo(SIZES, "Any size", "Size")
+        self._cr_min = _combo(_b.CR_ORDER, "CR from", "Lowest challenge rating")
+        self._cr_max = _combo(_b.CR_ORDER, "CR to", "Highest challenge rating")
+        self._move = _combo([label for label, _ in _b.MOVES], "Any movement", "How it moves")
+        self._filters = FilterSidebar(self)
+        for label, box in (("Type", self._kind), ("Size", self._size), ("CR from", self._cr_min),
+                           ("CR to", self._cr_max), ("Moves", self._move)):
+            self._filters.add_combo(label, box)
+        lay.addLayout(self._filters.search_row(self.search))
+        self.count = _h("", TEXT3, FS_TINY)
+        lay.addWidget(self.count)
+        self.tree = QTreeWidget()
+        self.tree.setObjectName("creatureBrowserList")
+        self.tree.setHeaderLabels(["Name", "Type", "CR", ""])
+        self.tree.setRootIsDecorated(False)
+        self.tree.setUniformRowHeights(True)
+        self.tree.setAlternatingRowColors(True)
+        self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.tree.setStyleSheet(
+            f"QTreeWidget{{background:{BG};border:1px solid {BORDER};border-radius:6px;"
+            f"alternate-background-color:{SURF};}}"
+            f"QTreeWidget::item{{padding:4px 2px;font-size:{FS_BODY}px;color:{TEXT};}}"
+            f"QTreeWidget::item:selected{{background:{TEAL};color:#0a0d12;font-weight:700;}}"
+            f"QTreeWidget::item:selected:!active{{background:{TEAL};color:#0a0d12;}}")
+        hdr = self.tree.header()
+        hdr.setStretchLastSection(False)
+        hdr.setSectionResizeMode(0, QHeaderView.Stretch)
+        hdr.setSectionResizeMode(1, QHeaderView.Interactive); self.tree.setColumnWidth(1, 120)
+        hdr.setSectionResizeMode(2, QHeaderView.Fixed); self.tree.setColumnWidth(2, 48)
+        hdr.setSectionResizeMode(3, QHeaderView.Fixed); self.tree.setColumnWidth(3, 32)
+        hdr.setStyleSheet(f"QHeaderView::section{{background:{SURF2};color:{GOLD2};font-weight:700;"
+                          f"font-size:{FS_SMALL}px;padding:6px;border:1px solid {BORDER};}}")
+        self.tree.setItemDelegateForColumn(3, InspectButtonDelegate(
+            self.tree, lambda n: show_creature_details(self, n), selected_icon="#0a0d12", column=3))
+        self.tree.itemDoubleClicked.connect(lambda it, _c: self._add(it))
+        lay.addWidget(self.tree, 1)
+        self.add_btn = pill_btn(add_text, TEAL)
+        self.add_btn.setObjectName("creatureBrowserAdd")
+        _icons.set_button_icon(self.add_btn, "arrow_left", 16, color=on_fill(TEAL))
+        self.add_btn.clicked.connect(lambda: self._add(self.tree.currentItem()))
+        lay.addWidget(self.add_btn)
+        self._timer = QTimer(self); self._timer.setSingleShot(True); self._timer.setInterval(150)
+        self._timer.timeout.connect(self.refresh)
+        self.search.textChanged.connect(lambda _t: self._timer.start())
+        for box in (self._kind, self._size, self._cr_min, self._cr_max, self._move):
+            box.currentIndexChanged.connect(lambda _i: self.refresh())
+        self.refresh()
+
+    def refresh(self):
+        names = _b.search(self.search.text(), self._kind.currentData(), self._size.currentData(),
+                          self._cr_min.currentData(), self._cr_max.currentData(), self._move.currentData())
+        self.tree.setUpdatesEnabled(False)
+        self.tree.clear()
+        rows = []
+        for n in names:
+            c = get_creature(n) or {}
+            it = QTreeWidgetItem([n, c.get("type", ""), c.get("cr", ""), ""])
+            it.setData(0, Qt.UserRole, n)
+            it.setToolTip(0, _b.summary_line(c) if c else n)
+            rows.append(it)
+        self.tree.addTopLevelItems(rows)
+        self.tree.setUpdatesEnabled(True)
+        self.count.setText(f"{len(names):,} creature{'s' if len(names) != 1 else ''}")
+
+    def _add(self, item):
+        if item is not None and item.data(0, Qt.UserRole):
+            self._on_add(item.data(0, Qt.UserRole))

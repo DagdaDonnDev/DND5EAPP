@@ -3,9 +3,12 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Mimic
 
+// The Overview: abilities and saving throws, skills, senses and
+// proficiencies on one screen -- desktop's Overview tab, a section after
+// another.
 Page {
     id: root
-    readonly property string screenTitle: "Proficiencies"
+    readonly property string screenTitle: "Overview"
     background: Rectangle { color: Theme.bg }
     readonly property QtObject sheetBridge: Window.window.sheetBridge
 
@@ -15,7 +18,19 @@ Page {
         return list.length > 0 ? list.join(", ") : "None"
     }
 
+    // Jump-to-section targets for the drawer's sub-menu (NavDrawer.qml)
+    function scrollToSection(name) {
+        var anchorItem = name === "Skills" ? skillsAnchor
+                       : name === "Senses" ? sensesAnchor
+                       : name === "Proficiencies" ? profsAnchor : null
+        if (anchorItem) {
+            var pt = anchorItem.mapToItem(flick.contentItem, 0, 0)
+            flick.contentY = Math.max(0, Math.min(pt.y - 8, flick.contentHeight - flick.height))
+        }
+    }
+
     Flickable {
+        id: flick
         anchors.fill: parent
         anchors.margins: 16
         contentWidth: width
@@ -46,7 +61,68 @@ Page {
                 }
             }
 
+            // ── Abilities and saving throws: tap the score to roll a check,
+            // the save line to roll the save (a teal border: proficient)
+            Label { text: "Abilities and Saving Throws"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true }
+            GridLayout {
+                Layout.fillWidth: true
+                columns: root.width >= 500 ? 3 : 2
+                rowSpacing: 10
+                columnSpacing: 10
+
+                Repeater {
+                    model: sheetBridge.abilities
+                    delegate: Rectangle {
+                        id: abCard
+                        objectName: "abilityCard_" + modelData.ability
+                        readonly property string abName: modelData.ability
+                        readonly property int abCheck: modelData.check
+                        readonly property int abSave: modelData.save
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 92
+                        radius: 10
+                        color: Theme.surf
+                        border.color: modelData.saveProficient ? Theme.teal : Theme.border
+                        clip: true
+
+                        RowLayout {
+                            anchors { left: parent.left; right: parent.right; top: parent.top
+                                      leftMargin: 12; rightMargin: 10; topMargin: 8 }
+                            ColumnLayout {
+                                spacing: 0
+                                Label { text: abCard.abName; color: Theme.text3; font.pixelSize: Theme.fsSmall; font.bold: true }
+                                Label { text: String(modelData.score); color: Theme.text; font.pixelSize: Theme.fsHead; font.bold: true }
+                            }
+                            Item { Layout.fillWidth: true }
+                            Label { text: modelData.modText; color: Theme.gold2; font.pixelSize: Theme.fsTitle; font.bold: true }
+                        }
+                        MouseArea {
+                            anchors { top: parent.top; left: parent.left; right: parent.right }
+                            height: parent.height - 26
+                            onClicked: sheetBridge.rollQuickCheck(abCard.abName + " Check", abCard.abCheck)
+                        }
+                        Rectangle {
+                            anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
+                            height: 26
+                            color: modelData.saveProficient ? Qt.rgba(Theme.teal.r, Theme.teal.g, Theme.teal.b, 0.18) : Theme.surf2
+                            Label {
+                                anchors.centerIn: parent
+                                text: (modelData.saveProficient ? "● " : "○ ") + "Save " + modelData.saveText
+                                color: modelData.saveProficient ? Theme.teal2 : Theme.text2
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: modelData.saveProficient
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: sheetBridge.rollQuickCheck(abCard.abName + " Save", abCard.abSave)
+                            }
+                        }
+                    }
+                }
+            }
+
             RowLayout {
+                id: skillsAnchor
                 Layout.fillWidth: true
                 Label { text: "Skills"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true; Layout.fillWidth: true }
                 MButton {
@@ -147,66 +223,82 @@ Page {
                 }
             }
 
-            Label { text: "Languages, Tools & Combat Training"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true; Layout.topMargin: 6 }
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: profCol.height + 16
-                radius: 10
-                color: Theme.surf
-                border.color: Theme.border
+            // ── Senses: the passive scores, and every sense with its range
+            // (where it's from on a tap); one another covers greyed out
+            MCard {
+                id: sensesAnchor
+                objectName: "sensesCard"
+                title: "Senses"
+                iconName: "passive"
+                Repeater {
+                    model: sheetBridge.senses.passives
+                    delegate: RowLayout {
+                        Layout.fillWidth: true
+                        Label { text: modelData.label; color: Theme.text2; font.pixelSize: Theme.fsSmall; Layout.fillWidth: true }
+                        Label { text: String(modelData.value); color: Theme.teal2; font.pixelSize: Theme.fsTitle; font.bold: true }
+                    }
+                }
+                Flow {
+                    objectName: "senseChips"
+                    Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    spacing: 6
+                    Label {
+                        visible: sheetBridge.senses.chips.length === 0
+                        text: "No special senses"
+                        color: Theme.text3
+                        font.pixelSize: Theme.fsSmall
+                    }
+                    Repeater {
+                        model: sheetBridge.senses.chips
+                        delegate: Rectangle {
+                            objectName: "senseChip_" + modelData.name
+                            radius: 7
+                            color: modelData.covered ? Theme.surf2 : Qt.rgba(Theme.teal.r, Theme.teal.g, Theme.teal.b, 0.14)
+                            border.color: modelData.covered ? Theme.border : Theme.teal
+                            implicitWidth: chipText.implicitWidth + 18
+                            implicitHeight: chipText.implicitHeight + 10
+                            Label {
+                                id: chipText
+                                anchors.centerIn: parent
+                                textFormat: Text.StyledText
+                                text: (modelData.covered ? "<s>" : "") + "<b>" + modelData.name + "</b>"
+                                      + (modelData.range ? "&nbsp;&nbsp;" + modelData.range + " ft" : "")
+                                      + (modelData.covered ? "</s>" : "")
+                                color: modelData.covered ? Theme.text3 : Theme.teal2
+                                font.pixelSize: Theme.fsSmall
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: Window.window.showToast(modelData.name + ": " + modelData.source
+                                                                   + (modelData.what ? " (" + modelData.what + ")" : ""))
+                            }
+                        }
+                    }
+                }
+            }
 
-                Column {
-                    id: profCol
-                    x: 10; y: 8
-                    width: parent.width - 20
-                    spacing: 10
-
-                    Column {
-                        width: parent.width
+            // ── Proficiencies: a line each, as tall as they need
+            MCard {
+                id: profsAnchor
+                objectName: "proficienciesCard"
+                title: "Proficiencies"
+                iconName: "skills"
+                Repeater {
+                    model: [["Languages", sheetBridge.languages, Theme.teal2],
+                            ["Armor", sheetBridge.armorProficiencies, Theme.gold2],
+                            ["Weapons", sheetBridge.weaponProficiencies, Theme.indigo2],
+                            ["Tools", sheetBridge.toolProficiencies, Theme.amber2]]
+                    delegate: ColumnLayout {
+                        Layout.fillWidth: true
                         spacing: 2
-                        Label { text: "Languages"; color: Theme.text2; font.pixelSize: Theme.fsSmall }
+                        Label { text: modelData[0]; color: modelData[2]; font.pixelSize: Theme.fsSmall; font.bold: true }
                         Label {
-                            text: root.joinOrNone(sheetBridge.languages)
+                            text: root.joinOrNone(modelData[1])
                             color: Theme.text
                             font.pixelSize: Theme.fsSmall
                             wrapMode: Text.WordWrap
-                            width: parent.width
-                        }
-                    }
-                    Column {
-                        width: parent.width
-                        spacing: 2
-                        Label { text: "Tools"; color: Theme.text2; font.pixelSize: Theme.fsSmall }
-                        Label {
-                            text: root.joinOrNone(sheetBridge.toolProficiencies)
-                            color: Theme.text
-                            font.pixelSize: Theme.fsSmall
-                            wrapMode: Text.WordWrap
-                            width: parent.width
-                        }
-                    }
-                    Column {
-                        width: parent.width
-                        spacing: 2
-                        Label { text: "Armor"; color: Theme.text2; font.pixelSize: Theme.fsSmall }
-                        Label {
-                            text: root.joinOrNone(sheetBridge.armorProficiencies)
-                            color: Theme.text
-                            font.pixelSize: Theme.fsSmall
-                            wrapMode: Text.WordWrap
-                            width: parent.width
-                        }
-                    }
-                    Column {
-                        width: parent.width
-                        spacing: 2
-                        Label { text: "Weapons"; color: Theme.text2; font.pixelSize: Theme.fsSmall }
-                        Label {
-                            text: root.joinOrNone(sheetBridge.weaponProficiencies)
-                            color: Theme.text
-                            font.pixelSize: Theme.fsSmall
-                            wrapMode: Text.WordWrap
-                            width: parent.width
+                            Layout.fillWidth: true
                         }
                     }
                 }

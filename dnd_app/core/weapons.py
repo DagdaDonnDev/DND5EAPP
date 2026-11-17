@@ -16,8 +16,9 @@ def _props(name: str, char: dict = None) -> list:
     return w.get("properties", []) if isinstance(w, dict) else []
 
 
-def equip_weapon(char: dict, name: str) -> None:
-    """Take `name` in hand, following the PHB's hands:
+def equip_weapon(char: dict, name: str, another: bool = False) -> None:
+    """Take `name` in hand (`another`: a second one of it, for two daggers
+    -- one in each hand), following the PHB's hands:
       1. a two-handed weapon needs both hands -- every other weapon (and a
          shield) is put away
       2. with a shield there's one hand free -- any weapon already in it is
@@ -26,7 +27,9 @@ def equip_weapon(char: dict, name: str) -> None:
          one if not -- the longest-held is put away to make room, and a
          two-handed weapon already held always is"""
     equipped = char.setdefault("equipped_weapons", [])
-    others = [w for w in equipped if w != name]
+    if name in equipped and not another:
+        return
+    others = list(equipped) if another else [w for w in equipped if w != name]
     props = _props(name, char)
     if "Two-handed" in props:
         drop = others
@@ -41,14 +44,27 @@ def equip_weapon(char: dict, name: str) -> None:
     for w in drop:
         if w in equipped:
             equipped.remove(w)
-    if name not in equipped:
+    if another or name not in equipped:
         equipped.append(name)
 
 
-def unequip_weapon(char: dict, name: str) -> None:
+def can_hold_another(char: dict, name: str, qty: int) -> bool:
+    """One of a stack is in hand and a second could go in the other: two
+    light weapons (any one-handed pair with Dual Wielder), no shield."""
+    props = _props(name, char)
+    held = (char.get("equipped_weapons") or []).count(name)
+    return (held == 1 and qty >= 2 and not char.get("shield") and "Two-handed" not in props
+            and ("Light" in props or "Dual Wielder" in char.get("feats", [])))
+
+
+def unequip_weapon(char: dict, name: str, every: bool = True) -> None:
+    """Put it away -- every one of it in hand, or just one (`every`=False:
+    one of two daggers, the other staying in your main hand)."""
     equipped = char.setdefault("equipped_weapons", [])
-    if name in equipped:
+    while name in equipped:
         equipped.remove(name)
+        if not every:
+            break
 
 
 # ── Two weapons: which hand each is in ────────────────────────────────────

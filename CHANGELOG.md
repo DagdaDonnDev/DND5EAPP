@@ -11,121 +11,117 @@ Quality of Life, Fixes and Known Issues.
 
 ### 🌍 Overview
 
-Adventurers, this one puts your slots in your hands. A spell that does
-more from a higher slot asks which slot to use, and what's on your sheet
-follows it: Aid's hit points, False Life's and Armor of Agathys's
-temporary hit points, the smites' dice. Every creature is in the new
-Bestiary, every magic item now does what it says on your sheet, and magic
-armor finally counts as the armor it is. Heal no longer freezes when
-pressed quickly, and popups suit the light themes.
+Adventurers, this one is about creatures and slots. The new Bestiary has
+every creature, 2,754 of them, and everything that turns you into one or
+calls one up now uses it: Wild Shape, Polymorph, summons, mounts and
+steeds. Your own creatures get a page of their own. A spell that does
+more from a higher slot asks which slot to use, every magic item does
+what it says, and magic armor counts as the armor it is.
 
 ### ✨ New
 
-- **The Bestiary:** every creature, 2,754 of them, on both apps (Tools →
-  Bestiary or Ctrl+B on desktop, the menu on Android). Find one by name or
-  type, narrow the list by type, size, challenge rating and how it moves
-  (flies, swims, climbs...), and read its
-  whole stat block, legendary and lair actions included. Monsters of the
-  Multiverse reprints are marked (MPMM), the way the races are.
-- **Pick the slot:** casting Cure Wounds, Aid, Fireball, a smite or any
-  other spell that does more from a higher slot asks which slot to use,
-  when you have more than one level free, and says what the higher slot
-  adds. Any other spell uses the lowest slot free, without asking.
-- **Temporary hit points from your spells:** False Life (1d4 + 4, and 5
-  more for each slot level above 1st) and Armor of Agathys (5 for each
-  slot level) give their temporary hit points when cast. Armor of Agathys
-  says how much cold damage it deals, and ends when they're gone.
-- **Effects at their level:** the Effects tab says the level an effect
-  was cast at ("Magic Weapon · 4th level") and what it does at that level
-  (+2, not +1). Putting on an ally's Aid, Magic Weapon or Elemental Weapon
-  asks the level it was cast at.
-- **91 more magic items,** 1,374 in all, each wired to your sheet: the
-  Ioun stones of knowledge, the Stones of Creation, Infernal Plate Armor,
-  the Silver Sword, the archdevils' weapons, Gauntlets of Rage and more.
-  Items the book gives no rarity are listed as Unknown, with a filter of
-  their own.
-- **Wild Shape from the Bestiary:** every beast in it is a form, 263 with
-  the Moon druid's elementals (it was 185), each with its full stat block
-  and its attacks read straight from it. A form from an older save still
-  opens.
-- **Polymorph, True Polymorph and Shapechange:** casting one asks for the
-  creature, from the Bestiary within the spell's limits. On you, your
-  sheet becomes it, as Wild Shape does: its scores, AC and hit points, its
-  attacks as attack rows, and its actions, bonus actions, reactions and
-  traits as cards. Polymorph takes your mind too (its Intelligence, Wisdom
-  and Charisma, saves and skills; no features or spells); Shapechange
-  keeps them. On someone else it's in your Effects tab with the creature
-  you chose for them; on their sheet, they put the spell on from their own
-  Effects tab and pick that creature. When the spell ends, or the form
-  drops to 0 hit points, you change back.
-- **Mounts and steeds from the Bestiary:** the mounts you can buy and Find
-  Steed's and Find Greater Steed's forms use the Bestiary's stat blocks,
-  the same ones you can look up.
-- **Sounds for every creature:** in the immersive spell names, each Wild
-  Shape form makes its own noise, and any other creature its family's or
-  its kind's (dragons roar, liches cackle, golems clank).
-- **Summons from the Bestiary:** casting Conjure Animals, Conjure Woodland
-  Beings, Conjure Minor Elementals, Conjure Elemental, Conjure Fey, Conjure
-  Celestial, Animate Dead, Create Undead, Danse Macabre, Find Familiar
-  (Pact of the Chain's forms too), Giant Insect, Summon Greater Demon,
-  Summon Lesser Demons or Infernal Calling asks how many and which
-  creature, within the spell's limits at the level you cast it. They're
-  on your Yours tab, each with its own hit points; a summon held by
-  concentration goes when the concentration does. The Figurines of
-  Wondrous Power, the Bag of Tricks (what the tuft became), the Horn of
-  Valhalla (how many came) and the elemental bowls and braziers summon
-  theirs the same way.
-- **Your creatures in the Bestiary:** mounts and steeds, summons,
-  companions and Wild Shape are in the Bestiary's Yours tab (Tools → Your
-  Creatures, Ctrl+Shift+B, on desktop). An Artificer's Infusions take the
-  old Companions place: beside Gear's browsers on desktop, after
-  Equipment in Android's menu.
-- **Resistances on Android:** your resistances, immunities and now
-  vulnerabilities show as badges on the Hit Points card (½, ⊘, ×2), as on
-  desktop. Tap one to see where it comes from.
+- **The Bestiary** (Tools → Bestiary or Ctrl+B on desktop, the menu on
+  Android): every creature with its whole stat block, legendary and lair
+  actions included. Search by name or type, and filter by type, size,
+  challenge rating and how it moves. Monsters of the Multiverse reprints
+  are marked (MPMM).
+- **Creatures page:** your mounts and steeds, summons, companions and Wild
+  Shape forms, each with its stat block, and the Bestiary beside them to
+  add any creature from: a pet, a hireling, one your DM gave you (on
+  desktop, the Creatures tab, Ctrl+Shift+B).
+- **Wild Shape:** every beast in the Bestiary is a form, 263 with the Moon
+  druid's elementals (it was 185). A form from an older save still opens.
+- **Polymorph, True Polymorph and Shapechange:** pick the creature, within
+  the spell's limits. On you, your sheet becomes it, as with Wild Shape:
+  its scores, AC, hit points, attacks, actions and traits. Polymorph
+  replaces your mind too; Shapechange keeps it. Cast on someone else, the
+  spell goes in your Effects with the creature you chose, and they add it
+  from their own Effects tab. You change back when the spell ends or the
+  form drops to 0 hit points.
+- **Summons:** the Conjure spells, Animate Dead, Create Undead, Danse
+  Macabre, Find Familiar, Giant Insect and the demon and devil spells ask
+  which creature and how many, within the spell's limits at its level. So
+  do the Figurines of Wondrous Power, the Bag of Tricks, the Horn of
+  Valhalla and the elemental bowls and braziers. Each creature has its own
+  hit points, and one held by concentration goes when it ends.
+- **Mounts and steeds:** mounts you buy and Find Steed's and Find Greater
+  Steed's forms use the Bestiary's stat blocks.
+- **Pick the slot:** a spell that does more from a higher slot (Cure
+  Wounds, Aid, Fireball, a smite...) asks which slot when more than one
+  level is free, and says what the higher slot adds. Other spells use the
+  lowest free slot.
+- **Temporary hit points from spells:** False Life and Armor of Agathys
+  give theirs when cast, at the slot's level. Armor of Agathys says its
+  cold damage, and ends when the hit points are gone.
+- **Effects at their level:** the Effects tab says the level ("Magic
+  Weapon · 4th level") and what it does at that level. Adding an ally's
+  Aid, Magic Weapon or Elemental Weapon asks the level.
+- **91 more magic items,** 1,374 in all: the Ioun stones of knowledge, the
+  Stones of Creation, Infernal Plate Armor, the Silver Sword, the
+  archdevils' weapons, Gauntlets of Rage and more. Items with no rarity in
+  the book are listed as Unknown, with their own filter.
+- **The Overview page:** abilities and saving throws, skills, senses and
+  proficiencies on one page, in place of Abilities and Proficiencies. Each
+  ability card has its save under it; the skills sit in two columns.
+- **Every sense:** darkvision, Devil's Sight, blindsight, tremorsense,
+  truesight, See Invisibility, Witch Sight, Ghostly Gaze and Umbral Sight,
+  each with its range and where it's from. One another covers (darkvision
+  beside Devil's Sight) stays listed, greyed.
+- **Two of the same weapon:** a second dagger can go in your other hand
+  (any two light weapons, or any one-handed pair with Dual Wielder).
+- **Reference:** beside Settings (in the menu on Android), what each book
+  code (PHB, XGE, MPMM...) stands for.
+- **A sound for every creature** in the immersive spell names: each Wild
+  Shape form has its own, and any other creature its family's (dragons
+  roar, liches cackle, golems clank).
 
 ### ⚖️ Rules
 
 - Magic armor is the armor it's made from: Dwarven Plate is plate (AC 18
   and its +2), Elven Chain a chain shirt. An item that can be any armor
-  (+1 Armor, Armor of Fire Resistance...) asks which, the way Flame Tongue
-  asks which sword.
-  - *Designer note: before, magic armor was counted as no armor at all.*
+  (+1 Armor, Armor of Fire Resistance...) asks which, as Flame Tongue asks
+  which sword.
+  - *Designer note: before, magic armor counted as no armor at all.*
 - Ioun stones of knowledge give the skill's proficiency, or +1 if you
-  have it already. Vulnerabilities (Infernal Plate Armor, the Canian
-  Fork) are tracked and shown.
-- Gauntlets of Rage start their fury on their own after a melee weapon
-  attack, hit or miss, once per short or long rest: 1 minute, immune to
-  charmed and frightened, and each hit says the 2d8 hit points it gives
-  back. The True-Ice dagger's +3 AC is only while it's in your off hand.
-- An item use that comes back on a rest rather than at dawn (the Knife
-  of Stolen Resistance, the Ring of Treachery's charges, the True-Ice
-  Shards' Sub-Zero) comes back then, and the card says when.
+  already have it. Vulnerabilities (Infernal Plate Armor, the Canian Fork)
+  are tracked and shown.
+- Gauntlets of Rage start their fury after a melee weapon attack, hit or
+  miss, once per short or long rest: 1 minute, immune to charmed and
+  frightened, and each hit gives back 2d8 hit points. The True-Ice
+  dagger's +3 AC only counts while it's in your off hand.
+- Item uses that come back on a rest rather than at dawn (the Knife of
+  Stolen Resistance, the Ring of Treachery, the True-Ice Shards'
+  Sub-Zero) come back on that rest, and the card says when.
 - Aid raises your hit point maximum and current hit points by 5, and 5
-  more for each slot level above 2nd. When it ends, the maximum goes back
-  down.
-  - *Designer note: before, its note asked you to add it to your maximum
-    yourself.*
+  more for each slot level above 2nd. The maximum goes back down when it
+  ends.
+  - *Designer note: before, you had to add it to your maximum yourself.*
 
 ### 🧰 Quality of Life
 
-- **Long lists to search:** a question with a long list of answers (a
-  Polymorph's creature, a summon's) has a search box over it, on both apps.
-- **The Bestiary's search box** is the one the other browsers have, with
-  its magnifying glass; on desktop the filters are behind the funnel
-  button beside it, and each row has the glass that opens its stat block.
-- **Reference:** beside Settings (in the menu on Android), what every
-  book code (PHB, XGE, MPMM...) stands for.
-- **Main hand and off hand:** holding two weapons, the Gear page says
-  which is in your main hand and which in your off hand, and Swap hands
-  changes them over (right-click on desktop, press and hold on Android).
+- **Shorter tab names (desktop):** Inventory and Notes, which leaves room
+  for Creatures. Android's Equipment is now Inventory too.
+- **Main hand and off hand:** holding two weapons, your inventory says
+  which hand each is in, and Swap hands changes them over (right-click on
+  desktop, press and hold on Android). On Android each weapon in hand has
+  its own row.
+- **Search long lists:** a question with many answers (a Polymorph's
+  creature, a summon's) has a search box over it.
+- **Resistances on Android:** resistances, immunities and vulnerabilities
+  show as badges on the Hit Points card (½, ⊘, ×2), as on desktop. Tap one
+  to see where it comes from.
+- **Infusions** sit beside the item browsers on desktop, and after
+  Inventory in Android's menu.
 - **Rest buttons in reach (Android):** Cancel and Take a Rest stay at the
-  bottom of the rest screen, with the cards scrolling above them.
-- **Popups in light themes (Android):** a popup or the menu now sits on a
-  light veil in your theme's own colour, so the page still shows behind it.
+  bottom of the rest screen while the cards scroll.
+- **Popups in light themes (Android):** popups and the menu sit on a light
+  veil in your theme's colour, so the page still shows behind them.
 
 ### 🔧 Fixes
 
+- Fixed a Dwarf, Elf or other race with no subrace picked getting the
+  first subrace's darkvision (a Duergar's or Drow's 120 ft).
+- Fixed Umbral Sight not giving a Gloom Stalker darkvision.
 - Fixed Heal freezing the window when pressed quickly (desktop). Each
   press now shows at once, and the rest of the sheet catches up when you
   stop.
@@ -144,9 +140,6 @@ pressed quickly, and popups suit the light themes.
 
 ### ⚠️ Known Issues
 
-- Spells that last 10 minutes or longer aren't counted in rounds. End
-  them yourself.
-- PDF import only reads the official character sheet, typed in.
 - The 2024 rules aren't supported.
 
 ---
@@ -249,9 +242,6 @@ the app.
 
 ### ⚠️ Known Issues
 
-- Spells that last 10 minutes or longer aren't counted in rounds. End
-  them yourself.
-- PDF import only reads the official character sheet, typed in.
 - The 2024 rules aren't supported.
 
 ---
@@ -351,7 +341,6 @@ and every theme is easier on the eyes.
 
 ### ⚠️ Known Issues
 
-- PDF import only reads the official character sheet, typed in.
 - The 2024 rules aren't supported.
 
 ---
@@ -427,8 +416,6 @@ paper characters can come with you.
 
 ### ⚠️ Known Issues
 
-- PDF import only reads the official character sheet, typed in. Scanned or
-  handwritten sheets can't be read.
 - The 2024 rules aren't supported.
 
 ---

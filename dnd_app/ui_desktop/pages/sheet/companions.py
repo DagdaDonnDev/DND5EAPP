@@ -65,14 +65,45 @@ class CompanionsMixin:
         Companion options. Rebuilt on every refresh since most of these
         scale with class level."""
         tab = QWidget()
-        outer = QVBoxLayout(tab); outer.setContentsMargins(8,8,8,8)
+        outer = QVBoxLayout(tab); outer.setContentsMargins(16,16,16,16)
+        # yours on the left, the Bestiary to add from on the right -- the
+        # way Spells and Inventory have their browsers
+        splitter = QSplitter(Qt.Horizontal); splitter.setChildrenCollapsible(False)
         scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         inner = QWidget(); inner.setStyleSheet(f"background:{BG};")
         self._companions_lay = QVBoxLayout(inner); self._companions_lay.setSpacing(10)
         scroll.setWidget(inner)
-        outer.addWidget(scroll)
+        splitter.addWidget(scroll)
+        from dnd_app.ui_desktop.dialogs.bestiary import CreatureBrowser
+        side = QTabWidget()
+        side.setAttribute(Qt.WA_StyledBackground, True)
+        side.setStyleSheet(
+            f"QTabWidget::pane{{background:{SURF};border:1px solid {BORDER};border-top-left-radius:0px;"
+            f"border-top-right-radius:8px;border-bottom-right-radius:8px;border-bottom-left-radius:8px;top:-1px;}}"
+            f"QTabBar::tab{{background:{SURF2};color:{TEXT2};padding:8px 8px;font-size:{FS_SMALL}px;"
+            f"border:1px solid {BORDER};border-top-left-radius:6px;border-top-right-radius:6px;"
+            f"border-bottom-right-radius:0px;border-bottom-left-radius:0px;margin-right:1px;}}"
+            f"QTabBar::tab:selected{{background:{SURF};color:{GOLD2};font-weight:700;border-bottom-color:{SURF};}}")
+        self._creature_browser = CreatureBrowser(self._add_creature_from_browser, "Add Selected to Creatures")
+        side.addTab(self._creature_browser, "Bestiary")
+        from dnd_app.ui_desktop import icons as _icons
+        _icons.set_tab_icon(side, self._creature_browser, "paw", 15)
+        splitter.addWidget(side)
+        splitter.setStretchFactor(0, 3); splitter.setStretchFactor(1, 2)
+        splitter.setSizes([700, 520])
+        outer.addWidget(splitter)
         self._refresh_companions_tab()
         return tab
+
+    def _add_creature_from_browser(self, name: str):
+        """Add Selected to Creatures: a Bestiary creature on your page with
+        its own hit points -- a pet, a hireling, a mount, one your DM gave."""
+        from dnd_app.core.summons import add_summons
+        real = add_summons(self.char, name, 1, "From the Bestiary")
+        self._mark_dirty()
+        self._refresh_companions_tab()
+        self._toast(f"{real} added to your creatures")
 
     def _build_mounts_section(self):
         """Mounts get a real stat block card here instead of being treated
@@ -414,6 +445,16 @@ class CompanionsMixin:
     def _refresh_companions_tab(self):
         if not hasattr(self, "_companions_lay"):
             return
+        self._fill_companions_tab()
+        # the pickers narrow with the page (the Bestiary beside it), rather
+        # than pushing the cards off its right edge
+        host = self._companions_lay.parentWidget()
+        if host is not None:
+            for box in host.findChildren(QComboBox):
+                box.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+                box.setMinimumContentsLength(6)
+
+    def _fill_companions_tab(self):
         while self._companions_lay.count():
             item = self._companions_lay.takeAt(0)
             if item.widget(): item.widget().deleteLater()
@@ -431,13 +472,10 @@ class CompanionsMixin:
         summonable = get_summonable_but_inactive_companions(self.char)
 
         if not keys and not beast_names and not summonable:
-            self._companions_lay.addWidget(_lbl(
-                "No class-granted companion, summon, or Wild Shape stat blocks apply to "
-                "your current class/subclass/level. This section fills in automatically "
-                "for Battle Smith Artificers, Circle of Wildfire Druids, Drakewarden "
-                "Rangers, Beast Master Rangers, College of Creation Bards (once you "
-                "animate an item), Artillerist Artificers, and any Druid once Wild Shape "
-                "is available.", TEXT3, FS_SMALL))
+            if not self.char.get("owned_summons"):
+                self._companions_lay.addWidget(_lbl(
+                    "No creatures yet. Add one from the Bestiary, or cast a spell that "
+                    "summons one.", TEXT3, FS_SMALL))
             self._companions_lay.addStretch()
             return
 

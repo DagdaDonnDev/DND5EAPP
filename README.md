@@ -104,14 +104,14 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 
 | Desktop tab | Android screen | What's there |
 |---|---|---|
-| Abilities & Saves | Abilities | Scores, saving throws, and your numbers at a glance: proficiency bonus, speed, senses, passive Perception, Investigation and Insight, attacks per action, carrying capacity. The dice buttons roll; click a save to mark an extra proficiency |
-| Skills & Proficiencies | Proficiencies | Skills (right-click one to set proficiency or expertise), languages, armour, weapon and tool proficiencies, and **DM-granted proficiencies…** |
+| Overview | Overview | Each ability with its saving throw (the modifier rolls the check, the dice the save; tick a save for an extra proficiency), skills (right-click one to set proficiency or expertise), senses with passive Perception, Investigation and Insight, and your languages, armour, weapon and tool proficiencies with **DM-granted proficiencies…** |
 | Combat | Combat, Actions | HP and AC, Initiative and Speed, death saves, weapons, conditions and effects, Wild Shape, everything you can do on a turn, and **New Turn** |
-| Gear & Items | Equipment, Infusions | Inventory, coins, magic items and attunement, the Equipment and Magic Items browsers, and an Artificer's Infusions |
+| Inventory | Inventory, Infusions | Your gear, coins, magic items and attunement, the Equipment and Magic Items browsers, and an Artificer's Infusions |
 | Spells | Spells | Slots, Spell Resources (Sorcery Points, Arcane Ward, Bardic Inspiration, Channel Divinity, free casts…), the Spellcasting table, My Spells and the Spell Browser |
+| Creatures | Creatures | Your own creatures, each with its stat block: mounts and steeds, what you've summoned, your companions and your Wild Shape forms, with the Bestiary beside them to add any creature from |
 | Choices | Choices | **Level Up / Multiclass**, **Level Down**, **Remove Class**, your identity, and anything still to pick |
 | Features | Features | Every class, race and feat feature, with a box to find one and what it does a click (or tap) away, and the feats and rewards your DM grants |
-| Traits & Notes | Notes | Personality, backstory and notes, and the *Imported from PDF* page |
+| Notes | Notes | Personality, backstory and notes, and the *Imported from PDF* page |
 
 - **The magnifying glass opens the details** of a spell, item or feat, on both apps.
 - **On desktop, right-click a row** for everything else it can do (Cast, Study, Remove…) and hover anything for its numbers. **On Android, press and hold.**
@@ -131,7 +131,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **Attacking:** a weapon's **Hit** button (**Roll to Hit** on Android) rolls the d20 and says what AC it hits. Under the roll is what you can add to it, each with its cost: Precision Attack, Lucky, Guided Strike, Emboldening Bond… Press **Add** and it's paid for and rolled at once, and the total updates. **If it misses** lists what can turn a miss around: Favored by the Gods, Stroke of Luck, Focused Aim… Below that is what you can add to the hit: Sneak Attack, a smite, a maneuver… The **Attack** action card asks which weapon first. On a critical hit, the dice shown are already doubled.
 - **Damage is your roll.** Every damage line says what to roll and its type; roll it yourself, or open the Dice Roller (Ctrl+D).
 - **The Dice Roller:** pick dice or type them (2d6 + 1d4 + 3, 4d6kh3), add one of your bonuses, take advantage or disadvantage on a d20, and roll. Its **history** keeps every roll the sheet makes too: checks, saves, initiative, attacks (and whether they hit), hit dice and what your actions roll, saved with the character. Click a roll of your own to roll it again.
-- **The Bestiary** (Tools → Bestiary, Ctrl+B; on Android, in the menu): every creature, 2,754 of them, to find by name or type and narrow by type, size, challenge rating and how it moves, with the whole stat block. Where Monsters of the Multiverse reprinted one, both are there, the reprint marked (MPMM). Its **Yours** tab (Tools → Your Creatures, Ctrl+Shift+B) has your own: mounts and steeds, what you've summoned, your companions and your Wild Shape forms.
+- **The Bestiary** (Tools → Bestiary, Ctrl+B; on Android, in the menu): every creature, 2,754 of them, to find by name or type and narrow by type, size, challenge rating and how it moves, with the whole stat block. Where Monsters of the Multiverse reprinted one, both are there, the reprint marked (MPMM). Your own creatures are on the **Creatures** tab (Tools → Your Creatures, Ctrl+Shift+B).
 - **Advantage and disadvantage are reminders.** Every roll is one d20, with a note of what the sheet knows applies (Reckless Attack, Poisoned, exhaustion…). Roll the second die yourself, since cover, the target and your DM can change it. Advantage you spend something on, like Inspiration, is rolled for you.
 - **Taking damage:** type the amount and press **Damage**. Halve it yourself for a resistance; yours are listed just below. Temporary hit points, concentration saves, Wild Shape hit points and death saves follow on their own.
 - **Typed the wrong number?** **Undo** on the Hit Points card puts your hit points, temp HP and death saves back as they were before the last Damage or Heal. It's there until your hit points change some other way, and on the YOU DIED screen if that's where the slip left you.
@@ -163,7 +163,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 <details>
 <summary><b>Gear, magic items and your creatures</b></summary>
 
-- **Adding things:** pick a browser on the right of Gear & Items (Equipment or Magic Items), then double-click a row, or select it and press **Add Selected to Inventory**. An Artificer's Infusions are beside them.
+- **Adding things:** pick a browser on the right of Inventory (Equipment or Magic Items), then double-click a row, or select it and press **Add Selected to Inventory**. An Artificer's Infusions are beside them.
 - **Equip** a weapon to give it a Hit button on the Combat tab. **Wear** armour and it goes into your AC.
 - **Every item shows what it weighs and what it's worth**, for the whole stack, from the rules' tables. The same item is one row with how many you have: the trash takes one, and setting the number lower does too (on Android, press and hold → How many). A weapon, armour or shield you no longer have isn't in hand or worn any more. Your background's artisan's tools, instrument or gaming set is the one you picked for it, so its check has a card too.
 - **Using an item** is its card on the Combat tab (Actions on Android), the same as every other action: a potion, a scroll, a tinderbox, a flask to throw, a check with a tool you carry. Drinking a potion takes your action (a bonus action under the 2024 rules). The inventory only lists them, with what each one does.
@@ -171,7 +171,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - Some items ask a question when you add them: which of your own weapons a +1 goes on, which spell a scroll holds, what damage type a Ring of Resistance guards against.
 - **Manuals and tomes:** right-click → Study.
 - **Ammunition** comes out of your inventory a shot at a time. Set a magic stack's count from its right-click menu.
-- **A mount** from the Equipment browser comes with its stat block, in the Bestiary's Yours tab with your other creatures.
+- **A mount** from the Equipment browser comes with its stat block, on the Creatures tab with your other creatures.
 
 </details>
 
@@ -191,7 +191,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 <details>
 <summary><b>For DMs and house rules</b></summary>
 
-- **DM-granted proficiencies…** (Skills & Proficiencies): any weapon, armour, tool or language, picked from the list or typed in.
+- **DM-granted proficiencies…** (Overview): any weapon, armour, tool or language, picked from the list or typed in.
 - **The Features tab** grants a feat outside a level-up, with all its rules (its +1 and any spells to pick wait on Choices; Remove takes it all back), or a DM reward: a Character Secret, Supernatural Gift, Dark Gift or replacement background feature.
 - **Ignore restrictions** in the Spell Browser: learn any spell, at any level, with no limits.
 - **A custom race**, in the race list.
@@ -245,7 +245,7 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 | Ctrl+Shift+D | Duplicate the character |
 | Ctrl+D | Dice Roller |
 | Ctrl+B | Bestiary |
-| Ctrl+Shift+B | Your creatures (the Bestiary's Yours tab) |
+| Ctrl+Shift+B | Your creatures (the Creatures tab) |
 | Ctrl+R | Rest, short rest picked |
 | Ctrl+Shift+R | Rest, long rest picked |
 | Ctrl+1 … Ctrl+9 | Jump to that tab (each tab's tooltip says its keys) |
@@ -278,7 +278,7 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 - **263 Wild Shape forms**: every beast in the Bestiary, and the four elementals for a Circle of the Moon druid, each with its full stat block and a sound of its own for the immersive spell names
 - **2,754 creatures** in the Bestiary, each with its full stat block
 - **Companion stat blocks** for the Steel Defender, Wildfire Spirit, Drake Companion, Dancing Item, the Primal Companions, the Eldritch Cannon and mounts
-- **Summons from the Bestiary**: Conjure Animals and the other Conjure spells, Animate Dead, Create Undead, Danse Macabre, Find Familiar, Giant Insect and the demon and devil spells, and the Figurines of Wondrous Power, Bag of Tricks, Horn of Valhalla and the elemental bowls and braziers. Each creature is on your Yours tab with its own hit points, and one held by concentration goes when it ends
+- **Summons from the Bestiary**: Conjure Animals and the other Conjure spells, Animate Dead, Create Undead, Danse Macabre, Find Familiar, Giant Insect and the demon and devil spells, and the Figurines of Wondrous Power, Bag of Tricks, Horn of Valhalla and the elemental bowls and braziers. Each creature is on your Creatures page with its own hit points, and one held by concentration goes when it ends
 - **Polymorph, True Polymorph and Shapechange** into any creature they allow, your sheet becoming it
 - **One engine, two apps** — desktop and Android build, level and save a character the same way
 
@@ -286,16 +286,16 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 ## Screenshots
 
 <p align="center">
-  <img src="docs/images/desktop-abilities.png" width="49%" alt="Desktop: abilities and saving throws">
+  <img src="docs/images/desktop-overview.png" width="49%" alt="Desktop: the Overview, with abilities and saves, skills, senses and proficiencies">
   <img src="docs/images/desktop-spells.png" width="49%" alt="Desktop: spellcasting, spell slots and metamagic">
 </p>
 <p align="center">
-  <img src="docs/images/desktop-gear.png" width="49%" alt="Desktop: gear, coins, which hand each weapon is in, and the magic item browser">
+  <img src="docs/images/desktop-gear.png" width="49%" alt="Desktop: the inventory, coins, which hand each weapon is in, and the magic item browser">
   <img src="docs/images/android-spells.png" width="24%" alt="Android: spells">
-  <img src="docs/images/android-equipment.png" width="24%" alt="Android: equipment">
+  <img src="docs/images/android-equipment.png" width="24%" alt="Android: inventory">
 </p>
 <p align="center">
-  <img src="docs/images/desktop-bestiary.png" width="49%" alt="Desktop: the Bestiary, showing a creature's stat block">
+  <img src="docs/images/desktop-creatures.png" width="49%" alt="Desktop: the Creatures tab, your creatures beside the Bestiary">
   <img src="docs/images/android-menu.png" width="24%" alt="Android: the menu, with the Bestiary and Reference">
   <img src="docs/images/android-bestiary.png" width="24%" alt="Android: the Bestiary">
 </p>

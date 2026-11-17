@@ -2117,7 +2117,7 @@ def build_action_abilities(char):
             return f"Disadvantage on {sub.get('skill','?')} checks"
         if t == 'resistance_choice':
             picks = char.get('_choices', {}).get(f'item_dmgtype_{item_name}', [])
-            dtype = picks[0] if picks else "a damage type (choose one on the Gear tab)"
+            dtype = picks[0] if picks else "a damage type (choose one in your inventory)"
             return f"Resistance to {dtype} damage"
         if t == 'senses':
             return f"You have {sub.get('sense','?')} out to {sub.get('value',0)} ft. (or +{sub.get('value',0)} ft. if you already have it)"

@@ -56,185 +56,203 @@ from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
 
 
+class AbilityCard(QFrame):
+    """One ability on the Overview: its name, score and modifier (the
+    modifier rolls the check), and under them its saving throw -- the
+    proficiency box, the bonus, any advantage or condition badge, and the
+    dice that roll it."""
+    roll_requested = Signal(str)
+
+    def __init__(self, ab, score, parent=None):
+        super().__init__(parent)
+        self.ab = ab
+        self.setObjectName("abilityCard")
+        self.setStyleSheet(f"QFrame#abilityCard{{background:{SURF2};border:1px solid {BORDER};border-radius:10px;}}"
+                           f"QFrame#abilityCard QLabel{{background:transparent;border:none;}}")
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        lay = QVBoxLayout(self); lay.setContentsMargins(12, 8, 10, 8); lay.setSpacing(4)
+        lay.addWidget(_lbl(AB_FULL[ab].upper(), TEXT2, FS_TINY, bold=True, wrap=False))
+        top = QHBoxLayout(); top.setSpacing(8)
+        self._score = _lbl("", TEXT, FS_STAT, bold=True, wrap=False)
+        top.addWidget(self._score); top.addStretch()
+        self._mod = QPushButton()
+        self._mod.setObjectName(f"abilityMod_{ab}")
+        self._mod.setCursor(Qt.PointingHandCursor)
+        self._mod.setToolTip(f"Roll a {AB_FULL[ab]} check")
+        self._mod.setAccessibleName(f"Roll a {AB_FULL[ab]} check")
+        self._mod.clicked.connect(lambda: self.roll_requested.emit(self.ab))
+        top.addWidget(self._mod, 0, Qt.AlignVCenter)
+        lay.addLayout(top)
+        lay.addStretch(1)
+        line = QFrame(); line.setFixedHeight(1); line.setStyleSheet(f"background:{BORDER};border:none;")
+        lay.addWidget(line)
+        self.save_row = QHBoxLayout(); self.save_row.setSpacing(6); self.save_row.setContentsMargins(0, 2, 0, 0)
+        lay.addLayout(self.save_row)
+        self.set_score(score)
+
+    def set_score(self, score):
+        mod = (score - 10) // 2
+        self._score.setText(str(score))
+        col = TEAL2 if mod > 0 else (CRIM2 if mod < 0 else TEXT2)
+        self._mod.setText(sign(mod))
+        self._mod.setStyleSheet(
+            f"QPushButton{{color:{col};font-size:{FS_TITLE}px;font-weight:700;background:{SURF};"
+            f"border:1px solid {BORDER};border-radius:8px;padding:2px 12px;min-height:0px;}}"
+            f"QPushButton:hover{{border-color:{TEAL};background:{qa(TEAL, 0x22)};}}")
+
+
 class AbilitiesMixin:
-    def _build_tab_abilities(self):
-        tab = QScrollArea(); tab.setWidgetResizable(True)
-        w = QWidget(); tab.setWidget(w); lay = QVBoxLayout(w); lay.setContentsMargins(20,20,20,20); lay.setSpacing(16)
+    def _build_tab_overview(self):
+        """The Overview: your abilities and saves, proficiencies, skills and
+        senses on one page -- what you look up during play rather than act
+        on (that's Combat). It fills the window; a small one scrolls."""
+        tab = QScrollArea(); tab.setWidgetResizable(True); tab.setFrameShape(QFrame.NoFrame)
+        tab.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        w = QWidget(); tab.setWidget(w)
+        root = QHBoxLayout(w); root.setContentsMargins(16, 16, 16, 16); root.setSpacing(16)
+        left = QVBoxLayout(); left.setSpacing(12)
+        right = QVBoxLayout(); right.setSpacing(12)
+        left.addWidget(self._build_abilities_card(), 1)
+        left.addWidget(self._build_proficiencies_card(), 0)
+        right.addWidget(self._build_skills_card(), 1)
+        right.addWidget(self._build_senses_card(), 0)
+        root.addLayout(left, 100); root.addLayout(right, 108)
+        return tab
 
-        # Ability score blocks
-        ab_card = _card(); abcl = QVBoxLayout(ab_card); abcl.setContentsMargins(16,14,16,16)
-        abcl.addWidget(_lbl("ABILITY SCORES", GOLD, FS_SMALL, bold=True))
-        ab_row = QHBoxLayout(); ab_row.setSpacing(10)
+    def _build_abilities_card(self):
+        ab_card = _card(); abcl = QVBoxLayout(ab_card); abcl.setContentsMargins(16,14,16,16); abcl.setSpacing(8)
+        abcl.addWidget(_lbl("ABILITIES AND SAVING THROWS", GOLD, FS_SMALL, bold=True))
+        grid = QGridLayout(); grid.setSpacing(10)
         self._ab_blocks = {}
-        # the six spread across the card (they were bunched at its left,
-        # half the card empty beside them)
-        ab_row.addStretch(1)
-        for ab in ABILITIES:
-            blk = AbilityBlock(ab, ability_score(self.char, ab), editable=False)
-            blk.roll_requested.connect(
-                lambda a: self._quick_roll_toast(f"{AB_FULL[a]} check", ability_check_bonus(self.char, a), "check", a))
-            ab_row.addWidget(blk); self._ab_blocks[ab] = blk
-            ab_row.addStretch(1)
-        abcl.addLayout(ab_row)
-
-        # ASI note
-        bonuses = self.char.get("ability_bonuses",{})
-        parts = [f"{ab} +{v}" for ab,v in bonuses.items() if v>0]
-        if parts:
-            note = _lbl(f"Includes racial/ASI bonuses: {', '.join(parts)}", TEAL2, FS_SMALL)
-            abcl.addWidget(note)
-        lay.addWidget(ab_card)
-
-        # Saving throws
-        save_card = _card(); svcl = QVBoxLayout(save_card); svcl.setContentsMargins(16,14,16,16)
-        svcl.addWidget(_lbl("SAVING THROWS", GOLD, FS_SMALL, bold=True))
+        self._save_widgets = {}
+        self._save_adv_badges, self._save_cond_badges = {}, {}
         saves = all_saving_throw_bonuses(self.char)
         profs = get_saving_throw_profs(class_levels(self.char))
-        save_grid = QGridLayout(); save_grid.setSpacing(8)
-        self._save_widgets = {}
         for i, ab in enumerate(ABILITIES):
-            val      = saves.get(ab, 0)
+            card = AbilityCard(ab, ability_score(self.char, ab))
+            card.roll_requested.connect(
+                lambda a: self._quick_roll_toast(f"{AB_FULL[a]} check", ability_check_bonus(self.char, a), "check", a))
+            self._ab_blocks[ab] = card
+            grid.addWidget(card, i // 3, i % 3)
+            val = saves.get(ab, 0)
             is_class = ab in profs
-            is_p     = is_class or self.char.get("saving_throws",{}).get(ab, False)
-            color = TEAL2 if val > 0 else (CRIM2 if val < 0 else TEXT2)
-
-            row_f = QFrame()
-            row_f.setStyleSheet(f"QFrame{{background:{SURF3 if is_p else SURF2};border:1px solid {BORDER2 if is_p else BORDER};border-radius:8px;}}")
-            rl = QHBoxLayout(row_f); rl.setContentsMargins(10,8,10,8); rl.setSpacing(10)
-
-            # Same interactive-dot pattern as Skills' proficiency symbol —
-            # clicking the row toggles it, rather than a disabled read-only
-            # indicator with no way to correct or override the auto-detected
-            # class value (e.g. for a feat granting an extra save proficiency).
+            is_p = is_class or self.char.get("saving_throws", {}).get(ab, False)
+            rl = card.save_row
+            # the save's proficiency: a class's can't be taken off here; one
+            # from elsewhere (a feat) can -- the box or a click on the row
             dot = QCheckBox(); dot.setChecked(is_p)
-            dot.setEnabled(not is_class)  # class-granted saves aren't user-revocable
-            dot.setStyleSheet(f"QCheckBox::indicator{{width:16px;height:16px;border-radius:8px;border:2px solid {BORDER2};background:{BG};}}QCheckBox::indicator:checked{{background:{TEAL};border-color:{TEAL2};}}")
-
-            val_lbl = _lbl(sign(val), color, FS_TITLE, bold=True, wrap=False, align=Qt.AlignRight)
-            val_lbl.setFixedWidth(52)
-            ab_lbl = _lbl(f"{AB_FULL[ab]}", TEXT, FS_BODY, bold=is_p, wrap=False)
-
-            # Dice roll button — same role as Skills' roll button: rolls the
-            # save without touching proficiency, which is now a separate
-            # click target (the row itself, like Skills' cycle-on-click).
-            roll_btn = _btn("", TEAL, variant="ghost", width=26, height=24, radius=5,
-                             font_size=FS_SMALL, tooltip=f"Roll {AB_FULL[ab]} save ({sign(val)})")
-            _icons.set_button_icon(roll_btn, "dice", 14)
-            roll_btn.clicked.connect(
-                lambda checked=False, a=ab, v=val:
-                    self._quick_roll_toast(f"{AB_FULL[a]} save", v, "save", a))
-
-            rl.addWidget(dot); rl.addWidget(val_lbl); rl.addWidget(ab_lbl)
-
-            # Save advantage/disadvantage indicator — see
-            # get_save_advantage_status() docstring for why this is shown
-            # as an icon+tooltip rather than folded into val_lbl's number.
-            # Always created (even if initially hidden) so _refresh_abilities_tab
-            # can keep it in sync if class/level changes after the sheet
-            # is already open, rather than only reflecting state from
-            # whenever the tab was first built.
-            adv_badge = _icons.icon_label("adv", 18, "GREEN2")
-            if not hasattr(self, "_save_adv_badges"):
-                self._save_adv_badges = {}
-            self._save_adv_badges[ab] = adv_badge
-            # Must be parented (addWidget) BEFORE the first setVisible()
-            # call below -- a QLabel with no parent yet is a genuine
-            # top-level window as far as Qt/the OS window manager is
-            # concerned, so calling setVisible(True) on it here (when a
-            # class/race grants save advantage) briefly flashed a real,
-            # full-chrome window on screen during initial sheet build.
-            rl.addWidget(adv_badge)
+            dot.setEnabled(not is_class)
+            dot.setStyleSheet(f"QCheckBox::indicator{{width:13px;height:13px;border-radius:4px;border:2px solid {BORDER2};background:{BG};}}"
+                              f"QCheckBox::indicator:checked{{background:{TEAL};border-color:{TEAL2};}}")
+            save_word = _lbl("Save", TEXT2, FS_SMALL, wrap=False)
+            val_lbl = _lbl(sign(val), TEAL2 if val > 0 else (CRIM2 if val < 0 else TEXT2), FS_LABEL, bold=True, wrap=False)
+            rl.addWidget(dot); rl.addWidget(save_word); rl.addWidget(val_lbl)
+            # advantage (a race's, a class's) and a condition's auto-fail or
+            # disadvantage: parented before they're shown (see the badge
+            # functions below), so none flashes up as a window of its own
+            adv_badge = _icons.icon_label("adv", 16, "GREEN2")
+            rl.addWidget(adv_badge); self._save_adv_badges[ab] = adv_badge
             self._update_save_advantage_badge(ab)
-
-            # Condition-based auto-fail/disadvantage badge — separate from
-            # the racial/class advantage badge above since it's a
-            # different, transient mechanic (Paralyzed/Stunned/
-            # Unconscious auto-fail STR/DEX saves outright; Restrained
-            # imposes disadvantage on DEX specifically).
-            cond_save_badge = _lbl("", CRIM2, FS_BODY, bold=True, wrap=False)
-            if not hasattr(self, "_save_cond_badges"):
-                self._save_cond_badges = {}
-            self._save_cond_badges[ab] = cond_save_badge
-            # Same parent-before-setVisible ordering as adv_badge above.
-            rl.addWidget(cond_save_badge)
+            cond_badge = _lbl("", CRIM2, FS_TINY, bold=True, wrap=False)
+            rl.addWidget(cond_badge); self._save_cond_badges[ab] = cond_badge
             self._update_save_condition_badge(ab)
-
-            rl.addWidget(roll_btn); rl.addStretch()
-
-            # Click the row (or the dot) to toggle proficiency — mirrors
-            # Skills' click-to-cycle exactly, just a 2-state toggle instead
-            # of a 4-state cycle since saves don't have Expertise/Half.
-            if is_class:
-                row_f.setToolTip(f"{AB_FULL[ab]} save proficiency comes from your "
-                                  f"class and can't be toggled off here — the dice button rolls it")
-            else:
-                row_f.setCursor(Qt.PointingHandCursor)
-                row_f.setToolTip(f"Click to toggle {AB_FULL[ab]} save proficiency  •  the dice button rolls it")
-                row_f.mousePressEvent = lambda e, a=ab: self._toggle_save_prof(a)
-                dot.toggled.connect(lambda checked, a=ab: self._toggle_save_prof(a, checked))
-
-            # Special bonuses note
             if self.char.get("_paladin_aura"):
-                cha = ability_mod(self.char, "CHA")
-                note = _lbl(f"(+{max(1,cha)} Aura)", PURP2, FS_TINY, wrap=False)
-                rl.addWidget(note)
-
-            save_grid.addWidget(row_f, i//3, i%3)
+                rl.addWidget(_lbl(f"+{max(1, ability_mod(self.char, 'CHA'))} Aura", PURP2, FS_TINY, wrap=False))
+            rl.addStretch()
+            roll_btn = _btn("", TEAL, variant="ghost", width=26, height=22, radius=5,
+                            font_size=FS_SMALL, tooltip=f"Roll a {AB_FULL[ab]} save")
+            _icons.set_button_icon(roll_btn, "dice", 14)
+            roll_btn.clicked.connect(lambda checked=False, a=ab:
+                                     self._quick_roll_toast(f"{AB_FULL[a]} save",
+                                                            all_saving_throw_bonuses(self.char).get(a, 0), "save", a))
+            rl.addWidget(roll_btn)
+            if is_class:
+                save_word.setToolTip(f"{AB_FULL[ab]} save proficiency comes from your class")
+            else:
+                for wdg in (save_word, val_lbl):
+                    wdg.setCursor(Qt.PointingHandCursor)
+                    wdg.setToolTip(f"Click to toggle {AB_FULL[ab]} save proficiency")
+                    wdg.mousePressEvent = lambda e, a=ab: self._toggle_save_prof(a)
+                dot.toggled.connect(lambda checked, a=ab: self._toggle_save_prof(a, checked))
             self._save_widgets[ab] = (dot, val_lbl)
+        for r in range(2):
+            grid.setRowStretch(r, 1)
+        abcl.addLayout(grid, 1)
+        return ab_card
 
-        svcl.addLayout(save_grid)
+    def _build_senses_card(self):
+        """Senses: the three passive scores in a column, and beside them a
+        chip for each sense -- its range, where it's from on hover; one
+        another covers (darkvision beside Devil's Sight) greyed out."""
+        card = _card(qa(TEAL, 0x55)); cl = QVBoxLayout(card); cl.setContentsMargins(16, 12, 16, 12); cl.setSpacing(6)
+        cl.addWidget(_lbl("SENSES", TEAL2, FS_SMALL, bold=True))
+        row = QHBoxLayout(); row.setSpacing(12)
+        col = QVBoxLayout(); col.setSpacing(6)
+        self._passive_boxes = {}
+        for key in ("Perception", "Investigation", "Insight"):
+            f = QFrame(); f.setObjectName("passiveBox")
+            f.setStyleSheet(f"QFrame#passiveBox{{background:{SURF2};border:1px solid {BORDER};border-radius:8px;}}"
+                            f"QFrame#passiveBox QLabel{{background:transparent;border:none;}}")
+            fl = QHBoxLayout(f); fl.setContentsMargins(12, 4, 12, 4)
+            fl.addWidget(_lbl(f"Passive {key}", TEXT2, FS_SMALL, bold=True, wrap=False))
+            fl.addStretch()
+            v = _lbl("", TEAL2, FS_TITLE, bold=True, wrap=False)
+            fl.addWidget(v)
+            f.setFixedWidth(210)
+            col.addWidget(f)
+            self._passive_boxes[key] = (f, v)
+        col.addStretch()
+        row.addLayout(col)
+        self._sense_chips = QGridLayout(); self._sense_chips.setSpacing(6)
+        self._sense_chips.setContentsMargins(0, 0, 0, 0)
+        chips_w = QWidget(); chips_w.setLayout(self._sense_chips)
+        chips_w.setStyleSheet("background:transparent;")
+        row.addWidget(chips_w, 1, Qt.AlignTop)
+        cl.addLayout(row)
+        self._refresh_senses()
+        return card
 
-        # Reliable talent note
-        if has_reliable_talent(self.char):
-            svcl.addWidget(_lbl("✦ Reliable Talent: minimum roll of 10 on proficient checks", AMBE2, FS_SMALL, bold=True))
-        if self.char.get("_jack_of_all_trades"):
-            svcl.addWidget(_lbl("✦ Jack of All Trades: +½ proficiency to non-proficient checks", IND2, FS_SMALL, bold=True))
-
-        lay.addWidget(save_card)
-
-        # Derived stats grid
-        der_card = _card(); dcl = QVBoxLayout(der_card); dcl.setContentsMargins(16,14,16,16)
-        dcl.addWidget(_lbl("DERIVED STATS", GOLD, FS_SMALL, bold=True))
-        d_grid = QGridLayout(); d_grid.setSpacing(8)
-        self._stat_boxes = {}
-        pb = get_prof_bonus(self.char)
-        ea = get_extra_attacks(class_levels(self.char), subclasses(self.char), self.char)
-        from dnd_app.core.calculator import (get_effective_speed, get_character_senses,
-                                             get_passive_investigation, get_passive_insight)
-        spd = get_effective_speed(self.char)["walk"]
-        senses = get_character_senses(self.char)
-        senses_str = ", ".join(f"{k.title()} {v} ft" for k, v in senses.items() if v > 0) or "—"
-        if self.char.get("_devils_sight", False):
-            senses_str += " (Devil's Sight: darkvision works through magical darkness too)"
-
-        stats = [
-            ("Prof Bonus", sign(pb), INDIGO),
-            ("Initiative", sign(get_initiative(self.char)), TEAL2),
-            ("Speed", f"{spd} ft", TEXT),
-            ("Senses", senses_str, TEAL2),
-            ("Passive Perc.", str(get_passive_perception(self.char)), TEAL),
-            ("Passive Inv.", str(get_passive_investigation(self.char)), TEAL),
-            ("Passive Ins.", str(get_passive_insight(self.char)), TEAL),
-            ("Attacks per Action", str(ea), GOLD),   # (the number is the total, not the extra ones)
-            ("Carry Capacity", f"{get_carry_capacity(self.char)} lb", AMBER),
-        ]
-        mad = get_martial_arts_die(self.char)
-        if mad != "—": stats.append(("Martial Arts", mad, IND2))
-        rage = get_rage_damage(self.char)
-        if rage != "—": stats.append(("Rage Damage", rage, CRIM2))
-
-        # four to a row, each as wide as its share of the card
-        for i, (label, val, color) in enumerate(stats):
-            box = BigStatBox(label, val, color)
-            box.setMinimumWidth(150)   # wide enough for "Carry Capacity"
-            box.setSizePolicy(QSizePolicy.Expanding, box.sizePolicy().verticalPolicy())
-            d_grid.addWidget(box, i//4, i%4)
-            self._stat_boxes[label] = box
-        for col in range(4):
-            d_grid.setColumnStretch(col, 1)
-        dcl.addLayout(d_grid); lay.addWidget(der_card)
-        lay.addStretch()
-        return tab
+    def _refresh_senses(self):
+        boxes = getattr(self, "_passive_boxes", None)
+        if not boxes:
+            return
+        from dnd_app.core.calculator import (get_passive_investigation, get_passive_insight,
+                                             get_skill_advantage_status, sense_list)
+        vals = {"Perception": get_passive_perception(self.char),
+                "Investigation": get_passive_investigation(self.char),
+                "Insight": get_passive_insight(self.char)}
+        for key, (f, v) in boxes.items():
+            v.setText(str(vals[key]))
+            status = get_skill_advantage_status(self.char, key)
+            tip = f"10 + your {key} bonus"
+            if status["net"] == "advantage":
+                tip += "\n+5: advantage on " + key + " checks (" + ", ".join(status["adv_reasons"]) + ")"
+            elif status["net"] == "disadvantage":
+                tip += "\n\u22125: disadvantage on " + key + " checks (" + ", ".join(status["disadv_reasons"]) + ")"
+            f.setToolTip(tip)
+        lay = self._sense_chips
+        while lay.count():
+            it = lay.takeAt(0)
+            wdg = it.widget()
+            if wdg is not None:
+                wdg.setParent(None); wdg.deleteLater()
+        senses = sense_list(self.char)
+        if not senses:
+            lay.addWidget(_lbl("No special senses", TEXT3, FS_SMALL, wrap=False), 0, 0)
+            return
+        for i, sn in enumerate(senses):
+            off = sn["covered"]
+            text = f"<b>{sn['name']}</b>" + (f"&nbsp;&nbsp;{sn['range']} ft" if sn["range"] else "")
+            if off:
+                text = f"<s>{text}</s>"
+            chip = QLabel(text); chip.setTextFormat(Qt.RichText)
+            chip.setObjectName("senseChip")
+            ink = TEXT3 if off else TEAL2
+            chip.setStyleSheet(f"QLabel#senseChip{{color:{ink};font-size:{FS_SMALL}px;padding:4px 9px;border-radius:7px;"
+                               f"background:{SURF2 if off else qa(TEAL, 0x1f)};border:1px solid {BORDER if off else qa(TEAL, 0x88)};}}")
+            chip.setToolTip(sn["source"] + (f"\n{sn['what'][0].upper()}{sn['what'][1:]}" if sn["what"] else ""))
+            lay.addWidget(chip, i // 2, i % 2, Qt.AlignLeft)
+        lay.setColumnStretch(2, 1)
 
     # ══ TAB 2: SKILLS & PROFICIENCIES ══════════════════════════════════════════
     def _toggle_save_prof(self, ability, checked=None):
@@ -380,79 +398,8 @@ class AbilitiesMixin:
             val_lbl.setText(sign(val))
             self._update_save_advantage_badge(ab)
             self._update_save_condition_badge(ab)
-            val_lbl.setStyleSheet(f"color:{color};font-size:{FS_TITLE}px;font-weight:700;background:transparent;border:none;")
+            val_lbl.setStyleSheet(f"color:{color};font-size:{FS_LABEL}px;font-weight:700;background:transparent;border:none;")
             is_p = ab in profs or self.char.get("saving_throws",{}).get(ab,False)
             dot.setChecked(is_p)
 
-        # Derived stat boxes are refreshed here (not just set once at
-        # build time) so Passive Perception correctly reflects live
-        # advantage/disadvantage adjustments, e.g. from armor or items.
-        if hasattr(self, "_stat_boxes"):
-            from dnd_app.core.calculator import (
-                get_skill_advantage_status, get_extra_attacks, get_sneak_attack,
-                get_martial_arts_die, get_rage_damage,
-            )
-            pb = get_prof_bonus(self.char)
-            from dnd_app.core.calculator import get_effective_speed, get_character_senses
-            from dnd_app.core.calculator import (get_passive_investigation as _passive_inv,
-                                                 get_passive_insight as _passive_ins)
-            spd = get_effective_speed(self.char)["walk"]
-            senses = get_character_senses(self.char)
-            senses_str = ", ".join(f"{k.title()} {v} ft" for k, v in senses.items() if v > 0) or "—"
-            # Devil's Sight: the defining feature is seeing through
-            # *magical* darkness specifically (which normal darkvision
-            # cannot do), not just a flat darkvision number.
-            if self.char.get("_devils_sight", False):
-                senses_str += " (Devil's Sight: darkvision works through magical darkness too)"
-
-            martial_arts_val = get_martial_arts_die(self.char)
-            rage_val = get_rage_damage(self.char)
-            updates = {
-                "Prof Bonus": sign(pb),
-                "Initiative": sign(get_initiative(self.char)),
-                "Speed": f"{spd} ft",
-                "Passive Perc.": str(get_passive_perception(self.char)),
-                "Passive Inv.": str(_passive_inv(self.char)),
-                "Passive Ins.": str(_passive_ins(self.char)),
-                "Senses": senses_str,
-                "Attacks per Action": str(get_extra_attacks(class_levels(self.char), subclasses(self.char), self.char)),
-                "Carry Capacity": f"{get_carry_capacity(self.char)} lb",
-                "Sneak Attack": get_sneak_attack(self.char),
-                "Martial Arts": martial_arts_val,
-                "Rage Damage": rage_val,
-            }
-            # These two are class-conditional (only meaningful for Monk
-            # / Barbarian respectively) — both their text AND visibility
-            # are updated on a class change, so a character that had
-            # ever been a Barbarian in this sheet session doesn't keep
-            # showing a "Rage Damage: —" box after respeccing away from
-            # it; the box disappears entirely, the same as for a
-            # character that was never a Barbarian.
-            CONDITIONAL_BOXES = {"Martial Arts": martial_arts_val, "Rage Damage": rage_val}
-            for label, val in updates.items():
-                box = self._stat_boxes.get(label)
-                if not box:
-                    continue
-                if label in CONDITIONAL_BOXES:
-                    box.setVisible(val != "—")
-                box.set_val(val)
-
-            # Passive Perception tooltip: explain any +5/-5 adjustment
-            pp_box = self._stat_boxes.get("Passive Perc.")
-            if pp_box:
-                status = get_skill_advantage_status(self.char, "Perception")
-                if status["net"] == "advantage":
-                    pp_box.setToolTip(
-                        "+5 from permanent advantage on Perception checks\n"
-                        "From: " + ", ".join(status["adv_reasons"]))
-                elif status["net"] == "disadvantage":
-                    pp_box.setToolTip(
-                        "\u22125 from permanent disadvantage on Perception checks\n"
-                        "From: " + ", ".join(status["disadv_reasons"]))
-                else:
-                    pp_box.setToolTip("10 + Perception skill bonus")
-            for _label, _skill in (("Passive Inv.", "Investigation"), ("Passive Ins.", "Insight")):
-                _box = self._stat_boxes.get(_label)
-                if _box:
-                    _box.setToolTip(f"Passive {_skill}: 10 + {_skill} skill bonus")
-
+        self._refresh_senses()

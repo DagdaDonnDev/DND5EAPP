@@ -53,6 +53,13 @@ class BestiaryBridge(QObject):
         self._results = [{"name": n, "line": _b.summary_line(get_creature(n))} for n in names]
         self.resultsChanged.emit()
 
+    @Slot(str, str, str, str, str, str, result=list)
+    def find(self, text, kind, size, cr_min, cr_max, move):
+        """The same search, handed back rather than kept: the Creatures
+        page's own browser, which mustn't change the Bestiary screen's list."""
+        return [{"name": n, "line": _b.summary_line(get_creature(n))}
+                for n in _b.search(text, kind, size, cr_min, cr_max, move)]
+
     @Slot(str, str, result=str)
     def statblock(self, name, heading):
         """A creature's stat block as rich text (Text.StyledText)."""

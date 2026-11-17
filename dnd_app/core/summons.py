@@ -5,7 +5,7 @@ Power, the Bag of Tricks, the Horn of Valhalla, the elemental bowls and
 braziers). Each creature summoned is its own entry in
 char["owned_summons"] -- {"creature", "from", "conc"} beside the Tasha's
 spirits' {"spell", "level", "form"} -- so each keeps its own hit points
-on the Bestiary's Yours tab, and one held by concentration goes when the
+on the Creatures page, and one held by concentration goes when the
 concentration does (keep_in_step, from calculator.update_all).
 
 The choice of creature is the player's (the DM's, by the rules, for the
@@ -173,7 +173,7 @@ def keep_in_step(char: dict) -> None:
 def cast_summon(char, spell_name, level, answers) -> dict:
     """The summoning step of casting one of SUMMON_SPELLS (core/spell_effects
     cast_effect hands it here): how many of what CR, which creature, and
-    they're on your Yours tab. Same question protocol as cast_effect."""
+    they're on your Creatures page. Same question protocol as cast_effect."""
     from dnd_app.core.spell_effects import _ask, _result
     spec = SUMMON_SPELLS[spell_name]
     lvl = max(spec["level"], int(level or spec["level"]))
@@ -210,7 +210,7 @@ def cast_summon(char, spell_name, level, answers) -> dict:
     real = add_summons(char, creature, n, spell_name, conc)
     held = " while you concentrate" if conc else ""
     return _result(True, f"{spell_name}: {_plural(n, real) if n == 1 else f'{n} × {real}'} on your side{held}. "
-                         f"They're in the Bestiary's Yours tab, each with its hit points", refresh=True)
+                         f"They're on your Creatures page, each with its hit points", refresh=True)
 
 
 def item_summon_step(char, item, answers):
@@ -236,7 +236,7 @@ def item_summon_step(char, item, answers):
 
 
 def summon_statblock(entry: dict) -> dict | None:
-    """An owned summon as the Yours tab's card shows it -- a Bestiary
+    """An owned summon as the Creatures page's card shows it -- a Bestiary
     creature, or a Tasha's spirit (data/statblocks.py resolve_scaling_summon)."""
     if entry.get("creature"):
         from dnd_app.data.statblocks import WILDSHAPE_BEASTS

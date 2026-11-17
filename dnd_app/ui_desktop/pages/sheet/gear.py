@@ -346,8 +346,7 @@ class GearMixin:
         _icons.set_tab_icon(right_tabs, magic_tab, "magic", 15)
 
         # an Artificer's infusions beside the item lists (your creatures --
-        # mounts, steeds, summons, companions -- are in the Bestiary's Yours
-        # tab: Tools → Your Creatures)
+        # mounts, steeds, summons, companions -- are on the Creatures tab)
         self._gear_side_tabs = right_tabs
         if self._has_infuse_item_access():
             infusions_tab = self._build_tab_infusions()
@@ -516,13 +515,13 @@ class GearMixin:
         if not item: return
         name = item.data(0, Qt.UserRole) if hasattr(item,'data') else item
         if not name or name == "__section__": return
-        # Mounts get a real stat block (Bestiary → Yours) instead of a
+        # Mounts get a real stat block (the Creatures tab) instead of a
         # generic equipment line — a Warhorse's AC/HP/attacks matter in
         # play, unlike a bedroll's weight and price.
         from dnd_app.data.items import MOUNTS
         if any(row[0] == name for row in MOUNTS):
             self._add_mount(name)
-            self._toast(f"{name} added — its stat block is in the Bestiary's Yours tab (Ctrl+Shift+B)")
+            self._toast(f"{name} added — its stat block is on the Creatures tab")
             return
         qty, ok = QInputDialog.getInt(self, f"Add {name}", f"How many {name}?", 1, 1, 9999, 1)
         if not ok: return
@@ -1461,6 +1460,14 @@ class GearMixin:
                     sw_act = menu.addAction(_icons.icon("combat"),
                                             f"Swap hands (now in your {hand_of(self.char, _name)})")
                     sw_act.triggered.connect(lambda checked=False: self._swap_hands())
+                # two daggers: a second one of the stack in the other hand
+                from dnd_app.core.weapons import can_hold_another
+                if can_hold_another(self.char, _name, _eq.get("qty", 1)):
+                    two_act = menu.addAction(_icons.icon("combat"), "Hold a second one (one in each hand)")
+                    two_act.triggered.connect(lambda checked=False, n=_name: self._hold_another(n))
+                elif self.char.get("equipped_weapons", []).count(_name) == 2:
+                    one_act = menu.addAction(_icons.icon("combat"), "Put one away")
+                    one_act.triggered.connect(lambda checked=False, n=_name: self._put_one_away(n))
             # Dedicated Weapon (Monk, Tasha's): pick the weapon that counts
             # as a monk weapon until the next rest
             if _is_weapon:
@@ -1728,6 +1735,24 @@ class GearMixin:
         self._refresh_combat_weapons()
         update_all(self.char); self.ctrl.refresh()
         if hasattr(self,"_update_weight"): self._update_weight()
+        self._mark_dirty()
+
+    def _hold_another(self, name: str):
+        """A second one of a weapon already in hand (two daggers, one in
+        each hand) -- core/weapons.py, the same as Android's."""
+        from dnd_app.core.weapons import equip_weapon
+        equip_weapon(self.char, name, another=True)
+        self._after_hands_change()
+
+    def _put_one_away(self, name: str):
+        from dnd_app.core.weapons import unequip_weapon
+        unequip_weapon(self.char, name, every=False)
+        self._after_hands_change()
+
+    def _after_hands_change(self):
+        self._refresh_combat_weapons()
+        update_all(self.char); self.ctrl.refresh()
+        self._refresh_gear_equipment()
         self._mark_dirty()
 
     def _swap_hands(self):

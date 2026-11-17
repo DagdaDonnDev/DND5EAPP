@@ -4,13 +4,11 @@ import QtQuick.Layouts
 import Mimic
 
 // Your creatures -- the Android side of ui_desktop/pages/sheet/companions.py:
-// mounts, vehicles, summoned creatures, companions and Wild Shape. Shown
-// in the Bestiary's Yours tab (BestiaryScreen.qml), as on desktop.
-// embedded: inside the Bestiary, without the sheet's own header.
+// mounts, vehicles, summoned creatures, companions and Wild Shape: the
+// sheet's Creatures page, as desktop's Creatures tab.
 Page {
     id: root
-    property bool embedded: false
-    readonly property string screenTitle: "Your Creatures"
+    readonly property string screenTitle: "Creatures"
     background: Rectangle { color: Theme.bg }
     readonly property QtObject sheetBridge: Window.window.sheetBridge
 
@@ -28,7 +26,7 @@ Page {
             width: parent.width
             spacing: 16
 
-            SheetHeader { visible: !root.embedded }
+            SheetHeader {}
 
             // ── Mounts ───────────────────────────────────────────────
             Rectangle {
@@ -391,13 +389,10 @@ Page {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 visible: sheetBridge.activeCompanions.length === 0 && sheetBridge.summonablePrompts.length === 0
-                         && !sheetBridge.wildShapeBrowseAvailable
+                         && !sheetBridge.wildShapeBrowseAvailable && sheetBridge.ownedSummons.length === 0
                 color: Theme.text3
                 font.pixelSize: Theme.fsSmall
-                text: "No class-granted companion, summon, or Wild Shape stat blocks apply to your current class/subclass/level. " +
-                      "This section fills in automatically for Battle Smith Artificers, Circle of Wildfire Druids, Drakewarden " +
-                      "Rangers, Beast Master Rangers, College of Creation Bards (once you animate an item), Artillerist " +
-                      "Artificers, and any Druid once Wild Shape is available."
+                text: "No creatures yet. Add one from the Bestiary below, or cast a spell that summons one."
             }
 
             // ── Class-granted companions (Steel Defender, Beast Master
@@ -502,6 +497,203 @@ Page {
                             onClicked: sheetBridge.summonCompanion(modelData.key)
                         }
                     }
+                }
+            }
+
+            // ── Add a Creature: the Bestiary as a browser, the way Add
+            // Equipment and Add a Spell are on their pages ─────────────
+            MCard {
+                id: addCreatureCard
+                objectName: "addCreatureCard"
+                Layout.fillWidth: true
+                title: "Add a Creature"
+                iconName: "paw"
+                readonly property QtObject bBridge: Window.window ? Window.window.bestiaryBridge : null
+                property var results: []
+                function refresh() {
+                    if (!bBridge) return
+                    function picked(box) { return box.currentIndex > 0 ? String(box.model[box.currentIndex]) : "" }
+                    results = bBridge.find(crSearch.text, picked(crKind), picked(crSize),
+                                           picked(crMin), picked(crMax), picked(crMove))
+                }
+                Component.onCompleted: refresh()
+                Timer { id: crTyping; interval: 200; onTriggered: addCreatureCard.refresh() }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    MTextField {
+                        id: crSearch
+                        objectName: "creatureSearchField"
+                        Layout.fillWidth: true
+                        placeholderText: "Search creatures…"
+                        onTextChanged: crTyping.restart()
+                    }
+                    MFilterButton {
+                        objectName: "creatureFilterButton"
+                        count: crFilters.activeCount
+                        onClicked: crFilters.open()
+                    }
+                }
+                MFilterDrawer {
+                    id: crFilters
+                    objectName: "creatureFilterDrawer"
+                    title: "Creature filters"
+                    activeCount: (crKind.currentIndex > 0) + (crSize.currentIndex > 0) + (crMin.currentIndex > 0)
+                                 + (crMax.currentIndex > 0) + (crMove.currentIndex > 0)
+                    onCleared: { crKind.currentIndex = 0; crSize.currentIndex = 0; crMin.currentIndex = 0
+                                 crMax.currentIndex = 0; crMove.currentIndex = 0 }
+                    Label { text: "Type"; color: Theme.text2; font.pixelSize: Theme.fsSmall; font.bold: true }
+                    ComboBox {
+                        id: crKind; Layout.fillWidth: true
+                        model: ["Any type"].concat(addCreatureCard.bBridge ? addCreatureCard.bBridge.kinds : [])
+                        onCurrentIndexChanged: addCreatureCard.refresh()
+                    }
+                    Label { text: "Size"; color: Theme.text2; font.pixelSize: Theme.fsSmall; font.bold: true }
+                    ComboBox {
+                        id: crSize; Layout.fillWidth: true
+                        model: ["Any size"].concat(addCreatureCard.bBridge ? addCreatureCard.bBridge.sizes : [])
+                        onCurrentIndexChanged: addCreatureCard.refresh()
+                    }
+                    Label { text: "Challenge rating"; color: Theme.text2; font.pixelSize: Theme.fsSmall; font.bold: true }
+                    ComboBox {
+                        id: crMin; Layout.fillWidth: true
+                        model: ["CR from"].concat(addCreatureCard.bBridge ? addCreatureCard.bBridge.crs : [])
+                        displayText: currentIndex > 0 ? "CR " + currentText + " up" : currentText
+                        onCurrentIndexChanged: addCreatureCard.refresh()
+                    }
+                    ComboBox {
+                        id: crMax; Layout.fillWidth: true
+                        model: ["CR to"].concat(addCreatureCard.bBridge ? addCreatureCard.bBridge.crs : [])
+                        displayText: currentIndex > 0 ? "up to CR " + currentText : currentText
+                        onCurrentIndexChanged: addCreatureCard.refresh()
+                    }
+                    Label { text: "Moves"; color: Theme.text2; font.pixelSize: Theme.fsSmall; font.bold: true }
+                    ComboBox {
+                        id: crMove; Layout.fillWidth: true
+                        model: ["Any movement"].concat(addCreatureCard.bBridge ? addCreatureCard.bBridge.moves : [])
+                        onCurrentIndexChanged: addCreatureCard.refresh()
+                    }
+                }
+                Label {
+                    text: addCreatureCard.results.length === 0 ? "No creature matches. Try fewer words or another filter."
+                          : addCreatureCard.results.length.toLocaleString(Qt.locale(), "f", 0)
+                            + (addCreatureCard.results.length === 1 ? " creature" : " creatures")
+                    color: Theme.text3
+                    font.pixelSize: Theme.fsSmall
+                }
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 260
+                    radius: 10
+                    color: Theme.surf
+                    border.color: Theme.border
+                    clip: true
+                    ListView {
+                        objectName: "creatureResultsListView"
+                        anchors.fill: parent
+                        anchors.margins: 4
+                        clip: true
+                        model: addCreatureCard.results
+                        // View and Add buttons, as the other browsers: browsing
+                        // can't add a creature by accident
+                        delegate: Rectangle {
+                            width: ListView.view.width
+                            height: 52
+                            color: "transparent"
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: 4
+                                spacing: 8
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    Layout.preferredWidth: 0
+                                    spacing: 1
+                                    Label { text: modelData.name; color: Theme.text; font.pixelSize: Theme.fsBody
+                                            elide: Text.ElideRight; Layout.fillWidth: true }
+                                    Label { text: modelData.line; color: Theme.text3; font.pixelSize: Theme.fsSmall
+                                            elide: Text.ElideRight; Layout.fillWidth: true }
+                                }
+                                MButton {
+                                    primary: false
+                                    implicitWidth: 40
+                                    height: 34
+                                    iconName: "search"   // View -- a magnifying glass
+                                    iconSize: 22
+                                    Accessible.name: "View"
+                                    onClicked: { creatureView.name = modelData.name; creatureView.open() }
+                                }
+                                MButton {
+                                    objectName: "addCreature_" + modelData.name
+                                    implicitWidth: 64
+                                    height: 34
+                                    text: "Add"
+                                    onClicked: sheetBridge.addBestiaryCreature(modelData.name)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // a creature's stat block, from its magnifying glass
+    Dialog {
+        id: creatureView
+        objectName: "creatureViewDialog"
+        property string name: ""
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        modal: true
+        width: parent ? parent.width - 24 : 360
+        height: parent ? parent.height - 80 : 600
+        padding: 14
+        background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
+        Overlay.modal: Rectangle { color: Theme.scrim }
+        contentItem: ColumnLayout {
+            spacing: 8
+            Label {
+                text: creatureView.name
+                color: Theme.gold2
+                font.pixelSize: Theme.fsHead
+                font.bold: true
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            Flickable {
+                id: viewFlick
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                contentWidth: width
+                contentHeight: viewText.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollIndicator.vertical: ScrollIndicator {}
+                Label {
+                    id: viewText
+                    width: viewFlick.width
+                    textFormat: Text.StyledText
+                    wrapMode: Text.WordWrap
+                    color: Theme.text
+                    font.pixelSize: Theme.fsBody
+                    text: creatureView.name !== "" && addCreatureCard.bBridge
+                          ? addCreatureCard.bBridge.statblock(creatureView.name, Theme.gold2.toString()) : ""
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                MButton {
+                    Layout.fillWidth: true
+                    primary: false
+                    text: "Close"
+                    onClicked: creatureView.close()
+                }
+                MButton {
+                    Layout.fillWidth: true
+                    text: "Add"
+                    onClicked: { sheetBridge.addBestiaryCreature(creatureView.name); creatureView.close() }
                 }
             }
         }

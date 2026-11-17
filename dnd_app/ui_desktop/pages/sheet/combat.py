@@ -791,7 +791,7 @@ class CombatMixin:
         wpn_head.addStretch()
         worn = QFrame(); worn.setObjectName("wornLine")
         worn.setCursor(Qt.PointingHandCursor)
-        worn.setToolTip("Your armour and shield. Put them on or take them off in the Gear tab.")
+        worn.setToolTip("Your armour and shield. Put them on or take them off in the Inventory tab.")
         worn.setStyleSheet("QFrame#wornLine{background:transparent;border:none;}")
         wl = QHBoxLayout(worn); wl.setContentsMargins(0,0,0,0); wl.setSpacing(6)
         # (the AC they make is in the HP card, beside this one)
@@ -800,8 +800,8 @@ class CombatMixin:
         wl.addWidget(self._armor_display)
         wl.addWidget(_lbl("·", TEXT3, FS_SMALL, wrap=False))
         wl.addWidget(self._shield_display)
-        wl.addWidget(_lbl("Gear ▸", TEAL2, FS_TINY, bold=True, wrap=False))
-        worn.mousePressEvent = lambda e: self._tabs.setCurrentIndex(3)
+        wl.addWidget(_lbl("Inventory ▸", TEAL2, FS_TINY, bold=True, wrap=False))
+        worn.mousePressEvent = lambda e: self._tabs.setCurrentWidget(self._gear_tab_page)
         wpn_head.addWidget(worn)
         acl2.addLayout(wpn_head)
         # The Gear tab (for equipping weapons/armor) is one click away on
@@ -2347,7 +2347,8 @@ class CombatMixin:
         from dnd_app.core.attacks import other_attacks
         for a in other_attacks(self.char):
             self._add_attack_row(a)
-        for idx, wpn in enumerate(self.char.get("equipped_weapons",[])):
+        # two daggers held (one in each hand) are one row
+        for idx, wpn in enumerate(dict.fromkeys(self.char.get("equipped_weapons", []))):
             self._add_weapon_row(wpn, is_offhand=(idx > 0))
         self._fit_weapons_card()
 

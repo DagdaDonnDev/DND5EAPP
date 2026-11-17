@@ -2632,7 +2632,7 @@ def get_effective_speed(char: dict) -> dict:
     }
 
 
-def get_character_senses(char: dict) -> dict:
+def get_character_senses(char: dict, _no_devils_sight: bool = False) -> dict:
     """Returns the character's senses as a structured dict, e.g.
     {"darkvision": 60, "blindsight": 0, "tremorsense": 0, "truesight": 0}.
     Parsed from race trait text and subrace description text rather than
@@ -2663,28 +2663,8 @@ def get_character_senses(char: dict) -> dict:
                 senses[sense_name] = int(m.group(1))
         return senses
 
-    from dnd_app.data.races import get_race
-    species = char.get("species") or char.get("race", "")
-    subrace = char.get("subrace", "") or ""
-    race = get_race(species)
-    if race:
-        # Base race traits first
-        for t in race.get("traits", []):
-            for sense_name in senses:
-                m = re.search(rf"{sense_name} (\d+) ?ft", t, re.I)
-                if m:
-                    senses[sense_name] = max(senses[sense_name], int(m.group(1)))
-
-        # Subrace text can upgrade a sense (e.g. Drow/Duergar's Superior
-        # Darkvision to 120 ft) — take the higher value if both are present.
-        for sub_text in race.get("subraces", []) or []:
-            clean_name = sub_text.split("(")[0].strip()
-            if clean_name.lower() not in subrace.lower() and subrace.lower() not in clean_name.lower():
-                continue
-            for sense_name in senses:
-                m = re.search(rf"{sense_name} (\d+) ?ft", sub_text, re.I)
-                if m:
-                    senses[sense_name] = max(senses[sense_name], int(m.group(1)))
+    for sense_name, v in _race_senses(char).items():
+        senses[sense_name] = max(senses[sense_name], v)
 
     # Blind Fighting fighting style: blindsight 10 ft, a genuinely
     # different sense source from race — checked separately here rather
@@ -2693,10 +2673,15 @@ def get_character_senses(char: dict) -> dict:
     if any("blind fighting" in fs.lower() for fs in char.get("fighting_styles", [])):
         senses["blindsight"] = max(senses["blindsight"], 10)
 
+    # Umbral Sight (Gloom Stalker, 3rd level): darkvision 60 ft., or 30 ft.
+    # more if you already have it
+    if _umbral_sight(char):
+        senses["darkvision"] = senses["darkvision"] + 30 if senses["darkvision"] else 60
+
     # Devil's Sight (Eldritch Invocation): darkvision 120 ft. This system
     # doesn't distinguish magical vs nonmagical darkness, so granting 120ft
     # unconditionally is the closest accurate approximation.
-    if char.get("_devils_sight", False):
+    if char.get("_devils_sight", False) and not _no_devils_sight:
         senses["darkvision"] = max(senses["darkvision"], 120)
 
     # Keenness of the Stone Giant (feat): darkvision 60 ft., or +60 ft.
@@ -2736,6 +2721,125 @@ def get_character_senses(char: dict) -> dict:
             senses[sense_name] = max(senses[sense_name], val)
 
     return senses
+
+
+def _race_senses(char: dict) -> dict:
+    """The senses the race (and its subrace) gives, from their trait text:
+    a subrace's can upgrade the race's (Drow's and Duergar's Superior
+    Darkvision, 120 ft) -- the higher counts."""
+    import re
+    from dnd_app.data.races import get_race
+    senses = {"darkvision": 0, "blindsight": 0, "tremorsense": 0, "truesight": 0}
+    species = char.get("species") or char.get("race", "")
+    subrace = (char.get("subrace", "") or "").strip()
+    race = get_race(species)
+    if not race:
+        return senses
+    texts = list(race.get("traits", []))
+    if subrace:
+        # (no subrace picked: none of them -- an empty name matched them all)
+        for sub_text in race.get("subraces", []) or []:
+            clean_name = sub_text.split("(")[0].strip()
+            if clean_name and (clean_name.lower() in subrace.lower() or subrace.lower() in clean_name.lower()):
+                texts.append(sub_text)
+    for t in texts:
+        for sense_name in senses:
+            m = re.search(rf"{sense_name} (\d+) ?ft", t, re.I)
+            if m:
+                senses[sense_name] = max(senses[sense_name], int(m.group(1)))
+    return senses
+
+
+def _umbral_sight(char: dict) -> bool:
+    return any(c.get("class") == "Ranger" and "Gloom Stalker" in (c.get("subclass") or "")
+               and int(c.get("level", 0)) >= 3 for c in char.get("classes", []))
+
+
+def _invocation(char: dict, name: str) -> bool:
+    n = name.lower()
+    return any(str(i).lower().replace("\u2019", "'").startswith(n) for i in char.get("eldritch_invocations", []))
+
+
+def sense_list(char: dict) -> list:
+    """Every sense the character has, for both apps' Overview: [{"name",
+    "range" (feet, 0 for one with none), "source", "covered" (another sense
+    does all it does, e.g. darkvision beside Devil's Sight -- still listed,
+    greyed), "what" (a word on what it does, or "")}]. The numbers are
+    get_character_senses()'s; this says where each comes from, and adds
+    what changes how you see without being a range of its own."""
+    from .forms import form_name
+    out = []
+
+    def add(name, rng, source, what=""):
+        out.append({"name": name, "range": int(rng or 0), "source": source, "covered": False, "what": what})
+
+    if form_name(char):
+        # in a form you see with its senses alone
+        for k, v in get_character_senses(char).items():
+            if v:
+                add(k.title(), v, f"{form_name(char)}'s senses")
+        return out
+
+    base = get_character_senses(char, _no_devils_sight=True)
+    from .magic_items import _active_item_names
+    from dnd_app.data.magic_items import get_item_effect
+    items = {}
+    for name in _active_item_names(char):
+        eff = get_item_effect(name)
+        for e in (eff if isinstance(eff, list) else [eff] if eff else []):
+            if isinstance(e, dict) and e.get("type") == "senses":
+                items.setdefault(e.get("sense"), []).append(name)
+    effects = set(char.get("active_effects", []))
+    race = char.get("species") or char.get("race", "")
+    sub = char.get("subrace") or ""
+
+    def sources(sense, own):
+        got = list(own) + items.get(sense, [])
+        return ", ".join(got) if got else ""
+
+    dv = base["darkvision"]
+    race_dv = _race_senses(char)["darkvision"]
+    if dv:
+        own = []
+        if race_dv:
+            own.append(sub if sub and sub.lower() != "standard" else race)   # "Drow", "Hill Dwarf"
+        if _umbral_sight(char):
+            own.append("Umbral Sight")
+        for feat in ("Keenness of the Stone Giant",):
+            if feat in char.get("feats", []):
+                own.append(feat)
+        if "Darkvision" in effects:
+            own.append("Darkvision (spell)")
+        add("Superior Darkvision" if race_dv >= 120 else "Darkvision",
+            dv, sources("darkvision", own))
+    if char.get("_devils_sight"):
+        add("Devil's Sight", 120, "Eldritch invocation", "magical darkness too")
+        for s_ in out:
+            if s_["name"] in ("Darkvision", "Superior Darkvision") and s_["range"] <= 120:
+                s_["covered"] = True
+                s_["source"] += " · Devil's Sight covers it"
+    if base["blindsight"]:
+        own = []
+        if any("blind fighting" in fs.lower() for fs in char.get("fighting_styles", [])):
+            own.append("Blind Fighting")
+        if "Draconic Transformation" in effects:
+            own.append("Draconic Transformation")
+        add("Blindsight", base["blindsight"], sources("blindsight", own + ([race] if _race_senses(char)["blindsight"] else [])))
+    if base["tremorsense"]:
+        add("Tremorsense", base["tremorsense"], sources("tremorsense", [race] if _race_senses(char)["tremorsense"] else []))
+    truesight = max(base["truesight"], 120 if "True Seeing" in effects else 0)
+    if truesight:
+        add("Truesight", truesight, sources("truesight", (["True Seeing"] if "True Seeing" in effects else [])
+                                             + ([race] if _race_senses(char)["truesight"] else [])))
+    if "See Invisibility" in effects:
+        add("See Invisibility", 0, "See Invisibility (spell)", "invisible creatures and objects")
+    if _invocation(char, "Witch Sight"):
+        add("Witch Sight", 30, "Eldritch invocation", "true forms")
+    if _invocation(char, "Ghostly Gaze"):
+        add("Ghostly Gaze", 30, "Eldritch invocation", "through solid objects, 1 minute")
+    if _umbral_sight(char):
+        add("Umbral Sight", 0, "Gloom Stalker", "unseen by darkvision in darkness")
+    return out
 
 
 def aid_bonus(char: dict) -> int:

@@ -71,24 +71,20 @@ class SkillsMixin:
             grid.addWidget(f, i % per, i // per)
         for c in range(2):
             grid.setColumnStretch(c, 1 if c < cols else 0)
-        # two columns take more of the page; the proficiencies beside them less
-        self._skills_root.setStretch(0, 2 if cols == 2 else 3)
-        self._skills_root.setStretch(1, 1 if cols == 2 else 2)
+        for r in range(per):
+            grid.setRowStretch(r, 1)   # the rows share the card's height
 
-    def _build_tab_skills(self):
-        tab = QScrollArea(); tab.setWidgetResizable(True)
-        w = QWidget(); tab.setWidget(w)
-        root = QHBoxLayout(w); root.setContentsMargins(20,20,20,20); root.setSpacing(16)
-
-        # Left: skills
-        left = QWidget(); ll = QVBoxLayout(left); ll.setSpacing(8)
+    def _build_skills_card(self):
+        """The Overview's Skills card: the eighteen in two columns of nine,
+        each with its proficiency mark (right-click to set it), bonus, and
+        the dice that roll it."""
         sk_card = _card()
         skcl = QVBoxLayout(sk_card); skcl.setContentsMargins(16,14,16,16); skcl.setSpacing(6)
         skcl.addWidget(_lbl("SKILLS", GOLD, FS_SMALL, bold=True))
 
         # Legend
         leg = QHBoxLayout(); leg.setSpacing(12)
-        for sym, label, color in [("—","None",TEXT3),("◆","Proficient",INDIGO),("◈","Expertise",PURP2),("½","Half (Jack of All Trades)",IND2)]:
+        for sym, label, color in [("—","None",TEXT3),("◆","Proficient",INDIGO),("◈","Expertise",PURP2),("½","Half",IND2)]:
             lrow = QHBoxLayout(); lrow.setSpacing(4)
             lrow.addWidget(_lbl(sym, color, FS_BODY, bold=True, wrap=False))
             lrow.addWidget(_lbl(label, color, FS_SMALL, wrap=False))
@@ -108,10 +104,11 @@ class SkillsMixin:
         reset_skills_btn.clicked.connect(self._reset_manual_skill_changes)
         leg.addWidget(reset_skills_btn)
         skcl.addLayout(leg)
+        if has_reliable_talent(self.char):
+            skcl.addWidget(_lbl("✦ Reliable Talent: a roll of 9 or lower counts as 10 on a proficient check",
+                                AMBE2, FS_SMALL, bold=True))
         skcl.addWidget(_sep())
-        # The rows: one column in a narrow window, two side by side when
-        # there's room (all eighteen in view, no scrolling) -- _lay_out_skills
-        self._skill_grid = QGridLayout(); self._skill_grid.setSpacing(6)
+        self._skill_grid = QGridLayout(); self._skill_grid.setHorizontalSpacing(8); self._skill_grid.setVerticalSpacing(5)
         self._skill_grid.setContentsMargins(0, 0, 0, 0)
         self._skill_row_order = []
         self._skill_cols = 0
@@ -132,20 +129,17 @@ class SkillsMixin:
 
             row_f = QFrame()
             row_f.setStyleSheet(f"QFrame{{background:{SURF2 if prof_level>0 else SURF};border:1px solid {BORDER if prof_level==0 else BORDER2};border-radius:7px;}}")
-            rl = QHBoxLayout(row_f); rl.setContentsMargins(10,7,10,7); rl.setSpacing(8)
+            rl = QHBoxLayout(row_f); rl.setContentsMargins(10,2,8,2); rl.setSpacing(8)
 
             sym_l = _lbl(sym, sym_color, FS_BODY, bold=True, wrap=False, align=Qt.AlignCenter)
             sym_l.setFixedWidth(20)
             val_l = _lbl(sign(bonus), val_color, FS_LABEL, bold=True, wrap=False, align=Qt.AlignRight)
-            val_l.setFixedWidth(44)
+            val_l.setFixedWidth(40)
             name_l = _lbl(skill_name, TEXT if prof_level>0 else TEXT2, FS_BODY, wrap=False)
-            name_l.setFixedWidth(148)  # fits "Animal Handling"/"Sleight of Hand" (longest names) so the (ABILITY) tags that follow always line up in a column
-            ab_l = _lbl(f"({ab})", TEXT3, FS_SMALL, wrap=False)
-            ab_l.setFixedWidth(46)  # all ability tags are "(XXX)" — fixed width keeps the roll button/stretch after it aligned consistently row to row
+            ab_l = _lbl(f"({ab})", TEXT3, FS_TINY, wrap=False)
 
             # Advantage/disadvantage badge — populated by _refresh_skills
             adv_badge = _lbl("", TEXT3, FS_TINY, bold=True, wrap=False, align=Qt.AlignCenter)
-            adv_badge.setFixedWidth(64)
             adv_badge.setVisible(False)
 
             # Right-click for an explicit menu of proficiency levels —
@@ -166,63 +160,53 @@ class SkillsMixin:
                 lambda checked=False, sk=skill_name, b=bonus:
                     self._quick_roll_toast(f"{sk} check", b, "check"))
 
-            rl.addWidget(sym_l); rl.addWidget(val_l); rl.addWidget(name_l); rl.addWidget(ab_l)
-            rl.addWidget(roll_btn)
-            rl.addStretch(); rl.addWidget(adv_badge)
+            rl.addWidget(sym_l); rl.addWidget(val_l); rl.addWidget(name_l, 1)
+            rl.addWidget(adv_badge); rl.addWidget(ab_l); rl.addWidget(roll_btn)
             self._skill_row_order.append(row_f)
             self._skill_rows[skill_name] = (row_f, sym_l, val_l, name_l, adv_badge)
 
-        skcl.addLayout(self._skill_grid)
-        self._skills_root = root
-        ll.addWidget(sk_card); ll.addStretch(1); root.addWidget(left, 3)
-        self._lay_out_skills(1)
+        skcl.addLayout(self._skill_grid, 1)
+        self._lay_out_skills(2)
+        return sk_card
 
-        def _skills_resized(e, tab=tab):
-            QScrollArea.resizeEvent(tab, e)
-            self._lay_out_skills(2 if tab.viewport().width() >= 1160 else 1)
-        tab.resizeEvent = _skills_resized
-
-        # Right: languages + proficiencies
-        right = QWidget(); rl2 = QVBoxLayout(right); rl2.setSpacing(10)
-
-        lang_card = _card(qa(TEAL, 0x55)); lcl = QVBoxLayout(lang_card); lcl.setContentsMargins(14,12,14,14)
-        lcl.addWidget(_lbl("LANGUAGES", TEAL2, FS_SMALL, bold=True))
-        self._lang_lbl = _lbl("", TEXT2, FS_BODY, wrap=True)
-        lcl.addWidget(self._lang_lbl); rl2.addWidget(lang_card)
-
-        armor_card = _card(qa(GOLD, 0x55)); acl = QVBoxLayout(armor_card); acl.setContentsMargins(14,12,14,14)
-        acl.addWidget(_lbl("ARMOR PROFICIENCIES", GOLD, FS_SMALL, bold=True))
-        self._armor_prof_lbl = _lbl("", TEXT2, FS_BODY); acl.addWidget(self._armor_prof_lbl)
-        rl2.addWidget(armor_card)
-
-        wpn_card = _card(qa(IND2, 0x55)); wcl = QVBoxLayout(wpn_card); wcl.setContentsMargins(14,12,14,14)
-        wcl.addWidget(_lbl("WEAPON PROFICIENCIES", IND2, FS_SMALL, bold=True))
-        self._wpn_prof_lbl = _lbl("", TEXT2, FS_BODY); wcl.addWidget(self._wpn_prof_lbl)
-        rl2.addWidget(wpn_card)
-
-        tool_card = _card(qa(AMBE2, 0x55)); tcl = QVBoxLayout(tool_card); tcl.setContentsMargins(14,12,14,14)
-        tcl.addWidget(_lbl("TOOL PROFICIENCIES", AMBE2, FS_SMALL, bold=True))
-        # Plain QWidget + QGridLayout, not FlowContainer/FlowLayout —
-        # avoids FlowContainer.resizeEvent()'s setMinimumHeight()-inside-
-        # a-resize-handler pattern, which can cause an infinite resize
-        # loop in Qt with a custom QLayout subclass. A grid wraps at a
-        # fixed column count instead of dynamically by pixel width, an
-        # acceptable trade-off since tool names are short and this list
-        # rarely exceeds a handful of entries.
-        self._tool_prof_frame = QWidget(); self._tool_prof_frame.setStyleSheet("QWidget{background:transparent;border:none;}")
-        self._tool_prof_lay = QGridLayout(self._tool_prof_frame)
-        self._tool_prof_lay.setSpacing(4); self._tool_prof_lay.setContentsMargins(0,0,0,0)
-        tcl.addWidget(self._tool_prof_frame)
-        self._refresh_tool_prof_chips()
-        rl2.addWidget(tool_card)
+    def _build_proficiencies_card(self):
+        """The Overview's Proficiencies card: languages, armour, weapons and
+        tools a line each (as tall as they need), and the DM's own."""
+        card = _card()
+        cl = QVBoxLayout(card); cl.setContentsMargins(16, 14, 16, 14); cl.setSpacing(0)
+        cl.addWidget(_lbl("PROFICIENCIES", GOLD, FS_SMALL, bold=True))
+        cl.addSpacing(6)
+        grid = QGridLayout(); grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(12); grid.setVerticalSpacing(0)
+        grid.setColumnStretch(1, 1)
+        made = {}
+        for i, (label, color) in enumerate((("Languages", TEAL2), ("Armor", GOLD2),
+                                            ("Weapons", IND2), ("Tools", AMBE2))):
+            line = QFrame(); line.setFixedHeight(1)
+            line.setStyleSheet(f"background:{BORDER};border:none;")
+            grid.addWidget(line, i * 2, 0, 1, 2)
+            name = _lbl(label, color, FS_SMALL, bold=True, wrap=False)
+            name.setFixedWidth(92)
+            name.setContentsMargins(0, 6, 0, 6)
+            val = _lbl("", TEXT, FS_SMALL, wrap=True)
+            val.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            grid.addWidget(name, i * 2 + 1, 0, Qt.AlignTop)
+            grid.addWidget(val, i * 2 + 1, 1)
+            grid.setRowMinimumHeight(i * 2 + 1, 28)
+            made[label] = val
+        for w in made.values():
+            w.setContentsMargins(0, 6, 0, 6)
+        cl.addLayout(grid)
+        self._lang_lbl, self._armor_prof_lbl = made["Languages"], made["Armor"]
+        self._wpn_prof_lbl, self._tool_prof_lbl = made["Weapons"], made["Tools"]
+        cl.addSpacing(8)
         # anything the DM grants outside the rules (core/dm_proficiencies.py)
         dm_btn = _btn("DM-granted proficiencies…", GOLD, variant="neutral", height=32,
                       tooltip="Add or remove weapons, armour, tools and languages your DM gave you")
         dm_btn.setObjectName("dmProficienciesBtn")
         dm_btn.clicked.connect(self._open_dm_proficiencies)
-        rl2.addWidget(dm_btn)
-        rl2.addStretch(); root.addWidget(right, 2)
-        return tab
+        cl.addWidget(dm_btn)
+        return card
 
     def _open_dm_proficiencies(self):
         from dnd_app.ui_desktop.dialogs.dm_proficiencies import DmProficienciesDialog
@@ -335,38 +319,22 @@ class SkillsMixin:
         # fields (which include class, subclass, race, background, and
         # feat grants) rather than rebuilding a partial, class-only
         # version here that silently ignored every other source.
-        self._armor_prof_lbl.setText("; ".join(sorted(set(self.char.get("armor_proficiencies", [])) - {"None"})) or "None")
-        self._wpn_prof_lbl.setText("; ".join(sorted(set(self.char.get("weapon_proficiencies", [])) - {"None"})) or "None")
+        _order = {"light armor": 0, "medium armor": 1, "heavy armor": 2, "shields": 3}
+        self._armor_prof_lbl.setText(", ".join(sorted(set(self.char.get("armor_proficiencies", [])) - {"None"},
+                                                      key=lambda a: (_order.get(a.lower(), 4), a))) or "None")
+        self._wpn_prof_lbl.setText(", ".join(sorted(set(self.char.get("weapon_proficiencies", [])) - {"None"})) or "None")
         from dnd_app.core.calculator import known_languages
         self._lang_lbl.setText(", ".join(known_languages(self.char) or ["Common"]))
         self._refresh_tool_prof_chips()
 
     def _refresh_tool_prof_chips(self):
-        """Individual tool-proficiency chips, each with a full hover
-        tooltip from the XGE tool descriptions — replaces the old plain
-        comma-separated text blob, which couldn't show per-tool detail.
-        Uses a plain QGridLayout (not FlowLayout) — see the setup comment
-        in _build_tab_skills for why."""
-        while self._tool_prof_lay.count():
-            item = self._tool_prof_lay.takeAt(0)
-            if item.widget(): item.widget().setParent(None)
-        from dnd_app.data.feature_tooltips import get_tool_tooltip
-        def _tool_badge(text, color, tooltip):
-            ink = readable(color, tint(SURF, color, 0x33), tint(SURF2, color, 0x33))   # on its tint
-            b = _lbl(text, ink, FS_SMALL, bold=True, wrap=False)
-            b.setStyleSheet(
-                f"background:{qa(color,0x33)};border:1.5px solid {qa(color,0x99)};"
-                f"border-radius:5px;padding:3px 8px;color:{ink};"
-                f"font-size:{FS_SMALL}px;font-weight:700;"
-            )
-            b.setToolTip(tooltip)
-            return b
-        tools = self.char.get("tool_proficiencies", [])
-        if not tools:
-            self._tool_prof_lay.addWidget(_tool_badge("None", TEXT3, ""), 0, 0, Qt.AlignLeft)
+        """The Tools line: every tool, and what each is for on hover (the
+        XGE tool descriptions)."""
+        lbl = getattr(self, "_tool_prof_lbl", None)
+        if lbl is None:
             return
-        cols = 4
-        for i, tool in enumerate(sorted(set(tools))):
-            tip = get_tool_tooltip(tool)
-            self._tool_prof_lay.addWidget(_tool_badge(tool, AMBE2, tip), i // cols, i % cols)
-
+        from dnd_app.data.feature_tooltips import get_tool_tooltip
+        tools = sorted(set(self.char.get("tool_proficiencies", [])))
+        lbl.setText(", ".join(tools) or "None")
+        tips = [f"{t}: {get_tool_tooltip(t)}" for t in tools if get_tool_tooltip(t)]
+        lbl.setToolTip("\n\n".join(tips))

@@ -2058,7 +2058,7 @@ def _item_for(char, display):
 def _use_item(char, item, display, desc, slot, answers):
     """A summoning item (a Figurine of Wondrous Power, the Bag of Tricks, the
     Horn of Valhalla...) asks what came first (core/summons.py), then is
-    used as any item is; what it brought is on your Yours tab."""
+    used as any item is; what it brought is on your Creatures page."""
     from dnd_app.core.summons import item_summon_step, add_summons
     step = item_summon_step(char, item, answers)
     if step and step.get("ask"):
@@ -2068,7 +2068,7 @@ def _use_item(char, item, display, desc, slot, answers):
         real = add_summons(char, step["creature"], step["count"], item)
         n = step["count"]
         res["toast"] = (res.get("toast") or display) + (
-            f". {n} × {real} on your side" if n > 1 else f". A {real} on your side") + " (Bestiary → Yours)"
+            f". {n} × {real} on your side" if n > 1 else f". A {real} on your side") + " (on your Creatures page)"
         res["refresh"] = True
     return res
 

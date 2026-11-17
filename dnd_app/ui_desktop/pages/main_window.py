@@ -1110,7 +1110,7 @@ class CharacterCreatorApp(QMainWindow):
         a = QAction("Dice Roller", self); _icons.set_action_icon(a, "dice"); a.setShortcut("Ctrl+D"); a.triggered.connect(self._open_dice_roller); tm.addAction(a)
         a = QAction("Bestiary", self); _icons.set_action_icon(a, "paw"); a.setShortcut("Ctrl+B"); a.triggered.connect(lambda: self._open_bestiary()); tm.addAction(a)
         a = QAction("Your Creatures", self); _icons.set_action_icon(a, "paw"); a.setShortcut("Ctrl+Shift+B")
-        a.triggered.connect(lambda: self._open_bestiary(yours=True)); tm.addAction(a)
+        a.triggered.connect(self._open_creatures); tm.addAction(a)
         a = QAction("Short Rest",  self); _icons.set_action_icon(a, "short_rest"); a.setShortcut("Ctrl+R"); a.triggered.connect(self._short_rest);       tm.addAction(a)
         a = QAction("Long Rest",   self); _icons.set_action_icon(a, "long_rest"); a.setShortcut("Ctrl+Shift+R"); a.triggered.connect(self._long_rest); tm.addAction(a)
 
@@ -1443,8 +1443,6 @@ class CharacterCreatorApp(QMainWindow):
             # StartMenu()/CharacterWizard() construction sites need the
             # same explicit parent, for the same reason.
             self._sheet = CharacterSheet(char, self, save_path=save_path)
-            if self._bestiary is not None and not self._bestiary.isHidden():
-                QTimer.singleShot(0, self._bestiary.follow_sheet)   # (its Yours tab: this character's)
             self._sheet.back_to_menu.connect(self._sheet_back_to_menu)
             # the menu bar has this sheet's name on it, and is its health
             # bar from here on
@@ -1611,16 +1609,21 @@ class CharacterCreatorApp(QMainWindow):
         else:
             self._dice_roller.raise_(); self._dice_roller.activateWindow()
 
-    def _open_bestiary(self, name: str = "", yours: bool = False):
-        """Tools → Bestiary (Ctrl+B): every creature, to find and read; Tools
-        → Your Creatures (Ctrl+Shift+B): the open character's own. One
+    def _open_creatures(self):
+        """Tools → Your Creatures (Ctrl+Shift+B): the open sheet's Creatures tab."""
+        sheet = getattr(self, "_sheet", None)
+        if sheet is not None and self._stack.currentWidget() is sheet:
+            sheet._tabs.setCurrentWidget(sheet._creatures_tab_page)
+
+    def _open_bestiary(self, name: str = ""):
+        """Tools → Bestiary (Ctrl+B): every creature, to find and read. One
         window; a closed one is made afresh, so it takes the current theme."""
         from dnd_app.ui_desktop.dialogs.bestiary import BestiaryWindow
         if self._bestiary is None or self._bestiary.isHidden():
             if self._bestiary is not None:
                 old = self._bestiary
                 old.setParent(None); old.deleteLater()
-            self._bestiary = BestiaryWindow(self, sheet_of=lambda: self._sheet)
+            self._bestiary = BestiaryWindow(self)
             geo = self.geometry()
             self._bestiary.move(geo.left() + 60, geo.top() + 60)
             self._bestiary.show()
@@ -1628,10 +1631,6 @@ class CharacterCreatorApp(QMainWindow):
             self._bestiary.raise_(); self._bestiary.activateWindow()
         if name:
             self._bestiary.show_creature(name)
-        elif yours:
-            self._bestiary.show_yours()
-        else:
-            self._bestiary.follow_sheet()
 
 
 def main(app=None, splash=None):

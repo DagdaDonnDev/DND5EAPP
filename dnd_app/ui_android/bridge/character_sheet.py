@@ -571,6 +571,17 @@ class CharacterSheetBridge(QObject):
         from dnd_app.core.calculator import derived_stats
         return derived_stats(self.char)
 
+    @Property(dict, notify=statsChanged)
+    def senses(self):
+        """The Overview's Senses card: {"passives": [{label, value}],
+        "chips": core/calculator.py sense_list} -- the same as desktop's."""
+        from dnd_app.core.calculator import (get_passive_perception, get_passive_investigation,
+                                             get_passive_insight, sense_list)
+        return {"passives": [{"label": "Passive Perception", "value": get_passive_perception(self.char)},
+                             {"label": "Passive Investigation", "value": get_passive_investigation(self.char)},
+                             {"label": "Passive Insight", "value": get_passive_insight(self.char)}],
+                "chips": sense_list(self.char)}
+
     # ── Skills ───────────────────────────────────────────────────────
     @Property(list, notify=statsChanged)
     def skills(self):
@@ -686,6 +697,23 @@ class CharacterSheetBridge(QObject):
         self.toastRequested.emit(f"{hands(self.char)['main']} in your main hand, {off} in your off hand")
         self._changed()
 
+    @Slot(str)
+    def holdAnotherWeapon(self, name: str):
+        """A second one of a weapon already in hand: two daggers, one in
+        each hand (core/weapons.py, the same as desktop's)."""
+        from dnd_app.core.weapons import equip_weapon
+        equip_weapon(self.char, name, another=True)
+        self.ctrl.refresh()
+        self._changed()
+
+    @Slot(str)
+    def putAwayOneWeapon(self, name: str):
+        """One held copy back in the pack -- the other of two daggers stays."""
+        from dnd_app.core.weapons import unequip_weapon
+        unequip_weapon(self.char, name, every=False)
+        self.ctrl.refresh()
+        self._changed()
+
     @Slot(str, bool)
     def toggleWeaponEquipped(self, name: str, equip: bool):
         # the hands rules are shared with the desktop (core/weapons.py)
@@ -731,7 +759,7 @@ class CharacterSheetBridge(QObject):
 
         for a in other_attacks(char):
             card(a, {"unarmed": "Unarmed", "spell": "Spell attack"}.get(a["kind"], "Natural weapon"), {})
-        for wpn_name in char.get("equipped_weapons", []):
+        for wpn_name in dict.fromkeys(char.get("equipped_weapons", [])):   # two daggers: one card
             w = weapon_attack(char, wpn_name)
             card(w, w["category"], {
                 "magicBonus": w["magic_bonus"], "material": w["material"] or "",
@@ -912,6 +940,8 @@ class CharacterSheetBridge(QObject):
                 # "1 of 3 equipped", "dedicated weapon"
                 from dnd_app.core.weapons import inventory_notes
                 notes = inventory_notes(self.char, name, e.get("qty", 1))
+                # the inventory's own rows say which hand (inventoryGroups)
+                plain_detail = " · ".join([detail] + [n for n in notes if n == "dedicated weapon"])
                 detail = " · ".join([detail] + notes) if notes else detail
             elif adata and adata.get("type") == "shield":
                 category, icon, equip_kind = "Armor", "shield", "shield"
@@ -930,6 +960,8 @@ class CharacterSheetBridge(QObject):
                 category = "Consumables" if is_thrown_consumable(name) else "Tools & Gear"
                 icon, equip_kind = gear_icon(name) or "package", ""
                 detail, equipped = "", False
+            if not wdata:
+                plain_detail = detail
             # one of it: its own numbers or the rules' (core/inventory.py)
             weight, cost = item_weight(e), item_cost(e)
             qty = e.get("qty", 1)
@@ -939,6 +971,7 @@ class CharacterSheetBridge(QObject):
             out.append({
                 "name": name,
                 "qty": e.get("qty", 1),
+                "plainDetail": plain_detail or (use[2] if use else ""),
                 "isPotion": is_potion,
                 "isScroll": is_scroll,
                 "category": category,
@@ -987,8 +1020,37 @@ class CharacterSheetBridge(QObject):
             members = sorted((i for i in items if i["category"] == group),
                              key=lambda i: _mi_sort_key(i["rarity"], i["name"]) if i["rarity"] else (-1, i["name"].casefold()))
             if members:
-                out.append({"group": group, "icon": icon, "items": members})
+                rows = [r for i in members for r in self._weapon_rows(i)]
+                out.append({"group": group, "icon": icon, "items": rows, "count": len(members)})
         return out
+
+    def _weapon_rows(self, item: dict) -> list:
+        """A weapon stack with some in hand is a row for each one held --
+        saying which hand -- and a row for the rest: four daggers with one
+        in your off hand are "Dagger, Off hand" and "Dagger x3". Two held
+        (one in each hand) are a main hand row and an off hand row."""
+        from dnd_app.core.weapons import hand_of, can_hold_another
+        from dnd_app.core.inventory import money_text, weight_text
+        name, qty = item["name"], item["qty"]
+        held = (self.char.get("equipped_weapons") or []).count(name) if item["equipKind"] == "weapon" else 0
+        if not held:
+            return [dict(item, detail=item["plainDetail"], heldRow=False, heldCount=0,
+                         canHoldAnother=False, hand="", total=qty)]
+
+        def worth(n):
+            return "  ·  ".join(x for x in (weight_text(item["weight"] * n), money_text(item["cost"] * n)) if x)
+        hand = hand_of(self.char, name)
+        hands_held = ["main hand", "off hand"] if hand == "one in each hand" else [hand]
+        rows = [dict(item, qty=1, detail=item["plainDetail"], weightValue=worth(1), equipped=True,
+                     heldRow=True, heldCount=held, canHoldAnother=False, hand=h, total=qty,
+                     rowKey=f"{name}#{k}")
+                for k, h in enumerate(hands_held[:held])]
+        if qty > held:
+            rows.append(dict(item, qty=qty - held, detail=item["plainDetail"], weightValue=worth(qty - held),
+                             equipped=False, heldRow=False, heldCount=held, hand="", total=qty,
+                             canSwapHands=False,
+                             canHoldAnother=can_hold_another(self.char, name, qty)))
+        return rows
 
     @Property(dict, notify=statsChanged)
     def carryLoad(self):
@@ -5181,6 +5243,16 @@ class CharacterSheetBridge(QObject):
             norm["index"] = i
             out.append(norm)
         return out
+
+    @Slot(str)
+    def addBestiaryCreature(self, name: str):
+        """Add to Creatures: a Bestiary creature on your page with its own
+        hit points -- a pet, a hireling, a mount, one your DM gave (the
+        same as desktop's Add Selected to Creatures)."""
+        from dnd_app.core.summons import add_summons
+        real = add_summons(self.char, name, 1, "From the Bestiary")
+        self.toastRequested.emit(f"{real} added to your creatures")
+        self._changed()
 
     @Slot(str, int, str)
     def addSummonedCreature(self, spell_name: str, level: int, form: str):

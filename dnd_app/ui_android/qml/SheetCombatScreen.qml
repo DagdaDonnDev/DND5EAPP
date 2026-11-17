@@ -512,7 +512,7 @@ Page {
 
                 Label {
                     visible: sheetBridge.weapons.length === 0
-                    text: "No weapons equipped -- equip one on the Equipment screen."
+                    text: "No weapons equipped -- equip one in your Inventory."
                     color: Theme.text3
                     font.pixelSize: Theme.fsSmall
                     wrapMode: Text.WordWrap

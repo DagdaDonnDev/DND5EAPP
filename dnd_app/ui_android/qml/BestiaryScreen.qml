@@ -6,47 +6,14 @@ import Mimic
 // Content for the Bestiary MFullPageDialog (see App.qml): every creature
 // MIMIC knows, to find by name or type and filter by type, size,
 // challenge rating and how it moves; a tap opens its stat block, and Back
-// returns to the list. The Yours tab is the open character's own
-// creatures (SheetCompanionsScreen.qml). The same as desktop's Bestiary
-// window (bridge/bestiary.py, core/bestiary.py).
+// returns to the list. The same as desktop's Bestiary window
+// (bridge/bestiary.py, core/bestiary.py). A character's own creatures are
+// its sheet's Creatures page (SheetCompanionsScreen.qml).
 Item {
     id: root
     readonly property QtObject bBridge: Window.window ? Window.window.bestiaryBridge : null
-    readonly property bool hasCharacter: Window.window ? Window.window.characterActive : false
     property string shown: ""          // the creature whose stat block is open
-    property int tab: 0                // 0 all creatures, 1 yours
     anchors.fill: parent
-
-    TabBar {
-        id: tabs
-        objectName: "bestiaryTabs"
-        anchors { left: parent.left; right: parent.right; top: parent.top }
-        currentIndex: root.tab
-        onCurrentIndexChanged: root.tab = currentIndex
-        TabButton { objectName: "bestiaryTabAll"; text: "All creatures" }
-        TabButton { objectName: "bestiaryTabYours"; text: "Yours" }
-    }
-
-    // ── yours: the open character's creatures ─────────────────────────
-    Loader {
-        id: yours
-        objectName: "bestiaryYours"
-        anchors { left: parent.left; right: parent.right; top: tabs.bottom; bottom: parent.bottom }
-        visible: root.tab === 1
-        active: root.tab === 1 && root.hasCharacter
-        source: "SheetCompanionsScreen.qml"
-        onLoaded: item.embedded = true
-    }
-    Label {
-        visible: root.tab === 1 && !root.hasCharacter
-        anchors { left: parent.left; right: parent.right; top: tabs.bottom; margins: 16 }
-        text: "Open a character to see its creatures here: its mounts and steeds, what it's "
-              + "summoned, its companions and its Wild Shape forms."
-        color: Theme.text3
-        font.pixelSize: Theme.fsSmall
-        wrapMode: Text.WordWrap
-    }
-
 
     function refresh() {
         if (!bBridge) return
@@ -62,8 +29,7 @@ Item {
     // ── all creatures ──────────────────────────────────────────────────
     Item {
         id: allPage
-        anchors { left: parent.left; right: parent.right; top: tabs.bottom; bottom: parent.bottom }
-        visible: root.tab === 0
+        anchors.fill: parent
     // ── the list ───────────────────────────────────────────────────────
     ColumnLayout {
         anchors.fill: parent

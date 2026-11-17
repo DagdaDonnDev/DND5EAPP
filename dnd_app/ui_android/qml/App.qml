@@ -98,8 +98,7 @@ ApplicationWindow {
     readonly property string equipmentComp: "EquipmentScreen.qml"
     readonly property string sheetComp: "SheetCombatScreen.qml"
     readonly property string sheetActionsComp: "SheetActionsScreen.qml"
-    readonly property string sheetAbilitiesComp: "SheetAbilitiesScreen.qml"
-    readonly property string sheetProficienciesComp: "SheetProficienciesScreen.qml"
+    readonly property string sheetOverviewComp: "SheetOverviewScreen.qml"
     readonly property string sheetSpellsComp: "SheetSpellsScreen.qml"
     readonly property string sheetEquipmentComp: "SheetEquipmentScreen.qml"
     readonly property string sheetCompanionsComp: "SheetCompanionsScreen.qml"
@@ -125,8 +124,8 @@ ApplicationWindow {
     }
     function preloadScreens() {
         var files = [sheetComp, raceListComp, abilitiesComp, classComp, equipmentComp,
-                     sheetActionsComp, sheetSpellsComp, sheetEquipmentComp, sheetAbilitiesComp,
-                     sheetProficienciesComp, sheetFeaturesComp, sheetChoicesComp, sheetNotesComp,
+                     sheetActionsComp, sheetSpellsComp, sheetEquipmentComp, sheetOverviewComp,
+                     sheetFeaturesComp, sheetChoicesComp, sheetNotesComp,
                      sheetCompanionsComp, sheetInfusionsComp]
         for (var i = 0; i < files.length; ++i) {
             if (!_screenCache[files[i]])
@@ -174,23 +173,23 @@ ApplicationWindow {
         { label: "Combat", icon: "combat", screen: sheetComp, enabled: true },
         { label: "Actions", icon: "bolt", screen: sheetActionsComp, enabled: true,
           sections: ["Resources", "Action", "Bonus Action", "Reaction", "Passive / Other"] },
-        { label: "Abilities", icon: "abilities", screen: sheetAbilitiesComp, enabled: true },
-        { label: "Proficiencies", icon: "skills", screen: sheetProficienciesComp, enabled: true },
+        { label: "Overview", icon: "abilities", screen: sheetOverviewComp, enabled: true,
+          sections: ["Skills", "Senses", "Proficiencies"] },
         { label: "Spells", icon: "spells", screen: sheetSpellsComp, enabled: true,
           sections: ["Spell Slots", "Known Spells", "Add a Spell"],
           pulse: window.spellsPending },
-        { label: "Equipment", icon: "gear", screen: sheetEquipmentComp, enabled: true,
+        { label: "Inventory", icon: "gear", screen: sheetEquipmentComp, enabled: true,
           sections: ["Inventory", "Add Equipment", "Magic Items", "Add a Magic Item"] },
     ]
-    // Infusions (an Artificer's) sit after Equipment, where Companions
-    // were -- your creatures (mounts, steeds, summons, companions, Wild
-    // Shape) are in the Bestiary's Yours tab. Everyone else never sees
-    // the entry at all, rather than a permanently disabled one.
+    // Infusions (an Artificer's) sit after Inventory; everyone else never
+    // sees the entry at all, rather than a permanently disabled one. Then
+    // Creatures: mounts, steeds, summons, companions, Wild Shape.
     readonly property var sheetNavItems:
         (sheetBridge !== null && sheetBridge.isArtificer
             ? sheetNavItemsBase.concat([{ label: "Infusions", icon: "infusions", screen: sheetInfusionsComp, enabled: true }])
             : sheetNavItemsBase
         ).concat([
+            { label: "Creatures", icon: "paw", screen: "SheetCompanionsScreen.qml", enabled: true },
             { label: "Features", icon: "features", screen: sheetFeaturesComp, enabled: true },
             { label: "Choices", icon: "choices", screen: sheetChoicesComp, enabled: true,
               pulse: window.choicesPending },
