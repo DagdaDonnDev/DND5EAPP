@@ -1044,16 +1044,35 @@ class CharacterSheetBridge(QObject):
 
     @Property(list, notify=statsChanged)
     def inventoryGroups(self):
+        """The inventory's groups, Equipped first (as desktop's): a row for
+        each weapon in hand (saying which hand), the armor worn and the
+        shield. What isn't in hand stays in its own group with the count
+        left -- four daggers with one in hand are "Dagger, Off hand" under
+        Equipped and Dagger x3 under Weapons."""
         items = self.equipment
-        out = []
+        out, held_rows = [], []
         for group, icon in self._INVENTORY_GROUPS:
-            # by name (equipping doesn't move a row); magic potions/scrolls
-            # by rarity (Common -> Artifact) then name, after the mundane ones
+            # by name; magic potions/scrolls by rarity (Common -> Artifact)
+            # then name, after the mundane ones
             members = sorted((i for i in items if i["category"] == group),
                              key=lambda i: _mi_sort_key(i["rarity"], i["name"]) if i["rarity"] else (-1, i["name"].casefold()))
-            if members:
-                rows = [r for i in members for r in self._weapon_rows(i)]
-                out.append({"group": group, "icon": icon, "items": rows, "count": len(members)})
+            rows = []
+            for i in members:
+                for r in self._weapon_rows(i):
+                    if r.get("heldRow"):
+                        held_rows.append(r)
+                    elif r["equipKind"] in ("armor", "shield") and r["equipped"]:
+                        # the armor worn / the shield carried: one in Equipped, the rest here
+                        held_rows.append(dict(r, qty=1, rowKey=r["name"] + "#worn",
+                                              hand="worn" if r["equipKind"] == "armor" else "shield"))
+                        if r["qty"] > 1:
+                            rows.append(dict(r, qty=r["qty"] - 1, equipped=False))
+                    else:
+                        rows.append(r)
+            if rows:
+                out.append({"group": group, "icon": icon, "items": rows, "count": len(rows)})
+        if held_rows:
+            out.insert(0, {"group": "Equipped", "icon": "combat", "items": held_rows, "count": len(held_rows)})
         return out
 
     def _weapon_rows(self, item: dict) -> list:
@@ -2227,188 +2246,17 @@ class CharacterSheetBridge(QObject):
         self.toastRequested.emit("Reverted to normal form")
         self._changed()
 
-    # ── Features (read-only) ─────────────────────────────────────────
-    # Full parity with ui_desktop's features.py _rebuild_features:
-    # race/subrace traits, background feature, per-class level-by-level
-    # features (using the same verified CLASS_FEATURE_INDEX/
-    # SUBCLASS_FEATURES data desktop uses, falling back to CLASS_DICT's
-    # raw per-level list), feats, fighting styles, invocations, metamagic,
-    # battle master maneuvers, Blood Hunter curses/mutagens, Elemental
-    # Disciplines, Replicated Magic Items, optional/alternate class
-    # features (TCoE), Wild Magic surge tables (wildMagicTables/
-    # rollWildMagicSurge below), and the DM-Reward/feat-grant browser
-    # (see SheetFeaturesScreen.qml).
-    _SUBCLASS_SLOT_KEYWORDS = (
-        'subclass feature', 'archetype feature', 'domain feature',
-        'circle feature', 'sacred oath feature', 'primal path feature',
-        'order feature', 'college feature', 'ranger archetype feature',
-        'ranger archetype', '(subclass)', 'martial archetype',
-        'roguish archetype', 'sorcerous origin', 'otherworldly patron',
-        'divine domain', 'druid circle', 'monastic tradition',
-        'primal path', 'bardic college', 'arcane tradition',
-        'sacred oath', 'ranger conclave', 'alchemical homunculus',
-        'path feature', 'bard college feature', 'ki feature',
-    )
-
-    def _build_features_sections(self):
-        char = self.char
-        sections = []
-        from dnd_app.core.features import feature_detail, feature_search_text
-
-        def add_section(title, items, cls=""):
-            if not items:
-                return
-            # rows: each feature with whether there's more to read behind
-            # it (a tap opens it: showFeatureDetail) and what the screen's
-            # "find a feature" box looks through -- core/features.py, the
-            # same as desktop's Features tab
-            # (numbers in place of '+STAT' and 'CHA mod uses/LR' shorthand,
-            # as desktop's rows: core/calculator.py resolve_stat_placeholders)
-            from dnd_app.core.calculator import resolve_stat_placeholders
-            items = [resolve_stat_placeholders(it, char) for it in dict.fromkeys(items)]
-            rows = []
-            for it in items:
-                tip = feature_detail(char, it, cls)["tip"]
-                # (cls: the class whose section this is -- a feature name
-                # other classes share reads as this class's own)
-                rows.append({"text": it, "more": bool(tip), "cls": cls,
-                             "find": feature_search_text(it, tip, title)})
-            sections.append({"title": title, "items": list(items), "rows": rows})
-
-        race = char.get("species") or char.get("race", "")
-        if race:
-            rdata = get_race(race)
-            if rdata and rdata.get("traits"):
-                # less what a dragonmark (or a subrace's ability scores)
-                # replaces -- the same list as desktop's Features tab
-                from dnd_app.data.races import race_traits_for
-                add_section(f"Race: {race}", race_traits_for(char))
-            subrace = char.get("subrace", "")
-            if subrace and rdata:
-                # (less its ability scores and sourcebook tag, as desktop's)
-                from dnd_app.core.features import subrace_traits
-                add_section(f"Subrace: {subrace}", subrace_traits(rdata, subrace))
-
-        bg = get_background(char.get("background", ""))
-        if bg and bg.get("feature"):
-            add_section(f"Background: {char.get('background', '')}",
-                        [f"{bg['feature']}: {bg.get('feature_desc', '')}"])
-
-        for c in char.get("classes", []):
-            cname = c["class"]
-            clvl = c["level"]
-            sub = c.get("subclass", "")
-            title = cname + (f" -- {sub}" if sub else "") + f"  (Level {clvl})"
-            feats = []
-            cdata = CLASS_DICT.get(cname, {})
-            features = cdata.get("features", {})
-
-            proper_names = SUBCLASS_FEATURES.get((cname, sub), [])
-            sub_feat_idx = 0
-            sub_index = CLASS_FEATURE_INDEX.get(cname, {}).get(sub)
-            if isinstance(sub_index, dict):
-                for lvl in sorted(sub_index):
-                    if lvl > clvl:
-                        break
-                    for real_name in sub_index[lvl]:
-                        feats.append(f"[Lv {lvl}]  {sub}: {real_name}")
-            else:
-                for lvl in range(1, clvl + 1):
-                    for fname in features.get(lvl, []):
-                        is_sub_slot = any(kw in fname.lower() for kw in self._SUBCLASS_SLOT_KEYWORDS)
-                        if is_sub_slot and sub and sub_feat_idx < len(proper_names):
-                            feats.append(f"[Lv {lvl}]  {sub}: {proper_names[sub_feat_idx]}")
-                            sub_feat_idx += 1
-                        elif is_sub_slot and sub:
-                            feats.append(f"[Lv {lvl}]  {sub} -- Subclass Feature")
-                            sub_feat_idx += 1
-                        else:
-                            feats.append(f"[Lv {lvl}]  {fname}")
-
-            if cname == "Warlock" and char.get("eldritch_invocations"):
-                feats.append("[Invocations]  " + ", ".join(
-                    i.split("–")[0].strip() for i in char["eldritch_invocations"]))
-            if cname == "Sorcerer" and char.get("_choices", {}).get("sorcerer_metamagic"):
-                feats.append("[Metamagic]  " + ", ".join(
-                    m.split("–")[0].strip() for m in char["_choices"]["sorcerer_metamagic"]))
-            if cname == "Artificer" and char.get("artificer_infusions"):
-                feats.append("[Infusions]  " + ", ".join(
-                    i.split("–")[0].strip() for i in char["artificer_infusions"]))
-            if cname == "Fighter" and "battle master" in sub.lower() and char.get("battle_master_maneuvers"):
-                feats.append("[Maneuvers]  " + ", ".join(
-                    m.split("–")[0].strip() for m in char["battle_master_maneuvers"]))
-            if cname == "Blood Hunter" and char.get("_choices", {}).get("blood_hunter_curses"):
-                feats.append("[Blood Curses]  " + ", ".join(
-                    c.split("–")[0].strip() for c in char["_choices"]["blood_hunter_curses"]))
-            if cname == "Blood Hunter" and char.get("_choices", {}).get("blood_hunter_mutagens"):
-                feats.append("[Mutagens]  " + ", ".join(
-                    m.split("–")[0].strip() for m in char["_choices"]["blood_hunter_mutagens"]))
-            if cname == "Monk" and char.get("_choices", {}).get("four_elements_disciplines"):
-                feats.append("[Elemental Disciplines]  " + ", ".join(
-                    d.split("–")[0].strip() for d in char["_choices"]["four_elements_disciplines"]))
-            if cname == "Artificer" and clvl >= 2:
-                # The real rule requires explicitly learning each item as
-                # its own "Replicate Magic Item" infusion pick, consuming
-                # an infusions-known slot -- not every item across every
-                # tier the character's level qualifies for. Shows only
-                # the specific items actually learned (matches desktop).
-                all_replicable = {name for tier in ARTIFICER_REPLICABLE_ITEMS.values() for name, _ in tier}
-                learned = [inf.split("–")[0].strip() for inf in char.get("artificer_infusions", [])
-                           if inf.split("–")[0].strip() in all_replicable]
-                if learned:
-                    needs_attunement = {name: att for tier in ARTIFICER_REPLICABLE_ITEMS.values() for name, att in tier}
-                    feats.append("[Replicated Magic Items]  " + ", ".join(
-                        f"{name} (attunement)" if needs_attunement.get(name) else name for name in learned))
-
-            add_section(title, feats, cls=cname)
-
-        feat_items = []
-        for fname in char.get("feats", []):
-            fd = get_feat(fname)
-            if fd:
-                feat_items.append(f"{fname}: {fd.get('special', '')}")
-        add_section("Feats", feat_items)
-
-        add_section("Fighting Style", char.get("fighting_styles", []))
-
-        # ── Optional / Alternate Class Features (TCoE) ──────────────────
-        # A feature is "on" via either mechanism desktop supports: an
-        # explicit per-feature toggle in _choices.optional_features, or
-        # a same-named Settings optional-rule toggle (Martial
-        # Versatility, Deft Explorer, etc.).
-        enabled = char.get("_choices", {}).get("optional_features", {})
-        rules = char.get("optional_rules", {})
-        for c in char.get("classes", []):
-            cname = c["class"]
-            clvl = c["level"]
-            items = []
-            for unlock_lvl, flist in sorted(OPTIONAL_CLASS_FEATURES.get(cname, {}).items()):
-                if unlock_lvl > clvl:
-                    continue
-                for f in flist:
-                    rules_key = f["name"].lower().replace(" ", "_")
-                    if enabled.get(f["name"], False) or rules.get(rules_key, False):
-                        replaces = f.get("replaces")
-                        tag = f"(replaces {replaces})" if replaces else "(TCoE optional)"
-                        items.append(f"[Lv {unlock_lvl}]  {f['name']} {tag}")
-            add_section(f"Optional -- {cname}", items)
-
-        return sections
-
+    # ── Features ─────────────────────────────────────────────────────
+    # The sections and cards of the Features screen: core/feature_page.py,
+    # the same model desktop's Features tab draws -- race (by character
+    # level), background, feats (with where each came from), the DM's
+    # gifts by kind, then each class down its levels, a pick feature's
+    # chosen options under it. Wild Magic surge tables (wildMagicTables/
+    # rollWildMagicSurge below) and the DM's browser follow.
     @Property(list, notify=statsChanged)
     def featuresSections(self):
-        return self._build_features_sections()
-
-    @Slot(str)
-    @Slot(str, str)
-    def showFeatureDetail(self, item: str, cls: str = ""):
-        """A feature row tapped: its name and what it does, in the sheet's
-        message dialog (the same text desktop's Features tab opens). cls is
-        the class whose section the row is in, if it's a class's."""
-        from dnd_app.core.features import feature_detail
-        d = feature_detail(self.char, item, cls)
-        if d["body"]:
-            self.sheetMessage.emit(d["name"], d["body"].replace("\n", "<br>") if "<" in d["body"] else d["body"])
+        from dnd_app.core.feature_page import feature_page
+        return feature_page(self.char)
 
     # ── Wild Magic Surge (Barbarian d8 / Sorcerer d100) ──────────────
     # Pure "roll and show the effect" mechanic -- doesn't mutate the

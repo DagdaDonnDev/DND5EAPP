@@ -56,24 +56,125 @@ from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
 
 
+
+class FeatureCard(QFrame):
+    """One feature on the Features page: its name and tags, a line of what
+    it does, and -- once clicked open -- everything it says and the picks
+    it holds (Metamagic, invocations...), each with what it does."""
+
+    def __init__(self, card: dict, parent=None):
+        super().__init__(parent)
+        self.card = card
+        self.setObjectName("featureCard")
+        self.setProperty("featureId", card["id"])
+        self._open = False
+        more = bool(card["text"] or card["options"])
+        self._more = more
+        lay = QVBoxLayout(self); lay.setContentsMargins(12, 9, 12, 9); lay.setSpacing(3)
+        head = QHBoxLayout(); head.setSpacing(6)
+        self._arrow = QLabel("▸" if more else "")
+        self._arrow.setFixedWidth(12)
+        self._arrow.setStyleSheet(f"color:{TEXT3 if card['future'] else TEXT2};font-size:{FS_SMALL}px;background:transparent;border:none;")
+        head.addWidget(self._arrow, 0, Qt.AlignTop)
+        name = QLabel(card["name"])
+        name.setObjectName("featureName")
+        name.setWordWrap(True)
+        name.setStyleSheet(f"color:{TEXT3 if card['future'] else TEXT};font-size:{FS_BODY}px;font-weight:700;"
+                           f"background:transparent;border:none;")
+        head.addWidget(name, 1)
+        colors = {"uses": TEAL2, "action": AMBER, "origin": GOLD2, "sub": GOLD2}
+        for t in card["tags"]:
+            c = colors.get(t["kind"], TEXT2)
+            tag = QLabel(t["text"])
+            tag.setObjectName(f"featureTag_{t['kind']}")
+            tag.setStyleSheet(f"QLabel{{color:{c};background:{qa(c, 0x1a)};border:1px solid {qa(c, 0x80)};"
+                              f"border-radius:5px;padding:1px 7px;font-size:{FS_TINY}px;font-weight:700;}}")
+            head.addWidget(tag, 0, Qt.AlignTop)
+        lay.addLayout(head)
+        self._summary = QLabel(card["summary"])
+        self._summary.setObjectName("featureSummary")
+        self._summary.setWordWrap(True)
+        self._summary.setVisible(bool(card["summary"]))
+        self._summary.setStyleSheet(f"color:{TEXT3 if card['future'] else TEXT2};font-size:{FS_SMALL}px;"
+                                    f"padding-left:18px;background:transparent;border:none;")
+        lay.addWidget(self._summary)
+        # what opens: the whole text, then the picks
+        self._body = QWidget(); self._body.setObjectName("featureBody")
+        self._body.setStyleSheet("background:transparent;")
+        bl = QVBoxLayout(self._body); bl.setContentsMargins(18, 4, 0, 2); bl.setSpacing(8)
+        if card["text"]:
+            full = QLabel(card["text"])
+            full.setObjectName("featureText")
+            full.setWordWrap(True); full.setTextFormat(Qt.RichText)
+            full.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            full.setStyleSheet(f"color:{TEXT};font-size:{FS_BODY}px;background:transparent;border:none;")
+            bl.addWidget(full)
+        for o in card["options"]:
+            ob = QFrame(); ob.setObjectName("featureOption")
+            ob.setStyleSheet(f"QFrame#featureOption{{background:{SURF};border:1px solid {BORDER};"
+                             f"border-left:3px solid {GOLD2};border-radius:6px;}}")
+            ol = QVBoxLayout(ob); ol.setContentsMargins(10, 6, 10, 6); ol.setSpacing(2)
+            on = QLabel(o["name"]); on.setWordWrap(True)
+            on.setStyleSheet(f"color:{GOLD2};font-size:{FS_SMALL}px;font-weight:700;background:transparent;border:none;")
+            ol.addWidget(on)
+            if o["text"]:
+                ot = QLabel(o["text"]); ot.setWordWrap(True); ot.setTextFormat(Qt.RichText)
+                ot.setStyleSheet(f"color:{TEXT2};font-size:{FS_SMALL}px;background:transparent;border:none;")
+                ol.addWidget(ot)
+            bl.addWidget(ob)
+        self._body.setVisible(False)
+        lay.addWidget(self._body)
+        if more:
+            self.setCursor(Qt.PointingHandCursor)
+            self.setToolTip("Click to read it all")
+        self.setAccessibleName(card["name"])
+        self._style()
+
+    def _style(self):
+        fut = self.card["future"]
+        if self._open:
+            css = f"QFrame#featureCard{{background:{tint(SURF, GOLD, 0x10)};border:1px solid {GOLD};border-radius:10px;}}"
+        else:
+            css = (f"QFrame#featureCard{{background:{SURF};border:1px solid {BORDER if not fut else qa(BORDER, 0x80)};"
+                   f"border-radius:10px;}}"
+                   + (f"QFrame#featureCard:hover{{border-color:{BORDER2};background:{SURF2};}}" if self._more else ""))
+        self.setStyleSheet(css)
+
+    def is_open(self):
+        return self._open
+
+    def set_open(self, on: bool):
+        if not self._more:
+            return
+        self._open = bool(on)
+        self._body.setVisible(self._open)
+        self._arrow.setText("▾" if self._open else "▸")
+        self._style()
+
+    def mousePressEvent(self, ev):
+        if ev.button() == Qt.LeftButton and self._more:
+            self.set_open(not self._open)
+            ev.accept()
+            return
+        super().mousePressEvent(ev)
+
+
 class FeaturesMixin:
     def _refresh_optional_features(self):
         """Rebuild the Optional Class Features card in the Features tab."""
         # No-op if not yet built; features tab handles this via _rebuild_features.
         pass
 
-    # ── Hit dice / currency event handlers ───────────────────────────────────
-
     def _build_tab_features(self):
         from PySide6.QtGui import QIcon, QKeySequence
         page = QWidget()
         pl = QVBoxLayout(page); pl.setContentsMargins(0, 0, 0, 0); pl.setSpacing(0)
-        # Find a feature: a box over the list, which stays put as the list
-        # scrolls. It looks in each feature's name and in what it does.
+        # Find a feature, and the chips that keep to one section: a bar over
+        # the list, which stays put as the list scrolls
         bar = QWidget(); bar.setStyleSheet("background:transparent;")
-        bl = QHBoxLayout(bar); bl.setContentsMargins(16, 12, 16, 0); bl.setSpacing(12)
+        bl = QHBoxLayout(bar); bl.setContentsMargins(16, 12, 16, 4); bl.setSpacing(8)
         self._feat_filter = QLineEdit()
-        self._feat_filter.setPlaceholderText("Find a feature\u2026")
+        self._feat_filter.setPlaceholderText("Find a feature…")
         _icons.set_action_icon(self._feat_filter.addAction(QIcon(), QLineEdit.LeadingPosition), "search")
         self._feat_filter.setClearButtonEnabled(True)
         self._feat_filter.setAccessibleName("Find a feature")
@@ -82,84 +183,185 @@ class FeaturesMixin:
         self._feat_filter.setStyleSheet(
             f"QLineEdit{{background:{SURF2};border:1px solid {BORDER2};border-radius:7px;"
             f"padding:6px 10px;color:{TEXT};font-size:{FS_BODY}px;}}")
-        self._feat_filter.setMaximumWidth(460)
+        self._feat_filter.setFixedWidth(340)
         self._feat_filter.textChanged.connect(lambda *_: self._apply_feature_filter())
-        bl.addWidget(self._feat_filter, 1)
+        bl.addWidget(self._feat_filter)
+        self._feat_chip_box = QWidget(); self._feat_chip_box.setStyleSheet("background:transparent;")
+        self._feat_chip_lay = QHBoxLayout(self._feat_chip_box)
+        self._feat_chip_lay.setContentsMargins(4, 0, 0, 0); self._feat_chip_lay.setSpacing(6)
+        bl.addWidget(self._feat_chip_box)
+        bl.addStretch(1)
         self._feat_count = _lbl("", TEXT3, FS_SMALL, wrap=False)
         bl.addWidget(self._feat_count)
-        bl.addStretch(1)
-        hint = _lbl("Click a feature to read what it does", TEXT3, FS_SMALL, wrap=False)
-        bl.addWidget(hint)
         pl.addWidget(bar)
         # (Ctrl+F puts the cursor here: the sheet's own shortcut, which
         # goes to the search box of whichever tab is showing)
 
         tab = QScrollArea(); tab.setWidgetResizable(True)
+        self._feat_scroll = tab
         w = QWidget(); tab.setWidget(w)
-        self._feat_tab_lay = QVBoxLayout(w); self._feat_tab_lay.setContentsMargins(16,16,16,16); self._feat_tab_lay.setSpacing(12)
-        self._feat_sections = []   # (groupbox, content_lay)
-        self._feat_rows = []       # (row, its group box, the text it's found by)
+        self._feat_tab_lay = QVBoxLayout(w); self._feat_tab_lay.setContentsMargins(16, 10, 16, 16); self._feat_tab_lay.setSpacing(6)
+        self._feat_chip = "All"
+        self._feat_chips = {}
+        self._feat_cards = []      # (FeatureCard, its section's chip, the level row it's in or None)
+        self._feat_secs = []       # (section widget, chip, [level rows], [cards])
         self._feat_extras = []     # blocks that aren't features (tables, the DM's browser): hidden while filtering
         self._feat_none = None
+        self._feat_open = set()    # the ids of the cards left open, kept across a rebuild
+        self._feat_folded = {"dm"} # the sections folded away (the DM's card starts folded)
         self._feat_tab_lay.addStretch()
         pl.addWidget(tab, 1)
         return page
 
+    def _set_feature_chip(self, chip):
+        self._feat_chip = chip
+        for name, b in self._feat_chips.items():
+            b.setChecked(name == chip)
+        self._apply_feature_filter()
+
+    def _make_feature_chips(self, chips):
+        lay = self._feat_chip_lay
+        while lay.count():
+            it = lay.takeAt(0)
+            if it.widget():
+                it.widget().setParent(None); it.widget().deleteLater()
+        self._feat_chips = {}
+        if self._feat_chip not in chips:
+            self._feat_chip = "All"
+        for chip in ["All"] + chips:
+            b = QPushButton(chip)
+            b.setObjectName(f"featureChip_{chip}")
+            b.setCheckable(True); b.setChecked(chip == self._feat_chip)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setStyleSheet(
+                f"QPushButton{{background:{SURF2};color:{TEXT2};border:1px solid {BORDER};border-radius:15px;"
+                f"padding:0 12px;min-height:30px;max-height:30px;font-size:{FS_SMALL}px;font-weight:700;}}"
+                f"QPushButton:hover{{border-color:{BORDER2};color:{TEXT};}}"
+                f"QPushButton:checked{{background:{GOLD};color:{on_fill(GOLD)};border-color:{GOLD};}}")
+            b.clicked.connect(lambda _=False, c=chip: self._set_feature_chip(c))
+            lay.addWidget(b)
+            self._feat_chips[chip] = b
+
     def _apply_feature_filter(self):
-        """Show the features the box finds -- every word typed, in the
-        feature's name, what it does, or its group's heading -- and hide a
-        group with nothing found. The other blocks on the page (a surge
-        table, the DM's feat browser) step aside while something's typed."""
+        """Show what the chip keeps and the box finds -- every word typed,
+        in a feature's name, what it does, its picks or its section's
+        heading -- and hide a level, or a section, with nothing left."""
         box = getattr(self, "_feat_filter", None)
         if box is None:
             return
         text = box.text()
         words = text.casefold().split()
-        per_group, shown = {}, 0
+        chip = getattr(self, "_feat_chip", "All")
         from dnd_app.core.features import feature_matches
-        for row, grp, hay in self._feat_rows:
-            hit = feature_matches(hay, text)
-            row.setVisible(hit)
-            per_group[grp] = per_group.get(grp, 0) + (1 if hit else 0)
-            shown += 1 if hit else 0
-        for grp, n in per_group.items():
-            grp.setVisible(n > 0)
+        shown = total = 0
+        for sec, sec_chip, rows, cards in self._feat_secs:
+            in_chip = chip == "All" or chip == sec_chip
+            n = 0
+            for card in cards:
+                hit = in_chip and feature_matches(card.card["find"], text)
+                card.setVisible(hit)
+                n += 1 if hit else 0
+                if in_chip and not card.card["future"]:
+                    total += 1
+                    shown += 1 if hit else 0
+            for row, row_cards in rows:
+                row.setVisible(any(c.isVisibleTo(row) or (c.isVisible()) for c in row_cards)
+                               if False else any(not c.isHidden() for c in row_cards))
+            sec.setVisible(n > 0)
         for w in self._feat_extras:
-            w.setVisible(not words)
-        total = len(self._feat_rows)
+            w.setVisible(not words and (chip == "All" or w.property("featureChip") == chip))
         self._feat_count.setText(f"{shown} of {total}" if words else f"{total} feature{'s' if total != 1 else ''}")
         if self._feat_none is not None:
-            self._feat_none.setText(f"No feature matches \u201c{text.strip()}\u201d." if words and not shown else "")
+            self._feat_none.setText(f"No feature matches “{text.strip()}”." if words and not shown else "")
             self._feat_none.setVisible(bool(words) and not shown)
 
-    @staticmethod
-    def _get_subclass_feature_names(cname, subclass_display, D):
-        """Parse actual feature names from the subclass data string.
-        
-        Subclass strings look like:
-          'The Archfey – Fey Presence; Misty Escape; Beguiling Defenses'
-        Features after '–' are mapped in order to subclass feature slots.
-        """
-        if not subclass_display:
-            return []
-        cdata = D.get(cname, {})
-        # Find matching subclass entry (display name match)
-        sub_display_norm = subclass_display.lower().strip()
-        for sub_full in cdata.get("subclasses", []):
-            disp = sub_full.split("–")[0].split("—")[0].strip().lower()
-            if disp == sub_display_norm or sub_display_norm in disp or disp in sub_display_norm:
-                # Found it — parse features after the dash
-                if "–" in sub_full:
-                    feat_str = sub_full.split("–", 1)[1]
-                elif "—" in sub_full:
-                    feat_str = sub_full.split("—", 1)[1]
-                else:
-                    return []
-                return [f.strip() for f in feat_str.split(";") if f.strip()]
-        return []
+    def _feature_section_head(self, sec, body):
+        """A section's heading: ▾ NAME, the line beside it, its count and a
+        rule; a click folds the section away."""
+        head = QPushButton()
+        head.setObjectName(f"featureSection_{sec['key']}")
+        head.setCursor(Qt.PointingHandCursor)
+        head.setFlat(True)
+        hl = QHBoxLayout(head); hl.setContentsMargins(0, 0, 0, 0); hl.setSpacing(8)
+        arrow = QLabel("▾"); arrow.setStyleSheet(f"color:{GOLD};font-size:{FS_SMALL}px;background:transparent;")
+        name = QLabel(sec["title"].upper())
+        name.setStyleSheet(f"color:{GOLD};font-size:{FS_SMALL}px;font-weight:800;letter-spacing:1px;background:transparent;")
+        hl.addWidget(arrow); hl.addWidget(name)
+        if sec["sub"]:
+            sub = QLabel(sec["sub"]); sub.setStyleSheet(f"color:{TEXT2};font-size:{FS_SMALL}px;background:transparent;")
+            hl.addWidget(sub)
+        if sec.get("count") is not None:
+            cnt = QLabel(f"({sec['count']})"); cnt.setStyleSheet(f"color:{TEXT3};font-size:{FS_SMALL}px;background:transparent;")
+            hl.addWidget(cnt)
+        rule = QFrame(); rule.setFixedHeight(1); rule.setStyleSheet(f"background:{BORDER};border:none;")
+        hl.addWidget(rule, 1)
+        head.setStyleSheet("QPushButton{background:transparent;border:none;min-height:26px;max-height:26px;padding:0;}")
+        head.setAccessibleName(f"{sec['title']} section")
+
+        def _fold(_=False, b=body, a=arrow, k=sec["key"]):
+            b.setVisible(b.isHidden())
+            a.setText("▸" if b.isHidden() else "▾")
+            if b.isHidden():
+                self._feat_folded.add(k)
+            else:
+                self._feat_folded.discard(k)
+        head.clicked.connect(_fold)
+        if sec["key"] in self._feat_folded:
+            body.setVisible(False)
+            arrow.setText("▸")
+        return head
+
+    def _feature_rail_row(self, row, cards_out):
+        """One level of a timeline: the level's number in a circle down the
+        left, a line to the next, and its cards beside it."""
+        w = QWidget(); w.setObjectName(f"featureLevel_{row['level']}")
+        w.setStyleSheet("background:transparent;")
+        hl = QHBoxLayout(w); hl.setContentsMargins(0, 0, 0, 0); hl.setSpacing(12)
+        col = QWidget(); col.setFixedWidth(36)
+        cl = QVBoxLayout(col); cl.setContentsMargins(0, 6, 0, 0); cl.setSpacing(3)
+        dot = QLabel(str(row["level"])); dot.setAlignment(Qt.AlignCenter); dot.setFixedSize(30, 30)
+        st = row["state"]
+        if st == "now":
+            dot.setStyleSheet(f"background:{INDIGO};color:{on_fill(INDIGO)};border:2px solid {IND2};"
+                              f"border-radius:15px;font-weight:800;font-size:{FS_SMALL}px;")
+        else:
+            fg = TEXT3 if st == "next" else IND2
+            dot.setStyleSheet(f"background:{SURF2};color:{fg};border:2px solid {BORDER2 if st != 'next' else BORDER};"
+                              f"border-radius:15px;font-weight:800;font-size:{FS_SMALL}px;")
+        dot.setAccessibleName(f"Level {row['level']}")
+        cl.addWidget(dot, 0, Qt.AlignHCenter)
+        line = QFrame(); line.setFixedWidth(2); line.setStyleSheet(f"background:{BORDER};border:none;")
+        cl.addWidget(line, 1, Qt.AlignHCenter)
+        hl.addWidget(col)
+        body = QVBoxLayout(); body.setContentsMargins(0, 0, 0, 8); body.setSpacing(6)
+        if row["label"]:
+            lab = QLabel(row["label"].upper())
+            lab.setObjectName("featureLevelLabel")
+            c = IND2 if st == "now" else TEXT3
+            lab.setStyleSheet(f"color:{c};font-size:{FS_TINY}px;font-weight:800;letter-spacing:1px;"
+                              f"background:transparent;margin-top:8px;")
+            body.addWidget(lab)
+        mine = []
+        for card in row["cards"]:
+            fc = FeatureCard(card)
+            body.addWidget(fc)
+            mine.append(fc)
+        cards_out.extend(mine)
+        hl.addLayout(body, 1)
+        return w, mine
 
     def _rebuild_features(self):
+        from dnd_app.core.feature_page import feature_page
         lay = self._feat_tab_lay
+        # the cards left open stay open
+        for card, *_ in getattr(self, "_feat_cards", []):
+            try:
+                if card.is_open():
+                    self._feat_open.add(card.card["id"])
+                else:
+                    self._feat_open.discard(card.card["id"])
+            except RuntimeError:
+                pass
         while lay.count():
             item = lay.takeAt(0)
             old = item.widget()
@@ -167,396 +369,57 @@ class FeaturesMixin:
                 # (detached first: deleteLater alone leaves it drawn, under
                 # the new ones, until the event loop comes round)
                 old.setParent(None); old.deleteLater()
-        self._feat_rows = []
+        self._feat_cards = []
+        self._feat_secs = []
         self._feat_extras = []
         self._feat_none = _lbl("", TEXT3, FS_BODY, align=Qt.AlignCenter)
         self._feat_none.setVisible(False)
         lay.addWidget(self._feat_none)
-        # _add_feature_section() inserts each new section at count()-1, i.e.
-        # "just before the last item" — which only produces the intended
-        # top-to-bottom order (Race, then Ancestry, then Subrace, then each
-        # class...) if a stable trailing placeholder already exists before
-        # the FIRST section is added. Without one, count()-1 on an empty
-        # layout is -1 (Qt appends at the end — fine for the first section),
-        # but then count()-1 on a 1-item layout is 0, which inserts BEFORE
-        # that first section instead of after it. Re-adding this stretch
-        # here (not just once at initial tab construction) is what keeps
-        # every rebuild — not only the first one — in the right order.
+
+        sections = feature_page(self.char)
+        chips = []
+        for sec in sections:
+            if sec["chip"] not in chips:
+                chips.append(sec["chip"])
+            box = QWidget(); box.setObjectName(f"featureGroup_{sec['key']}")
+            box.setStyleSheet("background:transparent;")
+            bl = QVBoxLayout(box); bl.setContentsMargins(0, 6, 0, 0); bl.setSpacing(6)
+            body = QWidget(); body.setStyleSheet("background:transparent;")
+            bdl = QVBoxLayout(body); bdl.setContentsMargins(0, 0, 0, 0); bdl.setSpacing(6)
+            bl.addWidget(self._feature_section_head(sec, body))
+            bl.addWidget(body)
+            rows, cards = [], []
+            if sec["rail"]:
+                for row in sec["levels"]:
+                    w, mine = self._feature_rail_row(row, cards)
+                    bdl.addWidget(w)
+                    rows.append((w, mine))
+            else:
+                for card in sec["cards"]:
+                    fc = FeatureCard(card)
+                    bdl.addWidget(fc)
+                    cards.append(fc)
+            for fc in cards:
+                if fc.card["id"] in self._feat_open:
+                    fc.set_open(True)
+                self._feat_cards.append((fc, sec["chip"]))
+            self._feat_secs.append((box, sec["chip"], rows, cards))
+            lay.addWidget(box)
+            if sec.get("table"):
+                tbl = self._add_wild_magic_section(barb=sec["table"] == "barbarian")
+                tbl.setProperty("featureChip", sec["chip"])
+                bdl.addWidget(tbl)
+        self._make_feature_chips(chips)
+        self._add_dm_browser(lay)
         lay.addStretch()
+        self._apply_feature_filter()
 
-        cls_colors = [IND2, PURP2, AMBE2, TEAL2, CRIM2, GOLD2]
-        D = CLASS_DICT
-
-        # Race features
-        race = self.char.get("species") or self.char.get("race","")
-        if race:
-            rdata = get_race(race)
-            if rdata and rdata.get("traits"):
-                # the race's own traits, less what a dragonmark (or a
-                # subrace's own ability scores) replaces: data/races.py
-                from dnd_app.data.races import race_traits_for
-                display_traits = race_traits_for(self.char)
-                # Only add the section if there's still something left to
-                # show — the check above (rdata.get("traits")) only looked
-                # at the UNFILTERED list, so a race whose traits happened to
-                # be entirely ASI-only would pass that check but then call
-                # _add_feature_section with an empty list here, producing a
-                # section with nothing in it (or none at all, depending on
-                # how that function handles empty items) sitting above
-                # Subrace — which is what "subrace displaying before race"
-                # would actually look like, even though the add order was
-                # correct the whole time.
-                if display_traits:
-                    self._add_feature_section(f"Race: {race}", TEAL2, display_traits,
-                                              badge_color=TEAL2)
-            # Draconic ancestry trait (Dragonborn)
-            if race == "Dragonborn":
-                anc = self.char.get("draconic_ancestry","")
-                if anc:
-                    try:
-                        from dnd_app.data.races import DRACONIC_ANCESTRY
-                        anc_data = DRACONIC_ANCESTRY.get(anc)
-                        if anc_data:
-                            dmg, shape, desc = anc_data
-                            self._add_feature_section(
-                                f"Draconic Ancestry: {anc}", GOLD2,
-                                [f"Damage type: {dmg}  ·  Breath shape: {shape}",
-                                 f"Breath Weapon: 2d6 (3d6 Lv6, 4d6 Lv11, 5d6 Lv16)  ·  {desc}",
-                                 f"Resistance: {dmg} damage"],
-                                badge_color=GOLD2)
-                    except ImportError: pass
-            # Subrace traits: its own line in data/races.py, less its ability
-            # scores and sourcebook tag (core/features.py, as Android's)
-            subrace = self.char.get("subrace","")
-            if subrace and rdata:
-                from dnd_app.core.features import subrace_traits
-                parts = subrace_traits(rdata, subrace)
-                if parts:
-                    self._add_feature_section(
-                        f"Subrace: {subrace}", TEAL, parts, badge_color=TEAL)
-
-        # Background feature
-        bg = get_background(self.char.get("background",""))
-        if bg and bg.get("feature"):
-            self._add_feature_section(f"Background: {self.char.get('background','')}", GOLD,
-                                      [f"{bg['feature']}: {bg.get('feature_desc','')}"],
-                                      badge_color=GOLD)
-
-        # Per-class features
-        for ci, c in enumerate(self.char.get("classes",[])):
-            cname = c["class"]; clvl = c["level"]; sub = c.get("subclass","")
-            color = cls_colors[ci % len(cls_colors)]
-            title = f"{cname}" + (f" — {sub}" if sub else "") + f"  (Level {clvl})"
-            feats = []
-            cdata = D.get(cname, {}); features = cdata.get("features",{})
-
-            # Load proper subclass feature names from SUBCLASS_FEATURES
-            try:
-                from dnd_app.data.class_features import SUBCLASS_FEATURES, CLASS_FEATURE_INDEX
-                proper_names = SUBCLASS_FEATURES.get((cname, sub), [])
-            except ImportError:
-                proper_names = []
-                CLASS_FEATURE_INDEX = {}
-            # Fall back to parsed summary names from CLASS_DICT
-            if not proper_names:
-                proper_names = self._get_subclass_feature_names(cname, sub, D)
-            sub_feat_idx = 0  # pointer into proper names
-
-            # VERIFIED, LEVEL-KEYED override: if this (class, subclass) has
-            # been properly indexed in CLASS_FEATURE_INDEX with real,
-            # sourced levels (not just a flat unordered list), use that
-            # directly instead of the fragile placeholder-position-counting
-            # below — the positional system silently misassigns levels any
-            # time the number of generic "Archetype Feature"-style
-            # placeholders in classes.py's per-level table doesn't exactly
-            # match the length of SUBCLASS_FEATURES' flat list (see class_feature_index.py).
-            _sub_index = CLASS_FEATURE_INDEX.get(cname, {}).get(sub)
-            _has_verified_levels = isinstance(_sub_index, dict)
-            if _has_verified_levels:
-                for lvl in sorted(_sub_index):
-                    if lvl > clvl:
-                        break
-                    for real_name in _sub_index[lvl]:
-                        feats.append(f"[Lv {lvl}]  {sub}: {real_name}")
-
-            if not _has_verified_levels:
-                for lvl in range(1, clvl+1):
-                    for fname in features.get(lvl, []):
-                        is_sub_slot = any(kw in fname.lower() for kw in [
-                            'subclass feature', 'archetype feature', 'domain feature',
-                            'circle feature', 'sacred oath feature', 'primal path feature',
-                            'order feature', 'college feature', 'ranger archetype feature',
-                            'ranger archetype', '(subclass)', 'martial archetype',
-                            'roguish archetype', 'sorcerous origin', 'otherworldly patron',
-                            'divine domain', 'druid circle', 'monastic tradition',
-                            'primal path', 'bardic college', 'arcane tradition',
-                            'sacred oath', 'ranger conclave', 'alchemical homunculus',
-                            'path feature',       # Barbarian Path Feature at Lv6/10/14
-                            'sacred oath feature', # Paladin oath feature at Lv7/15/20
-                            'bard college feature', # Bard college feature at Lv6/14
-                            'ki feature',          # Monk ki features
-                        ])
-                        if is_sub_slot:
-                            # Some slot markers are explicitly optional ("some
-                            # domains grant a second 1st-level feature") — only
-                            # treat them as real if this subclass's feature list
-                            # is actually long enough to have that extra entry.
-                            # Baseline is 5 (the normal single-1st-level-feature
-                            # count for Cleric domains); domains with a genuine
-                            # second 1st-level feature provide 6+ and so do
-                            # consume this slot. Without this check, domains
-                            # with only 5 features had every feature after 1st
-                            # level shift one slot early, ending in a blank
-                            # placeholder at the final level.
-                            is_optional_slot = "second 1st-level feature" in fname.lower()
-                            if is_optional_slot and len(proper_names) <= 5:
-                                continue  # phantom slot — this domain doesn't have one
-                            if sub and sub_feat_idx < len(proper_names):
-                                real_name = proper_names[sub_feat_idx]
-                                sub_feat_idx += 1
-                                feats.append(f"[Lv {lvl}]  {sub}: {real_name}")
-                            elif sub:
-                                sub_feat_idx += 1
-                                feats.append(f"[Lv {lvl}]  {sub} — Subclass Feature")
-                            else:
-                                feats.append(f"[Lv {lvl}]  {fname}")
-                        else:
-                            feats.append(f"[Lv {lvl}]  {fname}")
-
-            # Add invocations
-            invocs = self.char.get("eldritch_invocations", [])
-            if cname == "Warlock" and invocs:
-                feats.append(f"[Invocations]  " + ", ".join(
-                    i.split("–")[0].strip() for i in invocs))
-
-            # Totem Warrior: once the 3rd-level Totem Spirit choice has
-            # actually been made, replace the generic "Totem Spirit" line
-            # (which otherwise always lists all three options — Bear/Eagle/
-            # Wolf — with no indication of which one this character has)
-            # with the specific animal and its real effect text.
-            if cname == "Barbarian" and "totem" in sub.lower():
-                totem_pick = self.char.get("_choices", {}).get("totem_spirit_3", [])
-                if totem_pick:
-                    pick_text = totem_pick[0]
-                    animal = pick_text.split("–")[0].split("-")[0].strip()
-                    for _i, _f in enumerate(feats):
-                        if _f.rstrip().endswith("Totem Spirit"):
-                            feats[_i] = f"{_f} ({animal}) – {pick_text.split('–',1)[-1].strip() if '–' in pick_text else pick_text}"
-                            break
-
-            # Add metamagic
-            metamagic = self.char.get("_choices", {}).get("sorcerer_metamagic", [])
-            if cname == "Sorcerer" and metamagic:
-                feats.append(f"[Metamagic]  " + ", ".join(
-                    m.split("–")[0].strip() for m in metamagic))
-
-            # Add infusions
-            infusions = self.char.get("artificer_infusions", [])
-            if cname == "Artificer" and infusions:
-                feats.append(f"[Infusions]  " + ", ".join(
-                    i.split("–")[0].strip() for i in infusions))
-
-            # Add battle master maneuvers
-            maneuvers = self.char.get("battle_master_maneuvers", [])
-            if cname == "Fighter" and "battle master" in sub.lower() and maneuvers:
-                feats.append(f"[Maneuvers]  " + ", ".join(
-                    m.split("–")[0].strip() for m in maneuvers))
-
-            # Fix Indomitable display - show uses count clearly
-            if cname == "Fighter":
-                uses = 1 if clvl >= 9 else 0
-                if clvl >= 13: uses = 2
-                if clvl >= 17: uses = 3
-                # Replace the plain feature text with a clearer version
-                feats = [f if "Indomitable" not in f
-                         else f"[Lv {([lvl for lvl in [9,13,17] if lvl<=clvl] or [0])[-1]}]  Indomitable — Reroll failed save ({uses}/Long Rest)"
-                         for f in feats]
-
-            if feats:
-                # (cls: a feature name other classes share reads as this class's own)
-                self._add_feature_section(title, color, feats, badge_color=color, cls=c.get("class", ""))
-
-        # Chosen feats (a DM-granted one has its own section, below)
-        feat_items = []
-        for fname in self.char.get("feats",[]):
-            if fname in self.char.get("dm_feats", []):
-                continue
-            fd = get_feat(fname)
-            if fd:
-                chosen_ab = self.char.get("_choices", {}).get(f"feat_ability_{fname.lower().replace(' ','_')}")
-                prefix = f"{chosen_ab}-based — " if chosen_ab else ""
-                # a one-line headline only -- the full rules text is in the
-                # row's tooltip / Show Details, so it isn't said twice
-                summary = feat_summary(fd)
-                feat_items.append(f"{fname}: {prefix}{summary}")
-        if feat_items:
-            self._add_feature_section("Feats", PURP2, feat_items, badge_color=PURP2)
-
-        # Fighting Style is fully stored and mechanically wired (drives
-        # real attack/damage bonuses), but is displayed here for visibility in the Features tab.
-        fs_items = self.char.get("fighting_styles", [])
-        if fs_items:
-            self._add_feature_section("Fighting Style", TEAL2, list(fs_items), badge_color=TEAL2)
-
-        # Battle Master maneuvers
-        maneuvers = self.char.get("battle_master_maneuvers",[])
-        if maneuvers:
-            from dnd_app.core.calculator import get_superiority_die
-            import re as _re_sd
-            sd = get_superiority_die(self.char)
-            maneuvers = [_re_sd.sub(r'\bSD\b', sd, m) for m in maneuvers]
-            self._add_feature_section("Battle Master Maneuvers", AMBE2, maneuvers, badge_color=AMBE2)
-
-        # Wild Magic surge table
-        # Wild Magic: check if any Sorcerer has Wild Magic subclass stored
-        # Both Wild Magic tables if multiclassing both
-        wm_sorc = any(c.get("class")=="Sorcerer" and "wild magic" in c.get("subclass","").lower()
-                      for c in self.char.get("classes",[]))
-        wm_barb = any(c.get("class")=="Barbarian" and "wild magic" in c.get("subclass","").lower()
-                      for c in self.char.get("classes",[]))
-        # Also from _choices
-        for cn,v in self.char.get("_choices",{}).items():
-            if "subclass" in cn.lower() and isinstance(v,list) and v:
-                val=str(v[0]).lower()
-                if "wild magic" in val:
-                    if "sorcerer" in cn.lower(): wm_sorc=True
-                    if "barbarian" in cn.lower(): wm_barb=True
-        if wm_sorc: self._add_wild_magic_section(barb=False)
-        if wm_barb: self._add_wild_magic_section(barb=True)
-
-        # Eldritch Invocations
-        invocs = self.char.get("eldritch_invocations",[])
-        if invocs:
-            self._add_feature_section("Eldritch Invocations", PURP2, invocs, badge_color=PURP2)
-
-        # Metamagic (only the options actually chosen — never the full pool)
-        metamagic = self.char.get("_choices", {}).get("sorcerer_metamagic", [])
-        if metamagic:
-            self._add_feature_section("Metamagic", PURP2, metamagic, badge_color=PURP2)
-
-        # Blood Curses Known (Blood Hunter) — only the ones actually chosen
-        blood_curses = self.char.get("_choices", {}).get("blood_hunter_curses", [])
-        if blood_curses:
-            self._add_feature_section("Blood Curses Known", CRIM2, blood_curses, badge_color=CRIM2)
-
-        # Mutagen Formulas Known (Blood Hunter, Order of the Mutant)
-        mutagens = self.char.get("_choices", {}).get("blood_hunter_mutagens", [])
-        if mutagens:
-            self._add_feature_section("Mutagen Formulas Known", CRIM2, mutagens, badge_color=CRIM2)
-
-        # Elemental Disciplines (Way of the Four Elements)
-        disciplines = self.char.get("_choices", {}).get("four_elements_disciplines", [])
-        if disciplines:
-            self._add_feature_section("Elemental Disciplines", PURP2, disciplines, badge_color=PURP2)
-
-        # Replicated Magic Items (Artificer): the real rule requires
-        # explicitly learning each one as its own "Replicate Magic
-        # Item" infusion pick, consuming an infusions-known slot — not
-        # every item across every tier the character's level qualifies
-        # for. Shows only the specific items the character has actually learned.
-        from dnd_app.core.character import class_levels as _cls_lvls_repl
-        art_lvl = _cls_lvls_repl(self.char).get("Artificer", 0)
-        if art_lvl >= 2:
-            from dnd_app.data.classes import ARTIFICER_REPLICABLE_ITEMS
-            all_replicable_names = {name for tier_items in ARTIFICER_REPLICABLE_ITEMS.values()
-                                     for name, _ in tier_items}
-            known_infusions = self.char.get("artificer_infusions", [])
-            learned_replicated = [inf.split(" \u2013 ")[0].strip() for inf in known_infusions
-                                   if inf.split(" \u2013 ")[0].strip() in all_replicable_names]
-            if learned_replicated:
-                attunement_lookup = {name: att for tier_items in ARTIFICER_REPLICABLE_ITEMS.values()
-                                      for name, att in tier_items}
-                display_items = [f"{name} (requires attunement)" if attunement_lookup.get(name) else name
-                                 for name in learned_replicated]
-                self._add_feature_section("Replicated Magic Items (learned)", TEAL2, display_items, badge_color=TEAL2)
-
-                # ── Optional / Alternate Class Features (TCoE) ──────────────────────
-        try:
-            from dnd_app.data.class_features import OPTIONAL_CLASS_FEATURES as _OPT
-        except ImportError:
-            _OPT = {}
-        _enabled = self.char.get("_choices",{}).get("optional_features",{})
-        _rules = self.char.get("optional_rules", {})
-        for _ce in self.char.get("classes",[]):
-            _cn=_ce.get("class",""); _cl=_ce.get("level",1)
-            _cls_opts=_OPT.get(_cn,{}); _items=[]
-            for _ul,_fl in sorted(_cls_opts.items()):
-                if _ul>_cl: continue
-                for _f in _fl:
-                    # Some optional features (Harness Divine Power) have
-                    # a Settings-popup toggle; others (Martial
-                    # Versatility, Deft Explorer, etc.) only have this
-                    # per-feature one. Checks both, so a feature enabled
-                    # through either mechanism is recognized consistently.
-                    _rules_key = _f["name"].lower().replace(" ", "_")
-                    if _enabled.get(_f["name"],False) or _rules.get(_rules_key, False):
-                        _rep=_f.get("replaces")
-                        _tag=f"(replaces {_rep})" if _rep else "(TCoE optional)"
-                        _items.append(f"[Lv{_ul}]  {_f['name']} {_tag}")
-            if _items:
-                self._add_feature_section(f"✦ Optional — {_cn}",AMBER,_items,badge_color=AMBER)
-
-        # ── DM-Granted Feats Browser ─────────────────────────────────────────
+    def _add_dm_browser(self, lay):
+        """The DM's card at the foot of the page: give a feat, a gift or a
+        character secret outside the levels (folded until it's wanted)."""
         from dnd_app.data.feats import ALL_FEATS, get_feat as _get_feat
-        # Show any already-granted feats
-        granted = self.char.get("dm_feats", [])
-        if granted:
-            feat_items = []
-            for fname in granted:
-                ft = _get_feat(fname)
-                if ft:
-                    src_tag = ft.get("source","")
-                    pre = ft.get("prereq","")
-                    desc = feat_summary(ft)   # headline; full text in Show Details
-                    feat_items.append(
-                        f"<b>{fname}</b>" + (f"  [{src_tag}]" if src_tag else "")
-                        + (f"  <i>Req: {pre}</i>" if pre else "")
-                        + (f"<br>{desc}" if desc else "")
-                    )
-                else:
-                    feat_items.append(fname)
-            self._add_feature_section("✦  DM-Granted Feats", AMBER, feat_items, badge_color=AMBER)
-
-        # Show any already-granted DM rewards (Character Secrets / narrative
-        # bonus features) — same pattern as DM-Granted Feats above, so a
-        # granted reward actually appears on the sheet, not just as a
-        # checkmark in the browser below.
-        from dnd_app.data.dm_rewards import get_dm_reward as _get_dm_reward
-        granted_rewards = self.char.get("dm_rewards", [])
-        if granted_rewards:
-            reward_items = []
-            for rname in granted_rewards:
-                rw = _get_dm_reward(rname)
-                if rw:
-                    pre = rw.get("prereq","")
-                    # NOT _summarize_feature_text() here, unlike DM-Granted
-                    # Feats above -- DM Rewards (Supernatural Gifts, Dark
-                    # Gifts, Iconoclast's tiers, etc.) routinely run several
-                    # paragraphs, and a max_len=180 summary truncated mid-
-                    # sentence with no way to see the rest: the row label
-                    # has no height cap (it just grows), and the right-click
-                    # "Show Details" fallback reuses this same string when
-                    # there's no separate FEATURE_DESCS lookup for a DM
-                    # reward's custom name -- so a truncated summary here
-                    # was truncated everywhere, with no path to the full
-                    # text at all. _format_multi_para() renders the real
-                    # paragraph breaks and bolds each trait's name, same as
-                    # the feat browser's detail panel does for these.
-                    desc = self._format_multi_para(rw.get("desc",""))
-                    cat = rw.get("category",""); src = rw.get("source","")
-                    tag = f"{cat} \u2014 {src}" if cat else ""
-                    reward_items.append(
-                        f"<b>{rname}</b>"
-                        + (f"  <i>[{tag}]</i>" if tag else "")
-                        + (f"  <i>Req: {pre}</i>" if pre else "")
-                        + (f"<br>{desc}" if desc else "")
-                    )
-                else:
-                    reward_items.append(rname)
-            self._add_feature_section("✦  DM-Granted Bonus Features", AMBER, reward_items, badge_color=AMBER)
-
-        # Feat browser card — always visible at bottom
         fb_card = QFrame()
+        fb_card.setObjectName("dmBrowser")
         fb_card.setStyleSheet(
             f"QFrame{{background:{SURF};border:1px solid {qa(AMBER,0x44)};border-radius:10px;}}")
         fb_cl = QVBoxLayout(fb_card)
@@ -564,10 +427,8 @@ class FeaturesMixin:
 
         # Header row
         fb_hdr = QHBoxLayout()
-        fb_hdr.addWidget(_lbl("✦  BONUS FEATURE BROWSER  —  DM Rewards", AMBER, FS_SMALL, bold=True, wrap=False))
-        fb_hdr.addStretch()
-        fb_hdr.addWidget(_lbl("Double-click or click Add to grant a feat outside class progression",
-                               TEXT3, FS_TINY, wrap=False))
+        fb_hdr.addWidget(_lbl("A feat, a gift or a secret the DM hands out, outside the levels. "
+                              "Double-click one, or choose it and Give it.", TEXT2, FS_SMALL, wrap=True))
         fb_cl.addLayout(fb_hdr)
 
         # Search + list row
@@ -711,7 +572,7 @@ class FeaturesMixin:
                     + f"<br><br>{self._format_multi_para(full_desc)}")
         fb_list.currentItemChanged.connect(lambda cur,prev: _on_feat_select(cur))
 
-        btn_add = _btn("＋  Grant Feat", AMBER, variant="danger", border_width=1,
+        btn_add = _btn("＋  Give it", AMBER, variant="danger", border_width=1,
                         font_size=FS_SMALL, padding="6px 12px")
         btn_rem = _btn("Remove", CRIMSON, variant="danger", border_width=1,
                         bg_alpha=0x22, border_alpha=0x55, text_color=CRIM2,
@@ -762,11 +623,14 @@ class FeaturesMixin:
         fb_right.addStretch()
         fb_body.addLayout(fb_right, 1)
         fb_cl.addLayout(fb_body)
-        lay.addWidget(fb_card)
-        self._feat_extras.append(fb_card)
-
-        lay.addStretch()
-        self._apply_feature_filter()
+        box = QWidget(); box.setObjectName("featureGroup_dm"); box.setStyleSheet("background:transparent;")
+        bxl = QVBoxLayout(box); bxl.setContentsMargins(0, 10, 0, 0); bxl.setSpacing(6)
+        bxl.addWidget(self._feature_section_head(
+            {"key": "dm", "title": "From the DM", "sub": "give a feat, a gift or a secret", "count": None}, fb_card))
+        bxl.addWidget(fb_card)
+        lay.addWidget(box)
+        self._dm_browser_card = fb_card
+        self._feat_extras.append(box)
 
     @staticmethod
     def _inject_ability_modifier(item_str: str, char: dict) -> str:
@@ -856,96 +720,6 @@ class FeaturesMixin:
             chunks.append(current)
         return '<br><br>'.join(chunks)
 
-    def _add_feature_section(self, title, color, items, badge_color=None, cls=""):
-        from dnd_app.core.features import feature_detail, feature_search_text
-        # Resolve '+STAT' placeholders into real numbers for every item —
-        # resolve_stat_placeholders() is a no-op on text with no such
-        # placeholder, so it's safe to call unconditionally. (The old
-        # pre-filter here only matched "CHA modifier"-style phrasing or a
-        # bare "CHA/" pattern, missing plenty of real cases like
-        # "1+CHA/LR" shorthand, which never got resolved as a result.)
-        items = list(dict.fromkeys(items))   # dedupe (race vs ancestry overlap)
-        items = [self._inject_ability_modifier(it, self.char) for it in items]
-        grp = QGroupBox(title)
-        # (the heading at the body size: at the small size the groups were
-        # hard to tell apart down a long page. A group box's title takes
-        # the box's own font -- a size given to ::title is ignored.)
-        grp.setStyleSheet(
-            f"QGroupBox{{background:{SURF};border:1px solid {qa(color,0x55)};border-radius:10px;"
-            f"margin-top:{FS_BODY + 8}px;padding:12px 10px 10px 10px;"
-            f"font-size:{FS_BODY}px;font-weight:700;}}"
-            f"QGroupBox::title{{left:12px;top:0;background:{SURF};color:{color};"
-            f"letter-spacing:1px;padding:0 6px;}}"
-        )
-        gl = QVBoxLayout(grp); gl.setSpacing(6)
-        for item in items:
-            row = QFrame()
-            row.setObjectName("featureRow")
-            row.setStyleSheet(
-                f"QFrame#featureRow{{background:{SURF2};border:1px solid {BORDER};border-radius:7px;}}"
-                f"QFrame#featureRow:hover{{background:{SURF3};border-color:{BORDER2};}}")
-            rl = QHBoxLayout(row); rl.setContentsMargins(10,8,10,8); rl.setSpacing(8)
-            feat_lbl = _lbl(item, TEXT, FS_BODY, wrap=True)
-            feat_lbl.setMinimumHeight(32)
-            rl.addWidget(feat_lbl, 1)
-
-            # ── What's behind the row: looked up in core/features.py, the
-            # same for Android's Features screen ────────────────────────────
-            # (No tooltip that just repeats the row: background, race and
-            # subrace rows already show their whole text, so a hover only
-            # appears when something different was looked up.)
-            det = feature_detail(self.char, item, cls)
-            tip = det["tip"]
-            if tip:
-                tip_formatted = self._break_long_tooltip(tip)
-                row.setToolTip(f"<b>{det['tip_name']}</b><br><br>{tip_formatted}")
-                row.setToolTipDuration(15000)
-                feat_lbl.setToolTip(f"<b>{det['tip_name']}</b><br><br>{tip_formatted}")
-                feat_lbl.setToolTipDuration(15000)
-
-            # ── Details: the name, then what it does -- once. Right-click
-            # offers them for every row, without exception; with nothing
-            # looked up, a "Name: what it does" row splits at its colon
-            # (heading and text both being the whole row showed it twice).
-            detail_name, detail_body = det["name"], det["body"]
-            def _show_details(_name=detail_name, _body=detail_body, _row=row):
-                QMessageBox.information(
-                    _row, _name,
-                    f"<b>{_name}</b>" + (f"<br><br>{_body}" if _body else ""))
-
-            def _show_detail_menu(ev, _name=detail_name, _show=_show_details, _row=row):
-                from PySide6.QtWidgets import QMenu
-                menu = QMenu(_row)
-                act = menu.addAction(_icons.icon("features"), f"Show Details: {_name[:40]}")
-                act.triggered.connect(lambda: _show())
-                menu.exec(ev.globalPos())
-            # A feature with more to read than its row shows (something
-            # looked up, not just its own text again) opens on a click; a
-            # magnifying glass at its end says so, as on the spell and item
-            # lists. Right-click still offers the details for every row.
-            if tip:
-                row.setCursor(Qt.PointingHandCursor)
-                glass = QToolButton()
-                glass.setObjectName("featureInspect")
-                _icons.set_button_icon(glass, "search", 16, color=TEXT3)
-                glass.setCursor(Qt.PointingHandCursor)
-                glass.setAutoRaise(True)
-                glass.setFixedSize(28, 28)
-                glass.setToolTip("Read what it does")
-                glass.setAccessibleName(f"Read what {detail_name} does")
-                glass.setStyleSheet(f"QToolButton{{background:transparent;border:none;border-radius:6px;}}"
-                                    f"QToolButton:hover{{background:{qa(INDIGO, 0x33)};}}")
-                glass.clicked.connect(lambda _=False, f=_show_details: f())
-                rl.addWidget(glass, 0, Qt.AlignVCenter)
-            row.mousePressEvent = lambda ev, f=_show_detail_menu, g=_show_details, more=bool(tip): (
-                f(ev) if ev.button() == Qt.RightButton
-                else g() if more and ev.button() == Qt.LeftButton else None
-            )
-            # what the filter finds it by: its own text, what it does, its group
-            self._feat_rows.append((row, grp, feature_search_text(item, tip, title)))
-
-            gl.addWidget(row)
-        self._feat_tab_lay.insertWidget(self._feat_tab_lay.count()-1, grp)
 
     def _add_wild_magic_section(self, barb: bool = False):
         from dnd_app.data.classes import WILD_MAGIC_SURGE_TABLE, WILD_MAGIC_BARBARIAN_TABLE
@@ -990,7 +764,7 @@ class FeaturesMixin:
                     break
         roll_btn.clicked.connect(_roll)
         gl.addWidget(table)
-        self._feat_tab_lay.insertWidget(self._feat_tab_lay.count()-1, grp)
         self._feat_extras.append(grp)
+        return grp
 
     # ══ TAB 6: TRAITS & NOTES ══════════════════════════════════════════════════

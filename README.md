@@ -110,7 +110,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 | Spells | Spells | Slots, Spell Resources (Sorcery Points, Arcane Ward, Bardic Inspiration, Channel Divinity, free casts…), the Spellcasting table, My Spells and the Spell Browser |
 | Creatures | Creatures | Every stat block of yours, in groups to open and close: Mounts, Companions, Familiars, Summons, Wild Shape, Vehicles and Other. Beside them, the Bestiary (press Add on any creature and pick its group) and Mounts & Vehicles. Right-click a creature (press and hold on Android) to move it, set its max HP or remove it |
 | Choices | Choices | **Level Up** and **Level Down**, a row per class with its subclass and ⋯ (change the class, or remove it), your identity, and anything still to pick |
-| Features | Features | Every class, race and feat feature, with a box to find one and what it does a click (or tap) away, and the feats and rewards your DM grants |
+| Features | Features | Your race, background, feats and each class by level, the next level faded; a feature opens to all it says and your picks (Metamagic, invocations, maneuvers…), and the feats and gifts your DM grants |
 | Notes | Notes | Character (appearance, background, and personality, ideals, bonds and flaws with your background's suggestions to pick or roll), Backstory, and your own pages in groups you make; drag a page onto a group to move it |
 
 - **The magnifying glass opens the details** of a spell, item or feat, on both apps.

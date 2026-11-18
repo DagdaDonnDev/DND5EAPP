@@ -1255,18 +1255,39 @@ class GearMixin:
         items.sort(key=_sort_key)
         from dnd_app.core.actions import item_action_cards
         from dnd_app.core.inventory import item_weight, item_cost, money_text, weight_text
+        from dnd_app.core.weapons import hand_of as _hand_of
         _item_cards = item_action_cards(self.char)
+        # What's in hand or worn is a group of its own, at the top: a row for
+        # each weapon held (saying which hand), the armor worn, the shield.
+        # The rest of a stack stays in its group -- four daggers with one in
+        # hand are "Dagger (off hand)" under Equipped and Dagger x3 under
+        # Weapons. (group, entry, what's held: a hand / "worn" / "", count)
+        _rows = []
+        for eq in items:
+            n, qty, g = eq.get("name", ""), eq.get("qty", 1), _group_of(eq)
+            held = []
+            if g == 0 and n in _equipped_w:
+                h = _hand_of(self.char, n)
+                hands = ["main hand", "off hand"] if h == "one in each hand" else [h or "main hand"]
+                held = (hands * 2)[:min(self.char.get("equipped_weapons", []).count(n), qty)]
+            elif g == 1 and _is_equipped(eq):
+                held = ["shield" if ARMOR_DICT.get(n, {}).get("type") == "shield" else "worn"]
+            for h in held:
+                _rows.append((-1, eq, h, 1))
+            if qty - len(held) > 0:
+                _rows.append((g, eq, "", qty - len(held)))
+        _rows.sort(key=lambda r: r[0] >= 0)          # Equipped first; the rest as sorted
+        _GROUP_OF = dict(enumerate(_GROUPS)); _GROUP_OF[-1] = ("Equipped", "combat")
         _counts = {}
-        for e in items:
-            _counts[_group_of(e)] = _counts.get(_group_of(e), 0) + 1
+        for r in _rows:
+            _counts[r[0]] = _counts.get(r[0], 0) + 1
         _current_group, _header = None, None
         _hdr_font = self._gear_equip_tree.font(); _hdr_font.setBold(True)
-        for eq in items:
-            _g = _group_of(eq)
+        for _g, eq, _held, _shown in _rows:
             if _g != _current_group:
                 _current_group = _g
-                _header = QTreeWidgetItem([f"{_GROUPS[_g][0]}   ({_counts[_g]})", "", "", "", "", ""])
-                _header.setIcon(0, _icons.icon(_GROUPS[_g][1]))
+                _header = QTreeWidgetItem([f"{_GROUP_OF[_g][0]}   ({_counts[_g]})", "", "", "", "", ""])
+                _header.setIcon(0, _icons.icon(_GROUP_OF[_g][1]))
                 _header.setForeground(0, QColor(GOLD2))
                 _header.setFont(0, _hdr_font)
                 _header.setFlags(Qt.ItemIsEnabled)
@@ -1289,15 +1310,18 @@ class GearMixin:
                     else "potion" if "potion" in _ln else "file" if is_scroll_name(name)
                     else gear_icon(name) or "package")
 
-            # one of it, its own or the rules' numbers (core/inventory.py), times how many
-            total_wt = item_weight(eq) * eq.get("qty", 1)
+            # one of it, its own or the rules' numbers (core/inventory.py), times how many on this row
+            total_wt = item_weight(eq) * _shown
             wt_str = weight_text(total_wt) or "—"
-            total_cost = item_cost(eq) * eq.get("qty", 1)
+            total_cost = item_cost(eq) * _shown
             cost_str = money_text(total_cost) or ("—" if not is_magic else "")
 
-            # beside the name: "1 of 3 equipped", "dedicated weapon"
-            from dnd_app.core.weapons import inventory_notes
-            _note = ", ".join(inventory_notes(self.char, name, eq.get("qty", 1))) if is_weapon else ""
+            # beside the name: which hand (or worn), "dedicated weapon"
+            from dnd_app.core.weapons import dedicated_weapon, weapon_base
+            _notes = [_held] if _held else []
+            if is_weapon and dedicated_weapon(self.char) and weapon_base(name) == dedicated_weapon(self.char):
+                _notes.append("dedicated weapon")
+            _note = ", ".join(_notes)
             item = QTreeWidgetItem([f"{name}   ({_note})" if _note else name, "", "", wt_str, cost_str, ""])
             item.setIcon(0, _icons.icon(icon))
             is_shield = name in ARMOR_DICT and ARMOR_DICT[name].get("type") == "shield"
@@ -1342,28 +1366,46 @@ class GearMixin:
 
             _header.addChild(item)
 
-            # Equip toggle (col 1) — only for weapons/armor
+            # Equip toggle (col 1) — only for weapons/armor: ticked on an
+            # Equipped row (untick to put it away), unticked on the rest (tick
+            # to take one up)
+            _held_n = self.char.get("equipped_weapons", []).count(name) if is_weapon else 0
             if is_weapon:
-                eq_cb = QCheckBox(); eq_cb.setToolTip("Equip to combat")
-                equipped = self.char.get("equipped_weapons",[])
-                eq_cb.setChecked(name in equipped)
+                eq_cb = QCheckBox()
+                eq_cb.setToolTip("Put it away" if _held else "Take one in hand")
+                eq_cb.setChecked(bool(_held))
                 eq_cb.setStyleSheet(f"QCheckBox::indicator{{width:14px;height:14px;border-radius:3px;"
                                      f"border:1px solid {TEAL};background:{SURF2};}}"
                                      f"QCheckBox::indicator:checked{{background:{TEAL};border-color:{TEAL2};}}")
-                eq_cb.stateChanged.connect(lambda s,n=name: self._toggle_weapon_equipped(n, bool(s)))
+                if _held:
+                    eq_cb.stateChanged.connect(lambda s, n=name, k=_held_n: QTimer.singleShot(0, self,
+                        (lambda: self._put_one_away(n)) if k > 1 else (lambda: self._toggle_weapon_equipped(n, False))))
+                else:
+                    from dnd_app.core.weapons import can_hold_another
+                    _another = _held_n > 0 and can_hold_another(self.char, name, eq.get("qty", 1))
+                    eq_cb.stateChanged.connect(lambda s, n=name, an=_another: QTimer.singleShot(0, self,
+                        (lambda: self._hold_another(n)) if an else (lambda: self._toggle_weapon_equipped(n, True))))
                 self._gear_equip_tree.setItemWidget(item, 1, eq_cb)
             elif is_armor:
-                eq_cb = QCheckBox(); eq_cb.setToolTip("Wear this armor")
-                eq_cb.setChecked(self.char.get("armor_worn","") == name)
+                eq_cb = QCheckBox(); eq_cb.setToolTip("Take it off" if _held else "Wear this armor")
+                eq_cb.setChecked(bool(_held))
                 eq_cb.setStyleSheet(f"QCheckBox::indicator{{width:14px;height:14px;border-radius:3px;"
                                      f"border:1px solid {GOLD};background:{SURF2};}}"
                                      f"QCheckBox::indicator:checked{{background:{GOLD};border-color:{GOLD2};}}")
-                eq_cb.stateChanged.connect(lambda s,n=name: self._toggle_armor_worn(n, bool(s)))
+                _is_sh = ARMOR_DICT.get(name, {}).get("type") == "shield"
+                eq_cb.stateChanged.connect(lambda s, n=name, sh=_is_sh: QTimer.singleShot(0, self, lambda: (
+                    self._set_shield(bool(s)) if sh else self._toggle_armor_worn(n, bool(s)),
+                    self._refresh_gear_equipment())))
                 self._gear_equip_tree.setItemWidget(item, 1, eq_cb)
 
-            # Quantity spin (col 2)
+            # Quantity spin (col 2): how many on this row -- an Equipped row is
+            # the one in hand, the rest of the stack has the count
+            if _held:
+                one = QLabel("1"); one.setAlignment(Qt.AlignCenter)
+                one.setStyleSheet(f"color:{TEXT3};font-size:{FS_TINY}px;font-weight:700;background:transparent;")
+                self._gear_equip_tree.setItemWidget(item, 2, one)
             qty_spin = QSpinBox()
-            qty_spin.setRange(0, 9999); qty_spin.setValue(eq.get("qty",1))
+            qty_spin.setRange(0, 9999); qty_spin.setValue(_shown)
             qty_spin.setAlignment(Qt.AlignCenter)
             qty_spin.setFixedHeight(22)
             qty_spin.setStyleSheet(
@@ -1371,10 +1413,10 @@ class GearMixin:
                 f"QSpinBox{{min-height:0;background:{SURF2};border:1px solid {BORDER2};border-radius:4px;"
                 f"color:{GOLD2 if eq.get('qty',1)>1 else TEXT};font-size:{FS_TINY}px;font-weight:700;padding:0 2px;}}"
                 f"QSpinBox::up-button,QSpinBox::down-button{{width:16px;background:{BORDER};}}")
-            def _qty_changed(v, eq_ref=eq):
+            def _qty_changed(v, eq_ref=eq, in_hand=eq.get("qty", 1) - _shown):
                 from dnd_app.core.inventory import set_item_count
                 held = list(self.char.get("equipped_weapons", [])), self.char.get("armor_worn"), self.char.get("shield")
-                set_item_count(self.char, eq_ref, v)
+                set_item_count(self.char, eq_ref, v + in_hand)
                 if v == 0 or held != (self.char.get("equipped_weapons", []), self.char.get("armor_worn"),
                                       self.char.get("shield")):
                     # the row goes, or fewer are left than were in hand:
@@ -1384,7 +1426,10 @@ class GearMixin:
                     return
                 self._update_weight(); self._refresh_ammo_counters(); self._mark_dirty()
             qty_spin.valueChanged.connect(_qty_changed)
-            self._gear_equip_tree.setItemWidget(item, 2, qty_spin)
+            if not _held:
+                self._gear_equip_tree.setItemWidget(item, 2, qty_spin)
+            else:
+                qty_spin.deleteLater()
 
             # View (magnifying glass) and remove (trash) -- cols 5 and 6
             view = self._row_icon_btn("search", "Details", INDIGO)
@@ -1770,6 +1815,13 @@ class GearMixin:
         self._refresh_combat_weapons()
         self._refresh_gear_equipment()
         self._mark_dirty()
+
+    def _set_shield(self, on: bool):
+        """A shield's box in the inventory: carried on your arm or not (its
+        +2 AC) -- never as the armor you wear."""
+        self.char["shield"] = bool(on)
+        update_all(self.char); self.ctrl.refresh()
+        self._refresh_combat(); self._mark_dirty()
 
     def _toggle_armor_worn(self, name: str, wear: bool):
         if wear:

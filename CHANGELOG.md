@@ -98,6 +98,19 @@ what it says, and magic armor counts as the armor it is.
   Drag a page onto a group to move it (press and hold → Move to on
   Android); right-click for a new page or group, or to rename or remove
   one.
+- **The Features page, redone:** sections for your race, background,
+  feats, each kind of gift your DM gave (Supernatural Gifts, Dark Gifts,
+  Character Secrets) and each class on its own. Your race and each class
+  run down a timeline by level: what you have now, with the next level's
+  features shown faded. A race trait that comes later (an aasimar's
+  Radiant Soul at 3rd level, a tiefling's spells at 3rd and 5th) sits at
+  the level it starts. A feat says where it came from ("Sorcerer level
+  4", "Variant Human", "Given by the DM"). Click (or tap) a feature to
+  read all of it; a feature you choose for (Metamagic, invocations,
+  maneuvers, a fighting style, infusions, blood curses...) opens to your
+  picks and what each does. Tags show its uses left and whether it's an
+  action, bonus action or reaction. Chips at the top keep to one section.
+  The DM's feat and gift browser is folded at the foot of the page.
 - **Drag to add:** drag an item from the Equipment or Magic Items browser
   onto your inventory, or a creature from the Bestiary (or a mount or
   vehicle) onto your creatures. Dropped on a group, a creature goes in it.
@@ -145,10 +158,12 @@ what it says, and magic armor counts as the armor it is.
   clicked.
 - **Tool details:** hover a tool on the Overview (tap it on Android) for
   what it's for.
-- **Main hand and off hand:** holding two weapons, your inventory says
-  which hand each is in, and Swap hands changes them over (right-click on
-  desktop, press and hold on Android). On Android each weapon in hand has
-  its own row.
+- **Equipped, on its own:** the inventory starts with what's in your
+  hands or on you: a row for each weapon held (saying which hand), the
+  armor you wear, your shield. The rest stays in its group with the count
+  left: four daggers with one in hand are Dagger (off hand) under
+  Equipped and Dagger ×3 under Weapons. Swap hands changes them over
+  (right-click on desktop, press and hold on Android).
 - **Search long lists:** a question with many answers (a Polymorph's
   creature, a summon's) has a search box over it.
 - **Resistances on Android:** resistances, immunities and vulnerabilities
@@ -166,6 +181,8 @@ what it says, and magic armor counts as the armor it is.
 - Fixed 129 Bestiary creatures (the Alhoon, the Elemental Spirit…)
   listing their condition immunities as damage immunities, and the
   Tasha's spirits' text reading "summonSpellLevel".
+- Fixed ticking a shield in the desktop inventory making it your worn
+  armor. It's carried on your arm, as the Combat tab's shield.
 - Fixed a Dwarf, Elf or other race with no subrace picked getting the
   first subrace's darkvision (a Duergar's or Drow's 120 ft).
 - Fixed Umbral Sight not giving a Gloom Stalker darkvision.
