@@ -1117,9 +1117,10 @@ class BaseSheetMixin:
         # your own creatures: mounts, steeds, summons, companions, Wild Shape
         # (an Artificer's infusions are in the Inventory tab's side panel)
         self._creatures_tab_page = _add_tab(self._build_companions_tab(), "Creatures", "paw")
-        self._choices_tab_page = _add_tab(self._build_tab_choices(), "Choices", "choices")
         _add_tab(self._build_tab_features(),     "Features",                "features")
         _add_tab(self._build_tab_traits_notes(), "Notes",                   "notes")
+        # setting up and levelling up: last, out of the way during play
+        self._choices_tab_page = _add_tab(self._build_tab_choices(), "Choices", "choices")
         root.addWidget(self._tabs, 1)
         self._install_choices_pulse()
         self._tabs.installEventFilter(self)   # re-fit the tab names on resize

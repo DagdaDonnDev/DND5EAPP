@@ -291,11 +291,11 @@ class SkillsMixin:
             # Advantage / disadvantage badge, with a tooltip explaining why
             status = get_skill_advantage_status(self.char, sk)
             if status["net"] == "advantage":
-                adv_badge.setText("▲ ADV"); badge_color = TEAL2
+                adv_badge.setText("ADV"); badge_color = GREEN2
                 reasons = status["adv_reasons"]
                 tip = "Advantage on " + sk + " checks (passive score +5)\nFrom: " + ", ".join(reasons)
             elif status["net"] == "disadvantage":
-                adv_badge.setText("▼ DISADV"); badge_color = CRIM2
+                adv_badge.setText("DIS"); badge_color = CRIM2
                 reasons = status["disadv_reasons"]
                 tip = "Disadvantage on " + sk + " checks (passive score \u22125)\nFrom: " + ", ".join(reasons)
             elif status["advantage"] and status["disadvantage"]:

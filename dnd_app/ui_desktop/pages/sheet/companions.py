@@ -140,8 +140,9 @@ class CompanionsMixin:
         side.addTab(self._mount_vehicle_browser, "Mounts && Vehicles")
         _icons.set_tab_icon(side, self._mount_vehicle_browser, "wagon", 15)
         splitter.addWidget(side)
-        splitter.setStretchFactor(0, 3); splitter.setStretchFactor(1, 2)
-        splitter.setSizes([700, 520])
+        # your creatures and the Bestiary half and half (still draggable)
+        splitter.setStretchFactor(0, 1); splitter.setStretchFactor(1, 1)
+        splitter.setSizes([600, 600])
         outer.addWidget(splitter)
         self._refresh_companions_tab()
         return tab

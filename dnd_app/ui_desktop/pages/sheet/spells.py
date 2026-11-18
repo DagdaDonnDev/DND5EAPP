@@ -421,7 +421,7 @@ class SpellsMixin:
         self._soul_artifice_btn.clicked.connect(self._use_soul_of_artifice)
         self._soul_artifice_btn.setVisible(False)  # shown only for 20th-level Artificers
         ll.addWidget(self._soul_artifice_btn)
-        ll.addStretch(); root.addWidget(left_scroll, 2)
+        ll.addStretch(); root.addWidget(left_scroll, 1)
 
         # Right: two tabs — My Spells | Spell Browser
         right = QTabWidget()
@@ -551,11 +551,15 @@ class SpellsMixin:
         self._sp_limit_note.setVisible(False)
         brcl.addWidget(self._sp_limit_note)
         self._sp_browser = QListWidget()  # no height limit — tab gives full space
-        self._sp_browser.setStyleSheet(f"QListWidget{{background:{BG};border:1px solid {BORDER};}}QListWidget::item{{padding:6px 10px;border-bottom:1px solid {BORDER};font-size:{FS_BODY}px;}}QListWidget::item:selected{{background:{INDIGO};color:{on_fill(INDIGO)};}}")
+        self._sp_browser.setStyleSheet(f"QListWidget{{background:{BG};border:1px solid {BORDER};}}QListWidget::item{{padding:6px 10px;border-bottom:1px solid {BORDER};font-size:{FS_BODY}px;}}QListWidget::item:selected{{background:{TEAL};color:{on_fill(TEAL)};}}")
         # a magnifying glass on every row: the spell's details
         self._sp_browser.setItemDelegate(InspectButtonDelegate(self._sp_browser, self._show_spell_details))
         self._populate_spell_browser(); brcl.addWidget(self._sp_browser)
-        add_btn = pill_btn("+ Add to My Spells", INDIGO); add_btn.clicked.connect(self._add_spell_from_browser)
+        # one button for the row chosen, as every browser (Inventory, Creatures)
+        add_btn = pill_btn("Add Selected to My Spells", TEAL)
+        add_btn.setObjectName("spellAddSelected")
+        _icons.set_button_icon(add_btn, "arrow_left", 16, color=on_fill(TEAL))
+        add_btn.clicked.connect(self._add_spell_from_browser)
         brcl.addWidget(add_btn); brl.addWidget(browser_card, 1)
         # Right-click context menu on browser
         self._sp_browser.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -568,7 +572,7 @@ class SpellsMixin:
         self._sp_cls_f.currentTextChanged.connect(self._filter_spell_browser)
         self._sp_lvl_f.currentTextChanged.connect(self._filter_spell_browser)
         self._filter_spell_browser()   # apply class restriction on first view
-        root.addWidget(right, 3)
+        root.addWidget(right, 1)          # half and half, as Inventory and Creatures
         # My Spells is populated once by _load() right after all tabs finish
         # building (see CharacterSheet.__init__) — NOT here too. This used
         # to also call _populate_my_spells_from_char() at the end of tab

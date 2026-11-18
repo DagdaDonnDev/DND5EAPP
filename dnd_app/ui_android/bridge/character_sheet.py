@@ -626,8 +626,12 @@ class CharacterSheetBridge(QObject):
             from dnd_app.core.calculator import skill_prof_level
             prof_level = skill_prof_level(self.char, skill)
             bonus = get_skill_bonus(self.char, skill)
+            from dnd_app.core.calculator import get_skill_advantage_status
+            net = get_skill_advantage_status(self.char, skill).get("net")
             out.append({
                 "name": skill,
+                # advantage or disadvantage on its checks: "ADV" / "DIS" / ""
+                "adv": {"advantage": "ADV", "disadvantage": "DIS"}.get(net, ""),
                 "ability": SKILL_ABILITY[skill],
                 "bonus": bonus,
                 "bonusText": _mod_text(bonus),
@@ -743,6 +747,23 @@ class CharacterSheetBridge(QObject):
         """One held copy back in the pack -- the other of two daggers stays."""
         from dnd_app.core.weapons import unequip_weapon
         unequip_weapon(self.char, name, every=False)
+        self.ctrl.refresh()
+        self._changed()
+
+    @Slot(str, bool, result=list)
+    def weaponHandChoice(self, name: str, another: bool = False):
+        """Both hands full and this weapon could go in either (light, or
+        one-handed with Dual Wielder): ["Main hand: X", "Off hand: Y"] to
+        ask which it replaces, [] when there's nothing to ask."""
+        from dnd_app.core.weapons import hand_choice
+        return hand_choice(self.char, name, another)
+
+    @Slot(str, str, bool)
+    def equipWeaponInHand(self, name: str, hand: str, another: bool = False):
+        from dnd_app.core.weapons import equip_weapon
+        from dnd_app.core.loadout import sync_magic_weapons
+        equip_weapon(self.char, name, another=another, hand=hand)
+        sync_magic_weapons(self.char)
         self.ctrl.refresh()
         self._changed()
 
@@ -1071,8 +1092,7 @@ class CharacterSheetBridge(QObject):
                         rows.append(r)
             if rows:
                 out.append({"group": group, "icon": icon, "items": rows, "count": len(rows)})
-        if held_rows:
-            out.insert(0, {"group": "Equipped", "icon": "combat", "items": held_rows, "count": len(held_rows)})
+        # (what's held or worn is on the Loadout card, not here)
         return out
 
     def _weapon_rows(self, item: dict) -> list:
@@ -1657,6 +1677,134 @@ class CharacterSheetBridge(QObject):
             self.toastRequested.emit(f"{item_name} is {base.lower()}" if _armor_base_options(item_name)
                                      else f"{item_name} is a {base.lower()}")
             self._changed()
+
+    # ── Loadout: what you hold and wear (core/loadout.py, as desktop's) ──
+    @Property("QVariant", notify=statsChanged)
+    def loadout(self):
+        from dnd_app.core.loadout import loadout
+        return loadout(self.char)
+
+    @Property(list, notify=statsChanged)
+    def carriedMagicItems(self):
+        """The magic items you carry and aren't using: the Inventory's
+        Magic Items group."""
+        from dnd_app.core.loadout import in_inventory, item_slot
+        from dnd_app.core.magic_items import find_magic_item
+        out = []
+        for m in self.magicItems:
+            e = find_magic_item(self.char, m["uid"])
+            if e is not None and in_inventory(self.char, e):
+                out.append(dict(m, slot=item_slot(m["name"])))
+        return out
+
+    @Slot(str, result="QVariant")
+    def putOnMagicItem(self, uid: str):
+        """Put a carried magic item on. Returns what to ask first, if
+        anything: {"ask": "where", "options": places} for a tattoo,
+        {"ask": "swap", "options": names, "uids": uids} when its slot is
+        full; {} once it's on."""
+        from dnd_app.core.loadout import slot_taken_by, put_on, is_tattoo, TATTOO_PLACES
+        from dnd_app.core.magic_items import find_magic_item
+        e = find_magic_item(self.char, uid)
+        if not e:
+            return {}
+        from dnd_app.core.weapons import hand_choice
+        opts = hand_choice(self.char, e.get("name", ""))
+        if opts:
+            return {"ask": "hand", "options": opts}
+        if is_tattoo(e.get("name", "")) and not e.get("where"):
+            return {"ask": "where", "options": list(TATTOO_PLACES)}
+        taken = slot_taken_by(self.char, uid)
+        if taken:
+            return {"ask": "swap", "options": [t.get("name", "") for t in taken],
+                    "uids": [t.get("uid", "") for t in taken]}
+        off = put_on(self.char, uid)
+        if off:
+            self.toastRequested.emit(f"{e.get('name', '')} on; {off} is back in your inventory")
+        self.ctrl.refresh()
+        self._changed()
+        return {}
+
+    @Slot(str, str)
+    def putOnMagicItemInHand(self, uid: str, hand: str):
+        from dnd_app.core.loadout import put_on
+        put_on(self.char, uid, hand=hand)
+        self.ctrl.refresh()
+        self._changed()
+
+    @Slot(str, str)
+    def putOnMagicItemSwapping(self, uid: str, out_uid: str):
+        from dnd_app.core.loadout import put_on
+        from dnd_app.core.magic_items import find_magic_item
+        e = find_magic_item(self.char, uid) or {}
+        off = put_on(self.char, uid, out_uid)
+        if off:
+            self.toastRequested.emit(f"{e.get('name', '')} on; {off} is back in your inventory")
+        self.ctrl.refresh()
+        self._changed()
+
+    @Slot(str, str, result="QVariant")
+    def setTattooPlace(self, uid: str, where: str):
+        """Where a tattoo is; one not yet on is then put on."""
+        from dnd_app.core.loadout import set_tattoo_place
+        from dnd_app.core.magic_items import find_magic_item
+        set_tattoo_place(self.char, uid, where)
+        e = find_magic_item(self.char, uid)
+        if e is not None and not e.get("equipped"):
+            return self.putOnMagicItem(uid)
+        self.ctrl.refresh()
+        self._changed()
+        return {}
+
+    @Slot(str)
+    def takeOffMagicItem(self, uid: str):
+        from dnd_app.core.loadout import take_off
+        take_off(self.char, uid)
+        self.ctrl.refresh()
+        self._changed()
+
+    @Slot(str, result=list)
+    def loadoutSlotOptions(self, slot: str):
+        """A slot tapped: what you carry that could go there."""
+        from dnd_app.core.loadout import slot_options
+        return slot_options(self.char, slot)
+
+    @Slot(str, str, str)
+    def equipLoadoutSlot(self, slot: str, name: str, uid: str):
+        """Put it in the slot; what was there goes back to your inventory."""
+        from dnd_app.core.loadout import equip_slot
+        if uid and slot not in ("main", "off", "both", "armor"):
+            from dnd_app.core.loadout import put_on
+            off = put_on(self.char, uid)
+        else:
+            off = equip_slot(self.char, slot, name, uid)
+        if off:
+            self.toastRequested.emit(f"{name} on; {off} is back in your inventory")
+        self.ctrl.refresh()
+        self._changed()
+
+    @Slot(str, str)
+    def takeOffLoadoutSlot(self, slot: str, uid: str):
+        """Press and hold a slot: what's there goes back to your inventory."""
+        from dnd_app.core.loadout import take_off_slot
+        gone = take_off_slot(self.char, slot, uid)
+        if gone:
+            self.toastRequested.emit(f"{gone} is back in your inventory")
+        self.ctrl.refresh()
+        self._changed()
+
+    @Slot(bool)
+    def setTwoHandedGrip(self, two: bool):
+        from dnd_app.core.loadout import set_two_handed_grip
+        set_two_handed_grip(self.char, two)
+        self.ctrl.refresh()
+        self._changed()
+
+    @Slot(str, result=list)
+    def fitsLoadoutSlot(self, slot: str):
+        """An empty slot tapped: the carried magic items that go there."""
+        from dnd_app.core.loadout import fits_slot
+        return [{"name": e.get("name", ""), "uid": e.get("uid", "")} for e in fits_slot(self.char, slot)]
 
     @Slot(str, bool)
     def setMagicItemAttuned(self, uid: str, on: bool):

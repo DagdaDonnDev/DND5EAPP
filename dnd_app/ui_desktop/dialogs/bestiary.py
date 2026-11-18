@@ -243,7 +243,7 @@ class CreatureBrowser(QWidget):
         lay.addWidget(self.count)
         self.tree = QTreeWidget()
         self.tree.setObjectName("creatureBrowserList")
-        self.tree.setHeaderLabels(["Name", "Type", "CR", "", ""])
+        self.tree.setHeaderLabels(["Name", "Type", "CR", ""])
         self.tree.setRootIsDecorated(False)
         self.tree.setUniformRowHeights(True)
         self.tree.setAlternatingRowColors(True)
@@ -260,15 +260,10 @@ class CreatureBrowser(QWidget):
         hdr.setSectionResizeMode(1, QHeaderView.Interactive); self.tree.setColumnWidth(1, 120)
         hdr.setSectionResizeMode(2, QHeaderView.Fixed); self.tree.setColumnWidth(2, 48)
         hdr.setSectionResizeMode(3, QHeaderView.Fixed); self.tree.setColumnWidth(3, 32)
-        hdr.setSectionResizeMode(4, QHeaderView.Fixed); self.tree.setColumnWidth(4, 48)
         hdr.setStyleSheet(f"QHeaderView::section{{background:{SURF2};color:{GOLD2};font-weight:700;"
                           f"font-size:{FS_SMALL}px;padding:6px;border:1px solid {BORDER};}}")
         self.tree.setItemDelegateForColumn(3, InspectButtonDelegate(
             self.tree, lambda n: show_creature_details(self, n), selected_icon="#0a0d12", column=3))
-        # Add, to the right of the glass: which group, in a popup
-        from dnd_app.ui_desktop.widgets import AddButtonDelegate
-        self.tree.setItemDelegateForColumn(4, AddButtonDelegate(
-            self.tree, self._add_name, selected_icon="#0a0d12", column=4))
         self.tree.itemDoubleClicked.connect(lambda it, _c: self._add(it))
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._row_menu)
@@ -276,6 +271,13 @@ class CreatureBrowser(QWidget):
         from dnd_app.ui_desktop.widgets import drag_source
         drag_source(self.tree, "creature", lambda i: i.siblingAtColumn(0).data(Qt.UserRole) or "")
         lay.addWidget(self.tree, 1)
+        # one button for the row chosen, as the Inventory's browsers (which
+        # group, in a popup)
+        add_sel = pill_btn("Add Selected to Creatures", TEAL)
+        add_sel.setObjectName("creatureAddSelected")
+        _icons.set_button_icon(add_sel, "arrow_left", 16, color=on_fill(TEAL))
+        add_sel.clicked.connect(lambda: self._add(self.tree.currentItem()))
+        lay.addWidget(add_sel)
         self._groups = tuple(groups)
         self._timer = QTimer(self); self._timer.setSingleShot(True); self._timer.setInterval(150)
         self._timer.timeout.connect(self.refresh)
@@ -292,7 +294,7 @@ class CreatureBrowser(QWidget):
         rows = []
         for n in names:
             c = get_creature(n) or {}
-            it = QTreeWidgetItem([n, c.get("type", ""), c.get("cr", ""), "", ""])
+            it = QTreeWidgetItem([n, c.get("type", ""), c.get("cr", ""), ""])
             it.setData(0, Qt.UserRole, n)
             it.setToolTip(0, _b.summary_line(c) if c else n)
             rows.append(it)
@@ -363,7 +365,7 @@ class MountVehicleBrowser(QWidget):
         self.search.textChanged.connect(lambda _t: self.refresh())
         lay.addWidget(self.search)
         self.tree = QTreeWidget(); self.tree.setObjectName("mountVehicleList")
-        self.tree.setHeaderLabels(["Name", "Speed", "", ""])
+        self.tree.setHeaderLabels(["Name", "Speed", ""])
         self.tree.setIndentation(14)
         self.tree.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.tree.setStyleSheet(
@@ -375,16 +377,10 @@ class MountVehicleBrowser(QWidget):
         hdr.setSectionResizeMode(0, QHeaderView.Stretch)
         hdr.setSectionResizeMode(1, QHeaderView.Interactive); self.tree.setColumnWidth(1, 170)
         hdr.setSectionResizeMode(2, QHeaderView.Fixed); self.tree.setColumnWidth(2, 32)
-        hdr.setSectionResizeMode(3, QHeaderView.Fixed); self.tree.setColumnWidth(3, 48)
         hdr.setStyleSheet(f"QHeaderView::section{{background:{SURF2};color:{GOLD2};font-weight:700;"
                           f"font-size:{FS_SMALL}px;padding:6px;border:1px solid {BORDER};}}")
         self.tree.setItemDelegateForColumn(2, InspectButtonDelegate(
             self.tree, self._inspect, selected_icon="#0a0d12", column=2,
-            has_details=lambda d: bool(d) and d != "__section__"))
-        # Add, to the right of the glass: a mount into Mounts, a vehicle into Vehicles
-        from dnd_app.ui_desktop.widgets import AddButtonDelegate
-        self.tree.setItemDelegateForColumn(3, AddButtonDelegate(
-            self.tree, lambda n: self._add(self._find(n)), selected_icon="#0a0d12", column=3,
             has_details=lambda d: bool(d) and d != "__section__"))
         self.tree.itemDoubleClicked.connect(lambda it, _c: self._add(it))
         self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -396,6 +392,11 @@ class MountVehicleBrowser(QWidget):
             return f"{name}|{i.siblingAtColumn(0).data(Qt.UserRole + 1)}" if name and name != "__section__" else ""
         drag_source(self.tree, "mount-vehicle", _carry)
         lay.addWidget(self.tree, 1)
+        add_sel = pill_btn("Add Selected to Creatures", TEAL)
+        add_sel.setObjectName("mountAddSelected")
+        _icons.set_button_icon(add_sel, "arrow_left", 16, color=on_fill(TEAL))
+        add_sel.clicked.connect(lambda: self._add(self.tree.currentItem()))
+        lay.addWidget(add_sel)
         self.refresh()
 
     @staticmethod
@@ -425,7 +426,7 @@ class MountVehicleBrowser(QWidget):
             head.setData(0, Qt.UserRole, "__section__")
             for n in hits:
                 sb = self.statblock(n, kind)
-                it = QTreeWidgetItem([n, str(sb.get("speed", "") or "—"), "", ""])
+                it = QTreeWidgetItem([n, str(sb.get("speed", "") or "—"), ""])
                 it.setData(0, Qt.UserRole, n); it.setData(0, Qt.UserRole + 1, kind)
                 head.addChild(it)
             self.tree.addTopLevelItem(head)

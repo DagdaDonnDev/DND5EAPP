@@ -385,11 +385,15 @@ class AbilityBlock(QFrame):
             self._score_spin.setRange(1, 20)
             self._score_spin.setValue(score)
             self._score_spin.setAlignment(Qt.AlignCenter)
-            self._score_spin.setButtonSymbols(QAbstractSpinBox.NoButtons)
+            # (no NoButtons: under the theme that leaves the number a 1px
+            # sliver, so the score was invisible; SPIN_NO_BUTTONS below
+            # hides the buttons instead)
             self._score_spin.setStyleSheet(
                 f"QSpinBox{{font-size:{FS_STAT}px;font-weight:700;color:{TEXT};"
-                f"border:none;background:transparent;text-align:center;padding:0;}}"
+                f"border:none;background:transparent;text-align:center;padding:0;"
+                f"min-height:{FS_STAT + 12}px;}}" + SPIN_NO_BUTTONS
             )
+            self._score_spin.setMinimumHeight(FS_STAT + 12)
             def _on_spin_change(v, self=self):
                 mod = (v - 10) // 2
                 self._mod_lbl.setText(sign(mod))

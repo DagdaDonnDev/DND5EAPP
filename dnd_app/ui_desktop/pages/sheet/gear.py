@@ -67,71 +67,69 @@ class GearMixin:
 
     # ── Level-up / class management ───────────────────────────────────────────
 
+    def _gear_tabs_style(self, tabs):
+        # See base.py's _tabs for why this is needed -- QTabWidget ignores
+        # a plain QSS "background" rule without it
+        tabs.setAttribute(Qt.WA_StyledBackground, True)
+        tabs.tabBar().setUsesScrollButtons(False)
+        tabs.tabBar().setElideMode(Qt.ElideRight)
+        tabs.setStyleSheet(
+            # selected tab joined to its page (see theme.py's QTabWidget::pane)
+            f"QTabWidget::pane{{background:{SURF};border:1px solid {BORDER};border-top-left-radius:0px;border-top-right-radius:8px;border-bottom-right-radius:8px;border-bottom-left-radius:8px;top:-1px;}}"
+            f"QTabBar::tab{{background:{SURF2};color:{TEXT2};padding:8px 12px;"
+            f"font-size:{FS_SMALL}px;border:1px solid {BORDER};"
+            f"border-top-left-radius:6px;border-top-right-radius:6px;border-bottom-right-radius:0px;border-bottom-left-radius:0px;margin-right:1px;}}"
+            f"QTabBar::tab:selected{{background:{SURF};color:{GOLD2};font-weight:700;border-bottom-color:{SURF};}}")
+
     def _build_tab_gear(self):
         tab = QWidget(); root = QVBoxLayout(tab)
         root.setContentsMargins(16,16,16,16); root.setSpacing(8)
 
-        # ── Currency tracker ─────────────────────────────────────────────────
-        money_card = _card(qa(GOLD, 0x55))
-        mcl = QHBoxLayout(money_card); mcl.setContentsMargins(14,10,14,10); mcl.setSpacing(16)
-        mcl.addWidget(_icons.icon_header("coins", _lbl("CURRENCY", GOLD2, FS_SMALL, bold=True, wrap=False)))
-        self._currency_spins = {}
-        for coin, color in [("PP","#b0a0e0"),("GP","#f5c518"),("EP","#a0c8a0"),
-                             ("SP","#d0d0d0"),("CP","#c87941")]:
-            # each coin's colour, darker on a light theme so it still reads
-            color = readable(color, SURF, SURF2)
-            col = QVBoxLayout(); col.setSpacing(2)
-            col.addWidget(_lbl(coin, color, FS_TINY, bold=True, align=Qt.AlignCenter))
-            sp = QSpinBox(); sp.setRange(0,999999); sp.setMinimumWidth(72)
-            sp.setValue(self.char.get("currency",{}).get(coin,0))
-            sp.setAlignment(Qt.AlignCenter)
-            sp.setStyleSheet(f"QSpinBox{{font-size:{FS_BODY}px;font-weight:700;color:{color};"
-                             f"border:2px solid {qa(color,0x66)};border-radius:6px;background:{SURF2};padding:2px;}}"
-                             + SPIN_NO_BUTTONS)
-            sp.valueChanged.connect(lambda v,k=coin: self._on_currency_change(k,v))
-            col.addWidget(sp); mcl.addLayout(col)
-            self._currency_spins[coin] = sp
-        mcl.addStretch()
-        root.addWidget(money_card)
-
-        # ── Two-panel browser: left = owned, right = browser tabs ────────────
+        # ── Two panels: left = yours (Loadout / Inventory / Infusions), right = the browsers
         from ...widgets import GripSplitter
         splitter = GripSplitter(Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
 
-        # ── LEFT: owned equipment + magic items ───────────────────────────────
         left_w = QWidget(); left_l = QVBoxLayout(left_w)
-        # Weight / carrying capacity
-        self._weight_lbl = _lbl("", TEXT3, FS_SMALL, wrap=False)
-        self._update_weight()
-        left_l.addWidget(self._weight_lbl)
-        left_l.setContentsMargins(0,0,4,0); left_l.setSpacing(8)
+        left_l.setContentsMargins(0, 0, 4, 0); left_l.setSpacing(8)
+        left_tabs = QTabWidget()
+        left_tabs.setObjectName("gearLeftTabs")
+        self._gear_tabs_style(left_tabs)
+        self._gear_left_tabs = left_tabs
 
-        # Vertical splitter between Carried Equipment and Magic Items —
-        # replaces a fixed 1:1 stretch split, which resized awkwardly
-        # (both panes always exactly half the space regardless of how
-        # many items were actually in each). The user can now drag to
-        # resize either pane, with a default favoring the equipment list
-        # since it's typically the larger of the two.
-        left_split = GripSplitter(Qt.Vertical)
-        left_split.setChildrenCollapsible(False)
+        # ── Loadout: in hand, worn, tattoos (core/loadout.py, as Android's)
+        lo_scroll = QScrollArea(); lo_scroll.setWidgetResizable(True)
+        lo_scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
+        lo_inner = QWidget(); lo_inner.setObjectName("loadoutPage")
+        lo_inner.setStyleSheet(f"QWidget#loadoutPage{{background:{SURF};}}")
+        self._loadout_lay = QVBoxLayout(lo_inner)
+        self._loadout_lay.setContentsMargins(12, 10, 12, 12); self._loadout_lay.setSpacing(8)
+        lo_scroll.setWidget(lo_inner)
+        left_tabs.addTab(lo_scroll, "Loadout")
+        _icons.set_tab_icon(left_tabs, lo_scroll, "shield", 15)
 
-        # ── Carried Equipment: QTreeWidget list, matching the browser's style ──
-        equip_w = QWidget(); egl = QVBoxLayout(equip_w)
-        egl.setContentsMargins(0,0,0,0); egl.setSpacing(6)
-        eq_head = QHBoxLayout(); eq_head.setContentsMargins(0, 0, 0, 0); eq_head.setSpacing(8)
-        eq_head.addWidget(_icons.icon_header("gear", _lbl("CARRIED EQUIPMENT", TEAL2, FS_SMALL, bold=True, wrap=False)))
-        eq_head.addStretch(1)
-        add_eq = QPushButton("+ Custom Item")
+        # ── Inventory: everything else you carry
+        inv_page = QWidget(); egl = QVBoxLayout(inv_page)
+        egl.setContentsMargins(10, 10, 10, 10); egl.setSpacing(8)
+        inv_head = QHBoxLayout(); inv_head.setContentsMargins(0, 0, 0, 0); inv_head.setSpacing(8)
+        self._inv_filter = QLineEdit(); self._inv_filter.setPlaceholderText("Find in your inventory…")
+        self._inv_filter.setClearButtonEnabled(True)
+        from PySide6.QtGui import QIcon
+        _icons.set_action_icon(self._inv_filter.addAction(QIcon(), QLineEdit.LeadingPosition), "search")
+        self._inv_filter.setStyleSheet(f"QLineEdit{{background:{SURF2};border:1px solid {BORDER2};"
+                                       f"border-radius:6px;padding:4px 8px;color:{TEXT};}}")
+        self._inv_filter.textChanged.connect(lambda *_: self._apply_inventory_filter())
+        inv_head.addWidget(self._inv_filter, 1)
+        add_eq = QPushButton("+ Custom item")
         add_eq.setToolTip("Add something that isn't in the Equipment browser")
         add_eq.setStyleSheet(_btn("", TEAL, variant="cta", text_color=TEAL2, radius=6, font_size=FS_SMALL,
-                                  padding="0px 12px", min_height0=True).styleSheet())
-        add_eq.setFixedHeight(26)
+                                  padding="0px 12px", min_height0=True).styleSheet()
+                             + "QPushButton{min-height:30px;max-height:30px;}")
         add_eq.clicked.connect(self._add_equipment_dialog)
-        eq_head.addWidget(add_eq, 0, Qt.AlignVCenter)
-        egl.addLayout(eq_head)
+        inv_head.addWidget(add_eq, 0, Qt.AlignVCenter)
+        egl.addLayout(inv_head)
         self._gear_equip_tree = QTreeWidget()
-        # Item | Eq (tick / scroll's Use) | Qty | Wt | Value | view | remove
+        # Item | Eq (tick: hold it, wear it, put it on) | Qty | Wt | Value | view | remove
         self._gear_equip_tree.setHeaderLabels(["Item", "Eq", "Qty", "Wt", "Value", "", ""])
         self._gear_equip_tree.setAlternatingRowColors(True)
         self._gear_equip_tree.setRootIsDecorated(False)
@@ -151,7 +149,7 @@ class GearMixin:
         # (blank) last column and leaves names cut short beside empty space
         hdr.setStretchLastSection(False)
         hdr.setSectionResizeMode(0, QHeaderView.Stretch)
-        for col, w in [(1,40),(2,76),(5,32),(6,32)]:   # col 1: Eq tick (an item is used from its card on the Combat tab)
+        for col, w in [(1,40),(2,76),(5,32),(6,32)]:
             hdr.setSectionResizeMode(col, QHeaderView.Fixed)
             self._gear_equip_tree.setColumnWidth(col, w)
         # weight and value: always as wide as what's in them, never cut short
@@ -161,51 +159,46 @@ class GearMixin:
         # a magic item's rarity is a coloured bar on the row's left edge
         self._gear_equip_tree.setItemDelegateForColumn(0, RarityBarDelegate(self._gear_equip_tree))
         egl.addWidget(self._gear_equip_tree, 1)
-        left_split.addWidget(equip_w)
-
-        # ── Magic Items / Attunement: same QTreeWidget list style ──────────────
-        art_lvl_for_max = class_levels(self.char).get("Artificer", 0)
-        att_max_display = 6 if art_lvl_for_max >= 18 else 5 if art_lvl_for_max >= 14 else 4 if art_lvl_for_max >= 10 else 3
-        if "Mystic Conflux" in self.char.get("feats", []):
-            att_max_display = max(att_max_display, 4)
-        mi_w = QWidget(); mgl = QVBoxLayout(mi_w)
-        mgl.setContentsMargins(0,0,0,0); mgl.setSpacing(6)
-        self._mi_title_lbl = _lbl(f"MAGIC ITEMS  (max {att_max_display} attuned)",
-                                   PURP2, FS_SMALL, bold=True, wrap=False)
-        mgl.addWidget(_icons.icon_header("magic", self._mi_title_lbl))
-        self._magic_items_tree = QTreeWidget()
-        # Item | Rarity | Attuned | Eq'd | view | remove
-        self._magic_items_tree.setHeaderLabels(["Item", "Rarity", "Attuned", "Eq'd", "", ""])
-        self._magic_items_tree.setAlternatingRowColors(True)
-        self._magic_items_tree.setRootIsDecorated(False)
-        self._magic_items_tree.setUniformRowHeights(True)
-        self._magic_items_tree.setStyleSheet(
-            # text colour on the widget, not ::item -- an ::item colour would
-            # override each row's own (rarity) colour
-            f"QTreeWidget{{background:{BG};border:1px solid {BORDER};border-radius:6px;"
-            f"alternate-background-color:{SURF};color:{TEXT};}}"
-            f"QTreeWidget::item{{padding:3px 2px;font-size:{FS_SMALL}px;}}"
-            f"QTreeWidget::item:selected{{background:{PURP2};color:#0a0d12;}}")
-        self._magic_items_tree.header().setStyleSheet(
-            f"QHeaderView::section{{background:{SURF2};color:{GOLD2};font-weight:700;"
-            f"font-size:{FS_TINY}px;padding:4px;border:1px solid {BORDER};}}")
-        mhdr = self._magic_items_tree.header()
-        mhdr.setStretchLastSection(False)
-        mhdr.setSectionResizeMode(0, QHeaderView.Stretch)
-        for col, w in [(1,104),(2,64),(3,52),(4,32),(5,32)]:   # Rarity wide enough for "Uncommon"
-            mhdr.setSectionResizeMode(col, QHeaderView.Fixed)
-            self._magic_items_tree.setColumnWidth(col, w)
-        self._magic_items_tree.setItemDelegateForColumn(0, RarityBarDelegate(self._magic_items_tree))
-        mgl.addWidget(self._magic_items_tree, 1)
+        left_tabs.addTab(inv_page, "Inventory")
+        _icons.set_tab_icon(left_tabs, inv_page, "package", 15)
         self._magic_item_rows = []
-        left_split.addWidget(mi_w)
-        left_split.setSizes([340, 220])
-        self._gear_left_split = left_split
-        self._gear_split_dragged = False
-        left_split.splitterMoved.connect(lambda *_: setattr(self, "_gear_split_dragged", True))
-        # (fitted once the page has its size: when it's opened, and as the lists change)
-        self._tabs.currentChanged.connect(lambda _i: QTimer.singleShot(0, self._fit_gear_split))
-        left_l.addWidget(left_split, 1)
+        left_l.addWidget(left_tabs, 1)
+
+        # ── Money and carrying, under all three
+        money_card = _card(qa(GOLD, 0x55))
+        money_card.setObjectName("gearFooter")
+        mcl = QHBoxLayout(money_card); mcl.setContentsMargins(12, 8, 12, 8); mcl.setSpacing(8)
+        self._currency_spins = {}
+        for coin, color in [("PP","#b0a0e0"),("GP","#f5c518"),("EP","#a0c8a0"),
+                             ("SP","#d0d0d0"),("CP","#c87941")]:
+            # each coin's colour, darker on a light theme so it still reads
+            color = readable(color, SURF, SURF2)
+            col = QVBoxLayout(); col.setSpacing(1)
+            col.addWidget(_lbl(coin, color, FS_TINY, bold=True, align=Qt.AlignCenter))
+            sp = QSpinBox(); sp.setRange(0,999999); sp.setFixedWidth(68)
+            sp.setValue(self.char.get("currency",{}).get(coin,0))
+            sp.setAlignment(Qt.AlignCenter)
+            sp.setAccessibleName(f"{coin} coins")
+            sp.setStyleSheet(f"QSpinBox{{font-size:{FS_BODY}px;font-weight:700;color:{color};"
+                             f"border:1px solid {qa(color,0x66)};border-radius:6px;background:{SURF2};padding:2px;}}"
+                             + SPIN_NO_BUTTONS)
+            sp.valueChanged.connect(lambda v,k=coin: self._on_currency_change(k,v))
+            col.addWidget(sp); mcl.addLayout(col)
+            self._currency_spins[coin] = sp
+        carry = QVBoxLayout(); carry.setSpacing(4); carry.setContentsMargins(12, 0, 0, 0)
+        crow = QHBoxLayout(); crow.setSpacing(6)
+        self._weight_lbl = _lbl("", TEAL2, FS_SMALL, bold=True, wrap=False)
+        self._push_lbl = _lbl("", TEXT3, FS_SMALL, wrap=False)
+        crow.addWidget(self._weight_lbl); crow.addStretch(1); crow.addWidget(self._push_lbl)
+        carry.addLayout(crow)
+        self._carry_bar = QProgressBar(); self._carry_bar.setTextVisible(False)
+        self._carry_bar.setFixedHeight(8)
+        self._carry_bar.setAccessibleName("Carried weight")
+        carry.addWidget(self._carry_bar)
+        mcl.addLayout(carry, 1)
+        left_l.addWidget(money_card)
+        self._update_weight()
+
         splitter.addWidget(left_w)
         # an item dragged over from a browser lands here (equipment asks how
         # many, as Add does)
@@ -216,20 +209,7 @@ class GearMixin:
 
         # ── RIGHT: browser tabs (Mundane | Magic) ─────────────────────────────
         right_tabs = QTabWidget()
-        # See base.py's _tabs for why this is needed -- QTabWidget ignores
-        # a plain QSS "background" rule without it, leaving the strip
-        # past the last tab showing the OS default background.
-        right_tabs.setAttribute(Qt.WA_StyledBackground, True)
-        # tabs shorten with "…" rather than spilling behind scroll arrows
-        right_tabs.tabBar().setUsesScrollButtons(False)
-        right_tabs.tabBar().setElideMode(Qt.ElideRight)
-        right_tabs.setStyleSheet(
-            # selected tab joined to its page (see theme.py's QTabWidget::pane)
-            f"QTabWidget::pane{{background:{SURF};border:1px solid {BORDER};border-top-left-radius:0px;border-top-right-radius:8px;border-bottom-right-radius:8px;border-bottom-left-radius:8px;top:-1px;}}"
-            f"QTabBar::tab{{background:{SURF2};color:{TEXT2};padding:8px 8px;"
-            f"font-size:{FS_SMALL}px;border:1px solid {BORDER};"
-            f"border-top-left-radius:6px;border-top-right-radius:6px;border-bottom-right-radius:0px;border-bottom-left-radius:0px;margin-right:1px;}}"
-            f"QTabBar::tab:selected{{background:{SURF};color:{GOLD2};font-weight:700;border-bottom-color:{SURF};}}")
+        self._gear_tabs_style(right_tabs)
 
         # ── MUNDANE BROWSER ───────────────────────────────────────────────────
         mundane_tab = QWidget(); mdt = QVBoxLayout(mundane_tab)
@@ -357,20 +337,19 @@ class GearMixin:
         right_tabs.addTab(magic_tab, "Magic Items")
         _icons.set_tab_icon(right_tabs, magic_tab, "magic", 15)
 
-        # an Artificer's infusions beside the item lists (your creatures --
-        # mounts, steeds, summons, companions -- are on the Creatures tab)
-        self._gear_side_tabs = right_tabs
+        # an Artificer's infusions: the third tab of the left side, beside
+        # Loadout and Inventory (infusions.py adds it and takes it away)
+        self._gear_side_tabs = self._gear_left_tabs
         if self._has_infuse_item_access():
             infusions_tab = self._build_tab_infusions()
-            right_tabs.addTab(infusions_tab, "Infusions")
-            _icons.set_tab_icon(right_tabs, infusions_tab, "infusions", 15)
+            self._gear_left_tabs.addTab(infusions_tab, "Infusions")
+            _icons.set_tab_icon(self._gear_left_tabs, infusions_tab, "infusions", 15)
 
         splitter.addWidget(right_tabs)
-        # what you carry gets two thirds of the width, the browser one third
-        # (still draggable)
-        splitter.setStretchFactor(0, 5)
-        splitter.setStretchFactor(1, 4)
-        splitter.setSizes([560, 440])
+        # yours and the browser half and half (still draggable)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([500, 500])
         root.addWidget(splitter,1)
 
         # Connect filters
@@ -879,178 +858,285 @@ class GearMixin:
         box.exec()
 
     def _fit_gear_split(self):
-        """The carried list and the magic items share the height by what's
-        in them: the magic items get the rows they have (three at least,
-        45% of the height at most) and the carried list the rest -- until
-        the divider between them has been dragged."""
-        sp = getattr(self, "_gear_left_split", None)
-        if sp is None or getattr(self, "_gear_split_dragged", False):
-            return
-        total = sum(sp.sizes())
-        if total <= 0:
-            return
-        tree = self._magic_items_tree
-        rows = max(3, tree.topLevelItemCount())
-        row_h = tree.sizeHintForRow(0) if tree.topLevelItemCount() else 0
-        row_h = row_h if row_h > 0 else 26
-        want = tree.header().height() + rows * row_h + 44     # (its title above it, the frame)
-        mine = int(min(want, total * 0.45))
-        sp.setSizes([total - mine, mine])
+        """(The left side is in tabs now: nothing to share out.)"""
+        return
 
     def _refresh_magic_items(self):
-        from PySide6.QtGui import QColor
-        QTimer.singleShot(0, self._fit_gear_split)     # (once the list below is rebuilt)
-        art_lvl_for_max = class_levels(self.char).get("Artificer", 0)
-        att_max_display = 6 if art_lvl_for_max >= 18 else 5 if art_lvl_for_max >= 14 else 4 if art_lvl_for_max >= 10 else 3
-        if "Mystic Conflux" in self.char.get("feats", []):
-            att_max_display = max(att_max_display, 4)
-        if hasattr(self, "_mi_title_lbl"):
-            self._mi_title_lbl.setText(f"MAGIC ITEMS  (max {att_max_display} attuned)")
-        self._magic_items_tree.clear()
-        self._magic_item_rows = []
-        from dnd_app.core.magic_items import owned_magic_items, is_magic_ammunition, can_study_manual
-        owned = owned_magic_items(self.char)
-        if not owned:
-            placeholder = QTreeWidgetItem(["No magic items. Browse & add →", "", "", "", ""])
-            placeholder.setForeground(0, QColor(TEXT3))
-            self._magic_items_tree.addTopLevelItem(placeholder)
+        """What you hold and wear (Loadout) and what you carry (Inventory)
+        after a magic item changes."""
+        self._refresh_loadout()
+        if hasattr(self, "_gear_equip_tree"):
+            self._refresh_gear_equipment()
+
+    # ── Loadout ──────────────────────────────────────────────────────────────
+    def _loadout_head(self, title, right=None):
+        row = QHBoxLayout(); row.setSpacing(8); row.setContentsMargins(0, 4, 0, 0)
+        lbl = _lbl(title.upper(), GOLD, FS_SMALL, bold=True, wrap=False)
+        lbl.setStyleSheet(lbl.styleSheet() + "letter-spacing:1px;")
+        row.addWidget(lbl)
+        rule = QFrame(); rule.setFixedHeight(1); rule.setStyleSheet(f"background:{BORDER};border:none;")
+        row.addWidget(rule, 1)
+        if right is not None:
+            row.addWidget(right)
+        return row
+
+    def _loadout_slot(self, s):
+        """One slot: its label, the item's name and what it does. Purple and
+        a ◆ when attuned, teal when worn, dashed when empty. A click (or
+        right-click) offers what can be done with it."""
+        st = s["state"]
+        colour = {"att": PURP2, "wear": TEAL, "empty": BORDER2}[st]
+        if s["key"] == "tattoo":
+            colour = AMBER if st != "att" else PURP2
+        f = QFrame(); f.setObjectName(f"loadoutSlot_{s['key']}")
+        f.setProperty("slotName", s["name"])
+        f.setCursor(Qt.PointingHandCursor)
+        bg = {"att": qa(PURP2, 0x14), "wear": SURF2, "empty": SURF}[st]
+        f.setStyleSheet(f"QFrame#{f.objectName()}{{background:{bg};border:1px {'dashed' if st == 'empty' else 'solid'} "
+                        f"{qa(colour, 0xaa)};border-radius:9px;}}"
+                        f"QFrame#{f.objectName()}:hover{{border-color:{colour};}}")
+        f.setMinimumHeight(60)
+        lay = QVBoxLayout(f); lay.setContentsMargins(10, 6, 10, 6); lay.setSpacing(1)
+        top = QHBoxLayout(); top.setSpacing(4)
+        cap = _lbl((s.get("where") or s["label"]).upper() if s["key"] == "tattoo" else s["label"].upper(),
+                   TEXT3, FS_TINY, bold=True, wrap=False)
+        top.addWidget(cap); top.addStretch(1)
+        if s["attuned"]:
+            top.addWidget(_lbl("◆", PURP2, FS_TINY, wrap=False))
+        lay.addLayout(top)
+        name = QLabel(s["name"] or "Empty")
+        name.setStyleSheet(f"color:{(TEXT3 if st == 'empty' else (PURP2 if st == 'att' else TEXT))};"
+                           f"font-size:{FS_SMALL + 1}px;font-weight:{600 if st == 'empty' else 700};background:transparent;border:none;")
+        lay.addWidget(name)
+        what = QLabel(s["what"]); what.setStyleSheet(f"color:{TEXT2};font-size:{FS_TINY}px;background:transparent;border:none;")
+        what.setVisible(bool(s["what"]))
+        lay.addWidget(what)
+        for w in (name, what):
+            w.setMinimumWidth(10)
+        # long names and lines shorten with "…" (the whole of it on hover)
+        from PySide6.QtGui import QFontMetrics
+        def _elide(ev=None, lab=name, text=name.text(), w=what, wt=s["what"]):
+            for l, t in ((lab, text), (w, wt)):
+                l.setText(QFontMetrics(l.font()).elidedText(t, Qt.ElideRight, max(10, f.width() - 22)))
+        f.resizeEvent = lambda ev, fn=_elide: fn()
+        if s.get("versatile"):
+            grip = QPushButton(s.get("grip") or "1H")
+            grip.setObjectName("gripToggle")
+            grip.setCursor(Qt.PointingHandCursor)
+            grip.setToolTip("Held in one hand or two (the Combat page shows both damage dice)")
+            grip.setAccessibleName("One or two hands")
+            grip.setStyleSheet(f"QPushButton{{background:{qa(TEAL, 0x22)};color:{TEAL2};border:1px solid {qa(TEAL, 0x99)};"
+                               f"border-radius:5px;padding:0 6px;min-height:18px;max-height:18px;font-size:{FS_TINY}px;font-weight:800;}}"
+                               f"QPushButton:hover{{background:{qa(TEAL, 0x44)};}}")
+            grip.clicked.connect(lambda _=False, two=(s.get("grip") != "2H"): self._set_grip(two))
+            top.addWidget(grip)
+        tip = (f"<b>{s['name']}</b><br>{s['what']}<br><br><i>Click to swap it for something else, "
+               f"right-click to take it off</i>" if s["name"]
+               else f"{s['label']}: nothing here.<br><i>Click to put something on</i>")
+        f.setToolTip(tip)
+        f.setAccessibleName(f"{s['label']}: {s['name'] or 'empty'}")
+        def _press(ev, slot=s, w=f):
+            if ev.button() == Qt.RightButton:
+                if slot["name"]:
+                    QTimer.singleShot(0, self, lambda: self._take_off_slot(slot))
+            elif ev.button() == Qt.LeftButton:
+                self._loadout_menu(slot, w, ev.globalPos())
+        f.mousePressEvent = _press
+        return f
+
+    def _refresh_loadout(self):
+        lay = getattr(self, "_loadout_lay", None)
+        if lay is None:
             return
+        while lay.count():
+            it = lay.takeAt(0)
+            w = it.widget()
+            if w is not None:
+                w.setParent(None); w.deleteLater()
+            elif it.layout() is not None:
+                self._clear_layout(it.layout())
+        from dnd_app.core.loadout import loadout
+        L = loadout(self.char)
+        ac = _lbl(f"AC {L['ac']}" + (f"  ·  {L['saves']}" if L["saves"] else ""), IND2, FS_SMALL, bold=True, wrap=False)
+        lay.addLayout(self._loadout_head("In hand", ac))
+        g = QGridLayout(); g.setSpacing(7)
+        col = 0
+        for s in L["in_hand"]:
+            span = 2 if s["key"] == "both" else 1
+            g.addWidget(self._loadout_slot(s), 0, col, 1, span)
+            col += span
+        for c in range(3):
+            g.setColumnStretch(c, 1)
+        lay.addLayout(g)
+        att = QWidget(); al = QHBoxLayout(att); al.setContentsMargins(0, 0, 0, 0); al.setSpacing(4)
+        al.addWidget(_lbl(f"ATTUNED {L['attuned']} / {L['limit']}", PURP2, FS_TINY, bold=True, wrap=False))
+        for i in range(L["limit"]):
+            dot = QLabel(); dot.setFixedSize(11, 11)
+            dot.setStyleSheet(f"border:2px solid {PURP2};border-radius:5px;background:{PURP2 if i < L['attuned'] else 'transparent'};")
+            al.addWidget(dot)
+        att.setObjectName("attunedPips")
+        lay.addLayout(self._loadout_head("Worn", att))
+        g = QGridLayout(); g.setSpacing(7)
+        for i, s in enumerate(L["worn"]):
+            g.addWidget(self._loadout_slot(s), i // 4, i % 4)
+        for c in range(4):
+            g.setColumnStretch(c, 1)
+        lay.addLayout(g)
+        if L["other"]:
+            lay.addLayout(self._loadout_head("Also in use"))
+            g = QGridLayout(); g.setSpacing(7)
+            for i, s in enumerate(L["other"]):
+                g.addWidget(self._loadout_slot(s), i // 4, i % 4)
+            for c in range(4):
+                g.setColumnStretch(c, 1)
+            lay.addLayout(g)
+        # tattoos: only once there's one
+        if L["tattoos"]:
+            lay.addLayout(self._loadout_head(f"Tattoos ({len(L['tattoos'])})"))
+            g = QGridLayout(); g.setSpacing(7)
+            for i, s in enumerate(L["tattoos"]):
+                g.addWidget(self._loadout_slot(s), i // 2, i % 2)
+            lay.addLayout(g)
+        lay.addStretch(1)
 
-        from dnd_app.data.magic_items import get_magic_item, get_item_effect as _gie
+    def _clear_layout(self, l):
+        while l.count():
+            it = l.takeAt(0)
+            if it.widget() is not None:
+                it.widget().setParent(None); it.widget().deleteLater()
+            elif it.layout() is not None:
+                self._clear_layout(it.layout())
 
-        # rarity first (Common -> Artifact), then name
-        def _owned_key(entry):
-            n = entry.get("name", "") if isinstance(entry, dict) else entry
-            r = (get_magic_item(n) or {}).get("rarity", "")
-            rank = self._RARITY_ORDER.index(r) if r in self._RARITY_ORDER else len(self._RARITY_ORDER)
-            return (rank, n.casefold())
+    def _loadout_menu(self, s, w, pos):
+        """Left-click a slot: what you carry that could go there (empty: to
+        put on; filled: to swap in, the old one back to your inventory), then
+        reading it, attuning, moving a tattoo, swapping hands."""
+        from PySide6.QtWidgets import QMenu
+        from dnd_app.ui_desktop.widgets import exec_menu
+        from dnd_app.core.loadout import slot_options, TATTOO_PLACES
+        menu = QMenu(w)
+        n, uid = s["name"], s["uid"]
+        opts = slot_options(self.char, s["key"]) if s["key"] != "tattoo" else []
+        if opts:
+            head = menu.addAction(("Replace with" if n else "Put on") + ":")
+            head.setEnabled(False)
+            for o in opts:
+                menu.addAction(_icons.icon("shield" if s["key"] not in ("main", "off", "both") else "combat"),
+                               o["name"]).triggered.connect(
+                    lambda checked=False, o=o: self._equip_slot(s["key"], o["name"], o["uid"]))
+        elif s["key"] != "tattoo":
+            none = menu.addAction("Nothing you carry goes here" if not n else "Nothing else you carry goes here")
+            none.setEnabled(False)
+        if n:
+            menu.addSeparator()
+            menu.addAction(_icons.icon("search"), f"Details: {n[:36]}").triggered.connect(
+                lambda: self._show_item_details_for(n))
+            if uid and s["needs"]:
+                menu.addAction(_icons.icon("magic"), "End attunement" if s["attuned"] else "Attune").triggered.connect(
+                    lambda: self._toggle_attunement(uid, not s["attuned"]))
+            from dnd_app.data.magic_items import get_item_effect as _gie
+            eff = _gie(n)
+            if isinstance(eff, dict) and eff.get("type") == "resistance_choice":
+                now = (self.char.get("_choices", {}).get(f"item_dmgtype_{n}") or [""])[0]
+                sub = menu.addMenu(_icons.icon("shield"), "Damage type" + (f" (now {now.lower()})" if now else ""))
+                for dt in eff.get("pool", []):
+                    sub.addAction(dt).triggered.connect(lambda checked=False, d=dt: self._set_item_damage_type(n, d))
+            if s["key"] == "tattoo":
+                sub = menu.addMenu(_icons.icon("pencil"), "Move it to" + (f" (now {s['where'].lower()})" if s["where"] else ""))
+                for place in TATTOO_PLACES:
+                    sub.addAction(place).triggered.connect(lambda checked=False, p=place: self._place_tattoo(uid, p))
+            if s.get("swap"):
+                menu.addAction(_icons.icon("combat"), "Swap hands").triggered.connect(self._swap_hands)
+        exec_menu(menu, pos)
 
-        for entry in sorted(owned, key=_owned_key):
-            name = entry.get("name","?")
-            uid = entry["uid"]
-            catalog = get_magic_item(name) or {}
-            rarity  = catalog.get("rarity","")
-            rarity_color = self._RARITY_COLORS.get(rarity)
-            needs_attune = bool(catalog.get("attunement"))
-            itype_local = catalog.get("type","Wondrous")
-            desc = catalog.get("desc","")
+    def _equip_slot(self, slot: str, name: str, uid: str = ""):
+        from dnd_app.core.loadout import equip_slot, slot_taken_by, put_on, is_tattoo
+        if uid and slot not in ("main", "off", "both", "armor"):
+            # a worn magic item: as from the inventory (a ring asks which)
+            self._put_on_magic(uid)
+            return
+        off = equip_slot(self.char, slot, name, uid)
+        if off:
+            self._toast(f"{name} on; {off} is back in your inventory")
+        self._after_loadout_change()
 
-            label = name
-            if is_magic_ammunition(name):
-                label = f"{entry.get('qty', 1)}× {name}"
-            if entry.get("studied"):
-                label += "  (studied)"
-            item = QTreeWidgetItem([label, rarity, "", "", ""])
-            if has_item_effect(name):
-                item.setIcon(0, _icons.icon("bolt"))
-            item.setForeground(0, QColor(TEXT))
-            item.setForeground(1, QColor(TEXT2))
-            if rarity_color:
-                item.setData(0, RARITY_ROLE, rarity_color)
+    def _take_off_slot(self, s):
+        from dnd_app.core.loadout import take_off_slot
+        gone = take_off_slot(self.char, s["key"], s["uid"])
+        if gone:
+            self._toast(f"{gone} is back in your inventory")
+        self._after_loadout_change()
 
-            tip_parts = [f"<b>{name}</b>"]
-            if rarity: tip_parts.append(f"<i>{rarity} {itype_local}</i>")
-            if needs_attune: tip_parts.append("<b>Requires Attunement</b>")
-            if entry.get("studied"): tip_parts.append("<i>Studied -- its magic is spent.</i>")
-            if desc: tip_parts.append(desc[:600] + ("…" if len(desc)>600 else ""))
-            tip = "<br>".join(tip_parts)
-            item.setToolTip(0, tip)
-            item.setData(0, Qt.UserRole, (name, entry, tip, uid))
+    def _set_grip(self, two: bool):
+        from dnd_app.core.loadout import set_two_handed_grip
+        set_two_handed_grip(self.char, two)
+        self._refresh_loadout()
+        self._mark_dirty()
 
-            self._magic_items_tree.addTopLevelItem(item)
+    def _after_loadout_change(self):
+        self._refresh_combat_weapons()
+        update_all(self.char); self.ctrl.refresh()
+        self._refresh_magic_items()
+        self._refresh_combat()
+        self._mark_dirty()
 
-            # Items that grant resistance to a damage type fixed at creation
-            # (Ring/Armor of Resistance, Absorbing Tattoo, Orb of Shielding) or
-            # re-chosen each long rest (Wyrmreaver Gauntlets) need the player
-            # to pick the type. Shown as an
-            # extra combo row directly beneath the item when applicable.
-            _eff = _gie(name)
-            if isinstance(_eff, dict) and _eff.get("type") == "resistance_choice":
-                dmg_combo = QComboBox()
-                dmg_combo.addItem("— choose damage type —", None)
-                for dt in _eff.get("pool", []):
-                    dmg_combo.addItem(dt, dt)
-                current = self.char.get("_choices", {}).get(f"item_dmgtype_{name}", [])
-                if current:
-                    idx = dmg_combo.findData(current[0])
-                    if idx >= 0: dmg_combo.setCurrentIndex(idx)
-                dmg_combo.setStyleSheet(f"QComboBox{{background:{SURF3};color:{TEXT};font-size:{FS_TINY}px;"
-                                          f"border:1px solid {BORDER};border-radius:4px;padding:1px 4px;}}")
-                dmg_combo.currentIndexChanged.connect(
-                    lambda idx, n=name, cb=dmg_combo: self._set_item_damage_type(n, cb.currentData()))
-                self._magic_items_tree.setItemWidget(item, 0, dmg_combo)
+    def _put_on_magic(self, uid: str):
+        """A magic item from your inventory onto you: a tattoo asks where it
+        is; a slot already full asks which to take off."""
+        from dnd_app.core.loadout import slot_taken_by, put_on, is_tattoo, TATTOO_PLACES, set_tattoo_place
+        from dnd_app.core.magic_items import find_magic_item
+        e = find_magic_item(self.char, uid)
+        if not e:
+            return
+        name = e.get("name", "")
+        out = ""
+        hand = self._ask_hand(name)
+        if hand is None:
+            self._refresh_magic_items()
+            return
+        if is_tattoo(name):
+            where, ok = QInputDialog.getItem(self, name, f"Where is your {name}?", TATTOO_PLACES, 0, False)
+            if not ok:
+                return
+            set_tattoo_place(self.char, uid, where)
+        taken = slot_taken_by(self.char, uid)
+        if taken:
+            names = [t.get("name", "") for t in taken]
+            pick, ok = QInputDialog.getItem(self, name, f"Take off which, to put on {name}?", names, 0, False)
+            if not ok:
+                return
+            out = taken[names.index(pick)].get("uid", "")
+        off = put_on(self.char, uid, out, hand=hand)
+        if off:
+            self._toast(f"{name} on; {off} is back in your inventory")
+        self.ctrl.refresh()
+        self._refresh_magic_items()
+        self._refresh_combat()
+        self._mark_dirty()
 
-            # Attuned checkbox (col 2) — only shown for items that
-            # actually need attunement, rather than shown-but-disabled
-            # for every item regardless of whether attunement applies.
-            if needs_attune:
-                att_cb = QCheckBox()
-                att_cb.setToolTip("Requires Attunement")
-                att_cb.setStyleSheet(f"QCheckBox::indicator{{width:14px;height:14px;border-radius:3px;"
-                                      f"border:1px solid {PURP2};background:{SURF2};}}"
-                                      f"QCheckBox::indicator:checked{{background:{PURP2};}}")
-                att_cb.blockSignals(True); att_cb.setChecked(bool(entry.get("attuned"))); att_cb.blockSignals(False)
-                att_cb.stateChanged.connect(lambda s,u=uid: self._toggle_attunement(u, bool(s)))
-                self._magic_items_tree.setItemWidget(item, 2, att_cb)
+    def _place_tattoo(self, uid: str, where: str):
+        from dnd_app.core.loadout import set_tattoo_place
+        set_tattoo_place(self.char, uid, where)
+        self._refresh_loadout()
+        self._mark_dirty()
 
-            # Equipped checkbox (col 3)
-            eq_cb = QCheckBox()
-            eq_cb.setToolTip("Equipped/worn/carried")
-            eq_cb.setStyleSheet(f"QCheckBox::indicator{{width:14px;height:14px;border-radius:3px;"
-                                 f"border:1px solid {TEAL};background:{SURF2};}}"
-                                 f"QCheckBox::indicator:checked{{background:{TEAL};}}")
-            eq_cb.blockSignals(True); eq_cb.setChecked(entry.get("equipped",True)); eq_cb.blockSignals(False)
-            eq_cb.stateChanged.connect(lambda s,u=uid: self._toggle_equipped(u, bool(s)))
-            self._magic_items_tree.setItemWidget(item, 3, eq_cb)
-
-            # View (magnifying glass) and remove (trash) -- cols 4 and 5
-            view = self._row_icon_btn("search", "Details", INDIGO)
-            view.clicked.connect(lambda checked=False, n=name, t=tip, s=bool(entry.get("studied")):
-                                 self._show_item_details_for(n, s, t))
-            self._magic_items_tree.setItemWidget(item, 4, view)
-            rm = self._row_icon_btn("trash", "Remove", CRIMSON)
-            rm.clicked.connect(lambda checked=False, u=uid: self._remove_magic_item(u))
-            self._magic_items_tree.setItemWidget(item, 5, rm)
-            self._magic_item_rows.append(item)
-
-        self._magic_items_tree.setContextMenuPolicy(Qt.CustomContextMenu)
-        prev = getattr(self, "_mi_tree_ctx_handler", None)
-        if prev is not None:
-            try:
-                self._magic_items_tree.customContextMenuRequested.disconnect(prev)
-            except (RuntimeError, TypeError):
-                pass
-        def _mi_ctx_menu(pos):
-            it = self._magic_items_tree.itemAt(pos)
-            if not it: return
-            data = it.data(0, Qt.UserRole)
-            if not data: return
-            _name, _entry, _tip, _uid = data
-            from PySide6.QtWidgets import QMenu
-            menu = QMenu(self._magic_items_tree)
-            act = menu.addAction(_icons.icon("features"), f"Details: {_name[:36]}")
-            act.triggered.connect(lambda: self._show_item_details_for(
-                _name, bool(_entry.get("studied")), _tip))
-            if can_study_manual(_entry):
-                study_act = menu.addAction(_icons.icon("magic"), f"Study {_name[:36]} (48 hrs over 6 days)")
-                study_act.triggered.connect(lambda checked=False, u=_uid: self._study_manual(u))
-            if is_magic_ammunition(_name):
-                qty_act = menu.addAction(_icons.icon("ammo"), "Set quantity…")
-                qty_act.triggered.connect(lambda checked=False, u=_uid, e=_entry: self._set_magic_ammo_qty(u, e))
-            # an "any sword" item (Flame Tongue, Holy Avenger...): which weapon it is
-            from dnd_app.core.riders import base_weapon_options, weapon_base_of
-            if base_weapon_options(_name):
-                from dnd_app.core.magic_items import armor_base_options
-                _what = "armor" if armor_base_options(_name) else "weapon"
-                _now = weapon_base_of(self.char, _name)
-                base_act = menu.addAction(_icons.icon("shield" if _what == "armor" else "combat"),
-                                          f"Which {_what} is it?" + (f" (now {_now.lower()})" if _now else ""))
-                base_act.triggered.connect(lambda checked=False, n=_name: self._pick_weapon_base(n))
-            rm_act = menu.addAction(_icons.icon("trash"), f"Remove {_name[:36]}")
-            rm_act.triggered.connect(lambda: self._remove_magic_item(_uid))
-            menu.exec(self._magic_items_tree.viewport().mapToGlobal(pos))
-        self._magic_items_tree.customContextMenuRequested.connect(_mi_ctx_menu)
-        self._mi_tree_ctx_handler = _mi_ctx_menu
+    def _apply_inventory_filter(self):
+        """Find in your inventory: rows whose name has every word typed, and
+        their groups; a group with none found steps aside."""
+        box = getattr(self, "_inv_filter", None)
+        tree = getattr(self, "_gear_equip_tree", None)
+        if box is None or tree is None:
+            return
+        words = box.text().casefold().split()
+        for i in range(tree.topLevelItemCount()):
+            h = tree.topLevelItem(i)
+            shown = 0
+            for j in range(h.childCount()):
+                c = h.child(j)
+                hit = all(w in c.text(0).casefold() for w in words)
+                c.setHidden(not hit)
+                shown += hit
+            h.setHidden(h.childCount() > 0 and shown == 0)
 
     def _pick_weapon_base(self, item_name: str):
         """Which weapon an "any sword" item is: its dice, properties and
@@ -1188,7 +1274,7 @@ class GearMixin:
             self._refresh_gear_equipment()
 
     def _update_weight(self):
-        """Show total carried weight vs capacity."""
+        """Carried weight against what you can carry: the footer's line and bar."""
         if not hasattr(self,"_weight_lbl"): return
         # the same numbers as Android's: core's total and carrying capacity
         from dnd_app.core.calculator import get_total_weight, get_carry_capacity_detail
@@ -1196,8 +1282,16 @@ class GearMixin:
         detail = get_carry_capacity_detail(self.char)
         cap, push = detail["carry"], detail["push_drag_lift"]
         col = TEAL2 if total <= cap else (AMBER if total <= push else CRIM2)
-        self._weight_lbl.setText(f"Carry: {total:g} / {cap} lb  (push {push} lb)")
-        self._weight_lbl.setStyleSheet(f"color:{col};font-size:{FS_SMALL}px;")
+        self._weight_lbl.setText(f"{total:g} / {cap} lb")
+        self._weight_lbl.setStyleSheet(f"color:{col};font-size:{FS_SMALL}px;font-weight:700;background:transparent;border:none;")
+        if hasattr(self, "_push_lbl"):
+            self._push_lbl.setText(f"push {push}")
+        bar = getattr(self, "_carry_bar", None)
+        if bar is not None:
+            bar.setRange(0, max(1, int(cap)))
+            bar.setValue(int(min(total, cap)))
+            bar.setStyleSheet(f"QProgressBar{{background:{SURF3};border:none;border-radius:4px;}}"
+                              f"QProgressBar::chunk{{background:{col};border-radius:4px;}}")
 
     def _refresh_gear_equipment(self):
         from PySide6.QtGui import QColor
@@ -1209,8 +1303,11 @@ class GearMixin:
         # once, in the Magic Items table below -- not repeated here.
         items = list(self.char.get("equipment", []))
 
-        if not items:
-            placeholder = QTreeWidgetItem(["No items — double-click from the Equipment Browser →", "", "", "", "", ""])
+        from dnd_app.core.magic_items import owned_magic_items
+        from dnd_app.core.loadout import in_inventory
+        _carried_magic = [e for e in owned_magic_items(self.char) if in_inventory(self.char, e)]
+        if not items and not _carried_magic:
+            placeholder = QTreeWidgetItem(["Nothing here: add from the browser on the right →", "", "", "", "", ""])
             placeholder.setForeground(0, QColor(TEXT3))
             self._gear_equip_tree.addTopLevelItem(placeholder)
             return
@@ -1272,8 +1369,7 @@ class GearMixin:
                 held = (hands * 2)[:min(self.char.get("equipped_weapons", []).count(n), qty)]
             elif g == 1 and _is_equipped(eq):
                 held = ["shield" if ARMOR_DICT.get(n, {}).get("type") == "shield" else "worn"]
-            for h in held:
-                _rows.append((-1, eq, h, 1))
+            # (what's held or worn is on the Loadout tab)
             if qty - len(held) > 0:
                 _rows.append((g, eq, "", qty - len(held)))
         _rows.sort(key=lambda r: r[0] >= 0)          # Equipped first; the rest as sorted
@@ -1282,6 +1378,7 @@ class GearMixin:
         for r in _rows:
             _counts[r[0]] = _counts.get(r[0], 0) + 1
         _current_group, _header = None, None
+        _hdrs = {}
         _hdr_font = self._gear_equip_tree.font(); _hdr_font.setBold(True)
         for _g, eq, _held, _shown in _rows:
             if _g != _current_group:
@@ -1294,6 +1391,7 @@ class GearMixin:
                 self._gear_equip_tree.addTopLevelItem(_header)
                 _header.setFirstColumnSpanned(True)
                 _header.setExpanded(True)
+                _hdrs[_g] = _header
             name = eq.get("name","?")
             is_magic  = bool(eq.get("magic"))
             _mi_type  = str(eq.get("type","")) if is_magic else ""
@@ -1446,6 +1544,9 @@ class GearMixin:
             # cell widget (checkbox/spinbox/button) is under the cursor.
             item.setData(0, Qt.UserRole, (name, eq, is_magic, is_weapon, is_armor, is_shield))
 
+        self._add_carried_magic_rows(_carried_magic, _hdrs, _hdr_font)
+        self._apply_inventory_filter()
+
         self._gear_equip_tree.setContextMenuPolicy(Qt.CustomContextMenu)
         # Drop the handler from the previous refresh (a bare disconnect()
         # warns on the first refresh, when nothing is connected yet).
@@ -1460,6 +1561,9 @@ class GearMixin:
             if not item: return
             data = item.data(0, Qt.UserRole)
             if not data: return
+            if data[0] == "__owned__":
+                self._owned_magic_menu(data[1], self._gear_equip_tree.viewport().mapToGlobal(pos))
+                return
             _name, _eq, _is_magic, _is_weapon, _is_armor, _is_shield = data
             from PySide6.QtWidgets import QMenu
             menu = QMenu(self._gear_equip_tree)
@@ -1524,6 +1628,112 @@ class GearMixin:
             menu.exec(self._gear_equip_tree.viewport().mapToGlobal(pos))
         self._gear_equip_tree.customContextMenuRequested.connect(_tree_ctx_menu)
         self._gear_tree_ctx_handler = _tree_ctx_menu
+
+    def _add_carried_magic_rows(self, entries, hdrs, hdr_font):
+        """Magic items you carry but aren't using: under Magic Items, with a
+        tick to put one on (or take it up), its glass and its bin."""
+        from PySide6.QtGui import QColor
+        from dnd_app.core.magic_items import is_magic_ammunition
+        from dnd_app.data.magic_items import get_magic_item
+        if not entries:
+            return
+        tree = self._gear_equip_tree
+        head = hdrs.get(2)
+        if head is None:
+            head = QTreeWidgetItem(["Magic Items", "", "", "", "", ""])
+            head.setIcon(0, _icons.icon("magic"))
+            head.setForeground(0, QColor(GOLD2)); head.setFont(0, hdr_font)
+            head.setFlags(Qt.ItemIsEnabled)
+            at = sum(1 for g in hdrs if g < 2)
+            tree.insertTopLevelItem(at, head)
+            head.setFirstColumnSpanned(True); head.setExpanded(True)
+        def _key(e):
+            r = (get_magic_item(e.get("name", "")) or {}).get("rarity", "")
+            rank = self._RARITY_ORDER.index(r) if r in self._RARITY_ORDER else len(self._RARITY_ORDER)
+            return (rank, e.get("name", "").casefold())
+        for e in sorted(entries, key=_key):
+            name, uid = e.get("name", "?"), e.get("uid", "")
+            cat = get_magic_item(name) or {}
+            label = f"{e.get('qty', 1)}× {name}" if is_magic_ammunition(name) else name
+            if e.get("attuned"):
+                label += "   (attuned)"
+            if e.get("studied"):
+                label += "   (studied)"
+            row = QTreeWidgetItem([label, "", "", "—", "", ""])
+            row.setIcon(0, _icons.icon("bolt" if has_item_effect(name) else "magic"))
+            row.setForeground(3, QColor(TEXT3))
+            colour = self._RARITY_COLORS.get(cat.get("rarity", ""))
+            if colour:
+                row.setData(0, RARITY_ROLE, colour)
+            desc = cat.get("desc", "")
+            tip = (f"<b>{name}</b><br><i>{cat.get('rarity', '')} {cat.get('type', '')}</i>"
+                   + ("<br><b>Requires attunement</b>" if cat.get("attunement") else "")
+                   + (f"<br><br>{desc[:600]}{'…' if len(desc) > 600 else ''}" if desc else ""))
+            row.setToolTip(0, tip)
+            row.setData(0, Qt.UserRole, ("__owned__", e))
+            head.addChild(row)
+            from dnd_app.core.loadout import item_slot
+            from dnd_app.core.magic_items import is_magic_shield
+            wearable = (item_slot(name) or cat.get("attunement") or cat.get("type") in ("Weapon", "Armor")
+                        or is_magic_shield(name))
+            cb = QCheckBox(); cb.setToolTip("Put it on, or take it up")
+            cb.setVisible(bool(wearable))
+            cb.setStyleSheet(f"QCheckBox::indicator{{width:14px;height:14px;border-radius:3px;"
+                             f"border:1px solid {TEAL};background:{SURF2};}}"
+                             f"QCheckBox::indicator:checked{{background:{TEAL};}}")
+            cb.stateChanged.connect(lambda s, u=uid: QTimer.singleShot(0, self, lambda: self._put_on_magic(u)))
+            tree.setItemWidget(row, 1, cb)
+            if is_magic_ammunition(name):
+                one = QLabel(str(e.get("qty", 1)))
+            else:
+                one = QLabel("1")
+            one.setAlignment(Qt.AlignCenter)
+            one.setStyleSheet(f"color:{TEXT3};font-size:{FS_TINY}px;font-weight:700;background:transparent;")
+            tree.setItemWidget(row, 2, one)
+            view = self._row_icon_btn("search", "Details", INDIGO)
+            view.clicked.connect(lambda checked=False, n=name, t=tip, st=bool(e.get("studied")):
+                                 self._show_item_details_for(n, st, t))
+            tree.setItemWidget(row, 5, view)
+            rm = self._row_icon_btn("trash", "Remove", CRIMSON)
+            rm.clicked.connect(lambda checked=False, u=uid: self._remove_magic_item(u))
+            tree.setItemWidget(row, 6, rm)
+        head.setText(0, f"Magic Items   ({head.childCount()})")
+
+    def _owned_magic_menu(self, entry, pos):
+        """Right-click a magic item in your inventory."""
+        from PySide6.QtWidgets import QMenu
+        from dnd_app.ui_desktop.widgets import exec_menu
+        from dnd_app.core.magic_items import is_magic_ammunition, can_study_manual
+        from dnd_app.data.magic_items import get_magic_item
+        name, uid = entry.get("name", ""), entry.get("uid", "")
+        menu = QMenu(self)
+        menu.addAction(_icons.icon("search"), f"Details: {name[:36]}").triggered.connect(
+            lambda: self._show_item_details_for(name, bool(entry.get("studied"))))
+        menu.addAction(_icons.icon("shield"), "Put it on" ).triggered.connect(lambda: self._put_on_magic(uid))
+        if (get_magic_item(name) or {}).get("attunement"):
+            if entry.get("attuned"):
+                menu.addAction(_icons.icon("magic"), "End attunement").triggered.connect(
+                    lambda: self._toggle_attunement(uid, False))
+            else:
+                menu.addAction(_icons.icon("magic"), "Attune").triggered.connect(
+                    lambda: self._toggle_attunement(uid, True))
+        if can_study_manual(entry):
+            menu.addAction(_icons.icon("magic"), f"Study {name[:36]} (48 hrs over 6 days)").triggered.connect(
+                lambda: self._study_manual(uid))
+        if is_magic_ammunition(name):
+            menu.addAction(_icons.icon("ammo"), "Set quantity…").triggered.connect(
+                lambda: self._set_magic_ammo_qty(uid, entry))
+        from dnd_app.core.riders import base_weapon_options, weapon_base_of
+        if base_weapon_options(name):
+            from dnd_app.core.magic_items import armor_base_options
+            what = "armor" if armor_base_options(name) else "weapon"
+            now = weapon_base_of(self.char, name)
+            menu.addAction(_icons.icon("shield" if what == "armor" else "combat"),
+                           f"Which {what} is it?" + (f" (now {now.lower()})" if now else "")).triggered.connect(
+                lambda: self._pick_weapon_base(name))
+        menu.addSeparator()
+        menu.addAction(_icons.icon("trash"), f"Remove {name[:36]}").triggered.connect(lambda: self._remove_magic_item(uid))
+        exec_menu(menu, pos)
 
     def _get_applicable_infusions(self, is_weapon, is_armor, is_shield):
         """Returns the names of infusions this character knows that apply
@@ -1766,7 +1976,11 @@ class GearMixin:
         # the hands rules are shared with Android (core/weapons.py)
         from dnd_app.core.weapons import equip_weapon, unequip_weapon
         if equip:
-            equip_weapon(self.char, name)
+            hand = self._ask_hand(name)
+            if hand is None:
+                self._refresh_gear_equipment()
+                return
+            equip_weapon(self.char, name, hand=hand)
         else:
             unequip_weapon(self.char, name)
         self._refresh_combat_weapons()
@@ -1778,8 +1992,25 @@ class GearMixin:
         """A second one of a weapon already in hand (two daggers, one in
         each hand) -- core/weapons.py, the same as Android's."""
         from dnd_app.core.weapons import equip_weapon
-        equip_weapon(self.char, name, another=True)
+        hand = self._ask_hand(name, another=True)
+        if hand is None:
+            self._refresh_gear_equipment()
+            return
+        equip_weapon(self.char, name, another=True, hand=hand)
         self._after_hands_change()
+
+    def _ask_hand(self, name: str, another: bool = False):
+        """Both hands full and this weapon could go in either (light, or
+        any one-handed one with Dual Wielder): which does it replace?
+        "main" / "off", "" when there's nothing to ask, None if cancelled."""
+        from dnd_app.core.weapons import hand_choice
+        opts = hand_choice(self.char, name, another)
+        if not opts:
+            return ""
+        pick, ok = QInputDialog.getItem(self, name, f"Your hands are full. {name} replaces:", opts, 1, False)
+        if not ok:
+            return None
+        return "main" if pick.startswith("Main") else "off"
 
     def _put_one_away(self, name: str):
         from dnd_app.core.weapons import unequip_weapon

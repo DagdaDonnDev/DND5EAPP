@@ -169,33 +169,34 @@ ApplicationWindow {
         { label: "Equipment", icon: "gear", screen: equipmentComp,
           enabled: classBridge !== null && classBridge.classConfirmedOnce },
     ]
+    // The sheet's pages, in the desktop tabs' order: Overview, Combat
+    // (and its Actions), Inventory (an Artificer's Infusions after it),
+    // Spells, Creatures, Features, Notes -- and Choices last, the setting
+    // up and levelling up kept out of the way during play.
     readonly property var sheetNavItemsBase: [
+        { label: "Overview", icon: "abilities", screen: sheetOverviewComp, enabled: true,
+          sections: ["Skills", "Senses", "Proficiencies"] },
         { label: "Combat", icon: "combat", screen: sheetComp, enabled: true },
         { label: "Actions", icon: "bolt", screen: sheetActionsComp, enabled: true,
           sections: ["Resources", "Action", "Bonus Action", "Reaction", "Passive / Other"] },
-        { label: "Overview", icon: "abilities", screen: sheetOverviewComp, enabled: true,
-          sections: ["Skills", "Senses", "Proficiencies"] },
-        { label: "Spells", icon: "spells", screen: sheetSpellsComp, enabled: true,
-          sections: ["Spell Slots", "Known Spells", "Add a Spell"],
-          pulse: window.spellsPending },
         { label: "Inventory", icon: "gear", screen: sheetEquipmentComp, enabled: true,
-          sections: ["Inventory", "Add Equipment", "Magic Items", "Add a Magic Item"] },
+          sections: ["Loadout", "Inventory", "Add Equipment", "Add a Magic Item"] },
     ]
-    // Infusions (an Artificer's) sit after Inventory; everyone else never
-    // sees the entry at all, rather than a permanently disabled one. Then
-    // Creatures: mounts, steeds, summons, companions, Wild Shape.
     readonly property var sheetNavItems:
         (sheetBridge !== null && sheetBridge.isArtificer
             ? sheetNavItemsBase.concat([{ label: "Infusions", icon: "infusions", screen: sheetInfusionsComp, enabled: true }])
             : sheetNavItemsBase
         ).concat([
+            { label: "Spells", icon: "spells", screen: sheetSpellsComp, enabled: true,
+              sections: ["Spell Slots", "Known Spells", "Add a Spell"],
+              pulse: window.spellsPending },
             { label: "Creatures", icon: "paw", screen: "SheetCompanionsScreen.qml", enabled: true },
             { label: "Features", icon: "features", screen: sheetFeaturesComp, enabled: true },
-            { label: "Choices", icon: "choices", screen: sheetChoicesComp, enabled: true,
-              pulse: window.choicesPending },
             { label: "Notes", icon: "notes", screen: sheetNotesComp, enabled: true,
               sections: ["Character", "Backstory"].concat(
                   sheetBridge !== null ? sheetBridge.notesPages.map(p => p.title) : []) },
+            { label: "Choices", icon: "choices", screen: sheetChoicesComp, enabled: true,
+              pulse: window.choicesPending },
         ])
     readonly property var navItems: sheetMode ? sheetNavItems : wizardNavItems
 

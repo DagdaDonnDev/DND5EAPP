@@ -264,8 +264,29 @@ Page {
                                     color: Theme.text
                                     font.pixelSize: Theme.fsSmall
                                     anchors.verticalCenter: parent.verticalCenter
-                                    width: parent.width - 80
+                                    width: parent.width - 80 - (modelData.adv ? advTag.width + 8 : 0)
                                     elide: Text.ElideRight
+                                }
+                                // advantage (green) or disadvantage (red) on its checks
+                                Rectangle {
+                                    id: advTag
+                                    objectName: "skillAdv_" + modelData.name
+                                    visible: modelData.adv.length > 0
+                                    readonly property color c: modelData.adv === "ADV" ? Theme.green2 : Theme.crimson2
+                                    width: advText.implicitWidth + 10
+                                    height: 18
+                                    radius: 4
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    color: Qt.rgba(c.r, c.g, c.b, 0.15)
+                                    border.color: c
+                                    Label {
+                                        id: advText
+                                        anchors.centerIn: parent
+                                        text: modelData.adv
+                                        color: parent.c
+                                        font.pixelSize: Theme.fsSmall - 2
+                                        font.bold: true
+                                    }
                                 }
                                 Label {
                                     text: modelData.bonusText

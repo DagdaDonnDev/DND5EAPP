@@ -16,7 +16,26 @@ def _props(name: str, char: dict = None) -> list:
     return w.get("properties", []) if isinstance(w, dict) else []
 
 
-def equip_weapon(char: dict, name: str, another: bool = False) -> None:
+def hand_choice(char: dict, name: str, another: bool = False) -> list:
+    """Taking up this weapon with both hands already full of weapons, when
+    it could go in either: a light one (any one-handed weapon with Dual
+    Wielder). Returns what to ask -- ["Main hand: Longsword", "Off hand:
+    Dagger"] -- or [] when there's nothing to choose (equip_weapon decides)."""
+    equipped = char.get("equipped_weapons") or []
+    if name in equipped and not another:
+        return []
+    props = _props(name, char)
+    if "Two-handed" in props or char.get("shield"):
+        return []
+    if not ("Light" in props or "Dual Wielder" in (char.get("feats") or [])):
+        return []
+    h = hands(char)
+    if not (h["main"] and h["off"]):
+        return []
+    return [f"Main hand: {h['main']}", f"Off hand: {h['off']}"]
+
+
+def equip_weapon(char: dict, name: str, another: bool = False, hand: str = "") -> None:
     """Take `name` in hand (`another`: a second one of it, for two daggers
     -- one in each hand), following the PHB's hands:
       1. a two-handed weapon needs both hands -- every other weapon (and a
@@ -28,6 +47,11 @@ def equip_weapon(char: dict, name: str, another: bool = False) -> None:
          two-handed weapon already held always is"""
     equipped = char.setdefault("equipped_weapons", [])
     if name in equipped and not another:
+        return
+    h = hands(char)
+    if hand in ("main", "off") and h["main"] and h["off"]:
+        # both hands full: this one takes the hand chosen (hand_choice)
+        equipped[:] = [name, h["off"]] if hand == "main" else [h["main"], name]
         return
     others = list(equipped) if another else [w for w in equipped if w != name]
     props = _props(name, char)

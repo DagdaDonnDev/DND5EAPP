@@ -106,12 +106,12 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 |---|---|---|
 | Overview | Overview | Each ability with its saving throw (the modifier rolls the check, the dice the save; tick a save for an extra proficiency), skills (right-click one to set proficiency or expertise), senses with passive Perception, Investigation and Insight, and your languages, armour, weapon and tool proficiencies with **DM-granted proficiencies…** |
 | Combat | Combat, Actions | HP and AC, Initiative and Speed, death saves, weapons, conditions and effects, Wild Shape, everything you can do on a turn, and **New Turn** |
-| Inventory | Inventory, Infusions | Your gear, coins, magic items and attunement, the Equipment and Magic Items browsers, and an Artificer's Infusions |
+| Inventory | Inventory, Infusions | Loadout (what you hold and wear, slot by slot, with attunement and tattoos), Inventory (everything else), an Artificer's Infusions, coins and carrying, and the Equipment and Magic Items browsers |
 | Spells | Spells | Slots, Spell Resources (Sorcery Points, Arcane Ward, Bardic Inspiration, Channel Divinity, free casts…), the Spellcasting table, My Spells and the Spell Browser |
-| Creatures | Creatures | Every stat block of yours, in groups to open and close: Mounts, Companions, Familiars, Summons, Wild Shape, Vehicles and Other. Beside them, the Bestiary (press Add on any creature and pick its group) and Mounts & Vehicles. Right-click a creature (press and hold on Android) to move it, set its max HP or remove it |
-| Choices | Choices | **Level Up** and **Level Down**, a row per class with its subclass and ⋯ (change the class, or remove it), your identity, and anything still to pick |
+| Creatures | Creatures | Every stat block of yours, in groups to open and close: Mounts, Companions, Familiars, Summons, Wild Shape, Vehicles and Other. Beside them, the Bestiary (choose a creature, press Add Selected and pick its group) and Mounts & Vehicles. Right-click a creature (press and hold on Android) to move it, set its max HP or remove it |
 | Features | Features | Your race, background, feats and each class by level, the next level faded; a feature opens to all it says and your picks (Metamagic, invocations, maneuvers…), and the feats and gifts your DM grants |
 | Notes | Notes | Character (appearance, background, and personality, ideals, bonds and flaws with your background's suggestions to pick or roll), Backstory, and your own pages in groups you make; drag a page onto a group to move it |
+| Choices | Choices | **Level Up** and **Level Down**, a row per class with its subclass and ⋯ (change the class, or remove it), your identity, and anything still to pick |
 
 - **The magnifying glass opens the details** of a spell, item or feat, on both apps.
 - **On desktop, right-click a row** for everything else it can do (Cast, Study, Remove…) and hover anything for its numbers. **On Android, press and hold.**
@@ -290,14 +290,18 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
   <img src="docs/images/desktop-spells.png" width="49%" alt="Desktop: spellcasting, spell slots and metamagic">
 </p>
 <p align="center">
-  <img src="docs/images/desktop-gear.png" width="49%" alt="Desktop: the inventory, coins, which hand each weapon is in, and the magic item browser">
+  <img src="docs/images/desktop-gear.png" width="49%" alt="Desktop: the Loadout, what is in each hand and worn slot and what is attuned, beside the magic item browser">
   <img src="docs/images/android-spells.png" width="24%" alt="Android: spells">
-  <img src="docs/images/android-equipment.png" width="24%" alt="Android: inventory">
+  <img src="docs/images/android-equipment.png" width="24%" alt="Android: the Loadout">
 </p>
 <p align="center">
   <img src="docs/images/desktop-creatures.png" width="49%" alt="Desktop: the Creatures tab, your creatures in groups beside the Bestiary">
   <img src="docs/images/android-menu.png" width="24%" alt="Android: the menu, with the Bestiary and Reference">
   <img src="docs/images/android-overview.png" width="24%" alt="Android: the Overview">
+</p>
+<p align="center">
+  <img src="docs/images/desktop-features.png" width="49%" alt="Desktop: the Features tab, each class down its levels, Metamagic open to the picks">
+  <img src="docs/images/android-features.png" width="24%" alt="Android: Features">
 </p>
 <p align="center"><sub>Mat Cauthon, a level 5 Half-Elf Sorcerer (Wild Magic), on desktop and Android.</sub></p>
 <!-- /github-only -->

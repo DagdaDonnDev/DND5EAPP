@@ -586,7 +586,7 @@ class Step2Abilities(QWidget):
         self._dist_radio_a = QRadioButton("(a) +2 to one ability, +1 to a different ability")
         self._dist_radio_b = QRadioButton("(b) +1 to three different abilities")
         for rb in (self._dist_radio_a, self._dist_radio_b):
-            rb.setStyleSheet(f"QRadioButton{{color:{TEXT};font-size:{FS_BODY}px;}}")
+            rb.setStyleSheet(f"QRadioButton{{color:{TEXT};font-size:{FS_BODY}px;background:transparent;}}")
             self._dist_group.addButton(rb)
         self._dist_radio_a.setChecked(True)
         dcl.addWidget(self._dist_radio_a)
@@ -988,7 +988,7 @@ class Step3Class(QWidget):
         char.setdefault("edition", "2014")
         fl.addWidget(row_lbl("Edition:"), 2, 0)
         ed_lbl = QLabel("2014 (PHB Classic)")
-        ed_lbl.setStyleSheet(f"color:{TEXT2};font-size:12px;")
+        ed_lbl.setStyleSheet(f"color:{TEXT2};font-size:{FS_BODY}px;background:transparent;border:none;")
         fl.addWidget(ed_lbl, 2, 1)
         self._edition_combo = None  # removed; kept attribute absent intentionally
 
@@ -1528,7 +1528,10 @@ class Step5Equipment(QWidget):
         self._groups = get_starting_equipment(cls_name)
         scroll = QScrollArea(); scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
-        inner = QWidget(); inner.setStyleSheet("background:transparent;border:none;")
+        # (scoped to itself: a bare rule here also stripped the weapon
+        # dropdowns inside of their box, leaving "Club" floating)
+        inner = QWidget(); inner.setObjectName("equipInner")
+        inner.setStyleSheet("#equipInner,#equipRow{background:transparent;border:none;}")
         gl = QVBoxLayout(inner); gl.setSpacing(10)
 
         for gi, group in enumerate(self._groups):
@@ -1562,7 +1565,7 @@ class Step5Equipment(QWidget):
                         combo.addItems(_weapon_category_pool(item))
                         row.addWidget(combo)
                         row.addStretch()
-                        row_w = QWidget(); row_w.setLayout(row)
+                        row_w = QWidget(); row_w.setObjectName("equipRow"); row_w.setLayout(row)
                         cl.addWidget(row_w)
                         option_combos.append(combo)
                     self._group_widgets.append((None, options, [option_combos]))
@@ -1574,7 +1577,7 @@ class Step5Equipment(QWidget):
                     row = QHBoxLayout(); row.setSpacing(8)
                     label_parts = list(opt)
                     rb = QRadioButton(f"({letters[oi]}) " + ", ".join(label_parts))
-                    rb.setStyleSheet(f"QRadioButton{{color:{TEXT};font-size:{FS_BODY}px;}}")
+                    rb.setStyleSheet(f"QRadioButton{{color:{TEXT};font-size:{FS_BODY}px;background:transparent;}}")
                     btn_group.addButton(rb)
                     if oi == 0:
                         rb.setChecked(True)
@@ -1599,7 +1602,7 @@ class Step5Equipment(QWidget):
                             option_combos.append(combo)
                     sub_combos.append(option_combos)
                     row.addStretch()
-                    row_w = QWidget(); row_w.setLayout(row)
+                    row_w = QWidget(); row_w.setObjectName("equipRow"); row_w.setLayout(row)
                     cl.addWidget(row_w)
                 self._group_widgets.append((btn_group, options, sub_combos))
             gl.addWidget(card)

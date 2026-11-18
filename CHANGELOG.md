@@ -158,12 +158,46 @@ what it says, and magic armor counts as the armor it is.
   clicked.
 - **Tool details:** hover a tool on the Overview (tap it on Android) for
   what it's for.
-- **Equipped, on its own:** the inventory starts with what's in your
-  hands or on you: a row for each weapon held (saying which hand), the
-  armor you wear, your shield. The rest stays in its group with the count
-  left: four daggers with one in hand are Dagger (off hand) under
-  Equipped and Dagger ×3 under Weapons. Swap hands changes them over
-  (right-click on desktop, press and hold on Android).
+- **ADV / DIS on skills:** a skill with advantage says ADV in green, one
+  with disadvantage DIS in red (stealth in heavy armour), on Android too.
+- **Pages in a new order:** Overview, Combat, Inventory, Spells,
+  Creatures, Features, Notes, then Choices, the setting up and levelling
+  up, last and out of the way during play (Ctrl+1 … Ctrl+8 follow it;
+  the Android menu too).
+- **Half and half:** Inventory, Spells and Creatures open with yours and
+  the browser at the same width.
+- **One way to add from a browser:** the Bestiary and Mounts & Vehicles
+  lose the Add button on each row: choose a row and press Add Selected at
+  the foot, as in the Inventory's and Spells' browsers (a double-click or
+  right-click → Add still works).
+- **Inventory, redone:** what you carry is in tabs: **Loadout**,
+  **Inventory**, and **Infusions** for an artificer (it was beside the
+  browser).
+  - **Loadout:** what's in your hands (main hand, off hand, armor), then
+    a slot for each place you wear something: head, eyes, neck, cloak,
+    hands, wrists, waist, feet and two rings. Each slot says what its
+    item does; attuned items are purple, with your attunement slots
+    counted at the top (six for a high-level artificer), and your AC is
+    beside them. Click (or tap) a slot for what could go there instead (the old item
+    back to your inventory), to read it, attune or swap hands; an empty
+    one offers what you carry that fits.
+    Right-click (press and hold on Android) takes it straight off, back
+    to your inventory. A two-handed weapon fills both hands as one slot;
+    a versatile one has a 1H / 2H toggle (the Combat page shows both
+    damage dice either way). Putting on
+    another pair of boots swaps them: the old pair goes back to your
+    inventory (with two rings on, it asks which ring comes off). A light
+    weapon taken up with both hands full asks whether it replaces your
+    main-hand or off-hand weapon; with Dual Wielder, any one-handed
+    weapon does.
+  - **Tattoos:** magic tattoos have their own list, each with where it
+    is (face, chest, back, an arm, a hand or a leg). You're asked where
+    when you put one on, and can move it later.
+  - **Inventory:** everything else, magic items you aren't using
+    included, with a box to find something. Four daggers with one in
+    hand are the dagger on the Loadout and Dagger ×3 here.
+  - **Money and carrying** sit under all three, with a bar for what
+    you carry against what you can.
 - **Search long lists:** a question with many answers (a Polymorph's
   creature, a summon's) has a search box over it.
 - **Resistances on Android:** resistances, immunities and vulnerabilities
