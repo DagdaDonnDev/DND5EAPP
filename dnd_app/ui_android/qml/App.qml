@@ -27,12 +27,11 @@ ApplicationWindow {
     // long a Timer delayed the retry). A plain property assigned after
     // load doesn't have that failure mode -- QML's normal property
     // binding/notify system correctly retries dependents once it's
-    // set. Screens reference these via Window.window.raceBridge /
-    // Window.window.abilityBridge rather than a bare identifier.
-    property QtObject raceBridge: null
-    property QtObject abilityBridge: null
-    property QtObject classBridge: null
-    property QtObject equipmentBridge: null
+    // set. Screens reference these via Window.window.wizardBridge /
+    // Window.window.sheetBridge rather than a bare identifier.
+    // wizardBridge: the new-character wizard's (bridge/wizard.py), all
+    // six steps.
+    property QtObject wizardBridge: null
     property QtObject saveLoadBridge: null
     property QtObject sheetBridge: null
     property QtObject diceRollerBridge: null
@@ -96,6 +95,8 @@ ApplicationWindow {
     readonly property string abilitiesComp: "AbilitiesScreen.qml"
     readonly property string classComp: "ClassScreen.qml"
     readonly property string equipmentComp: "EquipmentScreen.qml"
+    readonly property string choicesComp: "ChoicesScreen.qml"
+    readonly property string summaryComp: "SummaryScreen.qml"
     readonly property string sheetComp: "SheetCombatScreen.qml"
     readonly property string sheetActionsComp: "SheetActionsScreen.qml"
     readonly property string sheetOverviewComp: "SheetOverviewScreen.qml"
@@ -123,7 +124,7 @@ ApplicationWindow {
         return c
     }
     function preloadScreens() {
-        var files = [sheetComp, raceListComp, abilitiesComp, classComp, equipmentComp,
+        var files = [sheetComp, raceListComp, abilitiesComp, classComp, equipmentComp, choicesComp, summaryComp,
                      sheetActionsComp, sheetSpellsComp, sheetEquipmentComp, sheetOverviewComp,
                      sheetFeaturesComp, sheetChoicesComp, sheetNotesComp,
                      sheetCompanionsComp, sheetInfusionsComp]
@@ -160,14 +161,15 @@ ApplicationWindow {
     // below), which is what advances *Bridge.*ConfirmedOnce in the
     // first place; the drawer is a shortcut back to an already-done
     // step, not a way to skip ahead of one that isn't.
+    readonly property int wizardReached: wizardBridge !== null ? wizardBridge.reached : 0
     readonly property var wizardNavItems: [
         { label: "Race", icon: "identity", screen: raceListComp, enabled: true },
-        { label: "Abilities", icon: "abilities", screen: abilitiesComp,
-          enabled: raceBridge !== null && raceBridge.raceConfirmedOnce },
-        { label: "Class", icon: "features", screen: classComp,
-          enabled: abilityBridge !== null && abilityBridge.abilitiesConfirmedOnce },
-        { label: "Equipment", icon: "gear", screen: equipmentComp,
-          enabled: classBridge !== null && classBridge.classConfirmedOnce },
+        { label: "Abilities", icon: "abilities", screen: abilitiesComp, enabled: wizardReached >= 1 },
+        { label: "Class & Background", icon: "features", screen: classComp, enabled: wizardReached >= 2 },
+        { label: wizardBridge !== null ? wizardBridge.spellsStepName : "Spells & Choices", icon: "spells",
+          screen: choicesComp, enabled: wizardReached >= 3 },
+        { label: "Equipment", icon: "gear", screen: equipmentComp, enabled: wizardReached >= 4 },
+        { label: "Summary", icon: "notes", screen: summaryComp, enabled: wizardReached >= 5 },
     ]
     // The sheet's pages, in the desktop tabs' order: Overview, Combat
     // (and its Actions), Inventory (an Artificer's Infusions after it),
@@ -277,10 +279,7 @@ ApplicationWindow {
     function startNewCharacter() {
         characterActive = false
         saveLoadBridge.newCharacter()
-        abilityBridge.resetToDefaults()
-        raceBridge.refresh()
-        classBridge.refresh()
-        equipmentBridge.refresh()
+        wizardBridge.reset()
         sheetBridge.refresh()
         stackView.replace(screenComp(raceListComp))
     }
@@ -311,7 +310,7 @@ ApplicationWindow {
         stackView.replace(screenComp(sheetComp))
     }
     function finishCharacterCreation() {
-        if (equipmentBridge.confirmEquipment()) {
+        if (wizardBridge.finish()) {
             sheetBridge.refresh()
             // First time this character is shown -- it has no theme of
             // its own yet, so it inherits whatever was active during
@@ -334,9 +333,21 @@ ApplicationWindow {
     // rather than popping back to a list or just sitting still. Named
     // per-destination (instead of one generic "advance" helper) so
     // each screen states in plain text which step it's headed to.
-    function advanceToAbilities() { stackView.replace(screenComp(abilitiesComp)) }
-    function advanceToClass() { stackView.replace(screenComp(classComp)) }
-    function advanceToEquipment() { stackView.replace(screenComp(equipmentComp)) }
+    function advanceToAbilities() { wizardBridge.reach(1); stackView.replace(screenComp(abilitiesComp)) }
+    function advanceToClass() { wizardBridge.reach(2); stackView.replace(screenComp(classComp)) }
+    // a class with nothing to pick at level 1 goes straight on to its gear
+    function advanceToChoices() {
+        if (!wizardBridge.hasLevel1()) { advanceToEquipment(); return }
+        wizardBridge.reach(3); stackView.replace(screenComp(choicesComp))
+    }
+    function advanceToEquipment() { wizardBridge.reach(4); stackView.replace(screenComp(equipmentComp)) }
+    function advanceToSummary() { wizardBridge.reach(5); stackView.replace(screenComp(summaryComp)) }
+    // a wizard step by number (the Summary's edit buttons, Back)
+    function goToWizardStep(i) {
+        var comps = [raceListComp, abilitiesComp, classComp, choicesComp, equipmentComp, summaryComp]
+        if (i === 3 && !wizardBridge.hasLevel1()) i = 2
+        stackView.replace(screenComp(comps[i]))
+    }
     // Another sheet page, scrolled to one of its sections -- as the menu's
     // section entries do (e.g. the Choices page's Spells to learn card to
     // the Spells page's Add a Spell list)

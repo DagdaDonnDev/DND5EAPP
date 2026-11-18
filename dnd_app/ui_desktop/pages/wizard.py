@@ -1,1662 +1,1427 @@
 """
-Character Creation Wizard module.
+The new-character wizard (desktop).
 
-PySide6 multi-step wizard that builds a new character from scratch:
-  1. Race
-  2. Ability Scores
-  3. Background + Class (with scrollable level timeline + subclass + choices)
-  4. Spells  (only if caster)
-  5. Equipment
-Each step collects its choices into the character dict and calls
-dnd_app.core.builder.rebuild() before advancing, so later steps (e.g.
-starting spells, which depend on class) always see up-to-date state.
+Six steps, each laid out from core/wizard_flow.py (Android's wizard reads
+the same module):
+  1. Race                 the race browser, its details on the right half
+  2. Abilities            the method as tabs, one card of six abilities
+  3. Class & Background   name and alignment, the classes as tiles, the
+                          background browser on the right half
+  4. Spells & Choices     what level 1 asks you to pick, and your starting
+                          spells ("Choices" for a class with none; skipped
+                          when there's nothing to pick)
+  5. Equipment            each A or B pick, and what you'll start with
+  6. Summary              the whole character, an edit button on each card
+
+What you pick lives in self.state; the character is rebuilt from it on the
+way into each step (_built), so going back and changing something never
+leaves an earlier pick behind.
 
 Author: Ethan O'Brien
 Date: 2026-08-20
 """
+import copy
+
 from PySide6.QtWidgets import *
-from PySide6.QtCore import Qt, Signal, QTimer, QSize
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, Signal, QTimer
 from dnd_app.ui_desktop.style.theme import *
 from ..shared import *
-from ..shared import _btn
-from dnd_app.core.character import new_character, add_class, ability_score, ability_mod, get_class_entry, set_subclass
-from dnd_app.core.builder import rebuild, get_choices_needed, apply_choice, race_requires_subrace
-from dnd_app.core.multiclass import check_multiclass_prereq
-from dnd_app.data.races import ALL_RACES, RACE_NAMES, RACE_DICT, get_race, flex_asi_desc, combined_racial_asi
-from dnd_app.data.classes import CLASS_DICT, CLASS_NAMES, BATTLE_MASTER_MANEUVERS, WILD_MAGIC_SURGE_TABLE
-from dnd_app.data.backgrounds import ALL_BACKGROUNDS, BACKGROUND_NAMES, get_background
-from dnd_app.data.feats import ALL_FEATS
-from dnd_app.data.spells import ALL_SPELLS, spells_for_class, get_spell
-from dnd_app.data.items import ARMOR, ALL_WEAPONS, ADVENTURING_GEAR, SIMPLE_MELEE, SIMPLE_RANGED, MARTIAL_MELEE, MARTIAL_RANGED
+from dnd_app.core.character import new_character
+from dnd_app.core import wizard_flow as W
+from dnd_app.core.builder import ABILITIES
 from dnd_app.ui_desktop import icons as _icons
 
-ABILITIES = ["STR","DEX","CON","INT","WIS","CHA"]
-AB_FULL = {"STR":"Strength","DEX":"Dexterity","CON":"Constitution",
-           "INT":"Intelligence","WIS":"Wisdom","CHA":"Charisma"}
+ALIGNMENTS = W.ALIGNMENTS
 
-STANDARD_ARRAY = [15, 14, 13, 12, 10, 8]
-POINT_BUY_COSTS = {8:0,9:1,10:2,11:3,12:4,13:5,14:7,15:9}
-
-# Same shape/param order as shared.py's h() — safe direct alias.
 _lbl = h
 
 
+def _fresh_state() -> dict:
+    return {
+        "race": "", "sub": "", "rpicks": {}, "race_search": "", "race_group": "All",
+        "method": "Standard Array", "base": W.start_scores("Standard Array"), "picks": {}, "moved": None,
+        "name": "", "alignment": "True Neutral", "cls": "", "bg": "", "bg_feat": "", "bg_search": "",
+        "l1_picks": {}, "spells": {}, "spell_tab": "cantrips", "spell_search": "", "spell_school": "",
+        "equip": None, "equip_cls": "", "extra": "",
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════
-#  WIZARD MAIN WINDOW
+#  Small pieces
+# ═══════════════════════════════════════════════════════════════════
+def _t(text, color=None, size=None, bold=False, wrap=False, align=Qt.AlignLeft, spacing=False):
+    l = QLabel(text)
+    l.setWordWrap(wrap)
+    if not (align & Qt.AlignVertical_Mask):
+        align = align | Qt.AlignVCenter
+    l.setAlignment(align)
+    l.setAttribute(Qt.WA_TransparentForMouseEvents)
+    l.setStyleSheet(f"QLabel{{color:{color or TEXT};font-size:{size or FS_BODY}px;"
+                    f"font-weight:{800 if bold == 'x' else (700 if bold else 400)};"
+                    f"{'letter-spacing:0.5px;' if spacing else ''}background:transparent;border:none;}}")
+    return l
+
+
+def _head(title, sub="", right=None):
+    """A card's heading: GOLD CAPS, a quieter line beside it, and whatever
+    sits on its right (a count, an edit button)."""
+    w = QWidget(); w.setObjectName("wizHead"); w.setStyleSheet("#wizHead{background:transparent;}")
+    l = QHBoxLayout(w); l.setContentsMargins(0, 0, 0, 0); l.setSpacing(8)
+    l.addWidget(_t(title.upper(), GOLD, FS_SMALL, bold="x", spacing=True))
+    if sub:
+        s = _t(sub, TEXT3, FS_SMALL)
+        s.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        l.addWidget(s, 1)
+    else:
+        l.addStretch(1)
+    if right is not None:
+        l.addWidget(right)
+    return w
+
+
+def _count(text, ok):
+    c = TEAL2 if ok else GOLD2
+    l = QLabel(text)
+    l.setObjectName("wizCount")
+    l.setStyleSheet(f"#wizCount{{color:{c};background:{qa(c, 0x24)};border:none;border-radius:9px;"
+                    f"padding:1px 9px;font-size:{FS_SMALL - 1}px;font-weight:800;}}")
+    return l
+
+
+def _card(name="wizCard", pad=(14, 11, 14, 12)):
+    f = QFrame(); f.setObjectName(name)
+    f.setStyleSheet(f"#{name}{{background:{SURF};border:1px solid {BORDER};border-radius:10px;}}")
+    lay = QVBoxLayout(f); lay.setContentsMargins(*pad); lay.setSpacing(8)
+    return f, lay
+
+
+def _chip(text, kind="", height=26):
+    col = {"teal": TEAL2, "gold": GOLD2, "off": TEXT3}.get(kind, IND2)
+    l = QLabel(text); l.setObjectName("wizChip")
+    l.setAlignment(Qt.AlignCenter)
+    l.setFixedHeight(height)
+    l.setStyleSheet(f"#wizChip{{color:{col};background:{qa(col, 0x1c)};border:1px solid {qa(col, 0x90)};"
+                    f"border-radius:6px;padding:0 10px;font-size:{FS_SMALL - 1}px;font-weight:700;}}")
+    return l
+
+
+def _red_chip(text, height=24):
+    l = _chip(text, "", height)
+    l.setStyleSheet(f"#wizChip{{color:{CRIM2};background:{qa(CRIMSON, 0x1c)};border:1px solid {qa(CRIMSON, 0x90)};"
+                    f"border-radius:6px;padding:0 10px;font-size:{FS_SMALL - 1}px;font-weight:700;}}")
+    return l
+
+
+def _chip_grid(chips, cols, height=28):
+    """Chips in even columns, filling the width."""
+    w = QWidget(); w.setObjectName("wizChipGrid"); w.setStyleSheet("#wizChipGrid{background:transparent;}")
+    g = QGridLayout(w); g.setContentsMargins(0, 0, 0, 0); g.setSpacing(6)
+    for i, (text, kind) in enumerate(chips):
+        g.addWidget(_chip(text, kind, height), i // cols, i % cols)
+    for c in range(cols):
+        g.setColumnStretch(c, 1)
+    return w
+
+
+def _field_qss(name):
+    return (f"#{name}{{background:{SURF2};border:1px solid {BORDER};border-radius:8px;color:{TEXT};"
+            f"padding:0 12px;font-size:{FS_BODY}px;min-height:36px;max-height:36px;}}"
+            f"#{name}:focus{{border-color:{INDIGO};}}")
+
+
+def _search(placeholder, text, on_change, name="wizSearch"):
+    e = QLineEdit(); e.setObjectName(name)
+    e.setPlaceholderText("⌕  " + placeholder)
+    e.setText(text)
+    e.setStyleSheet(_field_qss(name))
+    e.textChanged.connect(on_change)
+    return e
+
+
+class Tile(QPushButton):
+    """A pick: its name and a short second line; on (teal, ✓), off, or
+    one you already have (dashed, its reason on hover)."""
+
+    def __init__(self, label, sub="", state="", tip="", height=34, parent=None):
+        super().__init__(parent)
+        self.setObjectName("wizTile")
+        self.setCursor(Qt.PointingHandCursor if state != "have" else Qt.ArrowCursor)
+        self.setProperty("tileLabel", label)
+        self.setProperty("tileState", state)
+        lay = QVBoxLayout(self); lay.setContentsMargins(6, 2, 6, 2); lay.setSpacing(0)
+        on = state == "on"
+        col = TEAL2 if on else (TEXT3 if state == "have" else TEXT2)
+        lay.addWidget(_t(("✓ " if on else "") + label, col, FS_SMALL, bold=True, align=Qt.AlignCenter))
+        if sub:
+            lay.addWidget(_t(sub, TEAL2 if on else TEXT3, FS_SMALL - 2, align=Qt.AlignCenter))
+            height = max(height, 42)
+        self._h = height
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        if on:
+            qss = f"#wizTile{{background:{qa(TEAL, 0x24)};border:1px solid {TEAL};border-radius:7px;}}"
+        elif state == "have":
+            qss = f"#wizTile{{background:transparent;border:1px dashed {BORDER2};border-radius:7px;}}"
+        else:
+            qss = (f"#wizTile{{background:{SURF2};border:1px solid {BORDER};border-radius:7px;}}"
+                   f"#wizTile:hover{{border-color:{BORDER2};background:{SURF3};}}")
+        self.setStyleSheet(qss + f"#wizTile{{min-height:{height}px;padding:0px;}}")
+        if tip:
+            self.setToolTip(tip)
+
+
+def _tile_grid(tiles, cols, fill=False):
+    w = QWidget(); w.setObjectName("wizTiles"); w.setStyleSheet("#wizTiles{background:transparent;}")
+    g = QGridLayout(w); g.setContentsMargins(0, 0, 0, 0); g.setSpacing(6)
+    cols = max(1, cols)
+    for i, t in enumerate(tiles):
+        g.addWidget(t, i // cols, i % cols)
+    for c in range(cols):
+        g.setColumnStretch(c, 1)
+    if fill:
+        for r in range((len(tiles) + cols - 1) // cols):
+            g.setRowStretch(r, 1)
+    return w
+
+
+class Row(QFrame):
+    """A browser row: its name, quieter details and a source tag."""
+    clicked = Signal()
+
+    def __init__(self, name, metas=(), tag="", selected=False, height=38, parent=None):
+        super().__init__(parent)
+        self.setObjectName("wizRow")
+        self.setProperty("rowName", name)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedHeight(height)
+        lay = QHBoxLayout(self); lay.setContentsMargins(12, 0, 10, 0); lay.setSpacing(10)
+        lay.addWidget(_t(name, TEAL2 if selected else TEXT, FS_BODY - 1, bold=True), 1)
+        for m in metas:
+            if m:
+                lay.addWidget(_t(m, TEXT2, FS_SMALL - 1))
+        if tag:
+            tg = QLabel(tag); tg.setObjectName("wizTag"); tg.setFixedHeight(20); tg.setAlignment(Qt.AlignCenter)
+            tg.setStyleSheet(f"#wizTag{{color:{GOLD2};background:{qa(GOLD, 0x1c)};border:1px solid {qa(GOLD, 0x80)};"
+                             f"border-radius:5px;padding:0 7px;font-size:{FS_TINY}px;font-weight:800;}}")
+            lay.addWidget(tg)
+        if selected:
+            self.setStyleSheet(f"#wizRow{{background:{qa(TEAL, 0x1f)};border:1px solid {TEAL};border-radius:8px;}}")
+        else:
+            self.setStyleSheet(f"#wizRow{{background:{SURF};border:1px solid {BORDER};border-radius:8px;}}"
+                               f"#wizRow:hover{{border-color:{BORDER2};}}")
+
+    def mousePressEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(e)
+
+
+def _seg(options, current, on_pick, name="wizSeg", counts=None):
+    """Tabs in a row (a method, Cantrips / 1st level)."""
+    w = QWidget(); w.setObjectName(name); w.setStyleSheet(f"#{name}{{background:transparent;}}")
+    l = QHBoxLayout(w); l.setContentsMargins(0, 0, 0, 0); l.setSpacing(6)
+    for opt in options:
+        b = QPushButton(); b.setObjectName("wizSegBtn"); b.setCursor(Qt.PointingHandCursor)
+        b.setProperty("segName", opt)
+        bl = QHBoxLayout(b); bl.setContentsMargins(10, 0, 10, 0); bl.setSpacing(8)
+        bl.addStretch(1)
+        on = opt == current
+        bl.addWidget(_t(opt, GOLD2 if on else TEXT2, FS_SMALL + 1, bold=True))
+        if counts and opt in counts:
+            txt, ok = counts[opt]
+            bl.addWidget(_count(txt, ok))
+        bl.addStretch(1)
+        b.setStyleSheet(
+            (f"#wizSegBtn{{background:{qa(GOLD, 0x1c)};border:1px solid {GOLD};border-radius:8px;"
+             if on else
+             f"#wizSegBtn{{background:{SURF2};border:1px solid {BORDER};border-radius:8px;")
+            + "min-height:38px;max-height:38px;padding:0px;}"
+            + (f"#wizSegBtn:hover{{border-color:{BORDER2};}}" if not on else ""))
+        b.clicked.connect(lambda _=False, o=opt: on_pick(o))
+        l.addWidget(b, 1)
+    return w
+
+
+def _clear(lay):
+    while lay.count():
+        it = lay.takeAt(0)
+        w = it.widget()
+        if w is not None:
+            w.setParent(None); w.deleteLater()
+        elif it.layout() is not None:
+            _clear(it.layout())
+
+
+def _scroll(inner, name="wizScroll"):
+    s = QScrollArea(); s.setObjectName(name); s.setWidgetResizable(True)
+    s.setFrameShape(QFrame.NoFrame)
+    s.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+    s.setStyleSheet(f"#{name}{{background:transparent;border:none;}}")
+    inner.setObjectName(name + "In"); inner.setStyleSheet(f"#{name}In{{background:transparent;}}")
+    s.setWidget(inner)
+    return s
+
+
+def _small_btn(text, name="wizSmallBtn", color=None):
+    b = QPushButton(text); b.setObjectName(name); b.setCursor(Qt.PointingHandCursor)
+    c = color or IND2
+    b.setStyleSheet(f"#{name}{{color:{c};background:transparent;border:1px solid {BORDER2};border-radius:6px;"
+                    f"font-size:{FS_SMALL - 1}px;font-weight:700;padding:0 9px;min-height:24px;max-height:24px;}}"
+                    f"#{name}:hover{{background:{qa(c, 0x22)};}}")
+    return b
+
+
+def _box(name, bg=None, border=None, radius=8, dashed=False):
+    f = QFrame(); f.setObjectName(name)
+    f.setStyleSheet(f"#{name}{{background:{bg or SURF2};border:1px {'dashed' if dashed else 'solid'} {border or BORDER};"
+                    f"border-radius:{radius}px;}}")
+    return f
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  The steps bar
+# ═══════════════════════════════════════════════════════════════════
+class StepsBar(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("wizSteps"); self.setStyleSheet("#wizSteps{background:transparent;}")
+        self._lay = QHBoxLayout(self); self._lay.setContentsMargins(0, 0, 0, 0); self._lay.setSpacing(0)
+
+    def show_steps(self, names, current, values):
+        _clear(self._lay)
+        for i, name in enumerate(names):
+            if i:
+                ln = QFrame(); ln.setFixedSize(12, 2)
+                ln.setStyleSheet(f"background:{TEAL if i <= current else BORDER};border:none;")
+                self._lay.addWidget(ln, 0, Qt.AlignVCenter)
+            done, on = i < current, i == current
+            pill = QFrame(); pill.setObjectName("wizStep")
+            pill.setProperty("stepName", name)
+            bc = TEAL if done else (GOLD if on else BORDER)
+            bg = qa(GOLD, 0x14) if on else SURF
+            pill.setStyleSheet(f"#wizStep{{background:{bg};border:1px solid {qa(bc, 0xa0) if done else bc};border-radius:10px;}}")
+            pill.setFixedHeight(46)
+            pl = QHBoxLayout(pill); pl.setContentsMargins(6, 0, 10, 0); pl.setSpacing(7)
+            dot = QLabel("✓" if done else str(i + 1)); dot.setObjectName("wizStepDot")
+            dot.setAlignment(Qt.AlignCenter); dot.setFixedSize(28, 28)
+            dc, dfg = ((qa(TEAL, 0x33), TEAL2) if done else ((GOLD, "#1a1405") if on else (SURF3, TEXT2)))
+            dot.setStyleSheet(f"#wizStepDot{{background:{dc};color:{dfg};border-radius:14px;font-weight:800;"
+                              f"font-size:{FS_SMALL}px;border:none;}}")
+            pl.addWidget(dot)
+            col = QVBoxLayout(); col.setSpacing(0); col.setContentsMargins(0, 0, 0, 0)
+            col.addWidget(_t(name, GOLD2 if on else (TEXT2 if not done else TEXT), FS_SMALL, bold=True))
+            v = values[i] if i < len(values) else ""
+            if done and v:
+                col.addWidget(_t(v, TEAL2, FS_SMALL - 2))
+            elif on:
+                col.addWidget(_t("choosing…", TEXT3, FS_SMALL - 2))
+            pl.addLayout(col)
+            self._lay.addWidget(pill)
+
+
+# ═══════════════════════════════════════════════════════════════════
+#  WIZARD
 # ═══════════════════════════════════════════════════════════════════
 class CharacterWizard(QWidget):
-    """Drives the creation flow; emits 'done' with finished char dict."""
+    """Drives the creation flow; emits 'done' with the finished character."""
     done = Signal(dict)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         from dnd_app.ui_desktop.style.theme import sync_globals as _sg; _sg(globals())
         self.char = new_character()
+        self.state = _fresh_state()
         self._step = 0
-        self._steps = []
         self._build_ui()
+        self._show()
 
+    # ── frame ────────────────────────────────────────────────────────
     def _build_ui(self):
-        root = QVBoxLayout(self); root.setContentsMargins(0,0,0,0); root.setSpacing(0)
-
-        # ── Top header bar ────────────────────────────────────────────────────
-        header = QFrame()
-        # (#id selector: a bare QFrame{...} rule would also give every QLabel
-        # inside -- QLabel is a QFrame -- a bottom border, nudging the title up)
-        header.setObjectName("wizHeader")
-        header.setStyleSheet(f"QFrame#wizHeader{{background:{SURF};border-bottom:2px solid {BORDER};}}")
-        header.setFixedHeight(64)
-        hl = QHBoxLayout(header); hl.setContentsMargins(24,0,24,0)
-        hl.addWidget(_icons.icon_label("combat", 30))
-        hl.addWidget(_lbl("New Character", TEXT, FS_TITLE, bold=True, wrap=False))
-        hl.addStretch()
-        # Step indicator pills
-        self._step_pills = []
-        step_names = ["Race","Abilities","Class","Equipment"]
-        for i, name in enumerate(step_names):
-            pill = _lbl(f" {i+1}. {name} ", TEXT3, FS_SMALL, wrap=False, align=Qt.AlignCenter)
-            pill.setFixedHeight(30)
-            pill.setStyleSheet(f"background:{SURF3};color:{TEXT3};border-radius:15px;font-size:{FS_SMALL}px;padding:0 12px;")
-            hl.addWidget(pill); hl.addSpacing(4)
-            self._step_pills.append(pill)
+        root = QVBoxLayout(self); root.setContentsMargins(0, 0, 0, 0); root.setSpacing(0)
+        header = QFrame(); header.setObjectName("wizHeader")
+        header.setStyleSheet(f"#wizHeader{{background:{BG};border-bottom:1px solid {BORDER2};}}")
+        header.setFixedHeight(70)
+        hl = QHBoxLayout(header); hl.setContentsMargins(22, 0, 16, 0); hl.setSpacing(12)
+        hl.addWidget(_icons.icon_label("combat", 26))
+        hl.addWidget(_t("New Character", TEXT, FS_TITLE - 1, bold="x"))
+        hl.addStretch(1)
+        self._bar = StepsBar(); hl.addWidget(self._bar)
         root.addWidget(header)
 
-        # ── Page stack ────────────────────────────────────────────────────────
-        self._stack = QStackedWidget()
-        self._stack.setStyleSheet(f"background:{BG};")
-        self._step1 = Step1Race(self.char)
-        self._step2 = Step2Abilities(self.char)
-        self._step3 = Step3Class(self.char)
-        self._step4 = Step4Spells(self.char)
-        self._step5 = Step5Equipment(self.char)
-        for s in [self._step1, self._step2, self._step3, self._step4, self._step5]:
-            self._stack.addWidget(s)
-        root.addWidget(self._stack, 1)
+        self._page_host = QWidget(); self._page_host.setObjectName("wizPage")
+        self._page_host.setStyleSheet(f"#wizPage{{background:{BG};}}")
+        self._page = QVBoxLayout(self._page_host); self._page.setContentsMargins(16, 14, 16, 14); self._page.setSpacing(0)
+        root.addWidget(self._page_host, 1)
 
-        # ── Bottom nav bar ─────────────────────────────────────────────────────
-        nav = QFrame()
-        nav.setObjectName("wizNav")
-        nav.setStyleSheet(f"QFrame#wizNav{{background:{SURF};border-top:2px solid {BORDER};}}")
+        nav = QFrame(); nav.setObjectName("wizNav")
+        nav.setStyleSheet(f"#wizNav{{background:{SURF};border-top:1px solid {BORDER2};}}")
         nav.setFixedHeight(72)
-        nl = QHBoxLayout(nav); nl.setContentsMargins(24,0,24,0)
-        self._back_btn = pill_btn("← Back", SURF2, TEXT)
-        self._back_btn.setFixedWidth(130)
-        self._back_btn.setVisible(False)
+        nl = QHBoxLayout(nav); nl.setContentsMargins(22, 0, 22, 0); nl.setSpacing(14)
+        self._back_btn = QPushButton("← Back"); self._back_btn.setObjectName("wizBack")
+        self._back_btn.setCursor(Qt.PointingHandCursor)
+        self._back_btn.setStyleSheet(f"#wizBack{{background:{SURF2};border:1px solid {BORDER};border-radius:8px;color:{TEXT};"
+                                     f"font-weight:700;font-size:{FS_BODY}px;padding:0 22px;min-height:46px;max-height:46px;}}"
+                                     f"#wizBack:hover{{border-color:{BORDER2};}}")
         self._back_btn.clicked.connect(self._prev_step)
-        self._next_btn = pill_btn("Next →", INDIGO)
-        self._next_btn.setMinimumWidth(160)   # min not fixed — "Create Character ✓" needs more
+        nl.addWidget(self._back_btn)
+        self._status = QLabel(""); self._status.setObjectName("wizStatus")
+        self._status.setTextFormat(Qt.RichText)
+        self._status.setStyleSheet(f"#wizStatus{{color:{TEXT2};font-size:{FS_SMALL + 1}px;background:transparent;}}")
+        nl.addWidget(self._status, 1)
+        self._next_btn = QPushButton("Next →"); self._next_btn.setObjectName("wizNext")
+        self._next_btn.setCursor(Qt.PointingHandCursor)
         self._next_btn.clicked.connect(self._next_step)
-        nl.addWidget(self._back_btn); nl.addStretch(); nl.addWidget(self._next_btn)
+        nl.addWidget(self._next_btn)
         root.addWidget(nav)
 
-        self._update_pills()
-
+    # kept for older callers
     def _update_pills(self):
-        for i, pill in enumerate(self._step_pills):
-            if i == self._step:
-                pill.setStyleSheet(f"background:{INDIGO};color:{on_fill(INDIGO)};border-radius:15px;font-size:{FS_SMALL}px;font-weight:700;padding:0 12px;")
-            elif i < self._step:
-                pill.setStyleSheet(f"background:{qa(TEAL,0x55)};color:{TEAL2};border-radius:15px;font-size:{FS_SMALL}px;padding:0 12px;")
-            else:
-                pill.setStyleSheet(f"background:{SURF3};color:{TEXT3};border-radius:15px;font-size:{FS_SMALL}px;padding:0 12px;")
-        self._back_btn.setVisible(self._step > 0)
-        # Last step label changes to "Create Character" — the stylesheet
-        # is built fresh each time rather than string-replacing whatever
-        # was already set, so :hover and other states stay consistent
-        # regardless of which stylesheet was previously applied.
-        if self._step == 4:  # Equipment (step 3 skipped, so 4 is last)
-            self._next_btn.setText("Create Character ✓")
-            self._next_btn.setStyleSheet(pill_btn("", TEAL, hover=TEAL2).styleSheet())
-        else:
-            self._next_btn.setText("Next →")
-            self._next_btn.setStyleSheet(pill_btn("", INDIGO).styleSheet())
+        self._show()
+
+    def restore(self, state: dict, step: int):
+        """Back where it was (a theme change rebuilds the wizard)."""
+        self.state = state
+        self._step = step
+        self._show()
+
+    # ── the character, rebuilt from the picks ─────────────────────────
+    def _built(self, upto: int) -> dict:
+        """The character with steps 1..upto applied (0: a fresh one)."""
+        s = self.state
+        c = new_character()
+        if upto >= 1:
+            W.commit_race(c, s["race"], s["sub"], s["rpicks"])
+        if upto >= 2:
+            W.commit_abilities(c, W.bonus_plan(c), s["base"], s["picks"], s["moved"])
+        if upto >= 3:
+            W.commit_identity(c, s["name"], s["alignment"], s["cls"], s["bg"], s["bg_feat"])
+        if upto >= 4:
+            base = copy.deepcopy(c)
+            W.commit_level1(c, base, s["l1_picks"], W.spell_plan(base), s["spells"])
+        return c
+
+    def _has_level1(self) -> bool:
+        if not (self.state["cls"] and self.state["bg"]):
+            return True
+        return W.has_level1_step(self._built(3))
+
+    def _step_names(self):
+        names = list(W.STEPS)
+        if self.state["cls"] and self.state["bg"] and self._step >= 3:
+            if not W.spell_plan(self._built(3)):
+                names[3] = "Choices"
+        if self._step != 2:
+            names[2] = "Class & Bg"
+        return names
+
+    def _step_values(self):
+        s = self.state
+        return [s["race"], "Ready", " · ".join(x for x in (s["cls"], s["bg"]) if x), "Chosen", "Ready", ""]
+
+    # ── navigation ───────────────────────────────────────────────────
+    def _block(self) -> str:
+        s = self.state
+        try:
+            if self._step == 0:
+                return W.race_block_reason(s["race"], s["sub"], s["rpicks"])
+            if self._step == 1:
+                return W.abilities_block_reason(s["method"], W.bonus_plan(self._built(1)),
+                                                s["base"], s["picks"], s["moved"])
+            if self._step == 2:
+                return W.identity_block_reason(s["name"], s["cls"], s["bg"], s["bg_feat"])
+            if self._step == 3:
+                left = self._level1_left()
+                return ("Still to pick: " + " · ".join(left)) if left else ""
+        except Exception:
+            import traceback; traceback.print_exc()
+            return ""
+        return ""
 
     def _next_step(self):
-        steps = [self._step1, self._step2, self._step3, self._step4, self._step5]
-        if not steps[self._step].collect(self.char):
+        if self._block():
+            self._show_status()
             return
-        try:
-            rebuild(self.char)
-            if self._step == 4:          # Equipment = last real step
-                self.done.emit(self.char)
+        if self._step == 5:
+            try:
+                c = self._built(4)
+                W.finish(c, self._equip_items(), self.state["extra"])
+            except Exception:
+                self._crash()
                 return
-        except Exception:
-            # Safety net: surface the real failure to the player and log
-            # it, instead of letting the Next/Create button silently do
-            # nothing.
-            import traceback, os
-            from dnd_app.ui_desktop.shared import write_diagnostic_log
-            tb = traceback.format_exc()
-            log_path = write_diagnostic_log("mimic_crash_log.txt", tb)
-            dlg = QMessageBox(self)
-            dlg.setIcon(QMessageBox.Critical)
-            dlg.setWindowTitle("Character Build Failed")
-            dlg.setText("Something went wrong finalizing your character. The details below "
-                        + (f"(also saved to {log_path}) " if log_path else "")
-                        + "will help fix this.")
-            dlg.setDetailedText(tb)
-            dlg.exec()
+            self.char = c
+            self.done.emit(c)
             return
         self._step += 1
-        if self._step == 3:          # ALWAYS skip Spells step
+        if self._step == 3 and not self._has_level1():
             self._step += 1
-        steps[self._step].populate(self.char)
-        self._stack.setCurrentIndex(self._step)
-        self._update_pills()
+        self._show()
 
     def _prev_step(self):
+        if self._step == 0:
+            return
         self._step -= 1
-        if self._step == 3:          # ALWAYS skip Spells going back too
+        if self._step == 3 and not self._has_level1():
             self._step -= 1
-        steps = [self._step1, self._step2, self._step3, self._step4, self._step5]
-        steps[self._step].populate(self.char)
-        self._stack.setCurrentIndex(self._step)
-        self._update_pills()
+        self._show()
 
+    def go_to(self, step: int):
+        self._step = step
+        self._show()
 
-# ═══════════════════════════════════════════════════════════════════
-#  STEP 1: RACE
-# ═══════════════════════════════════════════════════════════════════
-class Step1Race(QWidget):
-    def __init__(self, char, parent=None):
-        super().__init__(parent)
-        from dnd_app.ui_desktop.style.theme import sync_globals as _sg; _sg(globals())
-        self.char = char
-        root = QHBoxLayout(self); root.setContentsMargins(24,24,24,24); root.setSpacing(20)
+    def _crash(self):
+        import traceback
+        from dnd_app.ui_desktop.shared import write_diagnostic_log
+        tb = traceback.format_exc()
+        log_path = write_diagnostic_log("mimic_crash_log.txt", tb)
+        dlg = QMessageBox(self)
+        dlg.setIcon(QMessageBox.Critical)
+        dlg.setWindowTitle("Character Build Failed")
+        dlg.setText("Something went wrong finishing your character. The details below "
+                    + (f"(also saved to {log_path}) " if log_path else "") + "will help fix this.")
+        dlg.setDetailedText(tb)
+        dlg.exec()
 
-        # Left: race grid
-        left = QWidget(); ll = QVBoxLayout(left); ll.setSpacing(12)
-        ll.addWidget(_lbl("Choose Your Race", GOLD2, FS_HEAD, bold=True))
-        ll.addWidget(_lbl("Your race grants ability score bonuses, traits, and proficiencies.", TEXT2, FS_BODY))
+    # ── drawing ──────────────────────────────────────────────────────
+    def _show(self):
+        _clear(self._page)
+        builders = [self._race_page, self._abilities_page, self._identity_page,
+                    self._level1_page, self._equipment_page, self._summary_page]
+        try:
+            self._page.addWidget(builders[self._step](), 1)
+        except Exception:
+            import traceback; traceback.print_exc()
+        self._bar.show_steps(self._step_names(), self._step, self._step_values())
+        self._back_btn.setVisible(self._step > 0)
+        self._next_btn.setText("Create Character ✓" if self._step == 5 else "Next →")
+        self._show_status()
 
-        search = QLineEdit(); search.setPlaceholderText("Search races…")
-        ll.addWidget(search)
+    def _refresh(self):
+        """Redraw the current step, keeping where its lists are scrolled and
+        which box has the keyboard."""
+        keep = {s.objectName(): s.verticalScrollBar().value()
+                for s in self._page_host.findChildren(QScrollArea) if s.objectName()}
+        focus = QApplication.focusWidget()
+        fname = focus.objectName() if isinstance(focus, QLineEdit) else ""
+        fpos = focus.cursorPosition() if isinstance(focus, QLineEdit) else 0
+        self._show()
+        for s in self._page_host.findChildren(QScrollArea):
+            if s.objectName() in keep:
+                v = keep[s.objectName()]
+                s.verticalScrollBar().setValue(v)
+                QTimer.singleShot(0, lambda s=s, v=v: s.verticalScrollBar().setValue(v))
+        if fname:
+            e = self._page_host.findChild(QLineEdit, fname)
+            if e:
+                e.setFocus(); e.setCursorPosition(min(fpos, len(e.text())))
 
-        scroll = QScrollArea(); scroll.setWidgetResizable(True)
-        inner = QWidget(); inner.setStyleSheet(f"background:{BG};")
-        self._grid = QGridLayout(inner); self._grid.setSpacing(8)
-        scroll.setWidget(inner); ll.addWidget(scroll, 1)
-        root.addWidget(left, 3)
-
-        # Right: detail panel
-        right = QWidget(); rl = QVBoxLayout(right); rl.setSpacing(10)
-        rl.addWidget(_lbl("Race Details", GOLD2, FS_HEAD, bold=True))
-        self._detail_card = QFrame()
-        self._detail_card.setStyleSheet(f"QFrame{{background:{SURF};border:1px solid {BORDER};border-radius:10px;}}")
-        dcl = QVBoxLayout(self._detail_card); dcl.setContentsMargins(16,14,16,14)
-        self._detail_name  = _lbl("Select a race to see details", TEXT2, FS_BODY)
-        self._detail_asi   = _lbl("", TEAL2, FS_BODY, bold=True)
-        self._detail_speed = _lbl("", TEXT2, FS_SMALL)
-        self._detail_size  = _lbl("", TEXT2, FS_SMALL)
-        self._detail_traits = QTextEdit(); self._detail_traits.setReadOnly(True)
-        self._detail_traits.setMaximumHeight(200)
-        self._detail_traits.setStyleSheet(f"background:{SURF2};border:1px solid {BORDER};border-radius:6px;font-size:{FS_BODY}px;color:{TEXT};")
-        dcl.addWidget(self._detail_name); dcl.addWidget(self._detail_asi)
-        dcl.addWidget(self._detail_speed); dcl.addWidget(self._detail_size)
-        dcl.addWidget(self._detail_traits)
-
-        # Subrace
-        sub_row = QHBoxLayout()
-        sub_row.addWidget(_lbl("Subrace:", TEXT2, FS_BODY, bold=True, wrap=False))
-        self._subrace_combo = QComboBox(); self._subrace_combo.addItem("(None)")
-        self._subrace_combo.setMinimumWidth(240)
-        sub_row.addWidget(self._subrace_combo, 1)
-        dcl.addLayout(sub_row)
-
-        # Draconic Ancestry — shown only for Dragonborn
-        self._anc_row = QHBoxLayout()
-        self._anc_row.addWidget(_lbl("Draconic Ancestry:", TEXT2, FS_BODY, bold=True, wrap=False))
-        self._ancestry_combo = QComboBox()
-        self._ancestry_combo.setMinimumWidth(240)
-        self._anc_row.addWidget(self._ancestry_combo, 1)
-        self._anc_widget = QWidget(); self._anc_widget.setLayout(self._anc_row)
-        self._anc_widget.setVisible(False)
-        dcl.addWidget(self._anc_widget)
-
-        # Eladrin Season — shown only for the Eladrin (Elf) subrace. Each
-        # season changes what Fey Step does when you teleport (Autumn
-        # charms, Winter frightens, Spring lets a willing creature come
-        # with you, Summer burns everyone at your origin point).
-        self._season_row = QHBoxLayout()
-        self._season_row.addWidget(_lbl("Eladrin Season:", TEXT2, FS_BODY, bold=True, wrap=False))
-        self._season_combo = QComboBox()
-        self._season_combo.setMinimumWidth(340)
-        for season, effect in [
-            ("Autumn", "charm one creature within 5 ft of your destination"),
-            ("Winter", "frighten one creature within 5 ft of your destination"),
-            ("Spring", "a willing creature within 5 ft can teleport with you"),
-            ("Summer", "2d6 fire damage to each creature within 5 ft of your origin"),
-        ]:
-            self._season_combo.addItem(f"{season}  –  {effect}", season)
-        self._season_row.addWidget(self._season_combo, 1)
-        self._season_widget = QWidget(); self._season_widget.setLayout(self._season_row)
-        self._season_widget.setVisible(False)
-        dcl.addWidget(self._season_widget)
-
-        # Simic Hybrid's 1st-level Animal Enhancement — shown only for
-        # that race. The 5th-level "Additional Animal Enhancement" choice
-        # is granted later, not at character creation, so it isn't picked
-        # here (same reasoning as feats/ASIs gained on level-up).
-        self._simic_row = QHBoxLayout()
-        self._simic_row.addWidget(_lbl("Animal Enhancement:", TEXT2, FS_BODY, bold=True, wrap=False))
-        self._simic_combo = QComboBox()
-        self._simic_combo.setMinimumWidth(340)
-        for opt, desc in [
-            ("Manta Glide", "slow falls: subtract 100 ft from fall damage, glide 2 ft horizontal per 1 ft descended"),
-            ("Nimble Climber", "climbing speed = walking speed"),
-            ("Underwater Adaptation", "breathe air and water, swim speed = walking speed"),
-        ]:
-            self._simic_combo.addItem(f"{opt}  –  {desc}", opt)
-        self._simic_row.addWidget(self._simic_combo, 1)
-        self._simic_widget = QWidget(); self._simic_widget.setLayout(self._simic_row)
-        self._simic_widget.setVisible(False)
-        dcl.addWidget(self._simic_widget)
-
-        rl.addWidget(self._detail_card, 1); rl.addStretch()
-        root.addWidget(right, 2)
-
-        self._selected_race = None
-        self._race_btns = {}
-
-        # Populate grid
-        for i, name in enumerate(RACE_NAMES):
-            btn = QPushButton(name)
-            btn.setCheckable(True)
-            btn.setMinimumHeight(44)
-            btn.setStyleSheet(
-                f"QPushButton{{background:{SURF2};border:2px solid {BORDER};border-radius:8px;"
-                f"color:{TEXT};font-size:{FS_BODY}px;text-align:left;padding:6px 12px;}}"
-                f"QPushButton:checked{{background:{qa(INDIGO,0x22)};border-color:{INDIGO};color:{IND2};}}"
-                f"QPushButton:hover{{background:{SURF3};border-color:{BORDER2};}}"
-            )
-            btn.clicked.connect(lambda checked, n=name: self._select_race(n))
-            self._grid.addWidget(btn, i//2, i%2)
-            self._race_btns[name] = btn
-
-        def _filter(text):
-            for name, btn in self._race_btns.items():
-                btn.setVisible(not text or text.lower() in name.lower())
-        search.textChanged.connect(_filter)
-
-    def _select_race(self, name):
-        self._selected_race = name
-        for n, btn in self._race_btns.items():
-            btn.setChecked(n == name)
-
-        rdata = RACE_DICT.get(name, {})
-        self._detail_name.setText(name)
-        self._detail_name.setStyleSheet(f"color:{GOLD2};font-size:{FS_TITLE}px;font-weight:700;background:transparent;border:none;")
-
-        # ASI display
-        asi = rdata.get("asi", {})
-        flex = rdata.get("asi_flex", 0)
-        style = rdata.get("asi_flex_style", "distribute")
-        asi_parts = [f"{ab} +{v}" for ab, v in asi.items()]
-        if flex:
-            asi_parts.append(flex_asi_desc(flex, style))
-            self._detail_asi.setText("ASI: " + (", ".join(asi_parts) if asi_parts else "None"))
-
-        self._detail_speed.setText(f"Speed: {rdata.get('speed',30)} ft   Size: {rdata.get('size','Medium')}")
-        self._detail_size.setText(f"Source: {rdata.get('source','PHB')}")
-
-        traits = rdata.get("traits", [])
-        self._base_race_traits = traits  # cached so _update_subrace_detail can rebuild without re-fetching rdata
-        self._detail_traits.setPlainText("\n\n".join(f"• {t}" for t in traits))
-
-        # Subraces
-        self._subrace_combo.clear()
-        self._subrace_combo.addItem("(Choose a subrace)" if race_requires_subrace(name) else "(None)")
-        for sub in rdata.get("subraces", []):
-            display_name = sub.split("(")[0].strip()
-            full_desc = sub[sub.find("("):]  # the parenthetical bit
-            self._subrace_combo.addItem(f"{display_name}  {full_desc}", display_name)
-
-        # Draconic ancestry for Dragonborn
-        is_dragonborn = (name == "Dragonborn")
-        if hasattr(self, "_anc_widget"):
-            self._anc_widget.setVisible(is_dragonborn)
-            if is_dragonborn:
-                from dnd_app.data.races import DRACONIC_ANCESTRY, ANCESTRY_BY_SUBRACE
-                self._ancestry_combo.clear()
-                # Default to Standard types (all 10)
-                for anc in ANCESTRY_BY_SUBRACE.get("Standard", []):
-                    dmg = DRACONIC_ANCESTRY[anc][0]
-                    shape = DRACONIC_ANCESTRY[anc][1]
-                    self._ancestry_combo.addItem(f"{anc}  –  {dmg}, {shape}", anc)
-
-        # Simic Hybrid's 1st-level Animal Enhancement picker
-        if hasattr(self, "_simic_widget"):
-            self._simic_widget.setVisible(name == "Simic Hybrid")
-
-        # Single handler for subrace changes — updates the Dragonborn
-        # ancestry list AND refreshes the ASI/traits detail panel to show
-        # the chosen subrace's own bonuses, not just the base race's.
-        def _on_subrace_changed(idx):
-            if is_dragonborn and hasattr(self, "_anc_widget"):
-                from dnd_app.data.races import DRACONIC_ANCESTRY, ANCESTRY_BY_SUBRACE
-                sub_name = self._subrace_combo.currentData() or "Standard"
-                types = ANCESTRY_BY_SUBRACE.get(sub_name, ANCESTRY_BY_SUBRACE["Standard"])
-                self._ancestry_combo.clear()
-                for anc in types:
-                    dmg = DRACONIC_ANCESTRY[anc][0]
-                    shape = DRACONIC_ANCESTRY[anc][1]
-                    self._ancestry_combo.addItem(f"{anc}  –  {dmg}, {shape}", anc)
-            self._update_subrace_detail()
-        prev = getattr(self, "_subrace_changed_handler", None)
-        if prev is not None:
-            try:
-                self._subrace_combo.currentIndexChanged.disconnect(prev)
-            except (TypeError, RuntimeError):
-                pass
-        self._subrace_combo.currentIndexChanged.connect(_on_subrace_changed)
-        self._subrace_changed_handler = _on_subrace_changed
-
-        # Also show ASI summary for the race in Step1 panel
-        if rdata.get("subraces") and not asi_parts:
-            self._detail_asi.setText("ASI: from subrace — see below")
-        self._update_subrace_detail()  # reflect "(None)" state right away
-
-    def _update_subrace_detail(self):
-        """Refresh the ASI/traits detail panel for whichever subrace is
-        currently selected. Without this, the panel only ever showed the
-        base race's own info — picking "Hill" vs "Mountain" Dwarf, for
-        example, never changed what was displayed, even though each
-        subrace has its own ASI and adds its own traits (Dwarven
-        Toughness, Duergar Magic, etc.) on top of the base race's."""
-        if not hasattr(self, "_detail_traits"):
-            return
-        rdata = RACE_DICT.get(self._selected_race, {})
-        base_traits = getattr(self, "_base_race_traits", rdata.get("traits", []))
-        sub_data = self._subrace_combo.currentData()
-
-        # Eladrin Season picker — only relevant when the Eladrin subrace of
-        # Elf is actually selected. This visibility toggle was the missing
-        # piece keeping the whole widget permanently hidden/dead: it was
-        # fully built (all 4 seasons with their Fey Step effects) but
-        # nothing ever showed it or read a choice out of it.
-        if hasattr(self, "_season_widget"):
-            self._season_widget.setVisible(sub_data == "Eladrin")
-
-        if not sub_data:
-            self._detail_traits.setPlainText("\n\n".join(f"• {t}" for t in base_traits))
-            asi = rdata.get("asi", {})
-            flex = rdata.get("asi_flex", 0)
-            style = rdata.get("asi_flex_style", "distribute")
-            asi_parts = [f"{ab} +{v}" for ab, v in asi.items()]
-            if flex:
-                asi_parts.append(flex_asi_desc(flex, style))
-            if asi_parts:
-                self._detail_asi.setText("ASI: " + ", ".join(asi_parts))
-            elif rdata.get("subraces"):
-                self._detail_asi.setText("ASI: from subrace — see below")
-            else:
-                self._detail_asi.setText("ASI: None")
-            return
-
-        sub_full = next((s for s in rdata.get("subraces", [])
-                          if s.split("(")[0].strip() == sub_data), None)
-        if not sub_full:
-            return
-        paren = sub_full[sub_full.find("(")+1 : sub_full.rfind(")")]
-        segments = [s.strip() for s in paren.split(";") if s.strip()]
-        asi_desc = segments[0].lstrip("–").strip() if segments else ""
-        sub_traits = segments[1:]
-
-        if asi_desc:
-            self._detail_asi.setText(f"ASI: {asi_desc}  (from {sub_data})")
-        combined = list(base_traits) + [f"[{sub_data}] {t}" for t in sub_traits]
-        self._detail_traits.setPlainText("\n\n".join(f"• {t}" for t in combined))
-
-    def populate(self, char):
-        race = char.get("race","")
-        if race and race in self._race_btns:
-            self._select_race(race)
-
-    def collect(self, char) -> bool:
-        if not self._selected_race:
-            QMessageBox.warning(self, "Race Required", "Please choose a race before continuing.")
-            return False
-        if race_requires_subrace(self._selected_race) and self._subrace_combo.currentIndex() <= 0:
-            QMessageBox.warning(self, "Subrace Required",
-                                f"Please choose a subrace -- {'an' if self._selected_race[:1] in 'AEIOU' else 'a'} {self._selected_race}'s ability "
-                                f"score bonus comes from its subrace.")
-            return False
-        char["race"] = self._selected_race
-        char["species"] = self._selected_race
-        sub_data = self._subrace_combo.currentData()  # stored as name only
-        sub_text = self._subrace_combo.currentText()
-        if sub_data:
-            char["subrace"] = sub_data  # clean name like "Hill"
-        elif sub_text and not sub_text.startswith("("):
-            char["subrace"] = sub_text.split("(")[0].strip().rstrip()
+    def _show_status(self):
+        block = self._block()
+        last = self._step == 5
+        fill = TEAL if last else GOLD
+        if not block:
+            self._next_btn.setStyleSheet(
+                f"#wizNext{{background:{fill};border:none;border-radius:8px;color:{on_fill(fill)};font-weight:800;"
+                f"font-size:{FS_BODY}px;padding:0 24px;min-height:46px;max-height:46px;}}"
+                f"#wizNext:hover{{background:{TEAL2 if last else GOLD2};}}")
         else:
-            char["subrace"] = ""
-        # Save draconic ancestry for Dragonborn
-        if hasattr(self, "_ancestry_combo") and self._anc_widget.isVisible():
-            anc = self._ancestry_combo.currentData() or self._ancestry_combo.currentText().split("–")[0].strip()
-            char["draconic_ancestry"] = anc
-        elif "draconic_ancestry" not in char:
-            char["draconic_ancestry"] = ""
-        # Save Eladrin season — this widget existed and was fully built out
-        # (all 4 seasons with their Fey Step rider effects) but was never
-        # actually wired to anything: it never became visible, and nothing
-        # ever read a choice out of it, so the season was silently lost.
-        if hasattr(self, "_season_widget") and self._season_widget.isVisible():
-            season = self._season_combo.currentData() or self._season_combo.currentText().split("–")[0].strip()
-            char["eladrin_season"] = season
-        elif "eladrin_season" not in char:
-            char["eladrin_season"] = ""
-        # Save Simic Hybrid's 1st-level Animal Enhancement choice
-        if hasattr(self, "_simic_widget") and self._simic_widget.isVisible():
-            enh = self._simic_combo.currentData() or self._simic_combo.currentText().split("–")[0].strip()
-            char["simic_enhancement_1st"] = enh
-        elif "simic_enhancement_1st" not in char:
-            char["simic_enhancement_1st"] = ""
-        # Apply race traits
-        rdata = RACE_DICT.get(self._selected_race, {})
-        char["species_traits"] = rdata.get("traits", [])
-        char.setdefault("languages", ["Common"])
-        for lang in rdata.get("languages", []):
-            if lang not in char["languages"] and "your choice" not in lang.lower():
-                char["languages"].append(lang)
-        return True
+            self._next_btn.setStyleSheet(
+                f"#wizNext{{background:{qa(GOLD, 0x66)};border:none;border-radius:8px;color:{on_fill(GOLD)};font-weight:800;"
+                f"font-size:{FS_BODY}px;padding:0 24px;min-height:46px;max-height:46px;}}")
+        self._status.setText(self._status_text(block))
 
+    def _status_text(self, block):
+        s = self.state
+        if block:
+            if self._step == 3:
+                return "Still to pick: " + " · ".join(f"<b style='color:{TEXT}'>{x}</b>" for x in self._level1_left())
+            return f"<span style='color:{GOLD2}'>{block}</span>"
+        if self._step == 0:
+            return f"<b style='color:{TEXT}'>{s['race']}</b> selected"
+        if self._step == 1:
+            picks = [ab for ab in ABILITIES if s["picks"].get(ab)]
+            if picks:
+                return "Your picks: " + ", ".join(f"<b style='color:{TEXT}'>{ab} +{s['picks'][ab]}</b>" for ab in picks)
+            return "Scores set"
+        if self._step == 2:
+            return f"<b style='color:{TEXT}'>{s['cls']}</b> · <b style='color:{TEXT}'>{s['bg']}</b>"
+        if self._step == 3:
+            return "All picked"
+        if self._step == 4:
+            return "Ready to go"
+        return "Everything picked"
 
-# ═══════════════════════════════════════════════════════════════════
-#  STEP 2: ABILITY SCORES
-# ═══════════════════════════════════════════════════════════════════
-class Step2Abilities(QWidget):
-    def __init__(self, char, parent=None):
-        super().__init__(parent)
-        from dnd_app.ui_desktop.style.theme import sync_globals as _sg; _sg(globals())
-        self.char = char
-        root = QVBoxLayout(self); root.setContentsMargins(40,24,40,24); root.setSpacing(16)
-        root.addWidget(_lbl("Ability Scores", GOLD2, FS_HEAD, bold=True))
-        root.addWidget(_lbl("Set your base ability scores, then apply racial and ASI bonuses below.", TEXT2, FS_BODY))
+    def _set(self, key, value):
+        self.state[key] = value
+        self._refresh()
 
-        # Method selector
-        method_row = QHBoxLayout(); method_row.setSpacing(12)
-        method_row.addWidget(_lbl("Method:", TEXT, FS_BODY, bold=True))
-        self._method = QComboBox()
-        self._method.addItems([
-            "Manual Entry",
-            "Standard Array (15,14,13,12,10,8)",
-            "Point Buy (27 points)",
-            "Tasha's: Reassign Racial ASIs (keeps all racial traits)",
-        ])
-        self._method.setFixedWidth(380)
-        self._method.currentTextChanged.connect(self._on_method_change)
-        method_row.addWidget(self._method); method_row.addStretch()
-        root.addLayout(method_row)
+    # ═══════════════════════════════════════════════════════════════
+    #  1. Race
+    # ═══════════════════════════════════════════════════════════════
+    def _race_page(self):
+        s = self.state
+        page = QWidget(); page.setObjectName("wizRacePage"); page.setStyleSheet("#wizRacePage{background:transparent;}")
+        row = QHBoxLayout(page); row.setContentsMargins(0, 0, 0, 0); row.setSpacing(14)
 
-        # Ability blocks
-        ab_frame = QFrame(); ab_frame.setStyleSheet(f"background:{SURF};border:1px solid {BORDER};border-radius:10px;")
-        ab_lay = QHBoxLayout(ab_frame); ab_lay.setContentsMargins(20,16,20,16); ab_lay.setSpacing(10)
-        self._ab_blocks = {}
-        for ab in ABILITIES:
-            blk = AbilityBlock(ab, 10, editable=True)
-            blk.changed.connect(self._on_score_change)
-            ab_lay.addWidget(blk)
-            self._ab_blocks[ab] = blk
-        root.addWidget(ab_frame)
+        left = QVBoxLayout(); left.setSpacing(8)
+        left.addWidget(_search("Search races…", s["race_search"], self._race_search, "wizRaceSearch"))
+        chips = QHBoxLayout(); chips.setSpacing(6)
+        for name, _ in W.SOURCE_GROUPS:
+            b = QPushButton(name); b.setObjectName("wizGroup"); b.setCursor(Qt.PointingHandCursor)
+            on = s["race_group"] == name
+            c = GOLD2 if on else TEXT3
+            b.setStyleSheet(f"#wizGroup{{color:{c};background:{qa(GOLD, 0x1c) if on else SURF2};"
+                            f"border:1px solid {GOLD if on else BORDER};border-radius:6px;font-size:{FS_SMALL - 1}px;"
+                            f"font-weight:700;padding:0 10px;min-height:26px;max-height:26px;}}")
+            b.clicked.connect(lambda _=False, n=name: self._set("race_group", n))
+            chips.addWidget(b)
+        chips.addStretch(1)
+        left.addLayout(chips)
+        inner = QWidget(); il = QVBoxLayout(inner); il.setContentsMargins(0, 0, 4, 0); il.setSpacing(5)
+        for r in W.race_rows(s["race_search"], s["race_group"]):
+            rw = Row(r["name"], (r["asi"], r["speed"]), r["source"], r["name"] == s["race"])
+            rw.clicked.connect(lambda n=r["name"]: self._pick_race(n))
+            il.addWidget(rw)
+        il.addStretch(1)
+        left.addWidget(_scroll(inner, "wizRaceList"), 1)
+        lw = QWidget(); lw.setLayout(left); lw.setObjectName("wizRaceLeft"); lw.setStyleSheet("#wizRaceLeft{background:transparent;}")
+        row.addWidget(lw, 1)
+        row.addWidget(self._race_details(), 1)
+        return page
 
-        # Point buy tracker
-        self._pb_lbl = _lbl("Points remaining: 27 / 27", GOLD2, FS_BODY, bold=True)
-        self._pb_lbl.setVisible(False)
-        root.addWidget(self._pb_lbl)
-
-        # Racial bonus preview
-        self._race_bonus_card = QFrame()
-        self._race_bonus_card.setStyleSheet(f"QFrame{{background:{SURF};border:1px solid {qa(TEAL,0x55)};border-radius:10px;}}")
-        rbl = QVBoxLayout(self._race_bonus_card); rbl.setContentsMargins(16,12,16,12)
-        rbl.addWidget(_lbl("Racial Ability Score Increases", TEAL2, FS_BODY, bold=True))
-        self._race_bonus_lbl = _lbl("", TEXT2, FS_BODY)
-        rbl.addWidget(self._race_bonus_lbl)
-        root.addWidget(self._race_bonus_card)
-
-        # Totals row
-        totals_card = QFrame(); totals_card.setStyleSheet(f"QFrame{{background:{SURF2};border:1px solid {BORDER};border-radius:10px;}}")
-        tl = QHBoxLayout(totals_card); tl.setContentsMargins(20,12,20,12); tl.setSpacing(8)
-        tl.addWidget(_lbl("TOTAL SCORES WITH RACIAL BONUSES:", TEXT2, FS_SMALL, bold=True)); tl.addStretch()
-        self._total_lbls = {}
-        for ab in ABILITIES:
-            col = QVBoxLayout(); col.setSpacing(2)
-            col.addWidget(_lbl(ab, TEXT3, FS_SMALL, bold=True, align=Qt.AlignCenter))
-            lbl = _lbl("10", TEXT, FS_TITLE, bold=True, align=Qt.AlignCenter)
-            col.addWidget(lbl); tl.addLayout(col)
-            self._total_lbls[ab] = lbl
-        root.addWidget(totals_card)
-
-        # ── Flex ASI picker (Half-Elf, Human Variant etc.) ────────────────────
-        self._flex_card = QFrame()
-        self._flex_card.setStyleSheet(f"QFrame{{background:{SURF};border:1px solid {qa(PURP2,0x55)};border-radius:10px;}}")
-        fcl = QVBoxLayout(self._flex_card); fcl.setContentsMargins(16,12,16,12); fcl.setSpacing(8)
-        self._flex_lbl = _lbl("Choose 2 abilities to receive +1:", PURP2, FS_BODY, bold=True)
-        fcl.addWidget(self._flex_lbl)
-        flex_row = QHBoxLayout(); flex_row.setSpacing(10)
-        self._flex_cbs = {}
-        for ab in ABILITIES:
-            cb = QCheckBox(ab)
-            cb.setStyleSheet(f"QCheckBox{{color:{TEXT};font-size:{FS_BODY}px;}}")
-            cb.stateChanged.connect(self._on_flex_changed)
-            flex_row.addWidget(cb)
-            self._flex_cbs[ab] = cb
-        flex_row.addStretch()
-        fcl.addLayout(flex_row)
-        self._flex_count = 0
-        self._flex_card.setVisible(False)
-        root.addWidget(self._flex_card)
-
-        # ── Distribute ASI picker (2024/MPMM style: +2/+1 split OR three +1s) ──
-        # The checkbox-only picker above can only represent "choose N
-        # different abilities, each gets a flat +1" (the older,
-        # Half-Elf-style rule). For 2024/MPMM-style races — asi_flex=2,
-        # the majority of races in this app — the player needs to pick
-        # between a "+2/+1 split" or "three different +1s" distribution,
-        # which this picker provides.
-        self._dist_card = QFrame()
-        self._dist_card.setStyleSheet(f"QFrame{{background:{SURF};border:1px solid {qa(PURP2,0x55)};border-radius:10px;}}")
-        self._dist_card.setMinimumHeight(190)
-        self._dist_card.setMinimumWidth(420)
-        dcl = QVBoxLayout(self._dist_card); dcl.setContentsMargins(16,12,16,12); dcl.setSpacing(8)
-        dcl.addWidget(_lbl("Ability Score Increase — choose one option:", PURP2, FS_BODY, bold=True))
-
-        self._dist_group = QButtonGroup(self._dist_card)
-        self._dist_radio_a = QRadioButton("(a) +2 to one ability, +1 to a different ability")
-        self._dist_radio_b = QRadioButton("(b) +1 to three different abilities")
-        for rb in (self._dist_radio_a, self._dist_radio_b):
-            rb.setStyleSheet(f"QRadioButton{{color:{TEXT};font-size:{FS_BODY}px;background:transparent;}}")
-            self._dist_group.addButton(rb)
-        self._dist_radio_a.setChecked(True)
-        dcl.addWidget(self._dist_radio_a)
-
-        # Option (a) sub-picker: two dropdowns, must be different abilities
-        dist_a_row = QHBoxLayout(); dist_a_row.setSpacing(10)
-        dist_a_row.addWidget(_lbl("+2:", TEXT2, FS_SMALL))
-        self._dist_plus2_combo = QComboBox()
-        self._dist_plus2_combo.addItems(ABILITIES)
-        self._dist_plus2_combo.setMinimumWidth(90)
-        dist_a_row.addWidget(self._dist_plus2_combo)
-        dist_a_row.addWidget(_lbl("+1:", TEXT2, FS_SMALL))
-        self._dist_plus1_combo = QComboBox()
-        self._dist_plus1_combo.addItems(ABILITIES)
-        self._dist_plus1_combo.setMinimumWidth(90)
-        self._dist_plus1_combo.setCurrentIndex(1)
-        dist_a_row.addWidget(self._dist_plus1_combo)
-        dist_a_row.addStretch()
-        self._dist_a_widget = QWidget(); self._dist_a_widget.setLayout(dist_a_row)
-        dcl.addWidget(self._dist_a_widget)
-
-        dcl.addWidget(self._dist_radio_b)
-
-        # Option (b) sub-picker: exactly 3 checkboxes, each a flat +1
-        dist_b_row = QHBoxLayout(); dist_b_row.setSpacing(10)
-        self._dist_triple_cbs = {}
-        for ab in ABILITIES:
-            cb = QCheckBox(ab)
-            cb.setStyleSheet(f"QCheckBox{{color:{TEXT};font-size:{FS_BODY}px;}}")
-            cb.stateChanged.connect(self._on_dist_triple_changed)
-            dist_b_row.addWidget(cb)
-            self._dist_triple_cbs[ab] = cb
-        dist_b_row.addStretch()
-        self._dist_b_widget = QWidget(); self._dist_b_widget.setLayout(dist_b_row)
-        dcl.addWidget(self._dist_b_widget)
-
-        self._dist_radio_a.toggled.connect(self._on_dist_option_changed)
-        self._dist_plus2_combo.currentTextChanged.connect(self._update_totals)
-        self._dist_plus1_combo.currentTextChanged.connect(self._update_totals)
-        self._on_dist_option_changed()
-        self._dist_card.setVisible(False)
-        root.addWidget(self._dist_card)
-
-        # ── Tasha's: Reassign Racial ASIs ────────────────────────────────
-        self._tashas_card = QFrame()
-        self._tashas_card.setStyleSheet(f"QFrame{{background:{SURF};border:1px solid {qa(GOLD,0x55)};border-radius:10px;}}")
-        tcl = QVBoxLayout(self._tashas_card); tcl.setContentsMargins(16,12,16,12); tcl.setSpacing(8)
-        tcl.addWidget(_lbl("Tasha's Reassignment: redistribute your racial ASI points to any abilities.",
-                           GOLD2, FS_BODY, bold=True))
-        tcl.addWidget(_lbl(
-            "All racial traits, features, languages, speed, darkvision and proficiencies are kept. "
-            "Only where the ability score increases land is changed.",
-            TEAL2, FS_SMALL))
-        self._tashas_summary = _lbl("", TEXT2, FS_SMALL); tcl.addWidget(self._tashas_summary)
-        self._tashas_spins_frame = QWidget(); self._tashas_spins_frame.setStyleSheet("background:transparent;border:none;")
-        tsf = QHBoxLayout(self._tashas_spins_frame); tsf.setSpacing(10)
-        self._tashas_spins = {}; self._tashas_mod_lbls = {}
-        for ab in ABILITIES:
-            col = QVBoxLayout(); col.setSpacing(3)
-            col.addWidget(_lbl(ab, TEXT3, FS_SMALL, bold=True, align=Qt.AlignCenter))
-            sp = QSpinBox(); sp.setRange(0, 4); sp.setValue(0); sp.setFixedWidth(52)
-            sp.setStyleSheet(f"QSpinBox{{color:{GOLD2};font-weight:700;font-size:{FS_BODY}px;"
-                             f"border:2px solid {qa(GOLD,0x55)};border-radius:6px;background:{SURF2};padding:2px;}}"
-                             + SPIN_NO_BUTTONS)
-            sp.valueChanged.connect(self._on_tashas_spin)
-            mod_lbl = QLabel("0"); mod_lbl.setAlignment(Qt.AlignCenter)
-            mod_lbl.setStyleSheet(f"color:{TEXT3};font-size:{FS_SMALL}px;background:transparent;border:none;")
-            col.addWidget(sp); col.addWidget(mod_lbl); tsf.addLayout(col)
-            self._tashas_spins[ab] = sp; self._tashas_mod_lbls[ab] = mod_lbl
-        tsf.addStretch(); tcl.addWidget(self._tashas_spins_frame)
-        self._tashas_pts_lbl = _lbl("Points: 0 / 0", TEXT2, FS_SMALL, bold=True)
-        tcl.addWidget(self._tashas_pts_lbl)
-        self._tashas_card.setVisible(False)
-        root.addWidget(self._tashas_card)
-
-        # Standard array assign (hidden unless method = standard)
-        self._sa_frame = QFrame(); self._sa_frame.setStyleSheet(f"QFrame{{background:{SURF};border:1px solid {qa(GOLD,0x55)};border-radius:10px;}}")
-        sal = QVBoxLayout(self._sa_frame); sal.setContentsMargins(16,12,16,12)
-        sal.addWidget(_lbl("Assign each value to one ability:", GOLD, FS_BODY, bold=True))
-        self._sa_combos = {}
-        sa_grid = QGridLayout(); sa_grid.setSpacing(8)
-        for i, ab in enumerate(ABILITIES):
-            sa_grid.addWidget(_lbl(f"{AB_FULL[ab]}:", TEXT, FS_BODY, bold=True), i, 0)
-            combo = QComboBox()
-            combo.setMinimumWidth(80)
-            for v in STANDARD_ARRAY: combo.addItem(str(v))
-            combo.setCurrentIndex(i)
-            combo.currentTextChanged.connect(self._update_totals)
-            sa_grid.addWidget(combo, i, 1)
-            self._sa_combos[ab] = combo
-        sal.addLayout(sa_grid)
-        self._sa_frame.setVisible(False)
-        root.addWidget(self._sa_frame)
-
-        root.addStretch()
-
-    def populate(self, char):
-        from dnd_app.core.character import ability_score
-        for ab in ABILITIES:
-            base = char["abilities"].get(ab, 10)
-            self._ab_blocks[ab].set_score(base)
-        self._update_race_bonuses(char)
-        self._update_flex_asi(char)
-        self._update_totals()
-
-    def _update_flex_asi(self, char):
-        """Show/hide the correct flex ASI picker. Two genuinely different
-        mechanics share the asi_flex field: the legacy "each" style
-        (Half-Elf: choose N abilities, each flat +1) and the 2024/MPMM
-        "distribute" style (choose either a +2/+1 split or three
-        different +1s) — the each-style checkbox picker can represent
-        neither valid distribute option, so the style must be read from
-        asi_flex_style before deciding which card to show."""
-        from dnd_app.data.races import race_flex
-        race = char.get("race", "")
-        flex, style = race_flex(race, char.get("subrace", ""))   # none for a dragonmark
-        use_dist = flex == 2 and style == "distribute"
-        if hasattr(self, '_flex_card'):
-            self._flex_card.setVisible(flex > 0 and not use_dist)
-            if flex > 0 and not use_dist:
-                self._flex_lbl.setText(f"Choose {flex} abilities to receive +1 (from {race}):")
-        if hasattr(self, '_dist_card'):
-            self._dist_card.setVisible(use_dist)
-            if use_dist:
-                self._dist_radio_a.setChecked(True)
-                self._on_dist_option_changed()
-                for cb in self._dist_triple_cbs.values():
-                    cb.blockSignals(True); cb.setChecked(False); cb.blockSignals(False)
-        self._flex_count = 0 if use_dist else flex
-        # Prime Tasha's card with the correct pool size (race + subrace combined)
-        self._current_race_for_tashas = char.get("race", "")
-        self._current_subrace_for_tashas = char.get("subrace", "")
-        combined_asi = combined_racial_asi(char)
-        pool2 = sum(combined_asi.values())
-        if hasattr(self, '_tashas_summary') and self._current_race_for_tashas:
-            subrace = char.get("subrace", "")
-            orig = ", ".join(f"{ab} +{v}" for ab, v in combined_asi.items()) if combined_asi else "None"
-            flex_note = f" + {flex}\u00d7+1 flex (stays free)" if flex > 0 else ""
-            self._tashas_summary.setText(
-                f"Original fixed ASI: {orig}{flex_note}\n"
-                f"Redistribute the {pool2} fixed point{'s' if pool2!=1 else ''} "
-                f"below. All other racial traits are unchanged.")
-            for sp in self._tashas_spins.values():
-                sp.setRange(0, max(1, pool2))
-        if hasattr(self, '_on_tashas_spin'):
-            self._on_tashas_spin()
-
-    def _on_tashas_spin(self):
-        race    = getattr(self, '_current_race_for_tashas', '')
-        subrace = getattr(self, '_current_subrace_for_tashas', '')
-        combined = combined_racial_asi({"race": race, "subrace": subrace})
-        pool = sum(combined.values()) or 2
-        used = sum(sp.value() for sp in self._tashas_spins.values())
-        if used > pool:
-            for sp in self._tashas_spins.values():
-                if sp.value() > 0 and used > pool:
-                    excess = used - pool
-                    sp.blockSignals(True); sp.setValue(max(0, sp.value()-excess)); sp.blockSignals(False)
-                    used = sum(s.value() for s in self._tashas_spins.values()); break
-        color = TEAL2 if used == pool else (GOLD2 if used < pool else CRIM2)
-        if hasattr(self, '_tashas_pts_lbl'):
-            self._tashas_pts_lbl.setText(f"Points used: {used} / {pool}")
-            self._tashas_pts_lbl.setStyleSheet(f"color:{color};font-size:{FS_SMALL}px;font-weight:700;background:transparent;border:none;")
-        for ab, sp in self._tashas_spins.items():
-            base = self._ab_blocks[ab].value() if ab in self._ab_blocks else 10
-            total = base + sp.value()
-            mod = (total - 10) // 2
-            sign = '+' if mod >= 0 else ''
-            ml = self._tashas_mod_lbls.get(ab)
-            if ml:
-                ml.setText(f"{total}\n({sign}{mod})")
-                ml.setStyleSheet(f"color:{TEAL2 if sp.value()>0 else TEXT3};font-size:{FS_SMALL}px;background:transparent;border:none;")
-
-    def _on_flex_changed(self, _state):
-        """Enforce max selection for flex ASI checkboxes."""
-        max_flex = getattr(self, '_flex_count', 0)
-        if max_flex <= 0:
-            return
-        checked = [ab for ab, cb in self._flex_cbs.items() if cb.isChecked()]
-        if len(checked) > max_flex:
-            for ab, cb in self._flex_cbs.items():
-                if cb.isChecked() and ab not in checked[:max_flex]:
-                    cb.blockSignals(True); cb.setChecked(False); cb.blockSignals(False); break
-            checked = [ab for ab, cb in self._flex_cbs.items() if cb.isChecked()]
-        self._update_totals()
-
-    def _on_dist_option_changed(self):
-        """Toggle which sub-picker is active for the distribute-style ASI
-        card: option (a)'s two dropdowns, or option (b)'s three
-        checkboxes — only one option's picks should count at a time."""
-        is_a = self._dist_radio_a.isChecked()
-        self._dist_a_widget.setEnabled(is_a)
-        self._dist_b_widget.setEnabled(not is_a)
-        self._update_totals()
-
-    def _on_dist_triple_changed(self, _state):
-        """Enforce exactly 3 selections for option (b) — not 'up to 3'
-        like the each-style picker, since the real rule requires three
-        different abilities, no fewer."""
-        checked = [ab for ab, cb in self._dist_triple_cbs.items() if cb.isChecked()]
-        if len(checked) > 3:
-            for ab, cb in self._dist_triple_cbs.items():
-                if cb.isChecked() and ab not in checked[:3]:
-                    cb.blockSignals(True); cb.setChecked(False); cb.blockSignals(False); break
-        self._update_totals()
-
-    def _on_method_change(self, text):
-        is_sa = "Standard Array" in text
-        is_pb = "Point Buy" in text
-        is_ta = "Tasha" in text
-        self._sa_frame.setVisible(is_sa)
-        self._pb_lbl.setVisible(is_pb)
-        self._tashas_card.setVisible(is_ta)
-        # Hide manual blocks for standard array
-        for ab, blk in self._ab_blocks.items():
-            blk.setVisible(not is_sa and not is_ta)
-        if is_sa:
-            for ab, combo in self._sa_combos.items():
-                self._ab_blocks[ab].set_score(int(combo.currentText()))
-        if is_ta:
-            for sp in self._tashas_spins.values():
-                sp.blockSignals(True); sp.setValue(0); sp.blockSignals(False)
-            self._on_tashas_spin()
-        self._update_totals()
-
-    def _on_score_change(self, ab, val):
-        self._update_totals()
-        if "Point Buy" in self._method.currentText():
-            used = sum(POINT_BUY_COSTS.get(self._ab_blocks[a].value(), 0) for a in ABILITIES)
-            rem = 27 - used
-            self._pb_lbl.setText(f"Points remaining: {rem} / 27")
-            color = TEAL2 if rem >= 0 else CRIM2
-            self._pb_lbl.setStyleSheet(f"color:{color};font-size:{FS_BODY}px;font-weight:700;background:transparent;border:none;")
-
-    def _update_race_bonuses(self, char):
-        """Update the racial ASI preview label. Uses combined_racial_asi
-        so it never double-counts the base race bonus."""
-        from dnd_app.data.races import race_flex
-        race  = char.get("race","")
-        sub_name = char.get("subrace","")
-        flex, _ = race_flex(race, sub_name)     # none for a dragonmark
-        asi   = combined_racial_asi(char)
-        parts = [f"{ab} +{v}" for ab, v in sorted(asi.items())]
-        if flex:
-            parts.append(f"+1 to {flex} abilities of your choice")
-        if hasattr(self, "_race_bonus_card"):
-            self._race_bonus_card.setVisible(bool(parts) or bool(sub_name))
-        if parts:
-            self._race_bonus_lbl.setText(", ".join(parts))
-        elif sub_name:
-            self._race_bonus_lbl.setText(f"Subrace: {sub_name}")
-    def _update_totals(self):
-        from dnd_app.data.races import RACE_DICT as RD
-        if "Standard Array" in self._method.currentText():
-            for ab, combo in self._sa_combos.items():
-                self._ab_blocks[ab].set_score(int(combo.currentText()))
-        bases = {ab: self._ab_blocks[ab].value() for ab in ABILITIES}
-        # Racial ASI — use the canonical helper so base+subrace never double-count
-        racial_asi = combined_racial_asi(self.char)
-        flex_picks = {ab for ab, cb in self._flex_cbs.items() if cb.isChecked()} if hasattr(self,'_flex_cbs') and self._flex_card.isVisible() else set()
-        dist_bonus = {}
-        if hasattr(self, '_dist_card') and self._dist_card.isVisible():
-            if self._dist_radio_a.isChecked():
-                ab2, ab1 = self._dist_plus2_combo.currentText(), self._dist_plus1_combo.currentText()
-                if ab2 != ab1:
-                    dist_bonus[ab2] = dist_bonus.get(ab2, 0) + 2
-                    dist_bonus[ab1] = dist_bonus.get(ab1, 0) + 1
+    def _race_details(self):
+        s = self.state
+        card, lay = _card("wizRaceCard", (16, 14, 16, 14))
+        if not s["race"]:
+            lay.addWidget(_t("Pick a race on the left to see what it gives you.", TEXT3, FS_BODY, wrap=True))
+            lay.addStretch(1)
+            return card
+        rc = W.race_card(s["race"], s["sub"])
+        top = QHBoxLayout(); top.setSpacing(10)
+        top.addWidget(_t(rc["name"], GOLD2, FS_TITLE, bold="x"))
+        top.addWidget(_chip(rc["source"], "gold", 22)); top.addStretch(1)
+        lay.addLayout(top)
+        lay.addWidget(_chip_grid([(c["text"], c["kind"]) for c in rc["chips"]], 3))
+        content = QWidget(); cl = QVBoxLayout(content); cl.setContentsMargins(0, 0, 4, 0); cl.setSpacing(8)
+        if rc["subraces"]:
+            cl.addWidget(_head("Subrace", "pick one" if rc["subrace_required"] else "optional"))
+            tiles = []
+            if rc["subrace_required"] or "Standard" in rc["subraces"]:
+                opts = [(n, n) for n in rc["subraces"]]
             else:
-                for ab, cb in self._dist_triple_cbs.items():
-                    if cb.isChecked():
-                        dist_bonus[ab] = dist_bonus.get(ab, 0) + 1
-        for ab, lbl in self._total_lbls.items():
-            racial = racial_asi.get(ab, 0)
-            flex_bonus = 1 if ab in flex_picks else 0
-            total = bases[ab] + racial + flex_bonus + dist_bonus.get(ab, 0)
-            mod = (total - 10) // 2
-            sign_mod = f"+{mod}" if mod >= 0 else str(mod)
-            lbl.setText(f"{total}  ({sign_mod})")
-            changed = (racial + flex_bonus + dist_bonus.get(ab, 0)) > 0
-            lbl.setStyleSheet(
-                f"color:{TEAL2 if changed else TEXT};"
-                f"font-size:{FS_BODY}px;font-weight:700;background:transparent;")
-
-    def collect(self, char) -> bool:
-        if "Standard Array" in self._method.currentText():
-            vals = [int(c.currentText()) for c in self._sa_combos.values()]
-            if sorted(vals) != sorted(STANDARD_ARRAY):
-                QMessageBox.warning(self, "Duplicate Values", "Each standard array value must be used exactly once.")
-                return False
-            for ab, combo in self._sa_combos.items():
-                char["abilities"][ab] = int(combo.currentText())
-        elif "Point Buy" in self._method.currentText():
-            used = sum(POINT_BUY_COSTS.get(self._ab_blocks[ab].value(), 99) for ab in ABILITIES)
-            if used > 27:
-                QMessageBox.warning(self, "Over Budget", f"You've spent {used} points but only have 27.")
-                return False
-            for ab in ABILITIES:
-                char["abilities"][ab] = self._ab_blocks[ab].value()
-        elif "Tasha" in self._method.currentText():
-            # Tasha's Reassignment: keep ALL racial traits, only redirect ASI points
-            for ab in ABILITIES:
-                char["abilities"][ab] = self._ab_blocks[ab].value()
-            combined_asi = combined_racial_asi(char)
-            pool = sum(combined_asi.values())
-            used = sum(sp.value() for sp in self._tashas_spins.values())
-            if pool > 0 and used != pool:
-                subrace = char.get("subrace","")
-                sub_note = f" ({subrace})" if subrace else ""
-                QMessageBox.warning(self, "Tasha's Reassignment",
-                    f"You must distribute all {pool} racial ASI point(s) "
-                    f"from {char.get('race','')}{sub_note}.\nCurrently placed: {used}")
-                return False
-            # Store redistribution — builder reads this instead of fixed racial ASI
-            char.setdefault("_choices", {})["tashas_asi_reassign"] = {
-                ab: sp.value() for ab, sp in self._tashas_spins.items() if sp.value() > 0
-            }
-        else:
-            for ab in ABILITIES:
-                char["abilities"][ab] = self._ab_blocks[ab].value()
-        # Apply flex ASI choices — two genuinely different mechanics,
-        # only one of which is active per race (see _update_flex_asi).
-        if hasattr(self, '_flex_card') and self._flex_card.isVisible():
-            flex_picks = [ab for ab, cb in self._flex_cbs.items() if cb.isChecked()]
-            flex_needed = getattr(self, '_flex_count', 0)
-            if flex_needed > 0 and len(flex_picks) < flex_needed:
-                QMessageBox.warning(self, "Racial ASI",
-                    f"Please choose {flex_needed} abilities to receive +1 (your race grants this).")
-                return False
-            for ab in flex_picks:
-                char["abilities"][ab] = char["abilities"].get(ab, 10) + 1
-        if hasattr(self, '_dist_card') and self._dist_card.isVisible():
-            if self._dist_radio_a.isChecked():
-                ab_plus2 = self._dist_plus2_combo.currentText()
-                ab_plus1 = self._dist_plus1_combo.currentText()
-                if ab_plus2 == ab_plus1:
-                    QMessageBox.warning(self, "Racial ASI",
-                        "The +2 and +1 must go to two different abilities.")
-                    return False
-                char["abilities"][ab_plus2] = char["abilities"].get(ab_plus2, 10) + 2
-                char["abilities"][ab_plus1] = char["abilities"].get(ab_plus1, 10) + 1
-            else:
-                triple_picks = [ab for ab, cb in self._dist_triple_cbs.items() if cb.isChecked()]
-                if len(triple_picks) != 3:
-                    QMessageBox.warning(self, "Racial ASI",
-                        f"Please choose exactly 3 different abilities to receive +1 "
-                        f"(currently {len(triple_picks)} chosen).")
-                    return False
-                for ab in triple_picks:
-                    char["abilities"][ab] = char["abilities"].get(ab, 10) + 1
-        return True
-
-
-# ═══════════════════════════════════════════════════════════════════
-#  STEP 3: BACKGROUND + CLASS
-# ═══════════════════════════════════════════════════════════════════
-class Step3Class(QWidget):
-    """Step 3 — Character identity: name, alignment, edition, background, starting class."""
-
-    def __init__(self, char, parent=None):
-        super().__init__(parent)
-        from dnd_app.ui_desktop.style.theme import sync_globals as _sg; _sg(globals())
-        self.char = char
-        root = QVBoxLayout(self)
-        root.setContentsMargins(40, 24, 40, 24); root.setSpacing(16)
-        root.addWidget(_lbl("Character Identity", GOLD2, FS_HEAD, bold=True))
-        root.addWidget(_lbl(
-            "Choose your name, background, and starting class. "
-            "You'll level up and choose subclasses in the main app.",
-            TEXT2, FS_BODY))
-
-        form = QFrame()
-        form.setStyleSheet(f"QFrame{{background:{SURF};border:1px solid {BORDER};border-radius:12px;}}")
-        fl = QGridLayout(form); fl.setContentsMargins(20,16,20,16); fl.setSpacing(12)
-
-        def row_lbl(text):
-            l = _lbl(text, TEXT, FS_BODY, bold=True, wrap=False)
-            return l
-
-        # Name
-        fl.addWidget(row_lbl("Character Name:"), 0, 0)
-        self._name_edit = QLineEdit(); self._name_edit.setPlaceholderText("Enter name…")
-        self._name_edit.setStyleSheet(
-            f"QLineEdit{{background:{SURF2};border:1px solid {BORDER2};border-radius:6px;"
-            f"padding:6px 10px;font-size:{FS_BODY}px;color:{TEXT};}}")
-        fl.addWidget(self._name_edit, 0, 1)
-
-        # Alignment
-        fl.addWidget(row_lbl("Alignment:"), 1, 0)
-        self._align_combo = QComboBox()
-        self._align_combo.setMinimumWidth(220)
-        for a in ["Lawful Good","Neutral Good","Chaotic Good","Lawful Neutral","True Neutral",
-                  "Chaotic Neutral","Lawful Evil","Neutral Evil","Chaotic Evil"]:
-            self._align_combo.addItem(a)
-        fl.addWidget(self._align_combo, 1, 1)
-
-        # Edition: 2024 ruleset is incomplete / unverified — hidden from UI.
-        # Characters always use 2014 for creation; saves with edition=="2024"
-        # are coerced to 2014 on load (see save_load._migrate).
-        char.setdefault("edition", "2014")
-        fl.addWidget(row_lbl("Edition:"), 2, 0)
-        ed_lbl = QLabel("2014 (PHB Classic)")
-        ed_lbl.setStyleSheet(f"color:{TEXT2};font-size:{FS_BODY}px;background:transparent;border:none;")
-        fl.addWidget(ed_lbl, 2, 1)
-        self._edition_combo = None  # removed; kept attribute absent intentionally
-
-        # Background — searchable list
-        fl.addWidget(row_lbl("Background:"), 3, 0)
-        bg_container = QWidget()
-        bg_vl = QVBoxLayout(bg_container); bg_vl.setContentsMargins(0,0,0,0); bg_vl.setSpacing(3)
-        self._bg_search = QLineEdit(); self._bg_search.setPlaceholderText("Search backgrounds…")
-        self._bg_search.setStyleSheet(
-            f"QLineEdit{{background:{SURF2};border:1px solid {BORDER2};border-radius:5px;"
-            f"color:{TEXT};padding:5px 8px;font-size:{FS_SMALL}px;}}"
-            f"QLineEdit:focus{{border-color:{INDIGO};}}")
-        bg_vl.addWidget(self._bg_search)
-        self._bg_list = QListWidget()
-        self._bg_list.setMaximumHeight(160)
-        self._bg_list.setStyleSheet(
-            f"QListWidget{{background:{SURF2};border:1px solid {BORDER};border-radius:5px;"
-            f"color:{TEXT};font-size:{FS_SMALL}px;}}"
-            f"QListWidget::item{{padding:4px 8px;}}"
-            f"QListWidget::item:selected{{background:{INDIGO};color:{on_fill(INDIGO)};}}"
-            f"QListWidget::item:hover:!selected{{background:{SURF3};}}")
-        self._all_bg_names = list(BACKGROUND_NAMES)
-        for b in self._all_bg_names: self._bg_list.addItem(b)
-        def _filter_bg(text):
-            for i in range(self._bg_list.count()):
-                item = self._bg_list.item(i)
-                item.setHidden(text.lower() not in item.text().lower())
-        self._bg_search.textChanged.connect(_filter_bg)
-        self._bg_list.currentTextChanged.connect(self._on_bg_change)
-        bg_vl.addWidget(self._bg_list)
-        fl.addWidget(bg_container, 3, 1)
-        self._bg_combo = self._bg_list   # alias so collect() still works
-
-        # Background skill info
-        self._bg_skills_lbl = _lbl("", TEAL2, FS_SMALL, wrap=True)
-        fl.addWidget(self._bg_skills_lbl, 4, 1)
-        # Full background detail (feature description, equipment, languages,
-        # origin feat) — was a single QLabel capped at 60px with the feature
-        # description and equipment text hard-truncated to 120/80 characters
-        # respectively, which cut off nearly all of the actual text for any
-        # background with a description longer than a sentence or two, and
-        # never showed languages or origin feat at all. Same fix pattern as
-        # the race detail panel: a read-only, scrollable, untruncated box.
-        self._bg_desc_lbl = QTextEdit(); self._bg_desc_lbl.setReadOnly(True)
-        self._bg_desc_lbl.setMinimumHeight(140)
-        self._bg_desc_lbl.setMaximumHeight(220)
-        self._bg_desc_lbl.setStyleSheet(
-            f"background:{SURF2};border:1px solid {BORDER};border-radius:6px;"
-            f"font-size:{FS_SMALL}px;color:{TEXT};padding:6px;")
-        fl.addWidget(self._bg_desc_lbl, 5, 0, 1, 2)
-
-        # Optional background feat choice (Rewarded / Ruined BOMT, etc.)
-        self._bg_feat_lbl = row_lbl("Background Feat:")
-        self._bg_feat_lbl.setVisible(False)
-        fl.addWidget(self._bg_feat_lbl, 6, 0)
-        self._bg_feat_combo = QComboBox()
-        self._bg_feat_combo.setVisible(False)
-        self._bg_feat_combo.setMinimumWidth(220)
-        self._bg_feat_combo.setStyleSheet(
-            f"QComboBox{{background:{SURF2};border:1px solid {BORDER2};border-radius:5px;"
-            f"color:{TEXT};padding:4px 8px;}}")
-        fl.addWidget(self._bg_feat_combo, 6, 1)
-
-        # Starting Class
-        fl.addWidget(row_lbl("Starting Class:"), 7, 0)
-        self._cls_combo = QComboBox()
-        self._cls_combo.setMinimumWidth(220)
-        self._cls_combo.addItem("— Choose Class —")
-        for n in CLASS_NAMES: self._cls_combo.addItem(n)
-        self._cls_combo.currentTextChanged.connect(self._on_cls_change)
-        fl.addWidget(self._cls_combo, 7, 1)
-
-        # Class info label
-        self._cls_info_lbl = _lbl("", TEXT3, FS_SMALL, wrap=True)
-        fl.addWidget(self._cls_info_lbl, 8, 1)
-
-        root.addWidget(form)
-        root.addStretch()
-
-        # Hidden: always level 1
-        self._lvl_spin = QSpinBox(); self._lvl_spin.setRange(1,1); self._lvl_spin.setValue(1); self._lvl_spin.hide()
-
-    def _on_bg_change(self, text):
-        if text.startswith("—"):
-            self._bg_skills_lbl.setText("")
-            if hasattr(self, "_bg_desc_lbl"):
-                self._bg_desc_lbl.setPlainText("")
-            if hasattr(self, "_bg_feat_combo"):
-                self._bg_feat_combo.clear()
-                self._bg_feat_combo.setVisible(False)
-                self._bg_feat_lbl.setVisible(False)
-            return
-        from dnd_app.data.backgrounds import get_background
-        bg = get_background(text) or {}
-        feat_choices = bg.get("feat_choices") or []
-        # Skills row, with the ones to choose (the same text as Android's)
-        from dnd_app.data.backgrounds import background_proficiency_text
-        self._bg_skills_lbl.setText(background_proficiency_text(bg))
-        # Full detail box: feature description, equipment, languages, origin
-        # feat, and source — all untruncated, since this is meant to be the
-        # actual reference a player reads before committing to a choice.
-        if hasattr(self, "_bg_desc_lbl"):
-            feat = bg.get("feature","")
-            feat_desc = bg.get("feature_desc","")
-            equipment = bg.get("equipment","")
-            languages = bg.get("languages", 0)
-            origin_feat = bg.get("origin_feat")
-            notes = bg.get("notes","")
-            source = bg.get("source","")
-            desc_parts = []
-            if feat:
-                desc_parts.append(f"◆ Feature: {feat}\n{feat_desc}" if feat_desc else f"◆ Feature: {feat}")
-            if origin_feat:
-                desc_parts.append(f"◆ Origin Feat: {origin_feat}")
-            if feat_choices:
-                desc_parts.append(f"◆ Feat (choose one): {', '.join(feat_choices)}")
-            if languages:
-                lang_word = "language" if languages == 1 else "languages"
-                desc_parts.append(f"◆ Languages: {languages} {lang_word} of your choice")
-            if equipment:
-                desc_parts.append(f"◆ Equipment: {equipment}")
-            if notes:
-                desc_parts.append(f"◆ Notes: {notes}")
-            if source:
-                desc_parts.append(f"Source: {source}")
-            self._bg_desc_lbl.setPlainText("\n\n".join(desc_parts))
-
-        # Show/hide feat picker for backgrounds that grant a choice of feat
-        if hasattr(self, "_bg_feat_combo"):
-            self._bg_feat_combo.blockSignals(True)
-            self._bg_feat_combo.clear()
-            if feat_choices:
-                self._bg_feat_combo.addItem("— Choose feat —")
-                for f in feat_choices:
-                    self._bg_feat_combo.addItem(f)
-                self._bg_feat_combo.setVisible(True)
-                self._bg_feat_lbl.setVisible(True)
-            else:
-                self._bg_feat_combo.setVisible(False)
-                self._bg_feat_lbl.setVisible(False)
-            self._bg_feat_combo.blockSignals(False)
-
-    def _on_cls_change(self, text):
-        if text.startswith("—"): self._cls_info_lbl.setText(""); return
-        from dnd_app.data.classes import CLASS_DICT
-        cdata = CLASS_DICT.get(text, {})
-        hd = cdata.get("hit_die", 8)
-        saves = ", ".join(cdata.get("save_profs", []))
-        self._cls_info_lbl.setText(
-            f"Hit Die: d{hd}  ·  Saving Throws: {saves}")
-
-    def populate(self, char):
-        self._name_edit.setText(char.get("name", ""))
-        align = char.get("alignment", "True Neutral")
-        idx = self._align_combo.findText(align)
-        if idx >= 0: self._align_combo.setCurrentIndex(idx)
-        ed = char.get("edition", "2014")
-        # 2024 UI is hidden; always display/force 2014 for new edits
-        if ed != "2014":
-            char["edition"] = "2014"
-        bg = char.get("background", "")
-        if bg:
-            if hasattr(self._bg_combo, 'findItems'):
-                items = self._bg_combo.findItems(bg, Qt.MatchExactly)
-                if items: self._bg_combo.setCurrentItem(items[0])
-            elif hasattr(self._bg_combo, 'findText'):
-                bi = self._bg_combo.findText(bg)
-                if bi >= 0: self._bg_combo.setCurrentIndex(bi)
-            self._on_bg_change(bg)
-            chosen = (char.get("_choices") or {}).get("background_feat", "")
-            if chosen and hasattr(self, "_bg_feat_combo"):
-                fi = self._bg_feat_combo.findText(chosen)
-                if fi >= 0:
-                    self._bg_feat_combo.setCurrentIndex(fi)
-        classes = char.get("classes", [])
-        if classes:
-            ci = self._cls_combo.findText(classes[0]["class"])
-            if ci >= 0: self._cls_combo.setCurrentIndex(ci)
-
-    def _rebuild_choices(self): pass  # no-op, choices handled in main app
-
-    def collect(self, char) -> bool:
-        name = self._name_edit.text().strip()
-        if not name:
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "Name Required", "Please enter a character name."); return False
-        from dnd_app.core.save_load import name_in_use, NAME_IN_USE_MESSAGE
-        if name_in_use(name):
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "Name Already Used", NAME_IN_USE_MESSAGE); return False
-        _cur_bg = self._bg_combo.currentItem() if hasattr(self._bg_combo,'currentItem') else None
-        bg_name = _cur_bg.text() if _cur_bg else (self._bg_combo.currentText() if hasattr(self._bg_combo,'currentText') else "")
-        if not bg_name or bg_name.startswith("—"):
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "Background Required", "Please choose a background."); return False
-        cls_name = self._cls_combo.currentText()
-        if cls_name.startswith("—"):
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, "Class Required", "Please choose a starting class."); return False
-
-        char["name"] = name
-        char["alignment"] = self._align_combo.currentText()
-        char["edition"] = "2014"
-        char["background"] = bg_name
-
-        from dnd_app.data.backgrounds import get_background
-        bg_data = get_background(bg_name) or {}
-        feat_choices = bg_data.get("feat_choices") or []
-        if feat_choices:
-            chosen = self._bg_feat_combo.currentText() if hasattr(self, "_bg_feat_combo") else ""
-            if not chosen or chosen.startswith("—"):
-                from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(
-                    self, "Background Feat Required",
-                    f"{bg_name} grants a feat — please choose one of: "
-                    + ", ".join(feat_choices))
-                return False
-            if chosen not in feat_choices:
-                from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(self, "Invalid Feat",
-                                    f"Choose one of: {', '.join(feat_choices)}")
-                return False
-            char["_choices"] = char.get("_choices") or {}
-            char["_choices"]["background_feat"] = chosen
-        else:
-            # Clear prior BOMT-style feat choice when switching away
-            if isinstance(char.get("_choices"), dict):
-                char["_choices"].pop("background_feat", None)
-
-        from dnd_app.data.classes import CLASS_DICT
-        from dnd_app.core.character import add_class
-        cdata = CLASS_DICT.get(cls_name, {})
-        hd = cdata.get("hit_die", 8)
-        char.setdefault("classes", [])
-        # Only set if no classes yet, or replace first class
-        if not char["classes"] or char["classes"][0]["class"] != cls_name:
-            char["classes"] = [{"class": cls_name, "level": 1, "subclass": "", "hit_die": hd}]
-        return True
-
-
-class Step4Spells(QWidget):
-    def __init__(self, char, parent=None):
-        super().__init__(parent)
-        self.char = char
-        root = QVBoxLayout(self); root.setContentsMargins(24,24,24,24); root.setSpacing(12)
-        root.addWidget(_lbl("Spells", GOLD2, FS_HEAD, bold=True))
-        self._hint = _lbl("", TEXT2, FS_BODY); root.addWidget(self._hint)
-
-        splitter = QSplitter(Qt.Horizontal)
-
-        # Left: browser
-        left = QWidget(); ll = QVBoxLayout(left); ll.setSpacing(8)
-        ll.addWidget(_lbl("Available Spells", GOLD, FS_BODY, bold=True))
-        self._sp_search = QLineEdit(); self._sp_search.setPlaceholderText("Search spells…")
-        self._sp_lvl = QComboBox(); self._sp_lvl.addItem("All Levels")
-        for i in range(10): self._sp_lvl.addItem("Cantrip" if i==0 else f"Level {i}")
-        # search across the top; the level filter in the funnel's sidebar
-        from ..widgets import FilterSidebar
-        self._sp_filters = FilterSidebar(left)
-        self._sp_filters.add_combo("Level", self._sp_lvl)
-        ll.addLayout(self._sp_filters.search_row(self._sp_search))
-        # the same rule as the sheet's Spell Browser (core/spellcasting.py
-        # SpellRoom): only what your classes can learn, until a class has
-        # learned all it can -- and the same way round it
-        self._sp_ignore = QCheckBox("Ignore restrictions — any spell, any level, no limits")
-        self._sp_ignore.setAccessibleName("Ignore restrictions: learn any spell, at any level, with no limits")
-        self._sp_ignore.setStyleSheet(
-            f"QCheckBox{{color:{AMBE2};font-size:{FS_SMALL}px;font-weight:700;padding:2px;}}"
-            f"QCheckBox::indicator{{width:16px;height:16px;border:2px solid {AMBER};"
-            f"border-radius:4px;background:{SURF2};}}"
-            f"QCheckBox::indicator:checked{{background:{AMBER};}}")
-        self._sp_ignore.stateChanged.connect(lambda _s: self._filter())
-        ll.addWidget(self._sp_ignore)
-        self._sp_note = _lbl("", TEXT2, FS_SMALL)
-        self._sp_note.setStyleSheet(self._sp_note.styleSheet()
-                                    + f"border-left:3px solid {GOLD};border-radius:0px;padding:2px 0 2px 8px;")
-        self._sp_note.setVisible(False)
-        ll.addWidget(self._sp_note)
-        self._browser = QListWidget(); self._browser.setMinimumWidth(300)
-        ll.addWidget(self._browser, 1)
-        add_btn = pill_btn("Add Selected →", INDIGO)
-        add_btn.clicked.connect(self._add_selected)
-        ll.addWidget(add_btn)
-        splitter.addWidget(left)
-
-        # Right: character spells by level
-        right = QWidget(); rl = QVBoxLayout(right); rl.setSpacing(6)
-        rl.addWidget(_lbl("My Spells", GOLD, FS_BODY, bold=True))
-        self._spell_scroll = QScrollArea(); self._spell_scroll.setWidgetResizable(True)
-        self._spell_inner = QWidget(); self._spell_lay = QVBoxLayout(self._spell_inner)
-        self._spell_lay.setSpacing(4); self._spell_lay.setContentsMargins(4,4,4,4)
-        self._spell_lay.addStretch()
-        self._spell_scroll.setWidget(self._spell_inner)
-        self._spell_rows = []
-        self._level_headers = {}
-        rl.addWidget(self._spell_scroll, 1)
-        splitter.addWidget(right)
-        splitter.setSizes([420, 480])
-        root.addWidget(splitter, 1)
-
-        self._sp_search.textChanged.connect(self._filter)
-        self._sp_lvl.currentTextChanged.connect(self._filter)
-
-    def populate(self, char):
-        classes = char.get("classes", [])
-        has_spells = any(CLASS_DICT.get(c["class"],{}).get("has_spells",False) for c in classes)
-        race = char.get("race","")
-        # bonus_spells is computed fresh by rebuild() (called after every
-        # wizard step, including the one just before this) and correctly
-        # level-gates racial spells — Tiefling doesn't get Hellish
-        # Rebuke until 3rd character level, for instance.
-        bonus_spells = char.get("bonus_spells", [])
-
-        if has_spells:
-            cls_names = [c["class"] for c in classes if CLASS_DICT.get(c["class"],{}).get("has_spells",False)]
-            self._hint.setText(f"You are a spellcaster ({', '.join(cls_names)}). Add your known/prepared spells.")
-        elif bonus_spells:
-            self._hint.setText(f"Your race ({race}) grants innate spells: {', '.join(bonus_spells)}. They've been added automatically.")
-        else:
-            self._hint.setText("You have no spellcasting classes. Click Next to continue to equipment.")
-
-        # Populate browser
-        self._browser.clear()
-        for s in ALL_SPELLS:
-            lvl_txt = "Ctrp" if s["level"]==0 else f"L{s['level']}"
-            conc = " ©" if s.get("concentration") else ""
-            rit  = " ®" if s.get("ritual") else ""
-            item = QListWidgetItem(f"  {lvl_txt:4s}  {s['name']}{conc}{rit}  [{s['school'][:3]}]")
-            item.setData(Qt.UserRole, s)
-            self._browser.addItem(item)
-
-        # Clear old spells and add race bonus spells automatically
-        for row in self._spell_rows[:]:
-            self._spell_lay.removeWidget(row); row.deleteLater()
-        self._spell_rows.clear()
-        for h in self._level_headers.values():
-            self._spell_lay.removeWidget(h); h.deleteLater()
-        self._level_headers.clear()
-
-        # Pre-load bonus spells (racial and, if applicable, class/subclass)
-        for sp_name in bonus_spells:
-            sp = get_spell(sp_name)
-            if sp: self._add_spell_row(sp, prepared=True)
-
-        # Pre-load already chosen spells
-        for sp_name in char.get("spells_known", []):
-            if sp_name not in bonus_spells:
-                sp = get_spell(sp_name)
-                if sp: self._add_spell_row(sp, prepared=sp_name in char.get("spells_prepared",[]))
-        self._max_castable_spell_level()   # the slots the learn check needs, fresh
-        self._filter()
-
-    def _picked_char(self):
-        """The character as this step has it: its spells are the rows here
-        until collect() writes them back."""
-        tmp = dict(self.char)
-        tmp["spells_known"] = [r.spell["name"] for r in self._spell_rows]
-        tmp["spells_prepared"] = [r.spell["name"] for r in self._spell_rows if r.is_prepared()]
-        return tmp
-
-    def _filter(self):
-        from dnd_app.core.spellcasting import SpellRoom
-        q = self._sp_search.text().lower()
-        lvl_txt = self._sp_lvl.currentText()
-        room = None if self._sp_ignore.isChecked() else SpellRoom(self._picked_char())
-        have = {r.spell["name"] for r in self._spell_rows}
-        for i in range(self._browser.count()):
-            item = self._browser.item(i)
-            sp = item.data(Qt.UserRole)
-            if not sp: continue
-            ok = (not q or q in sp["name"].lower()) and sp["name"] not in have
-            if lvl_txt != "All Levels":
-                ok = ok and ((lvl_txt=="Cantrip" and sp["level"]==0) or
-                             (lvl_txt.startswith("Level") and sp["level"]==int(lvl_txt[-1])))
-            if ok and room is not None:
-                ok = room.reason(sp) == ""
-            item.setHidden(not ok)
-        note = room.note() if room is not None else ""
-        self._sp_note.setText(note)
-        self._sp_note.setVisible(bool(note))
-
-    def _max_castable_spell_level(self) -> int:
-        """Highest spell level the character can currently cast. Computes
-        spell_slots_max/pact_slot_level fresh via rebuild()+update_all() on
-        the actual char dict, since the wizard's char may not have had
-        these derived fields populated yet at this point in creation."""
-        from dnd_app.core.calculator import update_all
-        rebuild(self.char)
-        update_all(self.char)
-        max_lvl = 0
-        for i, count in enumerate(self.char.get("spell_slots_max", [])):
-            if count > 0:
-                max_lvl = i + 1
-        if self.char.get("pact_slots_max", 0) > 0:
-            max_lvl = max(max_lvl, self.char.get("pact_slot_level", 0))
-        return max_lvl
-
-    def _add_selected(self):
-        from dnd_app.core.spellcasting import SpellRoom
-        self._max_castable_spell_level()   # fresh slots for the check below
-        blocked = []
-        for item in self._browser.selectedItems():
-            sp = item.data(Qt.UserRole)
-            if not sp or any(r.spell["name"]==sp["name"] for r in self._spell_rows):
+                opts = [("Standard", "")] + [(n, n) for n in rc["subraces"]]
+            for label, val in opts:
+                on = s["sub"] == val
+                t = Tile(label, state="on" if on else "", height=36)
+                t.clicked.connect(lambda _=False, v=val: self._pick_sub(v))
+                tiles.append(t)
+            cl.addWidget(_tile_grid(tiles, 4 if len(tiles) > 5 else len(tiles)))
+        for key, title, field in (("ancestry", "Draconic ancestry", "ancestry"), ("seasons", "Eladrin season", "season"),
+                                  ("simic", "Animal enhancement", "simic")):
+            opts = rc.get(key) or []
+            if not opts:
                 continue
-            if not self._sp_ignore.isChecked():
-                why = SpellRoom(self._picked_char()).reason(sp)
-                if why:
-                    blocked.append(why)
+            cl.addWidget(_head(title, "pick one"))
+            tiles = []
+            for o in opts:
+                on = s["rpicks"].get(field) == o["value"]
+                short = len(o["sub"]) <= 16
+                t = Tile(o["name"], o["sub"] if short else "", "on" if on else "", tip="" if short else o["sub"])
+                t.clicked.connect(lambda _=False, f=field, v=o["value"]: self._pick_rextra(f, v))
+                tiles.append(t)
+            cl.addWidget(_tile_grid(tiles, 5 if len(tiles) >= 5 else len(tiles)))
+        cl.addWidget(_head("Traits"))
+        for tr in rc["traits"]:
+            f = _box("wizTrait")
+            fl = QVBoxLayout(f); fl.setContentsMargins(12, 8, 12, 8); fl.setSpacing(2)
+            fl.addWidget(_t(tr["name"], TEXT, FS_BODY - 1, bold=True, wrap=True))
+            if tr["text"]:
+                fl.addWidget(_t(tr["text"], TEXT2, FS_SMALL, wrap=True))
+            cl.addWidget(f)
+        cl.addStretch(1)
+        lay.addWidget(_scroll(content, "wizRaceDetail"), 1)
+        return card
+
+    def _race_search(self, text):
+        self.state["race_search"] = text
+        self._refresh()
+
+    def _pick_race(self, name):
+        s = self.state
+        if s["race"] != name:
+            s.update(race=name, sub="", rpicks={}, picks={}, moved=None, l1_picks={})
+        self._refresh()
+
+    def _pick_sub(self, sub):
+        s = self.state
+        if s["sub"] != sub:
+            s.update(sub=sub, picks={}, moved=None, l1_picks={})
+            s["rpicks"].pop("ancestry", None); s["rpicks"].pop("season", None)
+        self._refresh()
+
+    def _pick_rextra(self, field, value):
+        self.state["rpicks"][field] = value
+        self._refresh()
+
+    # ═══════════════════════════════════════════════════════════════
+    #  2. Abilities
+    # ═══════════════════════════════════════════════════════════════
+    def _abilities_page(self):
+        s = self.state
+        plan = W.bonus_plan(self._built(1))
+        s["picks"] = {ab: n for ab, n in s["picks"].items() if n and ab not in plan["exclude"]}
+        page = QWidget(); page.setObjectName("wizAbPage"); page.setStyleSheet("#wizAbPage{background:transparent;}")
+        v = QVBoxLayout(page); v.setContentsMargins(0, 0, 0, 0); v.setSpacing(12)
+
+        mcard, ml = _card("wizMethodCard")
+        right = None
+        if s["method"] == "Point Buy":
+            left = W.point_buy_left(s["base"])
+            right = QLabel(f"Point Buy: <b style='color:{TEAL2 if left >= 0 else CRIM2}'>{left}</b> of 27 left")
+            right.setObjectName("wizPbLeft")
+            right.setStyleSheet(f"#wizPbLeft{{color:{TEXT2};font-size:{FS_SMALL}px;background:transparent;}}")
+        elif s["method"] == "Roll":
+            right = _small_btn("🎲  Roll all", "wizRollAll", TEAL2)
+            right.clicked.connect(self._roll_all)
+        ml.addWidget(_head("Method", "", right))
+        ml.addWidget(_seg(W.METHODS, s["method"], self._set_method, "wizMethods"))
+        v.addWidget(mcard)
+
+        acard, al = _card("wizAbCard", (14, 11, 14, 14))
+        mv = None
+        if plan["fixed"]:
+            mv = _small_btn("Move my race bonus" if s["moved"] is None else "Put my race bonus back",
+                            "wizMoveBonus", GOLD2)
+            mv.setToolTip("Tasha's: put your race's bonus on different abilities")
+            mv.clicked.connect(self._toggle_moved)
+        al.addWidget(_head("Ability scores", plan["text"], mv))
+        tots = W.totals(plan, s["base"], s["picks"], s["moved"])
+        cols = QHBoxLayout(); cols.setSpacing(10)
+        for ab in ABILITIES:
+            cols.addWidget(self._ability_column(ab, tots[ab], plan), 1)
+        al.addLayout(cols)
+        v.addWidget(acard)
+        v.addStretch(1)
+        return page
+
+    def _ability_column(self, ab, t, plan):
+        s = self.state
+        f = _box("wizAbCol", SURF2, BORDER, 10); f.setProperty("ability", ab)
+        l = QVBoxLayout(f); l.setContentsMargins(8, 10, 8, 10); l.setSpacing(6)
+        l.addWidget(_t(ab, TEXT2, FS_SMALL - 1, bold="x", align=Qt.AlignCenter, spacing=True))
+        row = QHBoxLayout(); row.setSpacing(6); row.addStretch(1)
+        num = _t(str(t["base"]), TEXT, FS_HEAD + 2, bold="x", align=Qt.AlignCenter)
+        num.setObjectName(f"wizBase_{ab}"); num.setMinimumWidth(30)
+        if s["method"] == "Roll":
+            row.addWidget(num)
+            d = _small_btn("🎲", f"wizRoll_{ab}", TEAL2)
+            d.setToolTip(f"Roll {ab} again (4d6, the lowest dropped)")
+            d.clicked.connect(lambda _=False, a=ab: self._roll_one(a))
+            row.addWidget(d)
+        else:
+            for up in (False, None, True):
+                if up is None:
+                    row.addWidget(num)
                     continue
-            self._add_spell_row(sp)
-        if blocked:
-            self._hint.setText("Not added: " + "; ".join(blocked)
-                               + ". Tick Ignore restrictions to add it anyway.")
-        self._filter()
+                nm = f"wizStep_{ab}_{'up' if up else 'down'}"
+                b = QPushButton("+" if up else "−"); b.setObjectName(nm)
+                b.setCursor(Qt.PointingHandCursor); b.setFixedSize(30, 30)
+                b.setStyleSheet(f"#{nm}{{background:{SURF};border:1px solid {BORDER};border-radius:7px;"
+                                f"color:{TEXT};font-weight:800;font-size:{FS_BODY}px;padding:0;min-height:0px;}}"
+                                f"#{nm}:hover{{border-color:{BORDER2};background:{SURF3};}}")
+                b.clicked.connect(lambda _=False, a=ab, u=up: self._step_score(a, u))
+                row.addWidget(b)
+        row.addStretch(1)
+        l.addLayout(row)
+        l.addWidget(_t("base", TEXT3, FS_SMALL - 2, align=Qt.AlignCenter))
+        # the race's bonus here, or the +1 you place here
+        br = QHBoxLayout(); br.setSpacing(4); br.addStretch(1)
+        n0 = 0
+        if s["moved"] is not None and plan["fixed"]:
+            m = s["moved"].get(ab, 0)
+            for d in (-1, 0, 1):
+                if d == 0:
+                    br.addWidget(_chip(f"+{m} race" if m else "race", "teal" if m else "off", 24))
+                    continue
+                nm = f"wizMove_{ab}_{'up' if d > 0 else 'down'}"
+                b = QPushButton("+" if d > 0 else "−"); b.setObjectName(nm)
+                b.setFixedSize(24, 24); b.setCursor(Qt.PointingHandCursor)
+                b.setStyleSheet(f"#{nm}{{background:transparent;border:1px solid {BORDER};border-radius:6px;"
+                                f"color:{TEXT2};font-weight:800;padding:0;min-height:0px;}}")
+                b.clicked.connect(lambda _=False, a=ab, dd=d: self._move_bonus(a, dd))
+                br.addWidget(b)
+            n0 = 1
+        elif t["fixed"]:
+            br.addWidget(_chip(f"+{t['fixed']} race", "teal", 24)); n0 = 1
+        if plan["points"] and ab not in plan["exclude"]:
+            p = t["pick"]
+            nm = f"wizPick_{ab}"
+            tb = QPushButton(f"✓ +{p}" if p else "+1"); tb.setObjectName(nm)
+            tb.setCursor(Qt.PointingHandCursor); tb.setFixedHeight(24)
+            c = TEAL2 if p else TEXT3
+            tb.setStyleSheet(f"#{nm}{{color:{c};background:{qa(TEAL, 0x24) if p else 'transparent'};"
+                             f"border:1px solid {TEAL if p else BORDER2};border-radius:6px;font-size:{FS_SMALL - 1}px;"
+                             f"font-weight:800;padding:0 9px;min-height:0px;}}")
+            tb.setToolTip("Tap to place your race's +1 here")
+            tb.clicked.connect(lambda _=False, a=ab: self._tap_pick(a))
+            br.addWidget(tb); n0 = 1
+        if not n0:
+            sp = QWidget(); sp.setFixedHeight(24); br.addWidget(sp)
+        br.addStretch(1)
+        l.addLayout(br)
+        line = QFrame(); line.setFixedHeight(1); line.setStyleSheet(f"background:{BORDER};border:none;")
+        l.addWidget(line)
+        tot = _t(str(t["total"]), TEAL2 if t["bonus"] else TEXT, FS_STAT + 4, bold="x", align=Qt.AlignCenter)
+        tot.setObjectName(f"wizTotal_{ab}")
+        l.addWidget(tot)
+        mc = QHBoxLayout(); mc.addStretch(1)
+        mc.addWidget(_red_chip(t["mod"]) if t["mod"].startswith("-") else _chip(t["mod"], "teal", 24))
+        mc.addStretch(1)
+        l.addLayout(mc)
+        return f
 
-    def _add_spell_row(self, spell, prepared=False):
-        lvl = spell["level"]
-        # Level header
-        if lvl not in self._level_headers:
-            names = ["Cantrips","1st Level","2nd Level","3rd Level","4th Level",
-                     "5th Level","6th Level","7th Level","8th Level","9th Level"]
-            hdr = _lbl(names[min(lvl,9)], IND2, FS_SMALL, bold=True)
-            hdr.setStyleSheet(hdr.styleSheet() + f"border-bottom:2px solid {qa(IND2,0x44)};padding-bottom:4px;margin-top:6px;")
-            self._level_headers[lvl] = hdr
-            # Insert at correct position
-            insert_idx = self._find_header_pos(lvl)
-            self._spell_lay.insertWidget(insert_idx, hdr)
+    def _set_method(self, m):
+        s = self.state
+        if s["method"] != m:
+            s["method"] = m
+            s["base"] = W.start_scores(m)
+        self._refresh()
 
-        from dnd_app.core.calculator import spell_preparing_classes
-        from dnd_app.core.spellcasting import whole_list_class
-        row = SpellRow(spell, prepared,
-                       locked=spell["name"] in self.char.get("bonus_spells", []),
-                       preparable=bool(spell_preparing_classes(self.char, spell)),
-                       removable=not whole_list_class(self.char, spell["name"]))
-        row.remove.connect(self._remove_spell_row)
-        insert_idx = self._find_spell_pos(lvl)
-        self._spell_lay.insertWidget(insert_idx, row)
-        self._spell_rows.append(row)
+    def _step_score(self, ab, up):
+        s = self.state
+        s["base"] = W.step_score(s["method"], s["base"], ab, up)
+        self._refresh()
 
-    def _find_header_pos(self, level):
-        for i in range(self._spell_lay.count()):
-            w = self._spell_lay.itemAt(i).widget()
-            if isinstance(w, QLabel) and w in self._level_headers.values():
-                lv = next(k for k,v in self._level_headers.items() if v==w)
-                if lv > level: return i
-        return self._spell_lay.count() - 1
+    def _roll_all(self):
+        self.state["base"] = W.start_scores("Roll")
+        self._refresh()
 
-    def _find_spell_pos(self, level):
-        for i in range(self._spell_lay.count()-1, -1, -1):
-            w = self._spell_lay.itemAt(i).widget()
-            if isinstance(w, SpellRow) and w.spell["level"] <= level: return i+1
-            if isinstance(w, QLabel) and w in self._level_headers.values():
-                lv = next(k for k,v in self._level_headers.items() if v==w)
-                if lv == level: return i+1
-        return self._spell_lay.count() - 1
+    def _roll_one(self, ab):
+        self.state["base"] = dict(self.state["base"], **{ab: W.roll_score()})
+        self._refresh()
 
-    def _remove_spell_row(self, row):
-        lvl = row.spell["level"]
-        self._spell_rows.remove(row)
-        self._spell_lay.removeWidget(row); row.deleteLater()
-        if not any(r.spell["level"]==lvl for r in self._spell_rows):
-            if lvl in self._level_headers:
-                h = self._level_headers.pop(lvl)
-                self._spell_lay.removeWidget(h); h.deleteLater()
-        self._filter()   # the pick is free again, so the browser offers it
+    def _tap_pick(self, ab):
+        plan = W.bonus_plan(self._built(1))
+        self.state["picks"] = W.next_pick(plan, self.state["picks"], ab)
+        self._refresh()
 
-    def collect(self, char) -> bool:
-        char["spells_known"] = [r.spell["name"] for r in self._spell_rows]
-        char["spells_prepared"] = [r.spell["name"] for r in self._spell_rows if r.is_prepared()]
-        return True
+    def _toggle_moved(self):
+        s = self.state
+        s["moved"] = dict(W.bonus_plan(self._built(1))["fixed"]) if s["moved"] is None else None
+        self._refresh()
 
+    def _move_bonus(self, ab, d):
+        s = self.state
+        need = sum(W.bonus_plan(self._built(1))["fixed"].values())
+        cur = dict(s["moved"] or {})
+        nv = cur.get(ab, 0) + d
+        if nv < 0 or nv > 2 or (d > 0 and sum(cur.values()) >= need):
+            return
+        cur[ab] = nv
+        s["moved"] = {k: v for k, v in cur.items() if v}
+        self._refresh()
 
-# ═══════════════════════════════════════════════════════════════════
-#  STEP 5: EQUIPMENT
-# ═══════════════════════════════════════════════════════════════════
-from dnd_app.data.items import weapon_category_pool as _weapon_category_pool
+    # ═══════════════════════════════════════════════════════════════
+    #  3. Class & Background
+    # ═══════════════════════════════════════════════════════════════
+    def _identity_page(self):
+        s = self.state
+        page = QWidget(); page.setObjectName("wizIdPage"); page.setStyleSheet("#wizIdPage{background:transparent;}")
+        row = QHBoxLayout(page); row.setContentsMargins(0, 0, 0, 0); row.setSpacing(14)
+        left = QVBoxLayout(); left.setSpacing(12)
 
+        who, wl = _card("wizWhoCard")
+        wl.addWidget(_head("Who"))
+        r = QHBoxLayout(); r.setSpacing(10)
+        name = QLineEdit(s["name"]); name.setObjectName("wizName"); name.setPlaceholderText("Character name")
+        name.setStyleSheet(_field_qss("wizName"))
+        name.textChanged.connect(self._set_name)
+        r.addWidget(name, 3)
+        al = QComboBox(); al.setObjectName("wizAlign"); al.addItems(ALIGNMENTS)
+        al.setCurrentText(s["alignment"])
+        al.currentTextChanged.connect(lambda t: self.state.__setitem__("alignment", t))
+        r.addWidget(al, 2)
+        wl.addLayout(r)
+        left.addWidget(who)
 
-class Step5Equipment(QWidget):
-    def __init__(self, char, parent=None):
-        super().__init__(parent)
-        self.char = char
-        root = QVBoxLayout(self); root.setContentsMargins(24,24,24,24); root.setSpacing(12)
-        root.addWidget(_lbl("Starting Equipment", GOLD2, FS_HEAD, bold=True))
+        ccard, cl = _card("wizClassCard")
+        cl.addWidget(_head("Class", "you start at level 1"))
+        tiles = []
+        for ct in W.class_tiles():
+            on = ct["name"] == s["cls"]
+            t = Tile(ct["name"], f"{ct['hit_die']} · {ct['main']}", "on" if on else "", height=46)
+            t.clicked.connect(lambda _=False, n=ct["name"]: self._pick_class(n))
+            tiles.append(t)
+        cl.addWidget(_tile_grid(tiles, 4))
+        if s["cls"]:
+            cl.addWidget(_chip_grid([(c, "") for c in W.class_chips(s["cls"])], 4))
+        cl.addStretch(1)
+        left.addWidget(ccard, 1)
+        lw = QWidget(); lw.setObjectName("wizIdLeft"); lw.setStyleSheet("#wizIdLeft{background:transparent;}"); lw.setLayout(left)
+        row.addWidget(lw, 1)
 
-        # This whole widget is constructed once, upfront, before the
-        # player has picked a class in Step 3, so it starts with an
-        # empty class name and zero equipment groups. populate() (called
-        # on every navigation into this step) only refreshes the
-        # background-gear note below by default, so this section lives
-        # in its own container: _rebuild_equipment_groups() can clear
-        # and rebuild just this part on every populate() call, without
-        # touching the background-gear card or notes field that follow.
-        self._equip_container = QWidget()
-        self._equip_container_lay = QVBoxLayout(self._equip_container)
-        self._equip_container_lay.setContentsMargins(0,0,0,0); self._equip_container_lay.setSpacing(12)
-        root.addWidget(self._equip_container, 1)
-        self._group_widgets = []
-        self._rebuild_equipment_groups(char)
+        right = QVBoxLayout(); right.setSpacing(8)
+        right.addWidget(_search("Search backgrounds…", s["bg_search"], self._bg_search, "wizBgSearch"))
+        inner = QWidget(); il = QVBoxLayout(inner); il.setContentsMargins(0, 0, 4, 0); il.setSpacing(5)
+        for b in W.background_rows(s["bg_search"]):
+            rw = Row(b["name"], (b["skills"],), b["source"], b["name"] == s["bg"], height=36)
+            rw.clicked.connect(lambda n=b["name"]: self._pick_bg(n))
+            il.addWidget(rw)
+        il.addStretch(1)
+        right.addWidget(_scroll(inner, "wizBgList"), 1)
+        if s["bg"]:
+            right.addWidget(self._bg_card())
+        rw_ = QWidget(); rw_.setObjectName("wizIdRight"); rw_.setStyleSheet("#wizIdRight{background:transparent;}"); rw_.setLayout(right)
+        row.addWidget(rw_, 1)
+        return page
 
-        # Background gear note
-        self._bg_gear_card = QFrame()
-        self._bg_gear_card.setStyleSheet(f"QFrame{{background:{SURF};border:1px solid {qa(TEAL,0x55)};border-radius:10px;}}")
-        bgcl = QVBoxLayout(self._bg_gear_card); bgcl.setContentsMargins(14,12,14,14)
-        bgcl.addWidget(_lbl("Starting Gear from Background", TEAL2, FS_BODY, bold=True))
-        self._bg_gear_lbl = _lbl("", TEXT2, FS_BODY)
-        self._bg_gear_lbl.setWordWrap(True)
-        bgcl.addWidget(self._bg_gear_lbl)
-        root.addWidget(self._bg_gear_card)
+    def _bg_card(self):
+        s = self.state
+        bc = W.background_card(s["bg"])
+        card, lay = _card("wizBgCard", (16, 12, 16, 12))
+        top = QHBoxLayout(); top.setSpacing(8)
+        top.addWidget(_t(bc["name"], GOLD2, FS_HEAD, bold="x"))
+        if bc["source"]:
+            top.addWidget(_chip(bc["source"], "gold", 22))
+        top.addStretch(1)
+        for c in bc["chips"][:4]:
+            top.addWidget(_chip(c["text"], c["kind"], 24))
+        lay.addLayout(top)
+        if bc["feature"]:
+            f = _box("wizTrait")
+            fl = QVBoxLayout(f); fl.setContentsMargins(12, 8, 12, 8); fl.setSpacing(2)
+            fl.addWidget(_t(bc["feature"], TEXT, FS_BODY - 1, bold=True, wrap=True))
+            if bc["text"]:
+                fl.addWidget(_t(bc["text"], TEXT2, FS_SMALL, wrap=True))
+            lay.addWidget(f)
+        if bc["feats"]:
+            lay.addWidget(_head("Feat", f"{bc['name']} gives you one"))
+            tiles = []
+            for n in bc["feats"]:
+                t = Tile(n, state="on" if s["bg_feat"] == n else "")
+                t.clicked.connect(lambda _=False, v=n: self._set("bg_feat", v))
+                tiles.append(t)
+            lay.addWidget(_tile_grid(tiles, min(4, len(tiles))))
+        if bc["gear"]:
+            lay.addWidget(_t(bc["gear"], TEXT3, FS_SMALL, wrap=True))
+        return card
 
-        # Free notes
-        root.addWidget(_lbl("Additional Notes / Starting Items:", TEXT, FS_BODY, bold=True))
-        self._notes = QTextEdit(); self._notes.setPlaceholderText("List any other starting equipment, currency, notes…")
-        self._notes.setMaximumHeight(80)
-        self._notes.setAcceptRichText(False)
-        root.addWidget(self._notes)
+    def _set_name(self, t):
+        self.state["name"] = t
+        self._show_status()
 
-    def _rebuild_equipment_groups(self, char):
-        """Build (or rebuild) the class-specific equipment choice groups
-        for the character's CURRENT class. Called once at construction
-        (when the class may not be picked yet) and again from populate()
-        every time the player navigates into this step (when the class
-        selection may have changed, or been made for the first time)."""
-        for i in reversed(range(self._equip_container_lay.count())):
-            w = self._equip_container_lay.itemAt(i).widget()
-            if w is not None:
-                self._equip_container_lay.removeWidget(w); w.setParent(None); w.deleteLater()
-        self._group_widgets = []
+    def _pick_class(self, n):
+        s = self.state
+        if s["cls"] != n:
+            s.update(cls=n, l1_picks={}, spells={}, equip=None)
+        self._refresh()
 
-        cls_name = char.get("classes", [{}])[0].get("class", "") if char.get("classes") else ""
-        self._equip_container_lay.addWidget(_lbl(
-            f"Choose your starting equipment ({cls_name}):" if cls_name
-            else "Choose your starting equipment:", TEXT2, FS_BODY))
+    def _bg_search(self, t):
+        self.state["bg_search"] = t
+        self._refresh()
 
-        from dnd_app.data.starting_equipment import get_starting_equipment
-        self._groups = get_starting_equipment(cls_name)
-        scroll = QScrollArea(); scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
-        # (scoped to itself: a bare rule here also stripped the weapon
-        # dropdowns inside of their box, leaving "Club" floating)
-        inner = QWidget(); inner.setObjectName("equipInner")
-        inner.setStyleSheet("#equipInner,#equipRow{background:transparent;border:none;}")
-        gl = QVBoxLayout(inner); gl.setSpacing(10)
+    def _pick_bg(self, n):
+        s = self.state
+        if s["bg"] != n:
+            s.update(bg=n, bg_feat="")
+        self._refresh()
 
-        for gi, group in enumerate(self._groups):
-            card = QFrame()
-            card.setStyleSheet(f"QFrame{{background:{SURF};border:1px solid {BORDER};border-radius:10px;}}")
-            cl = QVBoxLayout(card); cl.setContentsMargins(14,12,14,12); cl.setSpacing(6)
-            options = group["options"]
-            if len(options) == 1:
-                opt = options[0]
-                any_items = [it for it in opt if it.lower().startswith("any ")]
-                if not any_items:
-                    # Genuinely fixed, no choice at all — just display it.
-                    items_text = ", ".join(opt)
-                    cl.addWidget(_lbl(items_text, TEXT, FS_BODY, bold=True))
-                    self._group_widgets.append((None, options, [[]]))
-                else:
-                    # Fixed grant that still needs a concrete weapon
-                    # picked for one or more "Any X" slots (e.g.
-                    # Warlock's "Any simple weapon") gets a dropdown
-                    # here, rather than adding the raw placeholder text
-                    # as a fake equipment item.
-                    fixed_parts = [it for it in opt if not it.lower().startswith("any ")]
-                    if fixed_parts:
-                        cl.addWidget(_lbl(", ".join(fixed_parts), TEXT, FS_BODY, bold=True))
-                    option_combos = []
-                    for item in any_items:
-                        row = QHBoxLayout(); row.setSpacing(8)
-                        row.addWidget(_lbl(f"{item}:", TEXT2, FS_BODY))
-                        combo = QComboBox()
-                        combo.setMinimumWidth(220)
-                        combo.addItems(_weapon_category_pool(item))
-                        row.addWidget(combo)
-                        row.addStretch()
-                        row_w = QWidget(); row_w.setObjectName("equipRow"); row_w.setLayout(row)
-                        cl.addWidget(row_w)
-                        option_combos.append(combo)
-                    self._group_widgets.append((None, options, [option_combos]))
+    # ═══════════════════════════════════════════════════════════════
+    #  4. Spells & Choices
+    # ═══════════════════════════════════════════════════════════════
+    def _level1_data(self):
+        s = self.state
+        base = self._built(3)
+        cards = W.level1_cards(base, s["l1_picks"])
+        tidy = W.tidy_picks(cards, s["l1_picks"])
+        if tidy != s["l1_picks"]:
+            s["l1_picks"] = tidy
+            cards = W.level1_cards(base, tidy)
+        plan = W.spell_plan(base)
+        keep = {}
+        for t in plan.get("tabs", []):
+            ok = {r["name"] for r in W.spell_rows(t)}
+            keep[t["key"]] = [n for n in s["spells"].get(t["key"], []) if n in ok][:t["count"]]
+        s["spells"] = keep
+        return base, cards, plan
+
+    def _level1_left(self):
+        try:
+            _, cards, plan = self._level1_data()
+        except Exception:
+            import traceback; traceback.print_exc()
+            return []
+        return W.level1_left(cards, plan, self.state["spells"])
+
+    def _level1_page(self):
+        base, cards, plan = self._level1_data()
+        page = QWidget(); page.setObjectName("wizL1Page"); page.setStyleSheet("#wizL1Page{background:transparent;}")
+        row = QHBoxLayout(page); row.setContentsMargins(0, 0, 0, 0); row.setSpacing(14)
+        mains = [c for c in cards if not c["parent"]]
+        if plan:
+            inner = QWidget(); il = QVBoxLayout(inner); il.setContentsMargins(0, 0, 4, 0); il.setSpacing(8)
+            for c in mains:
+                il.addWidget(self._choice_card(c, cards))
+            il.addStretch(1)
+            row.addWidget(_scroll(inner, "wizChoices"), 1)
+            row.addWidget(self._spells_card(plan), 1)
+        else:
+            # no spells: the cards at their usual width, centred, filling the
+            # height -- each as tall as its rows, so every tile is the same.
+            # More than fits scrolls instead, at the tiles' own height.
+            def rows_of(c):
+                return 1 if c["big"] else (len(c["tiles"]) + c["cols"] - 1) // c["cols"]
+            need = sum(46 + rows_of(c) * 48 for c in mains) + 8 * len(mains)
+            room = max(400, self._page_host.height() - 28) if self._page_host.height() > 100 else 600
+            fill = need <= room
+            col = QVBoxLayout(); col.setSpacing(8); col.setContentsMargins(0, 0, 4 if not fill else 0, 0)
+            for c in mains:
+                col.addWidget(self._choice_card(c, cards, fill=fill), rows_of(c) * 4 + 1 if fill else 0)
+            if not fill:
+                col.addStretch(1)
+            holder = QWidget(); holder.setObjectName("wizL1Col"); holder.setStyleSheet("#wizL1Col{background:transparent;}")
+            holder.setLayout(col)
+            width = max(560, (self.width() - 46) // 2) if self.width() > 600 else 617
+            row.addStretch(1)
+            if fill:
+                holder.setFixedWidth(width)
+                row.addWidget(holder, 0)
             else:
-                btn_group = QButtonGroup(card)
-                sub_combos = []
-                letters = "abcdefg"
-                for oi, opt in enumerate(options):
-                    row = QHBoxLayout(); row.setSpacing(8)
-                    label_parts = list(opt)
-                    rb = QRadioButton(f"({letters[oi]}) " + ", ".join(label_parts))
-                    rb.setStyleSheet(f"QRadioButton{{color:{TEXT};font-size:{FS_BODY}px;background:transparent;}}")
-                    btn_group.addButton(rb)
-                    if oi == 0:
-                        rb.setChecked(True)
-                    row.addWidget(rb)
-                    # One independent combo per "Any X" placeholder in
-                    # this option, so an option with two such
-                    # placeholders (e.g. Fighter's "two martial weapons")
-                    # can pick two different weapons rather than sharing
-                    # a single dropdown.
-                    option_combos = []
-                    for item in opt:
-                        if item.lower().startswith("any "):
-                            combo = QComboBox()
-                            combo.setMinimumWidth(220)
-                            combo.addItems(_weapon_category_pool(item))
-                            # Combos are enabled only for the currently
-                            # selected radio option, so it's clear which
-                            # ones actually matter for the result.
-                            combo.setEnabled(oi == 0)
-                            rb.toggled.connect(lambda checked, c=combo: c.setEnabled(checked))
-                            row.addWidget(combo)
-                            option_combos.append(combo)
-                    sub_combos.append(option_combos)
-                    row.addStretch()
-                    row_w = QWidget(); row_w.setObjectName("equipRow"); row_w.setLayout(row)
-                    cl.addWidget(row_w)
-                self._group_widgets.append((btn_group, options, sub_combos))
-            gl.addWidget(card)
+                sc = _scroll(holder, "wizChoices")
+                sc.setFixedWidth(width + 10)
+                row.addWidget(sc, 0)
+            row.addStretch(1)
+        return page
 
-        scroll.setWidget(inner)
-        self._equip_container_lay.addWidget(scroll, 1)
+    def _choice_card(self, c, cards, fill=False, inner=False):
+        name = "wizChoiceInner" if inner else "wizChoice"
+        f = _box(name, SURF2 if inner else SURF, BORDER, 8 if inner else 10)
+        f.setProperty("choiceId", c["id"])
+        lay = QVBoxLayout(f); lay.setContentsMargins(12, 9, 12, 11); lay.setSpacing(7)
+        done = not c["left"]
+        if inner:
+            hw = QWidget(); hw.setObjectName("wizHead"); hw.setStyleSheet("#wizHead{background:transparent;}")
+            hl = QHBoxLayout(hw); hl.setContentsMargins(0, 0, 0, 0); hl.setSpacing(8)
+            hl.addWidget(_t(c["title"], TEXT, FS_BODY - 1, bold=True))
+            hl.addWidget(_count("picked" if done else "pick one" if c["count"] == 1 else f"pick {c['count']}", done))
+            hl.addStretch(1)
+            lay.addWidget(hw)
+        else:
+            lay.addWidget(_head(c["title"], c["sub"], _count(f"{len(c['picked'])} of {c['count']}", done)))
+        tiles = []
+        if c["big"]:
+            for v in c["picked"]:
+                t = next((x for x in c["tiles"] if x["value"] == v), {"label": v})
+                tt = Tile(t["label"], "", "on")
+                tt.clicked.connect(lambda _=False, i=c["id"], val=v: self._toggle_choice(i, val))
+                tiles.append(tt)
+            if c["left"]:
+                add = Tile("＋ pick" + (" another" if c["picked"] else ""), height=34)
+                add.setProperty("pickMore", c["id"])
+                add.clicked.connect(lambda _=False, cc=c: self._pick_from_list(cc))
+                tiles.append(add)
+            cols = 3
+        else:
+            for t in c["tiles"]:
+                state = "have" if t["have"] else ("on" if t["value"] in c["picked"] else "")
+                tip = ""
+                if t["have"]:
+                    tip = (f"<b style='color:{GOLD2}'>You already have {t['label']}</b><br>"
+                           f"from {t['have']}")
+                elif t.get("tip"):
+                    tip = t["tip"]
+                tt = Tile(t["label"], t["sub"], state, tip)
+                if not t["have"]:
+                    tt.clicked.connect(lambda _=False, i=c["id"], val=t["value"]: self._toggle_choice(i, val))
+                tiles.append(tt)
+            cols = c["cols"]
+        lay.addWidget(_tile_grid(tiles, cols, fill), 1 if fill else 0)
+        for kid in cards:
+            if kid["parent"] == c["id"]:
+                lay.addWidget(self._choice_card(kid, cards, inner=True))
+        return f
 
-    def populate(self, char):
-        # Rebuild the class-specific equipment groups every time the
-        # player navigates into this step, since the class selection may
-        # have just been made for the first time, or changed since the last visit.
-        self._rebuild_equipment_groups(char)
-        bg = get_background(char.get("background",""))
-        if bg:
-            gear = bg.get("equipment","")
-            self._bg_gear_lbl.setText(str(gear)[:300] if gear else "Standard adventuring gear")
+    def _toggle_choice(self, cid, value):
+        _, cards, _ = self._level1_data()
+        self.state["l1_picks"] = W.toggle_pick(cards, self.state["l1_picks"], cid, value)
+        self._refresh()
 
-    def collect(self, char) -> bool:
-        # Resolve each choice group's selected option into concrete items,
-        # then sort those into armor/weapons/general gear.
-        chosen_items = []
-        for btn_group, options, sub_combos in self._group_widgets:
-            if btn_group is None:
-                opt = options[0]
-                combos = sub_combos[0]
-                combo_iter = iter(combos)
-                for item in opt:
-                    if item.lower().startswith("any "):
-                        chosen_items.append(next(combo_iter).currentText())
-                    else:
-                        chosen_items.append(item)
+    def _pick_from_list(self, card):
+        dlg = QDialog(self); dlg.setWindowTitle(card["title"])
+        dlg.setObjectName("wizPicker")
+        dlg.setStyleSheet(f"#wizPicker{{background:{SURF};}}")
+        dlg.resize(380, 460)
+        v = QVBoxLayout(dlg); v.setContentsMargins(14, 14, 14, 14); v.setSpacing(8)
+        v.addWidget(_t(f"{card['title']}: {card['sub']}", GOLD2, FS_BODY, bold=True, wrap=True))
+        search = QLineEdit(); search.setObjectName("wizPickSearch"); search.setPlaceholderText("⌕  Search…")
+        search.setStyleSheet(_field_qss("wizPickSearch"))
+        v.addWidget(search)
+        lst = QListWidget(); lst.setObjectName("wizPickList")
+        lst.setStyleSheet(f"#wizPickList{{background:{SURF2};border:1px solid {BORDER};border-radius:8px;color:{TEXT};"
+                          f"font-size:{FS_BODY - 1}px;}}#wizPickList::item{{padding:6px 10px;}}"
+                          f"#wizPickList::item:selected{{background:{qa(TEAL, 0x33)};color:{TEAL2};}}")
+        for t in card["tiles"]:
+            if t["value"] in card["picked"]:
                 continue
-            selected_idx = 0
-            for i, btn in enumerate(btn_group.buttons()):
-                if btn.isChecked():
-                    selected_idx = i
-                    break
-            opt = options[selected_idx]
-            combos = sub_combos[selected_idx]
-            combo_iter = iter(combos)
-            for item in opt:
-                if item.lower().startswith("any "):
-                    chosen_items.append(next(combo_iter).currentText())
-                else:
-                    chosen_items.append(item)
+            it = QListWidgetItem(t["label"] + (f"  (you have it: {t['have']})" if t["have"] else ""))
+            it.setData(Qt.UserRole, t["value"])
+            if t["have"]:
+                it.setFlags(Qt.NoItemFlags)
+            lst.addItem(it)
+        v.addWidget(lst, 1)
+        search.textChanged.connect(lambda q: [lst.item(i).setHidden(q.lower() not in lst.item(i).text().lower())
+                                              for i in range(lst.count())])
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(dlg.accept); btns.rejected.connect(dlg.reject)
+        lst.itemDoubleClicked.connect(lambda _it: dlg.accept())
+        v.addWidget(btns)
+        if dlg.exec() == QDialog.Accepted and lst.currentItem() is not None:
+            self._toggle_choice(card["id"], lst.currentItem().data(Qt.UserRole))
 
-        # into the inventory the same way Android's wizard does
-        # (core/inventory.py): each item counted once with its weight and
-        # cost, a pack as its contents, the background's gear and coins
-        from dnd_app.core.inventory import set_starting_inventory
-        bg = get_background(char.get("background", ""))
-        bg_text = "" if char.get("background") == "Custom Background" else (bg or {}).get("equipment", "")
-        set_starting_inventory(char, chosen_items, bg_text)
+    def _spells_card(self, plan):
+        s = self.state
+        card, lay = _card("wizSpellCard")
+        lay.addWidget(_head("Starting spells",
+                            f"casts with {plan['ability']} · save DC {plan.get('dc')} · {plan.get('attack', 0):+d} to hit"))
+        tabs = plan["tabs"]
+        if s["spell_tab"] not in [t["key"] for t in tabs]:
+            s["spell_tab"] = tabs[0]["key"]
+        cur = next(t for t in tabs if t["key"] == s["spell_tab"])
+        counts = {t["title"]: (f"{len(s['spells'].get(t['key'], []))} of {t['count']}",
+                               len(s["spells"].get(t["key"], [])) >= t["count"]) for t in tabs}
+        lay.addWidget(_seg([t["title"] for t in tabs], cur["title"],
+                           lambda title: self._set("spell_tab", next(t["key"] for t in tabs if t["title"] == title)),
+                           "wizSpellTabs", counts))
+        fr = QHBoxLayout(); fr.setSpacing(6)
+        what = "cantrips" if cur["key"] == "cantrips" else "spells"
+        fr.addWidget(_search(f"Search {plan.get('label', '').lower()} {what}…", s["spell_search"],
+                             lambda t: self._set("spell_search", t), "wizSpellSearch"), 1)
+        school = QComboBox(); school.setObjectName("wizSchool")
+        rows_all = W.spell_rows(cur)
+        school.addItem("Any school")
+        for sc in sorted({r["school"] for r in rows_all if r["school"]}):
+            school.addItem(sc)
+        school.setCurrentText(s["spell_school"] or "Any school")
+        school.currentTextChanged.connect(lambda t: self._set("spell_school", "" if t == "Any school" else t))
+        fr.addWidget(school)
+        lay.addLayout(fr)
+        inner = QWidget(); il = QVBoxLayout(inner); il.setContentsMargins(0, 0, 4, 0); il.setSpacing(4)
+        picked = s["spells"].get(cur["key"], [])
+        for r in W.spell_rows(cur, s["spell_search"]):
+            if s["spell_school"] and r["school"] != s["spell_school"]:
+                continue
+            il.addWidget(self._spell_row(r, r["name"] in picked, cur["key"]))
+        il.addStretch(1)
+        lay.addWidget(_scroll(inner, "wizSpellList"), 1)
+        return card
 
-        notes = self._notes.toPlainText()
-        if notes: char["notes"] = notes
-        return True
+    def _spell_row(self, r, on, key):
+        f = Row(r["name"], (), "", on, height=36)
+        lay = f.layout()
+        box = QLabel("✓" if on else ""); box.setObjectName("wizCheck"); box.setFixedSize(18, 18)
+        box.setAlignment(Qt.AlignCenter)
+        box.setStyleSheet(f"#wizCheck{{background:{TEAL if on else 'transparent'};border:1px solid {TEAL if on else BORDER2};"
+                          f"border-radius:4px;color:{on_fill(TEAL)};font-weight:900;font-size:{FS_SMALL - 1}px;}}")
+        lay.insertWidget(0, box)
+        if r["conc"]:
+            lay.addWidget(_chip("Conc", "off", 20))
+        if r["ritual"]:
+            lay.addWidget(_chip("Ritual", "off", 20))
+        lay.addWidget(_t(r["school"], TEXT3, FS_SMALL - 1))
+        tr = _t(f"{r['time']} · {r['range']}", TEXT3, FS_SMALL - 1); tr.setMinimumWidth(130)
+        tr.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        lay.addWidget(tr)
+        f.setToolTip(r["desc"])
+        f.clicked.connect(lambda k=key, n=r["name"]: self._toggle_spell(k, n))
+        return f
+
+    def _toggle_spell(self, key, name):
+        plan = W.spell_plan(self._built(3))
+        self.state["spells"] = W.toggle_spell(plan, self.state["spells"], key, name)
+        self._refresh()
+
+    # ═══════════════════════════════════════════════════════════════
+    #  5. Equipment
+    # ═══════════════════════════════════════════════════════════════
+    def _equip_state(self, groups):
+        s = self.state
+        if s["equip"] is None or s["equip_cls"] != s["cls"] or len(s["equip"]) != len(groups):
+            s["equip"] = W.default_choice(groups)
+            s["equip_cls"] = s["cls"]
+        return s["equip"]
+
+    def _equip_items(self):
+        groups = W.equipment_groups(self.state["cls"])
+        return W.resolve_equipment(groups, self._equip_state(groups))
+
+    def _equipment_page(self):
+        s = self.state
+        c = self._built(4)
+        groups = W.equipment_groups(s["cls"])
+        choice = self._equip_state(groups)
+        page = QWidget(); page.setObjectName("wizEqPage"); page.setStyleSheet("#wizEqPage{background:transparent;}")
+        row = QHBoxLayout(page); row.setContentsMargins(0, 0, 0, 0); row.setSpacing(14)
+        inner = QWidget(); il = QVBoxLayout(inner); il.setContentsMargins(0, 0, 4, 0); il.setSpacing(8)
+        always = []
+        for gi, g in enumerate(groups):
+            if g["fixed"] and not g["options"][0]["anys"]:
+                always += W._count_items(g["options"][0]["items"])
+                continue
+            il.addWidget(self._equip_group(gi, g, choice[gi]))
+        if always:
+            card, cl = _card("wizAlways", (12, 9, 12, 11))
+            cl.addWidget(_head("Always"))
+            cl.addWidget(_chip_grid([(x, "") for x in always], 3, 30))
+            il.addWidget(card)
+        bgear = W.background_gear(c)
+        if bgear:
+            card, cl = _card("wizBgGear", (12, 9, 12, 11))
+            cl.addWidget(_head(f"From {s['bg']}"))
+            cl.addWidget(_chip_grid([(x, "gold") for x in bgear], 4, 30))
+            il.addWidget(card)
+        il.addStretch(1)
+        row.addWidget(_scroll(inner, "wizEquip"), 1)
+        row.addWidget(self._kit_card(c), 1)
+        return page
+
+    def _equip_group(self, gi, g, sel):
+        card, lay = _card("wizEqGroup", (12, 9, 12, 11))
+        lay.addWidget(_head(g["title"]))
+        grid = QGridLayout(); grid.setSpacing(8)
+        letters = "ABCDEFG"
+        n = len(g["options"])
+        for oi, o in enumerate(g["options"]):
+            on = g["fixed"] or sel.get("option", 0) == oi
+            f = QPushButton(); f.setObjectName("wizOpt"); f.setCursor(Qt.PointingHandCursor)
+            f.setProperty("option", f"{gi}:{oi}")
+            outer = QVBoxLayout(f); outer.setContentsMargins(10, 7, 10, 7); outer.setSpacing(5)
+            fl = QHBoxLayout(); fl.setSpacing(8)
+            outer.addLayout(fl)
+            if not g["fixed"]:
+                fl.addWidget(_t(letters[oi], TEXT3, FS_SMALL, bold=True))
+            fixed = [x for x in o["items"] if not x.lower().startswith("any ")]
+            text = ", ".join(W._count_items(fixed + [a_["name"] for a_ in o["anys"]]))
+            lbl = _t(text, TEAL2 if on else TEXT, FS_SMALL + 1, bold=True, wrap=True)
+            fl.addWidget(lbl, 1)
+            for ai, a in enumerate(o["anys"]):
+                cb = QComboBox(); cb.setObjectName(f"wizAny_{gi}_{oi}_{ai}")
+                cb.addItems(a["pool"])
+                anys = sel.get("anys") or []
+                if on and ai < len(anys) and anys[ai]:
+                    cb.setCurrentText(anys[ai])
+                cb.setEnabled(on)
+                cb.setFixedHeight(32)
+                cb.currentTextChanged.connect(lambda t, gi_=gi, ai_=ai: self._set_any(gi_, ai_, t))
+                outer.addWidget(cb)
+            tall = 46 + 37 * len(o["anys"]) + (18 if len(text) > 34 else 0)
+            f.setStyleSheet((f"#wizOpt{{background:{qa(TEAL, 0x1f)};border:1px solid {TEAL};border-radius:8px;"
+                             if on else
+                             f"#wizOpt{{background:{SURF};border:1px solid {BORDER};border-radius:8px;")
+                            + f"text-align:left;padding:0px;min-height:{tall}px;}}" + f"#wizOpt:hover{{border-color:{TEAL if on else BORDER2};}}")
+            if not g["fixed"]:
+                f.clicked.connect(lambda _=False, gi_=gi, oi_=oi: self._pick_option(gi_, oi_))
+            per = 3 if n == 3 else 2
+            grid.addWidget(f, oi // per, oi % per)
+        for c in range(3 if n == 3 else 2):
+            grid.setColumnStretch(c, 1)
+        lay.addLayout(grid)
+        return card
+
+    def _pick_option(self, gi, oi):
+        groups = W.equipment_groups(self.state["cls"])
+        ch = self._equip_state(groups)
+        if ch[gi].get("option") != oi:
+            ch[gi] = {"option": oi, "anys": [a["pool"][0] if a["pool"] else "" for a in groups[gi]["options"][oi]["anys"]]}
+        self._refresh()
+
+    def _set_any(self, gi, ai, text):
+        groups = W.equipment_groups(self.state["cls"])
+        ch = self._equip_state(groups)
+        anys = list(ch[gi].get("anys") or [])
+        while len(anys) <= ai:
+            anys.append("")
+        if anys[ai] == text:
+            return
+        anys[ai] = text
+        ch[gi]["anys"] = anys
+        QTimer.singleShot(0, self._refresh)
+
+    def _kit_card(self, c):
+        s = self.state
+        pv = W.kit_preview(c, self._equip_items(), s["extra"])
+        card, lay = _card("wizKit")
+        lay.addWidget(_head("You'll start with", "as your Loadout will show it"))
+        grid = QGridLayout(); grid.setSpacing(8)
+        for i, sl in enumerate(pv["slots"]):
+            f = _box("wizSlot", dashed=sl["empty"])
+            fl = QVBoxLayout(f); fl.setContentsMargins(10, 7, 10, 7); fl.setSpacing(1)
+            fl.addWidget(_t(sl["label"], TEXT3, FS_SMALL - 2, bold="x"))
+            fl.addWidget(_t(sl["name"], TEXT3 if sl["empty"] else TEXT, FS_BODY - 1, bold=True))
+            if sl["sub"]:
+                fl.addWidget(_t(sl["sub"], TEXT2, FS_SMALL - 2))
+            grid.addWidget(f, i // 2, i % 2)
+        grid.setColumnStretch(0, 1); grid.setColumnStretch(1, 1)
+        lay.addLayout(grid)
+        lay.addWidget(_head("Inventory"))
+        inner = QWidget(); il = QVBoxLayout(inner); il.setContentsMargins(0, 0, 4, 0); il.setSpacing(4)
+        for r in pv["rows"]:
+            rw = Row(r["name"], (f"×{r['qty']}" if r["qty"] > 1 else "",), "", False, height=32)
+            rw.setCursor(Qt.ArrowCursor)
+            il.addWidget(rw)
+        il.addStretch(1)
+        lay.addWidget(_scroll(inner, "wizKitList"), 1)
+        foot = QHBoxLayout(); foot.setSpacing(8)
+        if pv["gold"]:
+            foot.addWidget(_chip(pv["gold"], "gold", 28))
+        if pv["weight"]:
+            foot.addWidget(_t(f"Weight {pv['weight']}", TEXT3, FS_SMALL))
+        foot.addStretch(1)
+        extra = QLineEdit(s["extra"]); extra.setObjectName("wizExtra")
+        extra.setPlaceholderText("+ Anything else to add…")
+        extra.setToolTip("Items to add as well, with commas between")
+        extra.setStyleSheet(_field_qss("wizExtra"))
+        extra.setMinimumWidth(240)
+        extra.editingFinished.connect(lambda e=extra: self._set_extra(e.text()))
+        foot.addWidget(extra)
+        lay.addLayout(foot)
+        return card
+
+    def _set_extra(self, text):
+        if text != self.state["extra"]:
+            self.state["extra"] = text
+            QTimer.singleShot(0, self._refresh)
+
+    # ═══════════════════════════════════════════════════════════════
+    #  6. Summary
+    # ═══════════════════════════════════════════════════════════════
+    def _summary_page(self):
+        c = W.kit_char(self._built(4), self._equip_items(), self.state["extra"])
+        sm = W.summary(c)
+        page = QWidget(); page.setObjectName("wizSumPage"); page.setStyleSheet("#wizSumPage{background:transparent;}")
+        g = QGridLayout(page); g.setContentsMargins(0, 0, 0, 0); g.setHorizontalSpacing(12); g.setVerticalSpacing(10)
+        choices_step = 3 if self._has_level1() else 2
+
+        def edit(text, step):
+            b = _small_btn(f"✎ {text}", "wizEdit")
+            b.setProperty("editStep", step)
+            b.clicked.connect(lambda _=False, st=step: self.go_to(st))
+            return b
+
+        def kv_rows(cl, rows):
+            for lab, txt in rows:
+                r = QHBoxLayout(); r.setSpacing(8)
+                lb = _t(lab, TEXT3, FS_SMALL, bold=True); lb.setFixedWidth(84); r.addWidget(lb, 0, Qt.AlignTop)
+                r.addWidget(_t(txt, TEXT, FS_SMALL, wrap=True), 1)
+                cl.addLayout(r)
+
+        # name, and the six numbers
+        idw = QWidget(); idw.setObjectName("wizSumId"); idw.setStyleSheet("#wizSumId{background:transparent;}")
+        iv = QVBoxLayout(idw); iv.setContentsMargins(0, 0, 0, 0); iv.setSpacing(8)
+        card, cl = _card("wizSumName", (14, 12, 14, 12))
+        top = QHBoxLayout(); top.addWidget(_t(sm["name"], GOLD2, FS_TITLE + 2, bold="x")); top.addStretch(1)
+        top.addWidget(edit("Name", 2)); cl.addLayout(top)
+        cl.addWidget(_t(sm["line"], TEXT, FS_BODY - 1, bold=True))
+        for x in (sm["sub"], sm["sub2"]):
+            if x:
+                cl.addWidget(_t(x, TEXT2, FS_SMALL))
+        iv.addWidget(card)
+        sg = QGridLayout(); sg.setSpacing(6)
+        for i, (val, lab) in enumerate(sm["stats"]):
+            pb = lab == "PROF BONUS"
+            f = _box("wizStat", SURF2, BORDER2 if pb else BORDER, 9)
+            f.setProperty("statName", lab)
+            fl = QVBoxLayout(f); fl.setContentsMargins(4, 8, 4, 8); fl.setSpacing(0)
+            fl.addWidget(_t(val, IND2 if pb else TEXT, FS_TITLE, bold="x", align=Qt.AlignCenter))
+            fl.addWidget(_t(lab, TEXT3, FS_SMALL - 3, bold="x", align=Qt.AlignCenter, spacing=True))
+            sg.addWidget(f, i // 3, i % 3)
+        iv.addLayout(sg)
+        g.addWidget(idw, 0, 0)
+
+        card, cl = _card("wizSumAb")
+        cl.addWidget(_head("Abilities", "", edit("Abilities", 1)))
+        ag = QGridLayout(); ag.setSpacing(6)
+        for i, a in enumerate(sm["abilities"]):
+            f = _box("wizSumAbBox", SURF2, BORDER, 9)
+            fl = QVBoxLayout(f); fl.setContentsMargins(4, 6, 4, 8); fl.setSpacing(1)
+            hr = QHBoxLayout(); hr.addSpacing(8); hr.addStretch(1)
+            hr.addWidget(_t(a["ab"], TEXT2, FS_SMALL - 1, bold="x", align=Qt.AlignCenter, spacing=True))
+            hr.addStretch(1)
+            d = QLabel(); d.setObjectName("wizSaveDot"); d.setFixedSize(8, 8)
+            d.setStyleSheet(f"#wizSaveDot{{background:{TEAL if a['save'] else 'transparent'};border-radius:4px;}}")
+            if a["save"]:
+                d.setToolTip("Save proficiency")
+            hr.addWidget(d, 0, Qt.AlignTop)
+            fl.addLayout(hr)
+            fl.addWidget(_t(str(a["score"]), TEXT, FS_TITLE, bold="x", align=Qt.AlignCenter))
+            mr = QHBoxLayout(); mr.addStretch(1)
+            mr.addWidget(_red_chip(a["mod"], 22) if a["mod"].startswith("-") else _chip(a["mod"], "teal", 22))
+            mr.addStretch(1); fl.addLayout(mr)
+            ag.addWidget(f, i // 3, i % 3)
+        cl.addLayout(ag)
+        if sm["saves_text"]:
+            sv = QHBoxLayout(); sv.setSpacing(5)
+            d = QLabel(); d.setObjectName("wizSaveDot2"); d.setFixedSize(8, 8)
+            d.setStyleSheet(f"#wizSaveDot2{{background:{TEAL};border-radius:4px;}}")
+            sv.addWidget(d); sv.addWidget(_t(f"save proficiency: {sm['saves_text']}", TEXT3, FS_SMALL - 1)); sv.addStretch(1)
+            cl.addLayout(sv)
+        g.addWidget(card, 0, 1)
+
+        card, cl = _card("wizSumSkills")
+        cl.addWidget(_head("Skills", "", edit("Choices", choices_step)))
+        for n, b in sm["skills"]:
+            r = QFrame(); r.setObjectName("wizSkRow")
+            r.setStyleSheet(f"#wizSkRow{{background:transparent;border:none;border-bottom:1px solid {SURF3};}}")
+            r.setFixedHeight(30)
+            rl = QHBoxLayout(r); rl.setContentsMargins(0, 0, 0, 0)
+            rl.addWidget(_t(n, TEXT, FS_SMALL + 1)); rl.addStretch(1); rl.addWidget(_t(b, TEAL2, FS_SMALL + 1, bold="x"))
+            cl.addWidget(r)
+        cl.addWidget(_t(sm["senses"], TEXT3, FS_SMALL - 1, wrap=True))
+        cl.addStretch(1)
+        g.addWidget(card, 0, 2)
+
+        card, cl = _card("wizSumSpells")
+        sp = sm["spells"]
+        cl.addWidget(_head("Spells", "", edit("Spells", 3) if sp and self._has_level1() else None))
+        if sp:
+            if sp["head"]:
+                cl.addWidget(_t(sp["head"], TEXT2, FS_SMALL))
+            if sp["cantrips"]:
+                cl.addWidget(_t("CANTRIPS", TEXT3, FS_SMALL - 2, bold="x"))
+                cl.addWidget(_chip_grid([(x, "") for x in sp["cantrips"]], 2, 30))
+            if sp["spells"]:
+                cl.addWidget(_t(sp["title"], TEXT3, FS_SMALL - 2, bold="x"))
+                cl.addWidget(_chip_grid([(x, "teal") for x in sp["spells"]], 2, 30))
+            if sp.get("note"):
+                cl.addWidget(_t(sp["note"], TEXT3, FS_SMALL - 1))
+        else:
+            cl.addWidget(_t("No spells at level 1.", TEXT3, FS_SMALL))
+        cl.addStretch(1)
+        g.addWidget(card, 1, 0)
+
+        card, cl = _card("wizSumProfs")
+        cl.addWidget(_head("Proficiencies", "", edit("Choices", choices_step)))
+        kv_rows(cl, sm["profs"])
+        cl.addStretch(1)
+        g.addWidget(card, 1, 1)
+
+        card, cl = _card("wizSumEquip")
+        cl.addWidget(_head("Equipment", "", edit("Equipment", 4)))
+        kv_rows(cl, sm["equipment"])
+        fr = QHBoxLayout(); fr.setSpacing(8)
+        if sm["gold"]:
+            fr.addWidget(_chip(sm["gold"], "gold", 26))
+        if sm["weight"]:
+            fr.addWidget(_t(sm["weight"], TEXT3, FS_SMALL - 1))
+        fr.addStretch(1)
+        cl.addLayout(fr)
+        cl.addStretch(1)
+        g.addWidget(card, 1, 2)
+
+        card, cl = _card("wizSumFeatures")
+        cl.addWidget(_head("Features"))
+        feats = sm["features"]
+        n = min(7, max(1, len(feats)))
+        cl.addWidget(_chip_grid([(x, "off") for x in feats], n, 32))
+        g.addWidget(card, 2, 0, 1, 3)
+        for col in range(3):
+            g.setColumnStretch(col, 1)
+        g.setRowStretch(3, 1)
+        return page

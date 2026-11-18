@@ -2,120 +2,73 @@ import QtQuick
 import QtQuick.Controls
 import Mimic
 
+// Wizard step 5: each starting-gear pick as A or B (the chosen one green,
+// any weapon picked underneath), what the class always gives, the
+// background's gear -- and a page of what you'll start with.
 Page {
     id: root
     readonly property string screenTitle: "Starting Equipment"
-    readonly property QtObject eqBridge: Window.window.equipmentBridge
+    readonly property var wb: Window.window.wizardBridge
+    readonly property int rev: wb ? wb.rev : 0
+    readonly property var view: { rev; return wb ? wb.equipView() : ({ groups: [] }) }
     background: Rectangle { color: Theme.bg }
 
-    Component.onCompleted: eqBridge.refresh()
+    Component { id: kitComp; KitScreen {} }
+
+    WizSteps { id: steps; step: 4; width: parent.width }
 
     Flickable {
-        anchors.fill: parent
-        anchors.margins: 16
-        contentWidth: width
-        contentHeight: content.height
+        anchors.top: steps.bottom; anchors.bottom: nav.top
+        anchors.left: parent.left; anchors.right: parent.right
+        contentHeight: content.height + 24
         clip: true
-
         Column {
             id: content
-            width: parent.width
-            spacing: 14
-
-            Label {
-                visible: eqBridge.equipmentConfirmedOnce
-                text: "Starting equipment confirmed  ✓"
-                color: Theme.teal2
-                font.pixelSize: Theme.fsBody
-                font.bold: true
-            }
-
-            Label {
-                text: eqBridge.className.length > 0
-                      ? "Choose your starting equipment (" + eqBridge.className + "):"
-                      : "Choose your starting equipment:"
-                color: Theme.text2
-                font.pixelSize: Theme.fsBody
-                wrapMode: Text.WordWrap
-                width: parent.width
-            }
-
+            x: 12; y: 12
+            width: parent.width - 24
+            spacing: 8
             Repeater {
-                model: eqBridge.groups
-                delegate: Rectangle {
-                    id: groupCard
-                    required property var modelData
+                model: root.view.groups || []
+                delegate: WizCard {
+                    id: gcard
+                    readonly property var g: modelData
                     width: content.width
-                    height: groupCol.height + 24
-                    radius: 10
-                    color: Theme.surf
-                    border.color: Theme.border
-
-                    Column {
-                        id: groupCol
-                        x: 12; y: 12
-                        width: parent.width - 24
-                        spacing: 8
-
-                        Repeater {
-                            model: groupCard.modelData.options
-                            delegate: Column {
-                                id: optionCol
-                                required property var modelData
-                                required property int index
-                                width: groupCol.width
+                    title: g.title
+                    Repeater {
+                        model: gcard.g.options
+                        delegate: Rectangle {
+                            objectName: "equipOption_" + gcard.g.gi + "_" + index
+                            readonly property var o: modelData
+                            width: gcard.width - 20
+                            height: oc.implicitHeight + 16
+                            radius: 8
+                            color: o.on ? Qt.rgba(Theme.teal.r, Theme.teal.g, Theme.teal.b, 0.12) : Theme.surf
+                            border.color: o.on ? Theme.teal : Theme.border
+                            MouseArea { anchors.fill: parent; enabled: !gcard.g.fixed; onClicked: root.wb.pickOption(gcard.g.gi, index) }
+                            Column {
+                                id: oc
+                                x: 10; y: 8
+                                width: parent.width - 20
                                 spacing: 6
-
-                                RadioButton {
-                                    id: optRadio
-                                    visible: groupCard.modelData.hasChoice
-                                    width: groupCol.width
-                                    checked: groupCard.modelData.selectedOption === optionCol.index
-                                    onClicked: eqBridge.selectOption(groupCard.modelData.index, optionCol.index)
-                                    text: "(" + optionCol.modelData.letter + ") " +
-                                          optionCol.modelData.parts.map(p => p.label).join(", ")
-                                    contentItem: Text {
-                                        text: optRadio.text
-                                        color: Theme.text
-                                        font.pixelSize: Theme.fsBody
+                                Row {
+                                    width: parent.width
+                                    spacing: 8
+                                    Label { visible: !gcard.g.fixed; text: o.letter; color: Theme.text3; font.pixelSize: Theme.fsSmall; font.bold: true }
+                                    Label {
+                                        width: parent.width - 20
+                                        text: o.label
                                         wrapMode: Text.WordWrap
-                                        leftPadding: optRadio.indicator.width + optRadio.spacing
-                                        verticalAlignment: Text.AlignVCenter
+                                        color: o.on ? Theme.teal2 : Theme.text
+                                        font.pixelSize: Theme.fsBody - 1; font.bold: true
                                     }
                                 }
-
-                                Label {
-                                    visible: !groupCard.modelData.hasChoice
-                                    width: groupCol.width
-                                    text: optionCol.modelData.parts
-                                          .filter(p => p.kind === "text")
-                                          .map(p => p.label).join(", ")
-                                    color: Theme.text
-                                    font.pixelSize: Theme.fsBody
-                                    font.bold: true
-                                    wrapMode: Text.WordWrap
-                                }
-
                                 Repeater {
-                                    model: optionCol.modelData.parts.filter(p => p.kind === "combo")
-                                    delegate: Column {
-                                        required property var modelData
-                                        width: groupCol.width
-                                        spacing: 2
-                                        enabled: !groupCard.modelData.hasChoice || groupCard.modelData.selectedOption === optionCol.index
-                                        Label {
-                                            text: modelData.label + ":"
-                                            color: Theme.text2
-                                            font.pixelSize: Theme.fsSmall
-                                        }
-                                        ComboBox {
-                                            width: parent.width
-                                            model: modelData.pool
-                                            currentIndex: modelData.pool.indexOf(modelData.value)
-                                            onActivated: (idx) => eqBridge.setPlaceholderPick(
-                                                groupCard.modelData.index, optionCol.index,
-                                                modelData.itemIndex, modelData.pool[idx])
-                                        }
+                                    model: o.on ? o.anys : []
+                                    delegate: ComboBox {
+                                        width: oc.width
+                                        model: modelData.pool
+                                        currentIndex: Math.max(0, modelData.pool.indexOf(modelData.value))
+                                        onActivated: (i) => root.wb.setAny(gcard.g.gi, index, model[i])
                                     }
                                 }
                             }
@@ -123,52 +76,47 @@ Page {
                     }
                 }
             }
-
-            Rectangle {
-                width: parent.width
-                height: bgGearCol.height + 20
-                radius: 10
-                color: Theme.surf
-                border.color: Theme.teal
-                Column {
-                    id: bgGearCol
-                    x: 10; y: 10
-                    width: parent.width - 20
-                    spacing: 4
-                    Label {
-                        text: "Starting Gear from Background"
-                        color: Theme.teal2
-                        font.pixelSize: Theme.fsBody
-                        font.bold: true
-                    }
-                    Label {
-                        id: bgGearLabel
-                        text: eqBridge.backgroundGearText
-                        color: Theme.text2
-                        font.pixelSize: Theme.fsSmall
-                        wrapMode: Text.WordWrap
-                        width: parent.width
+            WizCard {
+                visible: (root.view.always || []).length > 0
+                width: content.width
+                title: "Always"
+                Grid {
+                    width: content.width - 20
+                    columns: 2
+                    spacing: 5
+                    Repeater {
+                        model: root.view.always || []
+                        delegate: WizChip { width: (content.width - 25) / 2; text: modelData }
                     }
                 }
             }
-
-            Label { text: "Additional Notes / Starting Items"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true }
-            TextArea {
-                width: parent.width
-                height: 80
-                placeholderText: "List any other starting equipment, currency, notes…"
-                text: eqBridge.notes
-                color: Theme.text
-                wrapMode: TextArea.Wrap
-                onEditingFinished: eqBridge.setNotes(text)
+            WizCard {
+                visible: (root.view.bgGear || []).length > 0
+                width: content.width
+                title: "From " + (root.view.bg || "")
+                Grid {
+                    width: content.width - 20
+                    columns: 2
+                    spacing: 5
+                    Repeater {
+                        model: root.view.bgGear || []
+                        delegate: WizChip { width: (content.width - 25) / 2; text: modelData; kind: "gold" }
+                    }
+                }
             }
-
             MButton {
-                objectName: "confirmEquipmentButton"
+                objectName: "seeKitButton"
                 width: parent.width
-                text: "Finish Character"
-                onClicked: Window.window.finishCharacterCreation()
+                primary: false
+                text: "See what you'll start with ▸"
+                onClicked: root.StackView.view.push(kitComp)
             }
         }
+    }
+    WizNav {
+        id: nav
+        anchors.bottom: parent.bottom; width: parent.width
+        onBack: Window.window.goToWizardStep(root.wb && root.wb.hasLevel1() ? 3 : 2)
+        onNext: Window.window.advanceToSummary()
     }
 }

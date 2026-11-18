@@ -1252,18 +1252,12 @@ class CharacterCreatorApp(QMainWindow):
             # step the player was on, same pattern as the sheet above.
             if self._wizard:
                 was_current_wizard = (self._stack.currentWidget() is self._wizard)
-                old_char, old_step = self._wizard.char, self._wizard._step
+                old_state, old_step = self._wizard.state, self._wizard._step
                 self._stack.removeWidget(self._wizard); self._wizard.deleteLater()
                 self._wizard = CharacterWizard(self)
-                self._wizard.char = old_char
                 self._wizard.done.connect(self._show_new_sheet)
                 self._stack.addWidget(self._wizard)
-                self._wizard._step = old_step
-                steps = [self._wizard._step1, self._wizard._step2, self._wizard._step3,
-                         self._wizard._step4, self._wizard._step5]
-                steps[old_step].populate(self._wizard.char)
-                self._wizard._stack.setCurrentIndex(old_step)
-                self._wizard._update_pills()
+                self._wizard.restore(old_state, old_step)
                 if was_current_wizard:
                     self._stack.setCurrentWidget(self._wizard)
 

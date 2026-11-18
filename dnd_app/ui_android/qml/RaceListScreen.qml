@@ -2,70 +2,64 @@ import QtQuick
 import QtQuick.Controls
 import Mimic
 
+// Wizard step 1: the races, as the app's other browsers -- search, source
+// chips, a row each. A tap opens its details (RaceDetailScreen).
 Page {
     id: root
     readonly property string screenTitle: "Choose Your Race"
+    readonly property var wb: Window.window.wizardBridge
     background: Rectangle { color: Theme.bg }
 
-    Component.onCompleted: Window.window.raceBridge.refresh()
-
-    // See App.qml's navItems comment: StackView.push() needs an actual
-    // Component, not a "Foo.qml" URL string, or the pushed page's
-    // context-property bindings silently never resolve.
     Component { id: raceDetailComp; RaceDetailScreen {} }
 
+    WizSteps { id: steps; step: 0; width: parent.width }
+
     Column {
-        anchors.fill: parent
-        anchors.margins: 16
-        spacing: 12
-
-        Label {
-            visible: Window.window.raceBridge.selectedRace.length > 0
-            text: "Selected: " + Window.window.raceBridge.selectedRace + (Window.window.raceBridge.raceConfirmedOnce ? "  ✓" : "")
-            color: Theme.teal2
-            font.pixelSize: Theme.fsBody
-            font.bold: true
-        }
-
+        id: top
+        anchors.top: steps.bottom
+        anchors.left: parent.left; anchors.right: parent.right
+        anchors.margins: 12
+        anchors.topMargin: 10
+        spacing: 8
         MTextField {
-            id: search
             objectName: "raceSearchField"
             width: parent.width
-            placeholderText: "Search races…"
-            onTextChanged: Window.window.raceBridge.raceModel.setFilter(text)
+            placeholderText: "⌕  Search races…"
+            text: root.wb ? root.wb.raceSearch : ""
+            onTextChanged: if (root.wb) root.wb.setRaceSearch(text)
         }
-
-        ListView {
+        Row {
             width: parent.width
-            height: parent.height - search.height - 60
-            clip: true
-            model: Window.window.raceBridge.raceModel
-            delegate: ItemDelegate {
-                objectName: "raceItem_" + name
-                width: ListView.view.width
-                height: 56
-                contentItem: Row {
-                    spacing: 10
-                    anchors.verticalCenter: parent.verticalCenter
-                    Label {
-                        text: name
-                        color: Theme.text
-                        font.pixelSize: Theme.fsBody
-                        font.bold: name === Window.window.raceBridge.selectedRace
-                    }
-                    Label {
-                        text: source
-                        color: Theme.text3
-                        font.pixelSize: Theme.fsSmall
-                    }
+            spacing: 5
+            Repeater {
+                model: root.wb ? root.wb.raceGroups : []
+                delegate: WizChip {
+                    width: (top.width - 5 * 4) / 5
+                    text: modelData === "Multiverse" ? "MPMM" : modelData
+                    kind: root.wb && root.wb.raceGroup === modelData ? "gold" : "off"
+                    MouseArea { anchors.fill: parent; onClicked: root.wb.setRaceGroup(modelData) }
                 }
-                background: Rectangle {
-                    color: name === Window.window.raceBridge.selectedRace ? Qt.rgba(Theme.indigo.r, Theme.indigo.g, Theme.indigo.b, 0.18) : "transparent"
-                }
-                onClicked: {
-                    Window.window.raceBridge.selectRace(name)
-                    root.StackView.view.push(raceDetailComp)
-                }
+            }
+        }
+    }
+    ListView {
+        id: list
+        anchors.top: top.bottom; anchors.topMargin: 8
+        anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+        anchors.leftMargin: 12; anchors.rightMargin: 12
+        clip: true
+        spacing: 5
+        model: { root.wb ? root.wb.rev : 0; return root.wb ? root.wb.raceRows() : [] }
+        delegate: WizRow {
+            objectName: "raceItem_" + modelData.name
+            width: ListView.view.width
+            name: modelData.name
+            meta: modelData.asi
+            tag: modelData.source
+            selected: root.wb && root.wb.selectedRace === modelData.name
+            onClicked: {
+                root.wb.selectRace(modelData.name)
+                root.StackView.view.push(raceDetailComp)
             }
         }
     }

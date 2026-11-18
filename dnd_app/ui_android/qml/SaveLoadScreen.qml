@@ -483,7 +483,7 @@ Flickable {
                 Layout.fillWidth: true
                 spacing: 10
                 Label {
-                    text: Window.window.classBridge.name.length > 0 ? Window.window.classBridge.name : "Unnamed character"
+                    text: Window.window.wizardBridge.name.length > 0 ? Window.window.wizardBridge.name : "Unnamed character"
                     color: Theme.text
                     font.pixelSize: Theme.fsBody + 2
                     font.bold: true

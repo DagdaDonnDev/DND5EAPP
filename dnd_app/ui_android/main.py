@@ -37,7 +37,7 @@ from PySide6.QtCore import QUrl, QMetaObject, qInstallMessageHandler, QtMsgType
 
 from dnd_app.core.character import new_character
 from dnd_app.ui_android.bridge.wizard import (
-    RaceWizardBridge, AbilityWizardBridge, ClassWizardBridge, EquipmentWizardBridge,
+    WizardBridge,
 )
 from dnd_app.ui_android.bridge.save_load import SaveLoadBridge
 from dnd_app.ui_android.bridge.character_sheet import CharacterSheetBridge
@@ -143,10 +143,7 @@ def main():
     engine.addImageProvider("immersive", ImmersiveFrameProvider())
 
     char = new_character()
-    race_bridge = RaceWizardBridge(char)
-    ability_bridge = AbilityWizardBridge(char)
-    class_bridge = ClassWizardBridge(char)
-    equipment_bridge = EquipmentWizardBridge(char)
+    wizard_bridge = WizardBridge(char)
     save_load_bridge = SaveLoadBridge(char)
     sheet_bridge = CharacterSheetBridge(char)
     dice_roller_bridge = DiceRollerBridge(char)      # (the shared character: its roll history)
@@ -165,12 +162,9 @@ def main():
 
     # Assigned as plain QML properties AFTER load, not via
     # QQmlContext.setContextProperty() before it -- see App.qml's
-    # raceBridge/abilityBridge property comment for why.
+    # wizardBridge property comment for why.
     window = engine.rootObjects()[0]
-    window.setProperty("raceBridge", race_bridge)
-    window.setProperty("abilityBridge", ability_bridge)
-    window.setProperty("classBridge", class_bridge)
-    window.setProperty("equipmentBridge", equipment_bridge)
+    window.setProperty("wizardBridge", wizard_bridge)
     window.setProperty("saveLoadBridge", save_load_bridge)
     window.setProperty("sheetBridge", sheet_bridge)
     window.setProperty("diceRollerBridge", dice_roller_bridge)
