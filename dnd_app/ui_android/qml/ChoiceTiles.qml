@@ -34,7 +34,7 @@ Grid {
             var opts = [], vals = {}
             var tl = g.c.tiles || []
             for (var i = 0; i < tl.length; ++i) {
-                if (tl[i].have.length || tl[i].on) continue
+                if ((tl[i].have || "").length || tl[i].on) continue
                 opts.push(tl[i].label)
                 vals[tl[i].label] = tl[i].value
             }

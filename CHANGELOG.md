@@ -120,6 +120,9 @@ what it says, and magic armor counts as the armor it is.
 
 ### ⚖️ Rules
 
+- A Rogue picks its four skills from the Rogue's list of eleven, not any
+  skill.
+- A Half-Elf's two +1s go on abilities other than Charisma.
 - Magic armor is the armor it's made from: Dwarven Plate is plate (AC 18
   and its +2), Elven Chain a chain shirt. An item that can be any armor
   (+1 Armor, Armor of Fire Resistance...) asks which, as Flame Tongue asks
@@ -160,6 +163,16 @@ what it says, and magic armor counts as the armor it is.
   what it's for.
 - **ADV / DIS on skills:** a skill with advantage says ADV in green, one
   with disadvantage DIS in red (stealth in heavy armour), on Android too.
+- **New character, redone:** six steps in the app's new look, with a bar
+  showing where you are. Races and backgrounds are searchable lists with
+  their details beside them. Abilities are one card: pick a method,
+  set each score and tap where your race's +1s go. A new **Spells &
+  Choices** step asks what level 1 needs (a subclass, skills, Expertise,
+  languages, tools) and lets you pick your starting spells; a skill you
+  already have is greyed out, with where it's from on hover (press and
+  hold on Android). Equipment shows each pick as A or B beside what
+  you'll start with, and a **Summary** shows the whole character, with an
+  edit button on each card, before you create it.
 - **Pages in a new order:** Overview, Combat, Inventory, Spells,
   Creatures, Features, Notes, then Choices, the setting up and levelling
   up, last and out of the way during play (Ctrl+1 … Ctrl+8 follow it;
@@ -211,6 +224,12 @@ what it says, and magic armor counts as the armor it is.
   veil in your theme's colour, so the page still shows behind them.
 
 ### 🔧 Fixes
+
+- **Windows flashing when a character opens:** some feature cards, Loadout
+  slots and choices briefly opened as tiny windows of their own while the
+  sheet was being built. They no longer do.
+- **New character, ability scores:** the score box showed only the
+  modifier, not the score itself.
 
 - Fixed 129 Bestiary creatures (the Alhoon, the Elemental Spirit…)
   listing their condition immunities as damage immunities, and the

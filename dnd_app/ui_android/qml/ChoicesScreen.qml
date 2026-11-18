@@ -96,7 +96,7 @@ Page {
                     sub: c.sub
                     count: c.picked.length + " of " + c.count
                     done: c.done
-                    ChoiceTiles { width: card.width - 20; c: card.c; cols: root.androidCols(card.c); wb: root.wb; picker: picker }
+                    ChoiceTiles { width: card.width - 20; c: card.c; cols: root.androidCols(card.c); wb: root.wb; picker: pickerDialog }
                     Repeater {
                         model: root.kidsOf(card.c.id)
                         delegate: WizCard {
@@ -105,7 +105,7 @@ Page {
                             title: modelData.title
                             count: modelData.done ? "picked" : "pick one"
                             done: modelData.done
-                            ChoiceTiles { width: card.width - 40; c: modelData; cols: root.androidCols(modelData); wb: root.wb; picker: picker }
+                            ChoiceTiles { width: card.width - 40; c: modelData; cols: root.androidCols(modelData); wb: root.wb; picker: pickerDialog }
                         }
                     }
                 }
@@ -199,7 +199,7 @@ Page {
     }
 
     MPickerDialog {
-        id: picker
+        id: pickerDialog
         property string cardId: ""
         property var values: ({})
         dialogTitle: "Choose"

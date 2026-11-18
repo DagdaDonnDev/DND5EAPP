@@ -94,7 +94,10 @@ class FeatureCard(QFrame):
         self._summary = QLabel(card["summary"])
         self._summary.setObjectName("featureSummary")
         self._summary.setWordWrap(True)
-        self._summary.setVisible(bool(card["summary"]))
+        # (shown or hidden once it's in the card: a label shown before it
+        # has a parent opens as a window of its own for a moment)
+        if not card["summary"]:
+            self._summary.hide()
         self._summary.setStyleSheet(f"color:{TEXT3 if card['future'] else TEXT2};font-size:{FS_SMALL}px;"
                                     f"padding-left:18px;background:transparent;border:none;")
         lay.addWidget(self._summary)

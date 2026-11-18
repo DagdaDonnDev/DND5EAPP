@@ -81,7 +81,8 @@ class ChoiceWidget(QFrame):
             head.addWidget(_lbl(src_name, bg, bold=True, size=FS_BODY, wrap=False))
         head.addWidget(_lbl(choice_info["label"], TEXT, bold=True, size=FS_LABEL), 1)
         self._done_lbl = _lbl("✓ Done", TEAL2, bold=True, size=FS_BODY, wrap=False)
-        self._done_lbl.setVisible(self._confirmed)
+        if not self._confirmed:
+            self._done_lbl.hide()
         head.addWidget(self._done_lbl)
         self._lay.addLayout(head)
 

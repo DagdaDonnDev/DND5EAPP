@@ -909,8 +909,8 @@ class GearMixin:
                            f"font-size:{FS_SMALL + 1}px;font-weight:{600 if st == 'empty' else 700};background:transparent;border:none;")
         lay.addWidget(name)
         what = QLabel(s["what"]); what.setStyleSheet(f"color:{TEXT2};font-size:{FS_TINY}px;background:transparent;border:none;")
-        what.setVisible(bool(s["what"]))
         lay.addWidget(what)
+        what.setVisible(bool(s["what"]))
         for w in (name, what):
             w.setMinimumWidth(10)
         # long names and lines shorten with "…" (the whole of it on hover)

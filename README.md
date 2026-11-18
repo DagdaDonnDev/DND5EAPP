@@ -91,9 +91,15 @@ The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Androi
 <details open>
 <summary><b>Your first character</b></summary>
 
-1. Press **Create New Character** on the start screen (or **File → New Character**). The wizard goes race, ability scores (point buy, standard array or your own), background, class, spells and equipment, and shows each option in full as you pick.
+1. Press **Create New Character** on the start screen (or **File → New Character**). The wizard has six steps, with a bar along the top showing where you are:
+   - **Race:** search the races, then pick one to see its bonuses, subraces and traits.
+   - **Abilities:** standard array, point buy, roll or enter your own. Your race's +1s go where you tap.
+   - **Class & Background:** your name and alignment, a class, and a background.
+   - **Spells & Choices:** what level 1 asks you to pick (a subclass for a Cleric, Sorcerer or Warlock, skills, Expertise, languages, tools) and your starting spells. A skill you already have is greyed out; hover over it (press and hold on Android) to see where it's from. A class with no spells calls this step **Choices**.
+   - **Equipment:** your class's starting gear as A or B picks, beside what you'll start with.
+   - **Summary:** the whole character, with an edit button on each card, and **Create Character**.
 2. When it finishes, the sheet opens and the character is saved.
-3. Anything the wizard didn't ask — a background's extra skill or tool, a racial language, which ability a feat raises, the spells a feat lets you pick — waits on the **Choices** tab, with any spells you still have room to learn. The Choices tab pulses until you're done.
+3. Anything the wizard didn't ask (a Variant Human's feat, say) waits on the **Choices** tab, which pulses until you're done.
 
 Playing a character from paper? **Import PDF Sheet** on the start screen turns a filled-in official character sheet into a full character (see *Saving, sharing and PDFs*).
 
@@ -304,6 +310,15 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
   <img src="docs/images/android-features.png" width="24%" alt="Android: Features">
 </p>
 <p align="center"><sub>Mat Cauthon, a level 5 Half-Elf Sorcerer (Wild Magic), on desktop and Android.</sub></p>
+<p align="center">
+  <img src="docs/images/desktop-wizard-choices.png" width="49%" alt="Desktop: making a character, the Spells & Choices step with the Sorcerous Origin, Dragon Ancestor and skills beside the starting spells">
+  <img src="docs/images/android-wizard-choices.png" width="24%" alt="Android: the Spells & Choices step">
+  <img src="docs/images/android-wizard-summary.png" width="24%" alt="Android: the Summary before Create Character">
+</p>
+<p align="center">
+  <img src="docs/images/desktop-wizard-summary.png" width="49%" alt="Desktop: the Summary step, the whole character with an edit button on each card">
+</p>
+<p align="center"><sub>Making a new character: a level 1 Half-Elf Sorcerer (Draconic Bloodline).</sub></p>
 <!-- /github-only -->
 
 ---
