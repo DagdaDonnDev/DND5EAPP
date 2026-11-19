@@ -284,9 +284,17 @@ class CreatureBrowser(QWidget):
         self.search.textChanged.connect(lambda _t: self._timer.start())
         for box in (self._kind, self._size, self._cr_min, self._cr_max, self._move):
             box.currentIndexChanged.connect(lambda _i: self.refresh())
-        self.refresh()
+        # (its 2,754 rows are filled when it's first shown, not with the
+        # sheet: most visits to a character never open the Creatures page)
+        self._filled = False
+
+    def showEvent(self, event):
+        if not self._filled:
+            self.refresh()
+        super().showEvent(event)
 
     def refresh(self):
+        self._filled = True
         names = _b.search(self.search.text(), self._kind.currentData(), self._size.currentData(),
                           self._cr_min.currentData(), self._cr_max.currentData(), self._move.currentData())
         self.tree.setUpdatesEnabled(False)

@@ -216,6 +216,7 @@ ApplicationWindow {
     // fix in main_window.py.
     function applyStartupTheme() {
         Theme.applyTheme(appSettingsBridge.theme)
+        startupSplash.play()
     }
 
     function goToStartMenu() {
@@ -1411,6 +1412,75 @@ ApplicationWindow {
         anchors.topMargin: 46
         anchors.rightMargin: 18
         z: 10000
+    }
+
+    // The startup animation: the mimic chest in the theme's colours, the
+    // same frames the desktop splash plays (core/splash_art.py, served by
+    // bridge/splash.py), over the Start Menu as the app opens. It plays
+    // once, holds on its last frame (the name) a moment, and fades out;
+    // a tap skips it.
+    Rectangle {
+        id: startupSplash
+        objectName: "startupSplash"
+        parent: Overlay.overlay
+        anchors.fill: parent
+        z: 20000
+        color: Theme.bg
+        // (shown by play(), which main.py runs before the first frame is drawn)
+        visible: false
+        property var delays: []
+        property int frame: 0
+        property bool playing: false
+
+        function play() {
+            delays = appSettingsBridge ? appSettingsBridge.splashDelays : []
+            if (!delays || delays.length === 0) { visible = false; return }
+            frame = 0
+            opacity = 1
+            visible = true
+            playing = true
+            frameTimer.interval = delays[0]
+            frameTimer.start()
+        }
+        function finish() {
+            frameTimer.stop()
+            playing = false
+            fadeOut.start()
+        }
+
+        Image {
+            anchors.centerIn: parent
+            width: Math.min(parent.width, parent.height)
+            height: width
+            fillMode: Image.PreserveAspectFit
+            cache: false
+            smooth: true
+            source: startupSplash.delays.length ? "image://splash/" + startupSplash.frame : ""
+        }
+        Timer {
+            id: frameTimer
+            repeat: false
+            onTriggered: {
+                var s = startupSplash
+                if (s.frame >= s.delays.length - 1) { s.finish(); return }
+                s.frame += 1
+                // the last frame (the name) stays up a little longer
+                interval = s.frame === s.delays.length - 1 ? 700 : s.delays[s.frame]
+                start()
+            }
+        }
+        NumberAnimation {
+            id: fadeOut
+            target: startupSplash
+            property: "opacity"
+            to: 0
+            duration: 300
+            onFinished: startupSplash.visible = false
+        }
+        MouseArea {
+            anchors.fill: parent
+            onClicked: if (startupSplash.opacity === 1 && !fadeOut.running) startupSplash.finish()
+        }
     }
 
     // Android hardware/gesture back button (delivered as a window close

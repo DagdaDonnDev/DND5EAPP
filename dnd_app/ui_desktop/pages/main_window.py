@@ -990,13 +990,27 @@ class CharacterCreatorApp(QMainWindow):
         # just for fun. An application-wide event filter is the only
         # way to catch it regardless of which widget currently has
         # focus (a text field, a spell search box, the sheet itself).
+        #
+        # It watches the focused window only (every keypress reaches that
+        # QWindow first) rather than the whole app: an app-wide filter in
+        # Python runs for every event of every widget -- hundreds of
+        # thousands while a sheet is built -- and slowed everything down.
         self._cheese_buffer = ""
         app = QApplication.instance()
         if app is not None:
-            app.installEventFilter(self)
+            app.focusWindowChanged.connect(self._watch_window)
+            from dnd_app.ui_desktop.diagnostics import LOG_WINDOW_SHOWS
+            if LOG_WINDOW_SHOWS:          # (the opt-in trace needs every window)
+                app.installEventFilter(self)
+
+    def _watch_window(self, w):
+        if w is not None:
+            w.removeEventFilter(self)    # (never twice)
+            w.installEventFilter(self)
 
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.KeyPress and isinstance(obj, QWindow) and not event.isAutoRepeat():
+        t = event.type()
+        if t == QEvent.KeyPress and isinstance(obj, QWindow) and not event.isAutoRepeat():
             # One physical keypress reaches this app-wide filter several
             # times: once for the top-level QWindow, again for the focused
             # widget, and once more for each parent it propagates to when a
@@ -1011,7 +1025,7 @@ class CharacterCreatorApp(QMainWindow):
                     self._show_cheese_easter_egg()
                     self._cheese_buffer = ""
         # Opt-in trace, off by default -- see dnd_app/ui_desktop/diagnostics.py.
-        if event.type() == QEvent.Show:
+        if t == QEvent.Show:
             from dnd_app.ui_desktop.diagnostics import log_window_show
             log_window_show(obj, event)
         return super().eventFilter(obj, event)
@@ -1098,6 +1112,21 @@ class CharacterCreatorApp(QMainWindow):
                       + (f", +{tmp} temp" if tmp else ""))
         if sheet is not None:   # the name, at the bar's right, reads on it too
             sheet.set_name_color(T.readable(name_ink, base, fill, tfill))
+
+    def _drop(self, w):
+        """A sheet, wizard or start menu that's being replaced, gone now
+        rather than at the next turn of the event loop (deleteLater): a new
+        theme applied while it's still alive restyles every one of its
+        thousands of widgets first, which took many seconds. Safe because
+        none of its own code is running at the time -- the sheet's Back and
+        Refresh reach here queued (see _show_sheet, _force_full_refresh)."""
+        if w is None:
+            return
+        import shiboken6
+        self._stack.removeWidget(w)
+        w.hide()
+        if shiboken6.isValid(w):
+            shiboken6.delete(w)
 
     def _set_menu_corner(self, widget):
         """The menu bar's right-hand corner: the open character's name (an
@@ -1203,6 +1232,22 @@ class CharacterCreatorApp(QMainWindow):
         from dnd_app.ui_desktop.style.theme import apply_theme
         self._switching_theme = True
         try:
+            # What's rebuilt below goes first, so the new theme isn't
+            # applied to it on its way out (see _drop). (Which one was
+            # showing is noted before any goes.)
+            was_current_start = (self._stack.currentWidget() is self._start)
+            sheet_state = None
+            if self._sheet:
+                sh = self._sheet
+                sheet_state = (sh.char, sh._save_path, bool(sh._dirty), sh._tabs.currentIndex())
+                self._set_menu_corner(None)
+                self._drop(sh); self._sheet = None
+            wizard_state = None
+            if self._wizard:
+                wizard_state = (self._stack.currentWidget() is self._wizard,
+                                self._wizard.state, self._wizard._step)
+                self._drop(self._wizard); self._wizard = None
+            self._drop(self._start); self._start = None
             qss = apply_theme(name)
             self.setStyleSheet(qss)
             # QToolTip (and a few other selectors) don't reliably cascade
@@ -1216,19 +1261,17 @@ class CharacterCreatorApp(QMainWindow):
             if app is not None:
                 app.setStyleSheet(qss)
             self._current_theme_name = name
-            if self._sheet:
-                char = self._sheet.char
+            if sheet_state:
+                char, save_path, dirty, cur_tab = sheet_state
                 # (what's unsaved stays unsaved on the rebuilt sheet, and a
                 # new theme is itself a change to this character)
-                unsaved = bool(self._sheet._dirty) or char.get("theme") != name
+                unsaved = dirty or char.get("theme") != name
                 char["theme"] = name
-                cur_tab = self._sheet._tabs.currentIndex()
                 # This rebuilds the SAME character (just re-themed), not
                 # a different one being loaded -- must carry over its
                 # existing _save_path, or the freshly-constructed sheet
                 # would fall back to a name-derived path on its next
                 # Save, discarding the file identity it already had.
-                save_path = self._sheet._save_path
                 self._show_sheet(char, save_path=save_path)
                 if self._sheet:
                     self._sheet._tabs.setCurrentIndex(cur_tab)
@@ -1250,10 +1293,8 @@ class CharacterCreatorApp(QMainWindow):
             # only ever runs once, at construction. Rebuilt in place,
             # preserving in-progress selections (self.char) and which
             # step the player was on, same pattern as the sheet above.
-            if self._wizard:
-                was_current_wizard = (self._stack.currentWidget() is self._wizard)
-                old_state, old_step = self._wizard.state, self._wizard._step
-                self._stack.removeWidget(self._wizard); self._wizard.deleteLater()
+            if wizard_state:
+                was_current_wizard, old_state, old_step = wizard_state
                 self._wizard = CharacterWizard(self)
                 self._wizard.done.connect(self._show_new_sheet)
                 self._stack.addWidget(self._wizard)
@@ -1266,8 +1307,6 @@ class CharacterCreatorApp(QMainWindow):
             # which screen is showing) needs it explicitly rebuilt in
             # place, restoring which stack widget was current if
             # StartMenu itself was showing.
-            was_current_start = (self._stack.currentWidget() is self._start)
-            self._stack.removeWidget(self._start); self._start.deleteLater()
             self._start = StartMenu(self)
             self._start.new_char.connect(self._go_wizard)
             self._start.load_char.connect(self._go_sheet_from_path)
@@ -1432,6 +1471,10 @@ class CharacterCreatorApp(QMainWindow):
         # state check, etc), which is a very plausible source of a
         # stray dialog flashing and immediately closing again when that
         # first sheet gets torn down moments later.
+        # (the old sheet goes before a new theme is applied: see _drop)
+        if self._sheet:
+            self._set_menu_corner(None)
+            self._drop(self._sheet); self._sheet = None
         saved_theme = char.get("theme")
         if saved_theme in THEMES:
             if (saved_theme != self._current_theme_name
@@ -1453,8 +1496,6 @@ class CharacterCreatorApp(QMainWindow):
             char["theme"] = self._current_theme_name
         self._stack.setUpdatesEnabled(False)
         try:
-            if self._sheet:
-                self._stack.removeWidget(self._sheet); self._sheet.deleteLater()
             # Explicit parent (self, not the default None) matters here:
             # CharacterSheet.__init__ runs a lot of work -- every tab's
             # _build_tab_* -- before this line's addWidget() reparents it
@@ -1467,7 +1508,9 @@ class CharacterCreatorApp(QMainWindow):
             # StartMenu()/CharacterWizard() construction sites need the
             # same explicit parent, for the same reason.
             self._sheet = CharacterSheet(char, self, save_path=save_path)
-            self._sheet.back_to_menu.connect(self._sheet_back_to_menu)
+            # (queued: the menu replaces the sheet, which mustn't happen
+            # while its own button's code is still running)
+            self._sheet.back_to_menu.connect(self._sheet_back_to_menu, Qt.QueuedConnection)
             # the menu bar has this sheet's name on it, and is its health
             # bar from here on
             self._set_menu_corner(self._sheet._name_box)
@@ -1503,6 +1546,24 @@ class CharacterCreatorApp(QMainWindow):
         finally:
             self._stack.setUpdatesEnabled(True)
 
+    def _rebuild_sheet(self):
+        """Refresh: the open character on a freshly built sheet. It keeps
+        the file it saves to, what's still unsaved and the tab that was
+        showing. (Rebuilt without them, the next Save was refused as a name
+        already in use -- its own -- and leaving no longer asked about the
+        changes.)"""
+        sh = self._sheet
+        if sh is None:
+            return
+        char, save_path, unsaved, cur_tab = sh.char, sh._save_path, sh._dirty, sh._tabs.currentIndex()
+        self._show_sheet(char, save_path=save_path)
+        if self._sheet:
+            self._sheet._tabs.setCurrentIndex(cur_tab)
+            if unsaved:
+                self._sheet._mark_dirty()
+                self._sheet._update_title()
+            self._sheet._toast("Refreshed")
+
     def _sheet_back_to_menu(self):
         if self._sheet and not self._sheet.confirm_leave():
             return
@@ -1518,13 +1579,12 @@ class CharacterCreatorApp(QMainWindow):
         # silently keep operating on it even after "back to menu", and
         # _set_theme() below would misattribute a menu-time theme change
         # to it instead of saving it as the app's own default.
+        self._set_menu_corner(None)
         if self._sheet:
-            self._stack.removeWidget(self._sheet); self._sheet.deleteLater()
-            self._sheet = None
+            self._drop(self._sheet); self._sheet = None
         self.setWindowTitle("MIMIC")
         self._set_health_bar(None)   # a plain menu bar again
-        self._set_menu_corner(None)
-        self._stack.removeWidget(self._start); self._start.deleteLater()
+        self._drop(self._start); self._start = None
         # Revert away from that character's theme to the app's own
         # remembered default (Settings changes made with no character
         # open) -- same "only if it actually differs" guard _show_sheet()
@@ -1676,8 +1736,8 @@ def main(app=None, splash=None):
     if splash is None:
         # Show a splash immediately — building the sheet (magic items, spells,
         # every tab widget) takes a couple of seconds on some machines, and an
-        # empty frame during that time reads as a frozen/crashed app. Drop
-        # dnd_app/ui_desktop/splash/splash.gif (or splash.png) in to use a custom splash.
+        # empty frame during that time reads as a frozen/crashed app
+        # (the themed mimic of dnd_app/core/splash.gif; see ui_desktop/splash).
         from dnd_app.ui_desktop.splash import AnimatedSplash
         splash = AnimatedSplash()
         splash.show()

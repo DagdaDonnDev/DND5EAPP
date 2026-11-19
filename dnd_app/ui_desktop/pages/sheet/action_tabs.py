@@ -185,7 +185,7 @@ class ActionTabsMixin:
                             if res.get("key") == cd_key:
                                 res["current"] = max(0, res.get("current", 0) - 1)
                                 self._mark_dirty()
-                                QTimer.singleShot(0, self.ctrl.refresh)
+                                QTimer.singleShot(0, self, self.ctrl.refresh)
                 # Action Surge grants an extra action for the current
                 # turn per the real rule, tied into the turn-economy
                 # system here rather than existing only as a spendable resource.
@@ -255,7 +255,7 @@ class ActionTabsMixin:
                     # active_effects — not done here — so it survives every
                     # future refresh instead of being wiped by the magic
                     # item recompute that resets damage_resistances.
-                    QTimer.singleShot(0, self.ctrl.refresh)
+                    QTimer.singleShot(0, self, self.ctrl.refresh)
                 tgl.toggled.connect(_on_toggle)
                 rl.addWidget(tgl)
             rl.addWidget(minus); rl.addWidget(sp); rl.addWidget(max_l); rl.addWidget(plus)
@@ -291,7 +291,7 @@ class ActionTabsMixin:
                     self._toast(spend_portent(self.char, _v))
                     self._mark_dirty()
                     # after this click: the row (and this button) is rebuilt
-                    QTimer.singleShot(0, self.ctrl.refresh)
+                    QTimer.singleShot(0, self, self.ctrl.refresh)
                 b.clicked.connect(_use)
                 rl.addWidget(b)
             reset_l = _lbl(reset_label, TEXT3, FS_TINY-1, wrap=False)
@@ -518,7 +518,7 @@ class ActionTabsMixin:
                 self._pact_bar.set_used(self.char.get("pact_slots_used", 0))
         self._mark_dirty()
         # after this click has finished: the card's own button is rebuilt
-        QTimer.singleShot(0, self.ctrl.refresh if res.get("refresh") else self._refresh_action_tabs)
+        QTimer.singleShot(0, self, self.ctrl.refresh if res.get("refresh") else self._refresh_action_tabs)
 
     def _use_carried(self, kind, name, spends):
         """A potion drunk or a scroll read from its card (gear.py does it),
@@ -532,6 +532,11 @@ class ActionTabsMixin:
     def _refresh_action_tabs(self):
         """Rebuild the action economy tabs from current character state."""
         if not hasattr(self, '_action_bucket_widgets'):
+            return
+        # (while the sheet is opening several parts ask for this: it's done
+        # once, at the end of _load)
+        if getattr(self, "_loading", False):
+            self._action_tabs_due = True
             return
         buckets = build_action_abilities(self.char)
 
@@ -552,7 +557,7 @@ class ActionTabsMixin:
         def _restore_scroll():
             for area, value in scroll_at.items():
                 area.verticalScrollBar().setValue(value)
-        QTimer.singleShot(0, _restore_scroll)
+        QTimer.singleShot(0, self, _restore_scroll)
 
         for bucket_name, (bw, bl) in self._action_bucket_widgets.items():
             # Clear existing rows — items 0 and 1 are the permanent

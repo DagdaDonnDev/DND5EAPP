@@ -994,7 +994,10 @@ class LevelUpPanel(QWidget):
     # Spells tab and Spell Browser while one does
     spells_to_learn_changed = Signal(bool)
 
-    def __init__(self, char_ref, parent=None):
+    def __init__(self, char_ref, parent=None, fill=True):
+        """fill=False: built empty, for a caller that fills it with
+        refresh() itself straight after (the sheet's _load) -- filled twice
+        it took a noticeable part of opening a character."""
         super().__init__(parent)
         from dnd_app.ui_desktop.style.theme import sync_globals as _sg; _sg(globals())
         self.char = char_ref
@@ -1044,7 +1047,8 @@ class LevelUpPanel(QWidget):
         self._outer.addWidget(self._no_choices)
         self._refreshing = False
         self._choice_widgets = []
-        self.refresh()
+        if fill:
+            self.refresh()
 
     def _refresh_features(self):
         """Rebuild the class features timeline."""

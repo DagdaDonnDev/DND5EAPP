@@ -446,7 +446,7 @@ class CompanionsMixin:
         from dnd_app.core.summons import set_group
         if set_group(self.char, index, group):
             self._mark_dirty()
-            QTimer.singleShot(0, self._refresh_companions_tab)   # (not while its own box is still busy)
+            QTimer.singleShot(0, self, self._refresh_companions_tab)   # (not while its own box is still busy)
 
     def _add_summoned_creature(self, spell_name: str, level: int, form: str):
         if not (spell_name and level and form): return

@@ -18,6 +18,16 @@ class AppSettingsBridge(QObject):
     def setTheme(self, name: str):
         set_app_theme(name)
 
+    # ── The startup animation: each frame's time on screen, in ms
+    # (its frames: bridge/splash.py) ──
+    @Property("QVariantList", constant=True)
+    def splashDelays(self):
+        try:
+            from dnd_app.core.splash_art import delays
+            return delays()
+        except Exception:
+            return []
+
     # ── The top bar as the open character's health bar (desktop's menu
     # bar has it too: the same setting) ──
     healthBarChanged = Signal()

@@ -137,7 +137,7 @@ class BaseSheetMixin:
         self._load()
         self.ctrl.mark_ui_ready()
         # opened from a save with Rage, Bladesong... still on: have they ended?
-        QTimer.singleShot(350, self._ask_leftover_effects)
+        QTimer.singleShot(350, self, self._ask_leftover_effects)
         # ── Accessibility: keyboard-focus rings + unambiguous disabled state ──
         self.setStyleSheet(self.styleSheet() + f"""
             QPushButton:focus, QComboBox:focus, QLineEdit:focus,
@@ -185,7 +185,7 @@ class BaseSheetMixin:
         # tick since the overlay sizes itself from self.rect(), which
         # isn't finalized yet mid-construction.
         if self.char.get("is_dead", False):
-            QTimer.singleShot(0, self._show_death_screen)
+            QTimer.singleShot(0, self, self._show_death_screen)
 
         # Immersive Health / Immersive Exhaustion: colour drains as HP
         # drops, and a dark frame closes in with exhaustion (see
@@ -228,21 +228,10 @@ class BaseSheetMixin:
         rebuild(self.char); update_all(self.char)
 
         win = self.window()
-        if hasattr(win, "_show_sheet"):
-            char = self.char
-            cur_tab_idx = self._tabs.currentIndex()
-            # The same character on a rebuilt sheet: it keeps the file it
-            # saves to and what's still unsaved. (Rebuilt without them, the
-            # next Save was refused as a name already in use -- its own --
-            # and leaving no longer asked about the changes.)
-            save_path, unsaved = self._save_path, self._dirty
-            win._show_sheet(char, save_path=save_path)
-            if win._sheet:
-                win._sheet._tabs.setCurrentIndex(cur_tab_idx)
-                if unsaved:
-                    win._sheet._mark_dirty()
-                    win._sheet._update_title()
-                win._sheet._toast("Refreshed")
+        if hasattr(win, "_rebuild_sheet"):
+            # (the window replaces this sheet once this click is done with:
+            # it mustn't go while its own code is still running)
+            QTimer.singleShot(0, win, win._rebuild_sheet)
         else:
             # Defensive fallback if this widget is ever used without a
             # CharacterCreatorApp parent (e.g. an isolated test harness).
@@ -822,7 +811,7 @@ class BaseSheetMixin:
                 from dnd_app.core.calculator import update_all
                 rebuild(self.char); update_all(self.char)
                 self.ctrl.refresh()
-                QTimer.singleShot(350, self._ask_leftover_effects)
+                QTimer.singleShot(350, self, self._ask_leftover_effects)
 
     def _export_dialog(self):
         """Export the character for a DM to review or as a personal
@@ -1847,6 +1836,15 @@ class BaseSheetMixin:
 
     # ── Hit dice: spend one to heal (short-rest style) ────────────────────────
     def _load(self):
+        self._loading, self._action_tabs_due = True, False
+        try:
+            self._load_all()
+        finally:
+            self._loading = False
+        if self._action_tabs_due and hasattr(self, "_refresh_action_tabs"):
+            self._refresh_action_tabs()
+
+    def _load_all(self):
         char = self.char
         self.ctrl.refresh()
 
@@ -1884,8 +1882,11 @@ class BaseSheetMixin:
         self._refresh_abilities_tab()
         self._refresh_skills()
         self._refresh_combat()
-        self._refresh_spells()
+        # (the list first: _refresh_spells adds a row for each spell not
+        # shown yet, which before the list was built was every one of them,
+        # all thrown away again a moment later)
         self._populate_my_spells_from_char()
+        self._refresh_spells()
         self._rebuild_features()
         if hasattr(self,"_refresh_optional_features"): self._refresh_optional_features()
         self._refresh_concentration()

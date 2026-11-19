@@ -399,7 +399,7 @@ class AbilitiesMixin:
             self._toast(res["toast"].replace(" -- ", " — "), 6000)
         if res.get("refresh"):
             self._mark_dirty()
-            QTimer.singleShot(0, self.ctrl.refresh)
+            QTimer.singleShot(0, self, self.ctrl.refresh)
 
     def _update_save_advantage_badge(self, ab: str):
         """Sync one saving throw's advantage indicator badge to current

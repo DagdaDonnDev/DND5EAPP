@@ -448,7 +448,7 @@ class ChoicesMixin:
         blay.setSpacing(8)
 
         try:
-            self._levelup_panel = LevelUpPanel(self.char)
+            self._levelup_panel = LevelUpPanel(self.char, fill=False)   # (_load fills it)
             self._levelup_panel.choices_changed.connect(self._on_choices_changed)
             self._levelup_panel.open_spell_browser.connect(self._open_spell_browser)
             blay.addWidget(self._levelup_panel)

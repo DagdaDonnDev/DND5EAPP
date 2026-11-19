@@ -5,6 +5,34 @@ Quality of Life, Fixes and Known Issues.
 
 ---
 
+## Next Update · In progress
+
+*On development; ships with v8.*
+
+### 🌍 Overview
+
+Adventurers, the mimic now wakes up in your colours.
+
+### ✨ New
+
+- **The startup animation in your theme** (both apps): the mimic chest
+  plays in the colours of the theme picked on the character chooser. Its
+  background is the theme's, its stone platform takes the theme's border
+  colour, and a glow in the accent colour flares as it bites. It plays a
+  little faster than before and ends on the name. On Android it plays as
+  the app opens, and a tap skips it.
+
+### 🔧 Fixes
+
+- **Desktop is much quicker:** opening a character and Refresh take less
+  than half as long as before, changing the theme about a sixth as long,
+  and going back to the menu is almost instant.
+- **The Hit Points card keeps its size** while you're in Wild Shape or
+  Polymorph: the form's card beside it no longer takes its room, and its
+  button is shorter ("Spend a Slot to Heal").
+
+---
+
 ## v7.0 · "Call of the Wild" · 17 November 2026
 
 ### 🌍 Overview

@@ -250,7 +250,7 @@ STDLIB_EXCLUDES = [
 EXCLUDES = QT_EXCLUDES + STDLIB_EXCLUDES
 
 _README = os.path.join(_ROOT, 'README.md')
-_SPLASH_GIF = os.path.join(_ROOT, 'dnd_app', 'ui_desktop', 'splash', 'splash.gif')
+_SPLASH_GIF = os.path.join(_ROOT, 'dnd_app', 'core', 'splash.gif')
 _SPLASH_PNG = os.path.join(_ROOT, 'dnd_app', 'ui_desktop', 'splash', 'splash.png')
 
 a = Analysis(
@@ -261,11 +261,11 @@ a = Analysis(
         (os.path.join(_ROOT, 'dnd_app', 'data'), 'dnd_app/data'),
         (os.path.join(_ROOT, 'dnd_app', 'ui_desktop', 'icon.ico'), 'dnd_app/ui_desktop'),
         *([(_README, '.')] if os.path.isfile(_README) else []),
-        # splash.gif/splash.png live in dnd_app/ui_desktop/splash alongside the code
-        # that reads them. Analysis only auto-bundles .py files it traces
+        # splash.gif lives in dnd_app/core (both apps theme it, core/splash_art.py),
+        # splash.png in dnd_app/ui_desktop/splash. Analysis only auto-bundles .py files it traces
         # through imports, so these binary assets need explicit datas
         # entries same as the old dnd_app/assets dir they moved out of.
-        *([(_SPLASH_GIF, 'dnd_app/ui_desktop/splash')] if os.path.isfile(_SPLASH_GIF) else []),
+        *([(_SPLASH_GIF, 'dnd_app/core')] if os.path.isfile(_SPLASH_GIF) else []),
         *([(_SPLASH_PNG, 'dnd_app/ui_desktop/splash')] if os.path.isfile(_SPLASH_PNG) else []),
         *pyside6_datas,
     ],
@@ -305,7 +305,7 @@ pyz = PYZ(a.pure)
 # gap that otherwise looks like a frozen/dead window on cold start, since
 # nothing the app itself does can run until extraction finishes. Requires a
 # static image (no GIF support at this layer); splash.png here is just the
-# first frame of dnd_app/ui_desktop/splash/splash.gif so the two splashes look
+# first frame of dnd_app/core/splash.gif so the two splashes look
 # continuous.
 _splash_target = []
 _splash_binaries = []

@@ -311,7 +311,7 @@ class TraitsNotesMixin:
             self._notes_page_edit.blockSignals(False)
             self._notes_stack.setCurrentIndex(2)
         # (after the click that called this has finished with its button)
-        QTimer.singleShot(0, self._rebuild_notes_list)
+        QTimer.singleShot(0, self, self._rebuild_notes_list)
 
     def _on_notes_page_typed(self):
         from dnd_app.core import notes as N
@@ -473,7 +473,7 @@ class TraitsNotesMixin:
         from dnd_app.core import notes as N
         N.toggle_group(self.char, name)
         self._mark_dirty()
-        QTimer.singleShot(0, self._rebuild_notes_list)
+        QTimer.singleShot(0, self, self._rebuild_notes_list)
 
     def _notes_new_entry(self):
         from dnd_app.core import notes as N

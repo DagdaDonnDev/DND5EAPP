@@ -1183,7 +1183,7 @@ class GearMixin:
         # anti-pattern. Running it on the next event loop tick instead
         # lets this signal handler finish cleanly first.
         from PySide6.QtCore import QTimer
-        QTimer.singleShot(0, self.ctrl.refresh)
+        QTimer.singleShot(0, self, self.ctrl.refresh)
 
     def _toggle_equipped(self, uid: str, on: bool):
         # Syncs equipped_weapons/armor_worn/shield in addition to the
@@ -1196,7 +1196,7 @@ class GearMixin:
         # the same reason — this checkbox also lives in the tree that
         # _refresh_magic_items() clears and rebuilds.
         from PySide6.QtCore import QTimer
-        QTimer.singleShot(0, self.ctrl.refresh)
+        QTimer.singleShot(0, self, self.ctrl.refresh)
         self._mark_dirty()
 
     def _remove_magic_item(self, uid: str):

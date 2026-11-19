@@ -141,6 +141,9 @@ def main():
     # the Immersive Exhaustion frame (bridge/immersive.py)
     from dnd_app.ui_android.bridge.immersive import ImmersiveFrameProvider
     engine.addImageProvider("immersive", ImmersiveFrameProvider())
+    # the startup animation's frames (bridge/splash.py)
+    from dnd_app.ui_android.bridge.splash import SplashFrameProvider
+    engine.addImageProvider("splash", SplashFrameProvider())
 
     char = new_character()
     wizard_bridge = WizardBridge(char)

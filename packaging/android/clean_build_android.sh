@@ -60,7 +60,7 @@ die()  { echo "ERROR: $*" >&2; exit 1; }
 # recipes, jars, icon). Building from any other checkout would silently
 # compile *that* path's code instead of this one's.
 SPEC_SRC="$(sed -nE 's/^source\.dir[[:space:]]*=[[:space:]]*//p' "$SPEC" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
-[ "$SPEC_SRC" = "$ROOT" ] || die "buildozer.spec source.dir is '$SPEC_SRC' but this script lives in '$ROOT'"
+[ "$SPEC_SRC" = "$ROOT" ] || die "buildozer.spec source.dir is '$SPEC_SRC' but this script lives in '$ROOT' -- run packaging\\android\\setup_buildozer_spec.bat once on this computer"
 # The hook lives next to this script; a spec written before it moved here
 # still points at the old place.
 SPEC_HOOK="$(sed -nE 's/^p4a\.hook[[:space:]]*=[[:space:]]*//p' "$SPEC" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"

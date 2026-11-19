@@ -291,7 +291,7 @@ class CombatMixin:
         if hasattr(self, "_death_saves_container"):
             if self._death_saves_container.isHidden() == at_zero:
                 self._death_saves_container.setVisible(at_zero)
-                QTimer.singleShot(0, lambda down=at_zero: self._make_room_for_death_saves(down))
+                QTimer.singleShot(0, self, lambda down=at_zero: self._make_room_for_death_saves(down))
         ds = self.char.get("death_saves", {"successes": 0, "failures": 0})
         for i, cb in enumerate(self._death_success):
             cb.blockSignals(True)
@@ -404,6 +404,8 @@ class CombatMixin:
         from dnd_app.core.forms import form_kind
         kind = form_kind(self.char) or "Wild Shape"
         card = _card(qa(PURPLE, 0x55))
+        # (its text wraps, so it never takes room the Hit Points card needs)
+        card.setMaximumWidth(300)
         cl = QVBoxLayout(card); cl.setContentsMargins(12,10,12,10); cl.setSpacing(6)
         cl.addWidget(_lbl(kind.upper(), GOLD, FS_SMALL, bold=True))
 
@@ -411,10 +413,11 @@ class CombatMixin:
         if active and active in WILDSHAPE_BEASTS:
             beast = WILDSHAPE_BEASTS[active]
             cl.addWidget(_lbl(f"Currently: {active}" if kind == "Wild Shape" else f"{kind}: {active}",
-                              PURP2, FS_BODY, bold=True, wrap=False))
+                              PURP2, FS_BODY, bold=True, wrap=True))
             cur_hp = self.char.get("_wildshape_hp", beast["hp"])
-            cl.addWidget(_lbl(f"HP {cur_hp}/{beast['hp']}   AC {beast['ac']}   "
-                              f"(edit HP in the card above — same pool)", TEXT2, FS_SMALL))
+            # (its hit points are the Hit Points card's while you're in it)
+            cl.addWidget(_lbl(f"HP {cur_hp}/{beast['hp']}  ·  AC {beast['ac']}", TEXT2, FS_SMALL))
+            cl.addStretch(1)      # (the buttons at the bottom)
             # Circle of the Moon's Combat Wild Shape: while transformed,
             # spend a spell slot as a bonus action to regain 1d8 HP per
             # level of the slot expended.
@@ -426,10 +429,11 @@ class CombatMixin:
                 slot_data = compute_all_spell_slots(_cl_wsc(self.char), _subclasses_wsc(self.char))
                 slots_max = slot_data.get("spell_slots") or [0]*9
                 has_slot = any(slots_max[i] - (slots_used[i] if i < len(slots_used) else 0) > 0 for i in range(9))
-                heal_btn = QPushButton("Combat Wild Shape: Spend Slot to Heal")
+                heal_btn = QPushButton("Spend a Slot to Heal")
                 _icons.set_button_icon(heal_btn, "magic", 16, color=on_fill(GOLD))
                 heal_btn.setEnabled(has_slot and cur_hp < beast["hp"])
-                heal_btn.setToolTip("Bonus action: expend a spell slot to regain 1d8 HP per level of the slot.")
+                heal_btn.setToolTip("Combat Wild Shape. Bonus action: expend a spell slot to regain "
+                                    "1d8 HP per level of the slot.")
                 heal_btn.setStyleSheet(pill_btn("", GOLD).styleSheet())
                 heal_btn.clicked.connect(self._wildshape_moon_heal)
                 cl.addWidget(heal_btn)
@@ -463,6 +467,7 @@ class CombatMixin:
             fire_btn.setEnabled((uses_left is None or uses_left > 0) and combo.count() > 0)
             fire_btn.setStyleSheet(pill_btn("", PURPLE).styleSheet())
             fire_btn.clicked.connect(lambda checked=False, cb=combo: self._wildshape_transform(cb.currentData()))
+            cl.addStretch(1)      # (the button at the bottom)
             cl.addWidget(fire_btn)
         return card
 
@@ -483,7 +488,9 @@ class CombatMixin:
             old_card.deleteLater()
         new_card = self._build_wildshape_control_card()
         self._wildshape_card_widget = new_card
-        container.addWidget(new_card, 4)
+        # (the same share as when the tab was built: 4 here took width from
+        # the Hit Points card each time you changed shape)
+        container.addWidget(new_card, 2)
 
     def _wildshape_transform(self, beast_name: str):
         """Transform (core/action_use.py wild_shape_into: the use or two
@@ -769,6 +776,9 @@ class CombatMixin:
         hpcl.addStretch(1)
         vitl.addWidget(hp_card, 1)
         vitl.addWidget(self._build_init_speed_card())
+        # never narrower than its two columns of numbers need, whatever
+        # else is on the strip (a Wild Shape or Polymorph card)
+        vitals.setMinimumWidth(240)
         top_lay.addWidget(vitals, 3)
 
         # ── Weapons card, with what's worn on one line at the top ────────────
@@ -1410,7 +1420,7 @@ class CombatMixin:
         from dnd_app.core.action_use import new_turn
         if new_turn(self.char):
             self._mark_dirty()
-            QTimer.singleShot(0, self.ctrl.refresh)
+            QTimer.singleShot(0, self, self.ctrl.refresh)
         # a round comes off everything that's counted, and what has run out
         # ends: an effect, a condition, the spell being concentrated on
         # (core/durations.py)
@@ -2224,7 +2234,7 @@ class CombatMixin:
         dlg = AttackDialog(attack_report(self.char, row, now["roll"], free()), self, on_add=add)
         if dlg.exec() != QDialog.Accepted:
             if now["added"]:
-                QTimer.singleShot(0, self.ctrl.refresh)
+                QTimer.singleShot(0, self, self.ctrl.refresh)
             return False
         picked, hit = dlg.ticked(), bool(dlg.hit)
         res = self._ask_through(row["name"], lambda a: take_attack_options(
@@ -2238,7 +2248,7 @@ class CombatMixin:
             self._toast(res["toast"])
         if res.get("refresh") or now["added"]:
             self._mark_dirty()
-            QTimer.singleShot(0, self.ctrl.refresh)
+            QTimer.singleShot(0, self, self.ctrl.refresh)
         return True
 
     def _refresh_hit_dice(self):
