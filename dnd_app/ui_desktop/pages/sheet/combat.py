@@ -471,6 +471,21 @@ class CombatMixin:
             cl.addWidget(fire_btn)
         return card
 
+    def _form_card_state(self):
+        from dnd_app.core.calculator import get_wild_shape_info
+        from dnd_app.core.forms import form_name, form_kind
+        return (get_wild_shape_info(self.char) is not None, form_name(self.char), form_kind(self.char))
+
+    def _sync_form_card(self):
+        """The Wild Shape / Polymorph card, put up, changed or taken down
+        when your form has changed in any way -- a spell cast from the
+        Spells tab, a hit that ended it, an Undo -- not only from its own
+        buttons."""
+        if getattr(self, "_wildshape_card_container", None) is None:
+            return
+        if self._form_card_state() != getattr(self, "_form_card_key", None):
+            self._rebuild_wildshape_card()
+
     def _rebuild_wildshape_card(self):
         """_refresh_combat() only updates values on existing widgets, it
         doesn't rebuild the tab structure — but the Wild Shape card needs
@@ -486,6 +501,14 @@ class CombatMixin:
             old_card.hide()
             old_card.setParent(None)
             old_card.deleteLater()
+        self._wildshape_card_widget = None
+        self._form_card_key = self._form_card_state()
+        from dnd_app.core.calculator import get_wild_shape_info
+        from dnd_app.core.forms import form_name
+        # a druid's Wild Shape card -- or anyone's, in another creature's
+        # form (Polymorph, Shapechange): what you are, and the way back
+        if get_wild_shape_info(self.char) is None and not form_name(self.char):
+            return
         new_card = self._build_wildshape_control_card()
         self._wildshape_card_widget = new_card
         # (the same share as when the tab was built: 4 here took width from
@@ -638,9 +661,12 @@ class CombatMixin:
 
         def _hp_box(key, color):
             sp = QSpinBox(); sp.setRange(0,999); sp.setAlignment(Qt.AlignCenter)
+            # (36px tall, growing to 48 when the card has the room)
             sp.setStyleSheet(f"QSpinBox{{font-size:{FS_TITLE}px;font-weight:700;color:{color};"
                              f"border:2px solid {qa(color,0x55)};border-radius:8px;"
-                             f"background:{SURF2};padding:0px 2px;min-width:56px;}}" + SPIN_NO_BUTTONS)
+                             f"background:{SURF2};padding:0px 2px;min-width:56px;"
+                             f"min-height:32px;max-height:44px;}}" + SPIN_NO_BUTTONS)
+            sp.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
             setattr(self, f"_hp_{key}", sp)   # (36px: the theme's 32 + its border)
             return sp
 
@@ -649,15 +675,28 @@ class CombatMixin:
             if gap:
                 lbl.setContentsMargins(0, 4, 0, 0)   # (a little air between the pairs)
             return lbl
-        hp_grid.addWidget(_cap("AC"), 0, 0)
-        hp_grid.addWidget(_cap("Temp"), 0, 1)
-        hp_grid.addWidget(self._build_ac_box(), 1, 0)
-        hp_grid.addWidget(_hp_box("temp_hp", TEAL2), 1, 1)
-        hp_grid.addWidget(_cap("Max", True), 2, 0)
-        hp_grid.addWidget(_cap("Current", True), 2, 1)
-        hp_grid.addWidget(_hp_box("max_hp", IND2), 3, 0)
-        hp_grid.addWidget(_hp_box("current_hp", GREEN2), 3, 1)
-        hpcl.addLayout(hp_grid)
+        # Given more height the card's parts grow a little (to a set
+        # largest size) and the rest goes into the spacing between them, so
+        # it never gets oversized: each number is a tile, its caption kept
+        # right over its box.
+        def _tile(cap, box):
+            t = QWidget(); t.setStyleSheet("background:transparent;border:none;")
+            tv = QVBoxLayout(t); tv.setContentsMargins(0,0,0,0); tv.setSpacing(2)
+            c = _cap(cap)
+            if cap == "AC":
+                self._ac_cap = c       # "AC  +2 Haste" while hasted
+            tv.addWidget(c); tv.addWidget(box, 1)
+            t.setMaximumHeight(72)
+            return t
+        def _gap():
+            hpcl.addSpacing(4); hpcl.addStretch(1)
+        for pair in ((("AC", self._build_ac_box()), ("Temp", _hp_box("temp_hp", TEAL2))),
+                     (("Max", _hp_box("max_hp", IND2)), ("Current", _hp_box("current_hp", GREEN2)))):
+            _gap()
+            row = QHBoxLayout(); row.setSpacing(8)
+            for cap, box in pair:
+                row.addWidget(_tile(cap, box), 1)
+            hpcl.addLayout(row, 3)
         # (the health bar is the window's menu bar: _update_hp_bar)
 
         # how much, then Damage | Heal
@@ -680,29 +719,10 @@ class CombatMixin:
         dmg_btn.setMinimumWidth(72); heal_btn.setMinimumWidth(56)
         ctrl.addWidget(self._hp_amt, 0, 0, 1, 2)
         ctrl.addWidget(dmg_btn, 1, 0); ctrl.addWidget(heal_btn, 1, 1)
+        _gap()
         hpcl.addLayout(ctrl)
-        # Resistances strip: holds an arbitrary number of badges (multiple
-        # resistance/immunity sources, or a "resistance to everything but
-        # psychic"-style toggle expanded into 12 individual damage types)
-        # without overflowing or squeezing off-screen. Uses plain QWidget
-        # + QGridLayout rather than FlowContainer/FlowLayout — same as
-        # the tool proficiency chips in _build_tab_skills, since
-        # FlowContainer.resizeEvent()'s setMinimumHeight() can trigger
-        # another resize event in Qt, looping forever; these strips are
-        # an even more direct trigger, since their own refresh functions
-        # also call heightForWidth()+setMinimumHeight() explicitly. A
-        # grid wraps at a fixed column count instead of dynamically by
-        # pixel width, an acceptable trade-off since these badges are
-        # short and few. A caption above each strip distinguishes it from
-        # adjacent badge groups sharing the same visual style.
-        self._resist_caption = _lbl("RESISTANCES", TEXT3, FS_TINY, bold=True, wrap=False)
-        self._resist_caption.setVisible(False)
-        hpcl.addWidget(self._resist_caption)
-        self._resist_frame = QWidget(); self._resist_frame.setStyleSheet("QWidget{background:transparent;border:none;}")
-        self._resist_lay = QGridLayout(self._resist_frame)
-        self._resist_lay.setSpacing(4); self._resist_lay.setContentsMargins(0,0,0,0)
-        self._resist_frame.setVisible(False)
-        hpcl.addWidget(self._resist_frame, 1)
+        # (resistances, immunities and vulnerabilities: the Defences page of
+        # the Conditions & Effects card, _refresh_resistances_strip)
         # NOTE: climb/swim/fly used to get their own badge strip here too,
         # separate from the resistances strip above. Removed — the top
         # stat-bar speed pill already shows climb/swim/fly (fly/swim/climb next to
@@ -717,9 +737,8 @@ class CombatMixin:
         # concentration-save prompt on taking damage already fires from
         # this tab regardless (see _do_damage), so no duplicate controls
         # are needed.
-        self._combat_conc_lbl = _lbl("", AMBER, FS_SMALL, wrap=True)
-        self._combat_conc_lbl.setVisible(False)
-        hpcl.addWidget(self._combat_conc_lbl)
+        # (what you're concentrating on is on the Spells tab; the Combat
+        # page has the Attacks counter in its place)
         # Death saves — a genuinely tense moment (0 HP, rolling to live or
         # die) gets its own alert-styled card (only shown at 0 HP to
         # begin with, so it earns the attention) with bigger pips, a
@@ -728,29 +747,31 @@ class CombatMixin:
         self._death_saves_container = QFrame()
         self._death_saves_container.setObjectName("deathSaves")
         self._death_saves_container.setStyleSheet(
-            f"QFrame#deathSaves{{background:{qa(CRIMSON,0x14)};border:2px solid {qa(CRIMSON,0x66)};"
+            f"QFrame#deathSaves{{background:{SURF};border:2px solid {qa(CRIMSON,0xAA)};"
             f"border-radius:8px;}}")
         self._death_saves_container.setVisible(False)
-        dsl = QVBoxLayout(self._death_saves_container)
-        dsl.setContentsMargins(12,8,12,8); dsl.setSpacing(4)
+        # (a banner across the page, over the cards: everything on one line)
+        dsl = QHBoxLayout(self._death_saves_container)
+        dsl.setContentsMargins(14,6,14,6); dsl.setSpacing(14)
 
-        ds_hdr = QHBoxLayout(); ds_hdr.setSpacing(8)
-        ds_hdr.addWidget(_icons.icon_header("skull", _lbl("DEATH SAVES", CRIM2, FS_SMALL, bold=True, wrap=False)))
-        ds_hdr.addStretch()
-        dsl.addLayout(ds_hdr)
-        # (its own line: the card is narrow)
-        self._death_status_lbl = _lbl("", TEXT2, FS_TINY, bold=True, wrap=True)
+        # one flat line: DEATH SAVES, how it stands, then Successes ●●○ and
+        # Failures ●●○ side by side
+        dsl.addWidget(_icons.icon_header("skull", _lbl("DEATH SAVES", CRIM2, FS_SMALL, bold=True, wrap=False)))
+        self._death_status_lbl = _lbl("", TEXT2, FS_SMALL, bold=True, wrap=False)
         dsl.addWidget(self._death_status_lbl)
+        dsl.addStretch(1)
 
         pip_tip = ("Roll a d20 at the start of each of your turns while at 0 HP and "
                    "taking no other action. 10 or higher: success. Below 10: failure. "
                    "A natural 20 regains 1 HP instead; a natural 1 counts as two failures. "
                    "3 successes: stable at 0 HP. 3 failures: dead.")
         # Successes ooo over Failures ooo, to fit the HP card's two columns
-        pips_grid = QGridLayout(); pips_grid.setHorizontalSpacing(6); pips_grid.setVerticalSpacing(4)
+        pips_grid = QHBoxLayout(); pips_grid.setSpacing(6)
 
         def _pips(row, title, color, color2, attr):
-            pips_grid.addWidget(_lbl(title, color2, FS_TINY, bold=True, wrap=False), row, 0)
+            if row:
+                pips_grid.addSpacing(18)
+            pips_grid.addWidget(_lbl(title, color2, FS_TINY, bold=True, wrap=False))
             boxes = [QCheckBox() for _ in range(3)]
             for i, cb in enumerate(boxes):
                 # 20px circles and their 2px edge: 24px, in a 26px box (a
@@ -763,23 +784,18 @@ class CombatMixin:
                     f"border:2px solid {color};background:{BG};}}"
                     f"QCheckBox::indicator:hover{{border-color:{color2};background:{qa(color,0x22)};}}"
                     f"QCheckBox::indicator:checked{{background:{color2};border-color:{color2};}}")
-                pips_grid.addWidget(cb, row, 1 + i)
+                pips_grid.addWidget(cb)
             setattr(self, attr, boxes)
 
         _pips(0, "SUCCESSES", GREEN, GREEN2, "_death_success")
         _pips(1, "FAILURES", CRIMSON, CRIM2, "_death_fail")
-        pips_grid.setColumnStretch(4, 1)
         dsl.addLayout(pips_grid)
-        hpcl.addWidget(self._death_saves_container)
-        # spare height goes under the controls, not between the title and
-        # the numbers
-        hpcl.addStretch(1)
+        # (placed over the cards, below: top_half_lay)
         vitl.addWidget(hp_card, 1)
-        vitl.addWidget(self._build_init_speed_card())
         # never narrower than its two columns of numbers need, whatever
         # else is on the strip (a Wild Shape or Polymorph card)
         vitals.setMinimumWidth(240)
-        top_lay.addWidget(vitals, 3)
+        top_lay.addWidget(vitals, 2)
 
         # ── Weapons card, with what's worn on one line at the top ────────────
         # (read-only: armour and shield are put on in the Gear tab -- the
@@ -831,7 +847,15 @@ class CombatMixin:
         wpn_scroll.setStyleSheet("QScrollArea{background:transparent;border:none;}")
         wpn_scroll.setWidget(wpn_host)
         acl2.addWidget(wpn_scroll, 1)
-        top_lay.addWidget(armor_card, 5)
+        # Weapons go in the right-hand column, under Initiative & Speed and
+        # the Attacks counter (placed after the Conditions & Effects card)
+        wpn_col = QWidget(); wpn_col.setStyleSheet("background:transparent;border:none;")
+        wcl = QVBoxLayout(wpn_col); wcl.setContentsMargins(0,0,0,0); wcl.setSpacing(8)
+        bar = QHBoxLayout(); bar.setSpacing(8)
+        bar.addWidget(self._build_init_speed_card(), 1)
+        bar.addWidget(self._build_attacks_counter())
+        wcl.addLayout(bar)
+        wcl.addWidget(armor_card, 1)
 
         # ── Conditions & Effects card ─────────────────────────────────────────
         # Two pages under tabs (a stacked widget): the conditions on you,
@@ -844,9 +868,15 @@ class CombatMixin:
         self._ce_bar = QTabBar()
         self._ce_bar.setDrawBase(False); self._ce_bar.setExpanding(False)
         self._ce_bar.setUsesScrollButtons(False)
-        self._ce_bar.addTab("Conditions"); self._ce_bar.addTab("Effects")
-        self._ce_bar.setTabToolTip(0, "The conditions on you: what each does, and how to take it off")
-        self._ce_bar.setTabToolTip(1, "The effects on you: your own spells, and ones an ally put on you")
+        # the tabs, Defences first; each tab's data is its page in _ce_stack
+        # (conditions 0, effects 1, defences 2 -- see _ce_tab)
+        for name, page, tip in (
+                ("Defences", 2, "Your resistances, immunities and vulnerabilities, and where each comes from"),
+                ("Conditions", 0, "The conditions on you: what each does, and how to take it off"),
+                ("Effects", 1, "The effects on you: your own spells, and ones an ally put on you")):
+            i = self._ce_bar.addTab(name)
+            self._ce_bar.setTabData(i, page)
+            self._ce_bar.setTabToolTip(i, tip)
         self._ce_bar.setStyleSheet(
             f"QTabBar{{background:transparent;border:none;}}"
             f"QTabBar::tab{{background:transparent;color:{TEXT2};border:none;"
@@ -865,10 +895,16 @@ class CombatMixin:
         ccl.addLayout(head)
         self._ce_stack = QStackedWidget()
         self._ce_stack.setStyleSheet("QStackedWidget{background:transparent;border:none;}")
-        self._ce_bar.currentChanged.connect(self._ce_stack.setCurrentIndex)
-        self._ce_bar.currentChanged.connect(lambda i: self._ce_add.setToolTip(
-            "Put a condition on you, or take one off" if i == 0 else
-            "Put an effect on you: one an ally cast on you, a potion..."))
+        def _ce_page(i):
+            page = self._ce_bar.tabData(i)
+            if page is None:
+                return
+            self._ce_stack.setCurrentIndex(page)
+            # (defences come from your race, items and effects: nothing to add there)
+            self._ce_add.setVisible(page != 2)
+            self._ce_add.setToolTip("Put a condition on you, or take one off" if page == 0 else
+                                    "Put an effect on you: one an ally cast on you, a potion...")
+        self._ce_bar.currentChanged.connect(_ce_page)
         ccl.addWidget(self._ce_stack, 1)
 
         def _list_page():
@@ -890,7 +926,13 @@ class CombatMixin:
         cpage = QWidget(); cpage.setStyleSheet("background:transparent;border:none;")
         cpl = QVBoxLayout(cpage); cpl.setContentsMargins(0,0,0,0); cpl.setSpacing(8)
         cond_scroll, self._active_cond_lay = _list_page()
-        # the rows go in above these two: the "none" line, and a stretch
+        # the rows go in a grid, two to a line (_refresh_active_conditions)
+        self._cond_grid_host = QWidget(); self._cond_grid_host.setStyleSheet("background:transparent;border:none;")
+        self._cond_grid = QGridLayout(self._cond_grid_host)
+        self._cond_grid.setContentsMargins(0,0,0,0); self._cond_grid.setSpacing(5)
+        self._cond_grid.setColumnStretch(0, 1); self._cond_grid.setColumnStretch(1, 1)
+        self._active_cond_lay.addWidget(self._cond_grid_host)
+        # and under it these two: the "none" line, and a stretch
         self._active_cond_none_lbl = _empty("No conditions on you.")
         self._active_cond_lay.addWidget(self._active_cond_none_lbl)
         self._active_cond_lay.addStretch(1)
@@ -956,18 +998,33 @@ class CombatMixin:
         epl.addWidget(fx_scroll, 1)
         self._ce_stack.addWidget(epage)
 
+        # ── page 3: defences -- Vulnerabilities, Resistances, Immunities ──
+        # (always each group, "None" when it's empty: _refresh_resistances_strip)
+        dpage = QWidget(); dpage.setStyleSheet("background:transparent;border:none;")
+        dpl = QVBoxLayout(dpage); dpl.setContentsMargins(0,0,0,0); dpl.setSpacing(6)
+        def_scroll, self._def_lay = _list_page()
+        self._def_lay.addStretch()
+        dpl.addWidget(def_scroll, 1)
+        self._ce_stack.addWidget(dpage)
+        self._ce_bar.setCurrentIndex(0); _ce_page(0)
+
         self._cond_card = cond_card
         top_lay.addWidget(cond_card, 3)
+        top_lay.addWidget(wpn_col, 6)
 
         from dnd_app.core.calculator import get_wild_shape_info
         from dnd_app.core.forms import form_name as _form_name
         # a druid's Wild Shape card -- or anyone's, in another creature's form
         # (Polymorph, Shapechange): what you are, and the way back
-        if get_wild_shape_info(self.char) is not None or _form_name(self.char):
-            self._wildshape_card_container = top_lay
-            self._wildshape_card_widget = self._build_wildshape_control_card()
-            top_lay.addWidget(self._wildshape_card_widget, 2)
+        # (its place is kept for anyone: a Polymorph cast mid-session brings
+        # it, and _sync_form_card puts it up or takes it down as you change)
+        self._wildshape_card_container = top_lay
+        self._wildshape_card_widget = None
+        self._form_card_key = None
+        self._sync_form_card()
 
+        # at 0 HP, the death saves across the page, over the cards
+        top_half_lay.addWidget(self._death_saves_container)
         top_half_lay.addWidget(top_strip)
         # No addStretch() here: dragging the splitter handle below should
         # grow top_strip (and its cards, set to Expanding) rather than
@@ -1163,7 +1220,7 @@ class CombatMixin:
         amt = self._hp_amt.value()
         if amt <= 0:
             return
-        from dnd_app.core.hp_undo import hp_state, remember_hp_change, clear_hp_undo
+        from dnd_app.core.hp_undo import hp_state, remember_hp_change
         before = hp_state(self.char)
         if self.char.get("_wildshape_active"):
             # Wild Shape (PHB p.66): the beast's hit points take the hit.
@@ -1176,7 +1233,9 @@ class CombatMixin:
                 lead = (f"Beast form dropped to 0 HP — reverted to normal form, "
                         f"{excess} excess damage carried over")
                 res = take_damage(self.char, excess)
-                clear_hp_undo(self.char)      # (a change of form isn't one to undo)
+                # (undone, it's all put back: the form and its hit points,
+                # and you alive, if the rest of the hit killed you)
+                remember_hp_change(self.char, before, f"{amt} damage")
                 self._after_damage(res, lead)
                 return
             self.char["_wildshape_hp"] = cur - amt
@@ -1353,6 +1412,8 @@ class CombatMixin:
         if was_dead and not self.char.get("is_dead"):
             for ov in self.findChildren(QFrame, "death_overlay"):
                 ov.setParent(None); ov.deleteLater()
+        # (a hit that ended a Wild Shape or Polymorph: the form's back)
+        self._rebuild_wildshape_card()
         # every HP box, the bar, the death saves and what concentration
         # carries follow the character
         self.ctrl.refresh()
@@ -1410,7 +1471,76 @@ class CombatMixin:
             turn.append("Sneak Attack")
         self._apply_turn_state()
 
+    # ── The Attacks counter: the attacks the Attack action has left ──────────
+    def _attacks_per_action(self, marked: bool = False) -> int:
+        """How many attacks the next Attack action makes (marked: this one's
+        action has just been counted as used)."""
+        from dnd_app.core.calculator import get_extra_attacks
+        from dnd_app.core.character import class_levels, subclasses
+        n = get_extra_attacks(class_levels(self.char), subclasses(self.char), self.char)
+        # Haste's own action, once the turn's action is spent: one attack
+        used = self._turn_counts.get("Action", 0) - (1 if marked else 0)
+        if self._turn_limit("Action") == 2 and used >= 1:
+            return 1
+        return max(1, n)
+
+    def _start_attack_action(self):
+        """The Attack action taken (its card's Use, or a first Hit), its
+        action just counted as used: its attacks, all still to make."""
+        n = self._attacks_per_action(marked=True)
+        self._atk_of = self._atk_left = n
+        self._sync_attacks_counter()
+
+    def _attack_made(self, row: dict):
+        """A Hit on an attack the Attack action makes: one off the count --
+        the first one takes the turn's action. (An off-hand attack is the
+        bonus action: not counted.)"""
+        if row.get("cost") == "Bonus Action":
+            return
+        if not getattr(self, "_atk_left", 0):
+            self._mark_turn_used("Action")
+            self._start_attack_action()
+        self._atk_left = max(0, self._atk_left - 1)
+        self._sync_attacks_counter()
+
+    def _build_attacks_counter(self):
+        """Beside Initiative & Speed: the attacks your Attack action has
+        left, a dot each, emptied as you hit; New Turn fills them again."""
+        card = _card(qa(TEAL, 0x55)); card.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Preferred)
+        row = QHBoxLayout(card); row.setContentsMargins(12, 6, 12, 6); row.setSpacing(6)
+        row.addWidget(_lbl("Attacks", TEAL2, FS_SMALL, bold=True, wrap=False))
+        self._atk_dots = QLabel(); self._atk_dots.setStyleSheet("background:transparent;border:none;")
+        row.addWidget(self._atk_dots)
+        self._atk_text = _lbl("", TEXT, FS_SMALL, bold=True, wrap=False)
+        row.addWidget(self._atk_text)
+        self._atk_card = card
+        self._atk_of = self._atk_left = 0
+        QTimer.singleShot(0, self, self._sync_attacks_counter)
+        return card
+
+    def _sync_attacks_counter(self):
+        if not hasattr(self, "_atk_dots"):
+            return
+        if hasattr(self, "_turn_counts") and self._turn_limit("Action") == 0:
+            # no action this turn (unconscious, stunned...): nothing to count
+            self._atk_dots.setText(f"<span style='color:{CRIM2};font-size:16px;'>—</span>")
+            self._atk_text.setText("No action")
+            self._atk_card.setToolTip("You can't take actions right now, so no attacks.")
+            return
+        if getattr(self, "_atk_of", 0):
+            of, left = self._atk_of, self._atk_left
+        else:
+            of = left = self._attacks_per_action() if hasattr(self, "_turn_counts") else 1
+        self._atk_dots.setText(
+            "".join(f"<span style='color:{TEAL2 if i < left else TEXT3};font-size:16px;'>"
+                    f"{'●' if i < left else '○'}</span> " for i in range(of)))
+        self._atk_text.setText(f"{left} of {of} left")
+        self._atk_card.setToolTip(
+            f"Your Attack action makes {of} attack{'s' if of != 1 else ''}: a dot comes off each time "
+            "you hit Roll on one. The first takes your action; New Turn fills them again.")
+
     def _new_turn(self):
+        self._atk_of = self._atk_left = 0
         for k in self._turn_counts: self._turn_counts[k] = 0
         self._action_spell_is_cantrip = None
         self._bonus_action_spell_is_cantrip = None
@@ -1501,6 +1631,7 @@ class CombatMixin:
         """Grey out Use/Cast buttons in spent buckets; refresh chips."""
         if not hasattr(self, "_turn_chips"):
             return
+        self._sync_attacks_counter()
         from dnd_app.core.character import class_levels
         from dnd_app.core.calculator import get_turn_blocks
         blocks = get_turn_blocks(self.char)
@@ -1592,6 +1723,12 @@ class CombatMixin:
                 f"QPushButton:focus{{border:2px solid {TEAL2};}}")
         else:
             self._sneak_chip.setVisible(False)
+
+    def _ce_tab(self, page: int) -> int:
+        """The Conditions & Effects card's tab for one of its pages
+        (0 conditions, 1 effects, 2 defences): the tabs are in another order."""
+        bar = self._ce_bar
+        return next((i for i in range(bar.count()) if bar.tabData(i) == page), page)
 
     def _ce_add_clicked(self):
         """＋ Add on the Conditions & Effects card: for conditions, the menu
@@ -1722,7 +1859,7 @@ class CombatMixin:
                 w.hide(); w.setParent(None); w.deleteLater()
         fx = self.char.get("active_effects", [])
         if hasattr(self, "_ce_bar"):
-            self._ce_bar.setTabText(1, "Effects" + (f" ({len(fx)})" if fx else ""))
+            self._ce_bar.setTabText(self._ce_tab(1), "Effects" + (f" ({len(fx)})" if fx else ""))
         if not fx:
             empty = _lbl("No effects on you. A spell you cast on yourself shows here; "
                          "＋ Add puts on one an ally cast on you.",
@@ -1818,10 +1955,9 @@ class CombatMixin:
         when that one does. The tab says how many there are."""
         if not hasattr(self, "_active_cond_lay"):
             return
-        lay = self._active_cond_lay
-        # the rows sit above the permanent tail: the "none" line, and a stretch
-        while lay.count() > 2:
-            w = lay.takeAt(0).widget()
+        grid = self._cond_grid
+        while grid.count():
+            w = grid.takeAt(0).widget()
             if w is not None:
                 w.setParent(None)
                 w.deleteLater()
@@ -1850,7 +1986,10 @@ class CombatMixin:
             icon = CONDITIONS.get(cond, {}).get("icon")
             if icon:
                 rl.addWidget(_icons.icon_label(icon, 16, ink))
-            rl.addWidget(_lbl(title, ink, FS_SMALL, bold=True, wrap=False), 1)
+            name_lbl = _lbl(title, ink, FS_SMALL, bold=True, wrap=False)
+            # (two to a line: a long one is cut short -- hover says it all)
+            name_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred); name_lbl.setMinimumWidth(0)
+            rl.addWidget(name_lbl, 1)
             if removable:
                 rl.addWidget(self._rounds_button("condition", cond, ink), 0, Qt.AlignVCenter)
             summary = CONDITIONS.get(cond, {}).get("summary", "")
@@ -1870,13 +2009,14 @@ class CombatMixin:
         rows += [_row(c, f"{c} · from {', '.join(causes)}", False, ", ".join(causes))
                  for c, causes in implied.items()]
         for i, row in enumerate(rows):
-            lay.insertWidget(i, row)
+            row.setMinimumWidth(0)
+            grid.addWidget(row, i // 2, i % 2)
         self._active_cond_none_lbl.setVisible(not rows)
         if hasattr(self, "_cond_clear_act"):
             self._cond_clear_act.setEnabled(bool(on))
         if hasattr(self, "_ce_bar"):
             n = len(on) + len(implied) + (1 if self.char.get("exhaustion", 0) else 0)
-            self._ce_bar.setTabText(0, "Conditions" + (f" ({n})" if n else ""))
+            self._ce_bar.setTabText(self._ce_tab(0), "Conditions" + (f" ({n})" if n else ""))
 
     def _show_condition_details(self, cond: str):
         """A condition's full rules, from its row's right-click menu."""
@@ -2058,11 +2198,12 @@ class CombatMixin:
         # a reminder of what the sheet knows gives advantage or disadvantage
         # (the roll is one d20 either way -- the table decides)
         cond_status = get_condition_attack_status(self.char)
-        atk_text = f"{atk} to hit"
-        if cond_status["advantage"] or cond_status["disadvantage"]:
-            atk_text += "  (" + "/".join(t for t, on in (("ADV", cond_status["advantage"]),
-                                                         ("DISADV", cond_status["disadvantage"])) if on) + ")"
-        atk_lbl = _lbl(atk_text, TEAL2 if w["proficient"] else AMBER, FS_BODY, wrap=False)
+        # (the to-hit is on the roll button; advantage or disadvantage from
+        # what the sheet knows is a word beside the damage)
+        atk_text = "/".join(t for t, on in (("ADV", cond_status["advantage"]),
+                                           ("DISADV", cond_status["disadvantage"])) if on)
+        atk_lbl = _lbl(atk_text, AMBER, FS_TINY, bold=True, wrap=False)
+        atk_lbl.setVisible(bool(atk_text))
         if not w["proficient"]:
             atk_lbl.setToolTip(
                 f"Not proficient with {name} — proficiency bonus (+{w['pb']}) "
@@ -2075,16 +2216,18 @@ class CombatMixin:
             self._show_breakdown_popup(f"{name} — Attack Bonus",
                 get_weapon_attack_breakdown(self.char, _w["stat"], _w["proficient"], _w["magic_bonus"]),
                 _atk, e.globalPos()))
-        rl.addWidget(atk_lbl)
+        off_attack = bool(is_offhand and w["offhand"])
         if w["reckless"]:
             reckless_badge = _lbl("Reckless (adv)", GOLD2, FS_TINY, bold=True, wrap=False)
             reckless_badge.setToolTip("Reckless Attack is active: advantage on this attack, "
                                        "but attack rolls against you also have advantage until your next turn.")
             rl.addWidget(reckless_badge)
-        dmg_lbl = _lbl(f"{w['damage']} {w['damage_type']}", GOLD2, FS_BODY, wrap=False)
-        if w["flat_sources"]:
+        # in the off hand, its attack is the bonus action's: that damage
+        dmg_lbl = _lbl(f"{w['offhand'] if off_attack else w['damage']} {w['damage_type']}", GOLD2, FS_BODY, wrap=False)
+        if w["flat_sources"] and not off_attack:
             dmg_lbl.setToolTip("Includes " + ", ".join(w["flat_sources"]))
         rl.addWidget(dmg_lbl)
+        rl.addWidget(atk_lbl)
         # what Green-Flame Blade and Booming Blade swing (spells.py)
         if not hasattr(self, "_weapon_row_stats"):
             self._weapon_row_stats = {}
@@ -2092,12 +2235,6 @@ class CombatMixin:
                                             "damage": w["damage"], "melee": w["melee"],
                                             "riders": rider_text(w["riders"])}
         self._add_damage_riders(row_f, wpn_name, w["riders"])
-        if w["offhand"]:
-            off = _lbl(f"Off-hand attack (a bonus action): {w['offhand']} {w['damage_type']}",
-                       TEXT2, FS_SMALL, wrap=True)
-            off.setToolTip("Holding two weapons, the bonus action attack with a light one adds "
-                           "no ability modifier to its damage, unless you have Two-Weapon Fighting.")
-            row_f._outer.addWidget(off)
         if w["magic_bonus"]:
             tip_src = wpn_name if w["named_bonus"] else f"+{w['magic_bonus']} enchantment"
             magic_badge = _lbl(f"✦ +{w['magic_bonus']}", AMBE2, FS_TINY, bold=True, wrap=False)
@@ -2166,12 +2303,22 @@ class CombatMixin:
             self._ammo_counters.append((ammo_key, ammo_lbl))
             rl.addWidget(ammo_lbl)
 
-        # ── Attack roll button: the roll, then what you can add ──────────────
-        hit_btn = _icons.with_icon(_btn("Hit", TEAL, variant="danger", height=26, width=66,
-                        radius=5, border_width=1, text_color=TEAL2, hover_text="white",
-                        font_size=FS_TINY, padding="0px"), "dice", 12)
-        hit_btn.setObjectName(f"hit_{wpn_name}")
-        hit_btn.clicked.connect(lambda checked=False, _w=w: self._attack(_w))
+        # ── the hand it's in and what it costs, then the roll (its to-hit) ──
+        from dnd_app.core.weapons import hand_of
+        hand = hand_of(self.char, wpn_name)
+        if not hand and "Two-handed" in [str(p) for p in w["props"]]:
+            hand = "two hands"
+        elif not hand:
+            hand = "main hand"
+        w["cost"] = "Bonus Action" if off_attack else "Action"
+        self._row_tags(rl, hand[0].upper() + hand[1:], "Bonus action" if off_attack else "Action")
+        hit_btn = self._roll_button(atk, TEAL, wpn_name, w)
+        if not w["proficient"]:
+            hit_btn.setToolTip(f"Not proficient with {name}: your proficiency bonus isn't added")
+        hit_btn.contextMenuEvent = (lambda e, _w=w, _atk=atk:
+            self._show_breakdown_popup(f"{name} — Attack Bonus",
+                get_weapon_attack_breakdown(self.char, _w["stat"], _w["proficient"], _w["magic_bonus"]),
+                _atk, e.globalPos()))
         rl.addWidget(hit_btn)
 
         # Attach the completed row to the combat tab (this line was lost in a
@@ -2243,6 +2390,7 @@ class CombatMixin:
             return False
         for slot in res.get("slots", []):
             self._mark_turn_used(slot)
+        self._attack_made(row)
         self._apply_turn_state()          # the Sneak Attack chip follows
         if res.get("toast"):
             self._toast(res["toast"])
@@ -2303,15 +2451,6 @@ class CombatMixin:
             badge.setToolTip(a["note"])
             rl.addWidget(badge)
         atk = sign(a["atk"]) if a["atk"] is not None else ""
-        if atk:
-            atk_lbl = _lbl(f"{atk} to hit", TEAL2, FS_BODY, wrap=False)
-            if a["stat"]:
-                atk_lbl.setToolTip("Right-click for a breakdown")
-                atk_lbl.contextMenuEvent = (lambda e, _a=a, _atk=atk:
-                    self._show_breakdown_popup(f"{_a['name']} — Attack Bonus",
-                        get_weapon_attack_breakdown(self.char, _a["stat"], True, _a["atk_extra"]),
-                        _atk, e.globalPos()))
-            rl.addWidget(atk_lbl)
         if a["damage"]:
             rl.addWidget(_lbl(f"{a['damage']} {a['damage_type']}", GOLD2, FS_BODY, wrap=False))
         self._add_damage_riders(row_f, None, a["riders"])
@@ -2320,14 +2459,43 @@ class CombatMixin:
         row_f.setToolTip(a["note"] + (f"\nAttack and damage use {a['stat']}" if a["stat"] else ""))
         rl.addStretch()
         if atk:
-            hit_btn = _icons.with_icon(_btn("Hit", tone, variant="danger", height=26, width=66,
-                            radius=5, border_width=1, hover_text="white",
-                            font_size=FS_TINY, padding="0px"), "dice", 12)
-            hit_btn.setObjectName(f"hit_{a['name']}")
-            hit_btn.clicked.connect(lambda checked=False, _a=a: self._attack(_a))
+            a["cost"] = "Action"
+            self._row_tags(rl, "", "Action")
+            hit_btn = self._roll_button(atk, tone, a["name"], a)
+            if a["stat"]:
+                hit_btn.contextMenuEvent = (lambda e, _a=a, _atk=atk:
+                    self._show_breakdown_popup(f"{_a['name']} — Attack Bonus",
+                        get_weapon_attack_breakdown(self.char, _a["stat"], True, _a["atk_extra"]),
+                        _atk, e.globalPos()))
             rl.addWidget(hit_btn)
         self._place_weapon_row(row_f)
         self._weapon_row_widgets.append(row_f)
+
+    def _roll_button(self, atk: str, tone, name: str, row: dict):
+        """An attack row's roll button: its to-hit is the button's text."""
+        b = _btn(atk, tone, variant="danger", height=26, width=62, radius=5, border_width=1,
+                 text_color=TEAL2 if tone == TEAL else None, hover_text="white",
+                 font_size=FS_SMALL, padding="0px")
+        b.setObjectName(f"hit_{name}")
+        b.setToolTip(f"Roll to hit with {name} ({atk})")
+        b.setAccessibleName(f"Roll to hit with {name}, {atk}")
+        b.clicked.connect(lambda checked=False, _r=row: self._attack(_r))
+        return b
+
+    def _row_tags(self, rl, hand: str, cost: str):
+        """The hand it's in and what it costs, in two fixed columns so every
+        row's tags line up (an empty hand column when there's none)."""
+        for text, width in ((hand, 76), (cost, 96)):
+            if text:
+                color = IND2 if cost == text and "Bonus" in text else (GREEN2 if text == "Action" else TEXT2)
+                t = _lbl(text, color, FS_TINY, bold=True, wrap=False, align=Qt.AlignCenter)
+                t.setStyleSheet(f"background:{qa(color,0x18)};border:1px solid {qa(color,0x66)};"
+                                f"border-radius:5px;padding:0px 4px;color:{color};"
+                                f"font-size:{FS_TINY}px;font-weight:700;")
+            else:
+                t = QLabel(""); t.setStyleSheet("background:transparent;border:none;")
+            t.setFixedSize(width, 18)
+            rl.addWidget(t)
 
     def _place_weapon_row(self, row_f):
         """Add a finished attack row to the Weapons list, with everything in
@@ -2343,11 +2511,9 @@ class CombatMixin:
     def _refresh_combat_weapons(self):
         """Rebuild the weapon rows in the combat tab from char[equipped_weapons]."""
         while self._weapon_rows.count():
-            item = self._weapon_rows.takeAt(0)
-            if item.widget():
-                item.widget().hide()
-                item.widget().setParent(None)
-                item.widget().deleteLater()
+            w = self._weapon_rows.takeAt(0).widget()
+            if w is not None:
+                w.hide(); w.setParent(None); w.deleteLater()
         self._weapon_row_widgets.clear()
         self._ammo_counters.clear()
         self._weapon_row_stats = {}
@@ -2360,7 +2526,60 @@ class CombatMixin:
         # two daggers held (one in each hand) are one row
         for idx, wpn in enumerate(dict.fromkeys(self.char.get("equipped_weapons", []))):
             self._add_weapon_row(wpn, is_offhand=(idx > 0))
+        self._add_ready_to_throw()
         self._fit_weapons_card()
+
+    def _add_ready_to_throw(self):
+        """Under the weapons: the flasks and explosives marked ready to
+        throw in the Loadout (core/throwables.py), two to a line -- each one's
+        count, what it costs and its roll (an attack bonus, or a save DC)."""
+        from dnd_app.core.throwables import rows as throw_rows
+        ready = throw_rows(self.char)
+        if not ready:
+            return
+        self._weapon_rows.addWidget(_lbl("READY TO THROW", AMBE2, FS_TINY, bold=True, wrap=False))
+        host = QWidget(); host.setStyleSheet("background:transparent;border:none;")
+        grid = QGridLayout(host); grid.setContentsMargins(0, 0, 0, 0); grid.setSpacing(4)
+        grid.setColumnStretch(0, 1); grid.setColumnStretch(1, 1)
+        for i, t in enumerate(ready):
+            f = QFrame(); f.setObjectName("throwRow")
+            f.setStyleSheet(f"QFrame#throwRow{{background:{qa(AMBER,0x12)};border:1px solid {qa(AMBER,0x66)};"
+                            f"border-radius:8px;}}")
+            f.setToolTip(f"{t['label']}: {t['what']} (range {t['range']})")
+            r = QHBoxLayout(f); r.setContentsMargins(10, 4, 8, 4); r.setSpacing(8)
+            nm = _lbl(f"{t['label']}  ×{t['qty']}", TEXT, FS_SMALL, bold=True, wrap=False)
+            nm.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred); nm.setMinimumWidth(0)
+            r.addWidget(nm, 1)
+            tag = _lbl("Action", GREEN2, FS_TINY, bold=True, wrap=False, align=Qt.AlignCenter)
+            tag.setStyleSheet(f"background:{qa(GREEN2,0x18)};border:1px solid {qa(GREEN2,0x66)};border-radius:5px;"
+                              f"padding:0px 4px;color:{GREEN2};font-size:{FS_TINY}px;font-weight:700;")
+            tag.setFixedSize(60, 18)
+            r.addWidget(tag)
+            b = _btn(t["roll"] or "Throw", AMBER, variant="danger", height=26, width=62, radius=5, border_width=1,
+                     text_color=AMBE2, hover_text="white", font_size=FS_SMALL, padding="0px")
+            b.setObjectName(f"throw_{t['name']}")
+            b.setToolTip(f"Throw {t['label']}" + (f" ({t['roll']})" if t["roll"] else ""))
+            b.clicked.connect(lambda checked=False, _t=t: self._throw(_t))
+            r.addWidget(b)
+            grid.addWidget(f, i // 2, i % 2)
+        self._weapon_rows.addWidget(host)
+
+    def _throw(self, t: dict):
+        """Throw one: it's used up (core/throwables.py) and the toast says
+        what happened. A flask's throw is an attack -- one of the Attack
+        action's -- and an explosive takes the action."""
+        from dnd_app.core.throwables import throw
+        said = throw(self.char, t["name"])
+        if not said:
+            return
+        if t["roll"].startswith(("+", "-")):
+            self._attack_made({"cost": "Action"})
+        else:
+            self._mark_turn_used("Action")
+        self._mark_dirty()
+        self._refresh_gear_equipment()
+        self._refresh_combat_weapons()
+        self._toast(said)
 
     def _fit_weapons_card(self):
         """The weapons card is at least as wide as its widest row, so no
@@ -2372,7 +2591,7 @@ class CombatMixin:
         widest = max((w.sizeHint().width() for w in rows), default=0)
         scroll_bar = self._weapons_scroll.verticalScrollBar().sizeHint().width()
         m = card.layout().contentsMargins()
-        card.setMinimumWidth(min(620, widest + scroll_bar + m.left() + m.right() + 6) if widest else 0)
+        card.setMinimumWidth(min(760, widest + scroll_bar + m.left() + m.right() + 6) if widest else 0)
 
     def _refresh_ammo_counters(self):
         """Every weapon's ammo counter shows the inventory as it is now --
@@ -2397,6 +2616,12 @@ class CombatMixin:
     def _do_refresh_combat(self):
         char = self.char
         update_all(char)
+        self._sync_form_card()
+        if getattr(self, "_ac_cap", None) is not None:
+            from dnd_app.core.calculator import get_ac_breakdown
+            haste = sum(v for k, v in get_ac_breakdown(char) if k == "Haste")
+            self._ac_cap.setTextFormat(Qt.RichText)
+            self._ac_cap.setText("AC" + (f"  <span style='color:{TEAL2}'>+{haste} Haste</span>" if haste else ""))
         if hasattr(self,"_refresh_quick_spells"): self._refresh_quick_spells()
         # HP spinboxes — while Wild Shaped, show and edit the beast's own
         # separate HP pool instead of the character's own current_hp. Your
@@ -2496,44 +2721,54 @@ class CombatMixin:
         # several rows. Manual drag control in both directions wins here.
 
     def _refresh_resistances_strip(self):
-        """Rebuild the Resistances/Immunities badge row. Expands 'all' and
-        'all except X' shorthand into every individual damage type (so the
-        strip always shows concrete types, never a vague summary), and
-        applies D&D's actual rule that resistance and immunity to the same
-        type don't stack — if a type has immunity from any source, its
-        resistance badge (from any source) is dropped, not shown alongside."""
-        if not hasattr(self, '_resist_frame'):
+        """The Defences page: Vulnerabilities, Resistances and Immunities,
+        always each group -- its types three to a row, or "None". 'all' and
+        'all except X' are each type, and immunity to a type drops a
+        resistance to it (core/calculator.py defenses). The tab says how
+        many there are."""
+        lay = getattr(self, "_def_lay", None)
+        if lay is None:
             return
-        while self._resist_lay.count():
-            item = self._resist_lay.takeAt(0)
-            if item.widget(): item.widget().setParent(None)
-
+        while lay.count() > 1:        # (all but the closing stretch)
+            item = lay.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.hide(); w.setParent(None); w.deleteLater()
+            elif item.layout() is not None:
+                l = item.layout()
+                while l.count():
+                    c = l.takeAt(0).widget()
+                    if c is not None:
+                        c.hide(); c.setParent(None); c.deleteLater()
         from dnd_app.core.calculator import defenses
         rows = defenses(self.char)
-        if not rows:
-            self._resist_frame.setVisible(False)
-            self._resist_caption.setVisible(False)
-            return
-        self._resist_frame.setVisible(True)
-        self._resist_caption.setVisible(True)
-        self._resist_caption.setText("RESISTANCES & WEAKNESSES" if any(d["kind"] == "vulnerable" for d in rows)
-                                     else "RESISTANCES")
-        cols = 2   # (the HP card is two columns wide)
-
-        def _badge(text, color, tooltip):
-            b = _lbl(text, color, FS_SMALL, bold=True, wrap=False)
-            b.setStyleSheet(
-                f"background:{qa(color,0x33)};border:1.5px solid {qa(color,0x99)};"
-                f"border-radius:5px;padding:3px 8px;color:{color};"
-                f"font-size:{FS_SMALL}px;font-weight:700;"
-            )
-            b.setToolTip(tooltip)
-            return b
-
-        # ½ resistance, ⊘ immunity, ×2 vulnerability (core/calculator.py defenses)
-        look = {"resist": ("½", TEAL2), "immune": ("⊘", GOLD2), "vulnerable": ("×2", CRIM2)}
-        for idx, d in enumerate(rows):
-            mark, color = look[d["kind"]]
-            r, c = divmod(idx, cols)
-            self._resist_lay.addWidget(_badge(f"{mark} {d['label']}", color, d["tip"]), r, c)
-
+        groups = (("vulnerable", "×2", "Vulnerabilities", CRIM2), ("resist", "½", "Resistances", TEAL2),
+                  ("immune", "⊘", "Immunities", GOLD2))
+        at = 0
+        for kind, mark, word, color in groups:
+            items = [d for d in rows if d["kind"] == kind]
+            head = _lbl(f"{mark}  {word}" + (f"  ({len(items)})" if items else ""),
+                        color if items else TEXT3, FS_TINY, bold=True, wrap=False)
+            lay.insertWidget(at, head); at += 1
+            if not items:
+                lay.insertWidget(at, _lbl("None", TEXT3, FS_TINY, wrap=False)); at += 1
+                continue
+            grid = QGridLayout(); grid.setSpacing(4); grid.setContentsMargins(0, 0, 0, 4)
+            for c in range(3):
+                grid.setColumnStretch(c, 1)
+            for n, d in enumerate(items):
+                # a condition ("charmed (condition)") shows by its name alone,
+                # its chip dashed so it reads apart from the damage types
+                cond = d["label"].endswith(" (condition)")
+                b = _lbl(d["label"][:-len(" (condition)")] if cond else d["label"],
+                         color, FS_TINY, bold=True, wrap=False)
+                b.setStyleSheet(f"background:{qa(color,0x22)};border:1px {'dashed' if cond else 'solid'} "
+                                f"{qa(color,0x88)};border-radius:5px;padding:1px 6px;color:{color};"
+                                f"font-size:{FS_TINY}px;font-weight:700;")
+                b.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+                b.setMinimumWidth(0)
+                b.setToolTip(("<b>Condition</b><br>" if cond else "") + d["tip"])
+                grid.addWidget(b, n // 3, n % 3)
+            lay.insertLayout(at, grid); at += 1
+        if hasattr(self, "_ce_bar"):
+            self._ce_bar.setTabText(self._ce_tab(2), "Defences" + (f" ({len(rows)})" if rows else ""))

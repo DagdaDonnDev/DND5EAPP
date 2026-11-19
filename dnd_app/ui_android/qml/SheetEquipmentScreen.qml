@@ -561,6 +561,56 @@ Page {
                         delegate: SlotTile { slot: modelData }
                     }
                 }
+                // flasks and explosives you carry: tap the ones on your
+                // belt, and the Combat screen lists them under Ready to throw
+                RowLayout {
+                    visible: sheetBridge.carriedThrowables.length > 0
+                    Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    Label {
+                        text: "READY TO THROW"; color: Theme.gold; font.pixelSize: Theme.fsSmall - 1; font.bold: true; font.letterSpacing: 1
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        text: sheetBridge.carriedThrowables.filter(function(t) { return t.ready }).length + " ready"
+                        color: Theme.amber2; font.pixelSize: Theme.fsSmall - 1; font.bold: true
+                    }
+                }
+                GridLayout {
+                    visible: sheetBridge.carriedThrowables.length > 0
+                    Layout.fillWidth: true
+                    columns: 2
+                    columnSpacing: 8
+                    rowSpacing: 8
+                    Repeater {
+                        model: sheetBridge.carriedThrowables
+                        delegate: Rectangle {
+                            objectName: "throwChip_" + modelData.name
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 1
+                            implicitHeight: 44
+                            radius: 9
+                            color: modelData.ready ? Qt.rgba(Theme.amber.r, Theme.amber.g, Theme.amber.b, 0.11) : Theme.surf
+                            border.color: modelData.ready ? Qt.rgba(Theme.amber.r, Theme.amber.g, Theme.amber.b, 0.67) : Theme.border2
+                            Accessible.role: Accessible.CheckBox
+                            Accessible.name: modelData.label + (modelData.ready ? ", ready to throw" : ", not ready")
+                            Accessible.checked: modelData.ready
+                            Label {
+                                anchors { fill: parent; leftMargin: 10; rightMargin: 6 }
+                                verticalAlignment: Text.AlignVCenter
+                                text: (modelData.ready ? "✓  " : "") + modelData.label + "  ×" + modelData.qty
+                                color: modelData.ready ? Theme.amber2 : Theme.text2
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                                elide: Text.ElideRight
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: sheetBridge.setReadyThrow(modelData.name, !modelData.ready)
+                            }
+                        }
+                    }
+                }
                 Label {
                     visible: sheetBridge.loadout.tattoos.length > 0
                     text: "TATTOOS (" + sheetBridge.loadout.tattoos.length + ")"

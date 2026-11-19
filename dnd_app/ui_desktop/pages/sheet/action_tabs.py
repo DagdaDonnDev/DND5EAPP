@@ -512,6 +512,9 @@ class ActionTabsMixin:
             return
         if res.get("slot"):
             self._mark_turn_used(res["slot"])
+            # the Attack action taken: its attacks are counted off as you hit
+            if display == "Attack" and res["slot"] == "Action" and hasattr(self, "_start_attack_action"):
+                self._start_attack_action()
         if res.get("slots_changed"):
             self._sync_slot_bars_from_char()
             if hasattr(self, "_pact_bar"):
@@ -670,7 +673,22 @@ class ActionTabsMixin:
                 # the tag's colour where it reads on its tint over the card's
                 ink = readable(src_color, *(tint(tint(u, src_color, 0x1e), src_color, 0x22)
                                             for u in (SURF, SURF2)))
-                src_badge = _lbl(source[:9], ink, FS_TINY, bold=True, wrap=False)
+                # a short tag: "Acid (vial)" -> "Acid", "Brown Bear" -> "Brown"
+                # (whole words that fit, never cut mid-word unless one alone
+                # is too long); the whole of it on hover
+                import re as _re
+                tag = _re.sub(r"\s*\(.*?\)", "", source).strip() or source
+                if len(tag) > 9:
+                    words, fit = tag.split(), ""
+                    for wd in words:
+                        if len((fit + " " + wd).strip()) > 9:
+                            break
+                        fit = (fit + " " + wd).strip()
+                    fit = _re.sub(r"\s+(of|the|a|an)$", "", fit, flags=_re.I)
+                    tag = fit or tag[:9]
+                src_badge = _lbl(tag, ink, FS_TINY, bold=True, wrap=False)
+                if tag != source:
+                    src_badge.setToolTip(source)
                 # wide enough for 9-letter tags ("Universal", "Barbarian") in bold
                 src_badge.setFixedWidth(76); src_badge.setAlignment(Qt.AlignCenter)
                 src_badge.setStyleSheet(

@@ -11,9 +11,31 @@ Quality of Life, Fixes and Known Issues.
 
 ### 🌍 Overview
 
-Adventurers, the mimic now wakes up in your colours.
+Adventurers, the mimic now wakes up in your colours, and the Combat page
+has been rebuilt so everything fits, even on your worst day.
 
 ### ✨ New
+
+- **A new Combat page** (both apps):
+  - **Death saves** run as one flat line across the top at 0 HP: what it
+    means now, then your successes and failures. Tap a dot to fill it.
+  - **Hit Points** are four tiles (AC, Temp, Max, Current), with how much
+    over Damage and Heal. While hasted, AC says "+2 Haste".
+  - **Defences, Conditions and Effects** share one card, Defences first.
+    Vulnerabilities, Resistances and Immunities are always listed, three
+    to a row, or "None".
+  - **Attacks left:** beside Initiative and Speed, a dot for each attack
+    your Attack action makes. Each attack takes one off, and New Turn
+    fills them again. Haste's extra action makes one.
+  - **Weapons:** each row shows the hand it's in and what it costs
+    (Action or Bonus action). Its to-hit is the roll button ("+7"). The off
+    hand's row shows its own damage.
+- **Ready to throw** (both apps): mark flasks and explosives you carry as
+  ready in the Loadout (desktop: also right-click one in your inventory).
+  They're listed on the Combat page under your weapons, each with its
+  count and its roll. Throwing one takes an action and uses it up.
+- **Explosives from the Dungeon Master's Guide:** Bomb, Dynamite,
+  Fragmentation Grenade and Smoke Grenade.
 
 - **The startup animation in your theme** (both apps): the mimic chest
   plays in the colours of the theme picked on the character chooser. Its
@@ -30,6 +52,14 @@ Adventurers, the mimic now wakes up in your colours.
 - **The Hit Points card keeps its size** while you're in Wild Shape or
   Polymorph: the form's card beside it no longer takes its room, and its
   button is shorter ("Spend a Slot to Heal").
+- **Polymorph cast with the sheet open gets its card** on desktop: the
+  form, its hit points and End Polymorph, which only came before for a
+  druid or a character opened already polymorphed.
+- **Undo works on a hit that ends a Wild Shape or Polymorph** (both apps),
+  even one that then kills you: it puts the form back, with its hit points,
+  the spell and your concentration on it.
+- **Action cards' source tags** no longer cut a word short ("Acid (via",
+  "Brown Bea"): they show whole words, with the full name on hover.
 
 ---
 

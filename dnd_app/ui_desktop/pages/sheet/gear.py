@@ -990,6 +990,20 @@ class GearMixin:
             for c in range(4):
                 g.setColumnStretch(c, 1)
             lay.addLayout(g)
+        # flasks and explosives you carry: tick the ones on your belt, and
+        # the Combat page lists them under Ready to throw
+        from dnd_app.core.throwables import carried
+        th = carried(self.char)
+        if th:
+            n_on = sum(1 for t in th if t["ready"])
+            lay.addLayout(self._loadout_head("Ready to throw",
+                          _lbl(f"{n_on} ready", AMBER, FS_TINY, bold=True, wrap=False)))
+            g = QGridLayout(); g.setSpacing(7)
+            for i, t in enumerate(th):
+                g.addWidget(self._throw_chip(t), i // 4, i % 4)
+            for c in range(4):
+                g.setColumnStretch(c, 1)
+            lay.addLayout(g)
         # tattoos: only once there's one
         if L["tattoos"]:
             lay.addLayout(self._loadout_head(f"Tattoos ({len(L['tattoos'])})"))
@@ -998,6 +1012,31 @@ class GearMixin:
                 g.addWidget(self._loadout_slot(s), i // 2, i % 2)
             lay.addLayout(g)
         lay.addStretch(1)
+
+    def _throw_chip(self, t):
+        """A throwable in the Loadout: click to have it ready to throw (amber,
+        ticked) or not (dashed)."""
+        on = t["ready"]
+        b = QPushButton(("✓  " if on else "") + f"{t['label']}  ×{t['qty']}")
+        b.setObjectName("throwChip")
+        b.setCursor(Qt.PointingHandCursor)
+        b.setCheckable(True); b.setChecked(on)
+        b.setToolTip(f"<b>{t['name']}</b><br>" + ("Ready to throw: on the Combat page. Click to put it away."
+                                                   if on else "Click to have it ready to throw on the Combat page."))
+        b.setAccessibleName(f"{t['label']}, {'ready to throw' if on else 'not ready'}")
+        b.setStyleSheet(f"QPushButton{{background:{qa(AMBER, 0x1c) if on else SURF};color:{AMBER if on else TEXT2};"
+                        f"border:1px {'solid' if on else 'dashed'} {qa(AMBER, 0xaa) if on else BORDER2};"
+                        f"border-radius:9px;min-height:34px;padding:0 10px;font-size:{FS_SMALL}px;font-weight:700;"
+                        f"text-align:left;}}QPushButton:hover{{border-color:{AMBER};}}")
+        b.clicked.connect(lambda _=False, n=t["name"], v=not on: QTimer.singleShot(0, self, lambda: self._set_ready_throw(n, v)))
+        return b
+
+    def _set_ready_throw(self, name: str, on: bool):
+        from dnd_app.core.throwables import set_ready
+        set_ready(self.char, name, on)
+        self._mark_dirty()
+        self._refresh_loadout()
+        self._refresh_combat_weapons()
 
     def _clear_layout(self, l):
         while l.count():
@@ -1619,6 +1658,11 @@ class GearMixin:
                 elif can_dedicate(self.char, _name):
                     dw_act = menu.addAction(_icons.icon("dagger"), f"Make {_name[:30]} your Dedicated Weapon")
                     dw_act.triggered.connect(lambda checked=False, n=_name: self._set_dedicated_weapon(n))
+            from dnd_app.core.throwables import is_throwable, ready as _ready_throw, _key as _throw_key
+            if is_throwable(_name):
+                _on = _throw_key(_name) in _ready_throw(self.char)
+                rt_act = menu.addAction(_icons.icon("combat"), "Not ready to throw" if _on else "Ready to throw")
+                rt_act.triggered.connect(lambda checked=False, n=_name, v=not _on: self._set_ready_throw(n, v))
             rm_act = menu.addAction(_icons.icon("trash"),
                                     f"Remove one {_name[:36]}" if _eq.get("qty", 1) > 1 else f"Remove {_name[:36]}")
             rm_act.triggered.connect(lambda: self._remove_item_row(_eq))

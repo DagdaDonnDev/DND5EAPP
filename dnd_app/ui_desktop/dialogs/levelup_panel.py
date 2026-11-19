@@ -1040,6 +1040,11 @@ class LevelUpPanel(QWidget):
         # first in the box, kept across refreshes: refresh_spells_to_learn()
         # updates it as spells are learned on the Spells tab
         self._spells_card = self._build_spells_to_learn_card()
+        # (in the box from the start: shown while it had no parent -- the
+        # sheet asks for it before filling this panel -- it was a window of
+        # its own for a moment, which took the focus from the app's window)
+        self._choices_vl.addWidget(self._spells_card)
+        self._spells_card.hide()
         self._n_unfinished = self._n_choices = 0
         self.has_spells_to_learn = False
 

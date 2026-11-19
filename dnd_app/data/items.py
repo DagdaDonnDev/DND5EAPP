@@ -215,6 +215,7 @@ ADVENTURING_GEAR = [
     ("Bell",                    0,   1,    ""),
     ("Blanket",                 3,   0.5,  ""),
     ("Block and Tackle",        5,   1,    "Rig for hoisting: limit = str score × 30 lb."),
+    ("Bomb",                    1,   150,  "DMG explosive. Action: light and throw 60 ft; DC 12 DEX or 3d6 fire within 5 ft."),
     ("Book",                    5,   25,   ""),
     ("Bottle, Glass",           2,   2,    ""),
     ("Bucket",                  2,   0.05, ""),
@@ -232,6 +233,7 @@ ADVENTURING_GEAR = [
     ("Clothes, Traveler's",     4,   2,    ""),
     ("Component Pouch",         2,   25,   "Material spell components (non-costly)."),
     ("Crowbar",                 5,   2,    "Adv. STR checks where leverage applies."),
+    ("Dynamite (stick)",        1,   0,    "DMG explosive. Action: light and throw 60 ft; DC 12 DEX, 3d6 bludgeoning within 5 ft, half on a save."),
     ("Druidic Focus",           0, 0, "Sprig of mistletoe/totem/staff/wand. For Druids."),
     ("Druidic Focus: Sprig of Mistletoe", 0, 1, "A spellcasting focus for Druids."),
     ("Druidic Focus: Totem",    0,   1,    "A spellcasting focus for Druids."),
@@ -240,6 +242,8 @@ ADVENTURING_GEAR = [
     ("Fishing Tackle",          4,   1,    ""),
     ("Flask or Tankard",        1,   0.02, ""),
     ("Grappling Hook",          4,   2,    ""),
+    ("Grenade, Fragmentation",  1,   0,    "DMG explosive. Action: throw 60 ft; DC 15 DEX, 5d6 piercing within 20 ft, half on a save."),
+    ("Grenade, Smoke",          2,   0,    "DMG explosive. Action: throw 60 ft; a round later, a 20-ft cloud of smoke (heavily obscured)."),
     ("Hammer",                  3,   1,    ""),
     ("Hammer, Sledge",          10,  2,    ""),
     ("Healer's Kit",            3,   5,    "10 uses: stabilize creature without Medicine check."),
@@ -442,7 +446,7 @@ _GAMING = {g.lower() for g in GAMING_SETS}
 _KITS = {t.lower() for t in ARTISAN_TOOLS + OTHER_TOOLS}
 _FIRE = {"tinderbox", "torch", "candle", "matchless pipe"}
 _THROWN = ("acid (vial)", "holy water", "oil (flask)", "poison", "alchemist's doom", "vial of stardust",
-           "antitoxin")
+           "antitoxin", "bomb", "dynamite", "grenade")
 
 
 def gear_icon(name: str) -> str:

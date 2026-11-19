@@ -265,6 +265,7 @@ class CharacterSheetBridge(QObject):
         # CombatMixin._turn_counts exactly: never saved to the character
         # file, just this-session bookkeeping for the action economy).
         self._turn_counts = {"Action": 0, "Bonus Action": 0, "Reaction": 0}
+        self._atk_of = self._atk_left = 0      # the Attack action's attacks (attacksCounter)
         self._action_spell_is_cantrip = None
         self._bonus_action_spell_is_cantrip = None
         # Ignore restrictions (the spell browser's toggle; _spell_homebrew
@@ -478,6 +479,12 @@ class CharacterSheetBridge(QObject):
         self._changed()
 
     # ── Combat stats ─────────────────────────────────────────────────
+    @Property(int, notify=statsChanged)
+    def hasteAcBonus(self):
+        """What Haste adds to AC now (0 when not hasted): the AC tile says so."""
+        from dnd_app.core.calculator import get_ac_breakdown
+        return sum(v for k, v in get_ac_breakdown(self.char) if k == "Haste")
+
     @Property(int, notify=statsChanged)
     def armorClass(self):
         return get_ac(self.char)
@@ -810,16 +817,26 @@ class CharacterSheetBridge(QObject):
             d.update(extra)
             out.append(d)
 
+        from dnd_app.core.weapons import hand_of
         for a in other_attacks(char):
-            card(a, {"unarmed": "Unarmed", "spell": "Spell attack"}.get(a["kind"], "Natural weapon"), {})
-        for wpn_name in dict.fromkeys(char.get("equipped_weapons", [])):   # two daggers: one card
+            a["cost"] = "Action"
+            card(a, {"unarmed": "Unarmed", "spell": "Spell attack"}.get(a["kind"], "Natural weapon"),
+                 {"hand": "", "cost": "Action"})
+        # two daggers: one card; the second weapon is the off hand's, its
+        # attack the bonus action's (its own damage: no modifier unless
+        # Two-Weapon Fighting or a negative one) -- as desktop's rows
+        for idx, wpn_name in enumerate(dict.fromkeys(char.get("equipped_weapons", []))):
             w = weapon_attack(char, wpn_name)
+            off = bool(idx > 0 and w["offhand"])
+            hand = hand_of(char, wpn_name) or ("two hands" if "Two-handed" in [str(p) for p in w["props"]]
+                                               else "main hand")
+            w["cost"] = "Bonus Action" if off else "Action"
             card(w, w["category"], {
                 "magicBonus": w["magic_bonus"], "material": w["material"] or "",
                 "proficient": w["proficient"],
                 "canPowerAttack": w["can_power_attack"], "powerAttackActive": w["power_attack"],
-                "offhandText": (f"Off-hand attack (a bonus action): {w['offhand']} {w['damage_type']}"
-                                if w["offhand"] else ""),
+                "damageDisplay": w["offhand"] if off else w["damage"],
+                "hand": hand[0].upper() + hand[1:], "cost": w["cost"],
                 "ammoKind": w["ammo"], "ammoLabel": ammo_label(w["ammo"]) if w["ammo"] else "",
                 "ammoCount": ammo_count(char, w["ammo"]) if w["ammo"] else 0,
             })
@@ -933,10 +950,14 @@ class CharacterSheetBridge(QObject):
         def done(res):
             for slot in res.get("slots", []):
                 self._mark_turn_used(slot)
-            # made with the Attack action: that's the action spent
+            # made with the Attack action: that's the action spent, its
+            # attacks all still to make
             if getattr(self, "_attack_action_slot", None):
                 self._mark_turn_used(self._attack_action_slot)
+                if self._attack_action_slot == "Action":
+                    self._start_attack_action()
                 self._attack_action_slot = None
+            self._attack_made(row)
             if res.get("toast"):
                 self.toastRequested.emit(res["toast"])
             if res.get("refresh"):
@@ -1832,7 +1853,7 @@ class CharacterSheetBridge(QObject):
             return
         char = self.char
         # (what it changes is kept, for Undo: core/hp_undo.py, as desktop)
-        from dnd_app.core.hp_undo import hp_state, remember_hp_change, clear_hp_undo
+        from dnd_app.core.hp_undo import hp_state, remember_hp_change
         before = hp_state(char)
         beast = self._active_wildshape_beast()
         if beast:
@@ -1851,7 +1872,9 @@ class CharacterSheetBridge(QObject):
             excess = amount - cur
             self._revert_wildshape()
             res = take_damage(char, excess)
-            clear_hp_undo(char)           # (a change of form isn't one to undo)
+            # (undone, it's all put back: the form and its hit points, and
+            # you alive, if the rest of the hit killed you)
+            remember_hp_change(char, before, f"{amount} damage")
             self._show_damage(res,
                               f"Beast form dropped to 0 HP -- reverted to normal form, "
                               f"{excess} excess damage carried over")
@@ -2896,6 +2919,77 @@ class CharacterSheetBridge(QObject):
         if bucket == "Action" and limit == 2 and self._turn_counts[bucket] == 1:
             self.toastRequested.emit("Haste: first action used -- one more available")
 
+    # ── Attacks left in this Attack action (desktop's Attacks counter) ──
+    def _attacks_per_action(self, marked: bool = False) -> int:
+        """How many attacks the next Attack action makes (marked: its action
+        has just been counted as used). Haste's own action makes one."""
+        from dnd_app.core.calculator import get_extra_attacks
+        from dnd_app.core.character import class_levels, subclasses
+        n = get_extra_attacks(class_levels(self.char), subclasses(self.char), self.char)
+        used = self._turn_counts.get("Action", 0) - (1 if marked else 0)
+        if self._turn_limit("Action") == 2 and used >= 1:
+            return 1
+        return max(1, n)
+
+    def _start_attack_action(self):
+        self._atk_of = self._atk_left = self._attacks_per_action(marked=True)
+
+    def _attack_made(self, row: dict):
+        """An attack made with the Attack action: one off the count -- the
+        first takes the turn's action. (The off hand's is the bonus action's.)"""
+        if row.get("cost") == "Bonus Action":
+            return
+        if not getattr(self, "_atk_left", 0):
+            self._mark_turn_used("Action")
+            self._start_attack_action()
+        self._atk_left = max(0, self._atk_left - 1)
+
+    @Property(dict, notify=statsChanged)
+    def attacksCounter(self):
+        """{of, left, noAction}: the dots beside Initiative and Speed."""
+        if self._turn_limit("Action") == 0:
+            return {"of": 0, "left": 0, "noAction": True}
+        of = getattr(self, "_atk_of", 0)
+        if of:
+            return {"of": of, "left": self._atk_left, "noAction": False}
+        n = self._attacks_per_action()
+        return {"of": n, "left": n, "noAction": False}
+
+    # ── Ready to throw (core/throwables.py) ───────────────────────────
+    @Property(list, notify=statsChanged)
+    def readyThrows(self):
+        from dnd_app.core.throwables import rows
+        return rows(self.char)
+
+    @Property(list, notify=statsChanged)
+    def carriedThrowables(self):
+        """Every flask and explosive you carry, ready or not (the Loadout)."""
+        from dnd_app.core.throwables import carried
+        return carried(self.char)
+
+    @Slot(str, bool)
+    def setReadyThrow(self, name: str, on: bool):
+        from dnd_app.core.throwables import set_ready
+        set_ready(self.char, name, on)
+        self._changed()
+
+    @Slot(str)
+    def throwItem(self, name: str):
+        """Throw one (an action): used up, and what happens is said."""
+        from dnd_app.core.throwables import throw, rows
+        if self._turn_blocked("Action"):
+            return
+        t = next((r for r in rows(self.char) if r["name"] == name), None)
+        said = throw(self.char, name)
+        if not said:
+            return
+        if t and t["roll"].startswith(("+", "-")):
+            self._attack_made({"cost": "Action"})
+        else:
+            self._mark_turn_used("Action")
+        self.toastRequested.emit(said)
+        self._changed()
+
     def _check_bonus_action_spell_rule(self, is_cantrip: bool, bucket: str) -> bool:
         if has_extra_action(self.char):
             return True
@@ -2934,6 +3028,8 @@ class CharacterSheetBridge(QObject):
             return
         limit = self._turn_limit(bucket)
         self._turn_counts[bucket] = 0 if self._turn_counts[bucket] >= limit else limit
+        if bucket == "Action" and not self._turn_counts[bucket]:
+            self._atk_of = self._atk_left = 0     # the action free again: its attacks too
         self._changed()
 
     # ── Use button (Actions screen) ──────────────────────────────────
@@ -3128,6 +3224,7 @@ class CharacterSheetBridge(QObject):
 
     @Slot()
     def newTurn(self):
+        self._atk_of = self._atk_left = 0
         for k in self._turn_counts:
             self._turn_counts[k] = 0
         self._action_spell_is_cantrip = None

@@ -3,11 +3,12 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Mimic
 
-// The Combat screen: everything needed mid-fight, blocked into cards --
-// stats, hit points (with concentration and quick damage/heal), the turn
-// tracker (tap a chip to mark it spent/free), attacks with Attack/Damage
-// roll buttons, castable spells (Cast buttons, same list as the Actions
-// screen), hit dice, Wild Shape, and conditions.
+// The Combat screen, as desktop's Combat tab: the death saves banner (at
+// 0 HP), Initiative, Speed and the attacks left; hit points as tiles with
+// Damage / Heal; Defences, Conditions and Effects; the weapons, each with
+// its hand, cost and to-hit roll, and what's ready to throw; the form
+// you're in (Wild Shape, Polymorph); the turn tracker (tap a chip to mark
+// it spent/free); starred spells; and hit dice.
 Page {
     id: root
     readonly property string screenTitle: "Combat"
@@ -65,22 +66,85 @@ Page {
 
             SheetHeader {}
 
-            // ── Stat strip ──────────────────────────────────────────────
+            // ── Death saves: a flat banner over everything, only at 0 HP
+            // (as desktop's): what it means now, then the successes and
+            // failures -- tap a dot to fill or empty it ──────────────────
+            Rectangle {
+                objectName: "deathSavesBanner"
+                visible: sheetBridge.showDeathSaves
+                Layout.fillWidth: true
+                implicitHeight: dsRow.implicitHeight + 16
+                radius: 10
+                color: Theme.surf
+                border.color: Qt.rgba(Theme.crimson.r, Theme.crimson.g, Theme.crimson.b, 0.67)
+                border.width: 2
+                RowLayout {
+                    id: dsRow
+                    anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 10 }
+                    spacing: 8
+                    MIcon { name: "skull"; size: 16; color: Theme.crimson2 }
+                    Label {
+                        text: sheetBridge.deathStatusText
+                        color: Theme.text
+                        font.pixelSize: Theme.fsSmall
+                        font.bold: true
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 2
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                    Repeater {
+                        model: [{ key: "s", tone: Theme.green2, n: sheetBridge.deathSaveSuccesses, word: "Success" },
+                                { key: "f", tone: Theme.crimson2, n: sheetBridge.deathSaveFailures, word: "Failure" }]
+                        delegate: Row {
+                            readonly property var grp: modelData
+                            spacing: 4
+                            Label {
+                                text: grp.key === "s" ? "✓" : "✕"
+                                color: grp.tone
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Repeater {
+                                model: 3
+                                delegate: Rectangle {
+                                    objectName: "deathPip_" + grp.key + index
+                                    width: 18; height: 18; radius: 9
+                                    color: index < grp.n ? grp.tone : "transparent"
+                                    border.color: grp.tone
+                                    border.width: 2
+                                    Accessible.role: Accessible.CheckBox
+                                    Accessible.name: grp.word + " " + (index + 1)
+                                    Accessible.checked: index < grp.n
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        anchors.margins: -4
+                                        onClicked: grp.key === "s"
+                                                   ? sheetBridge.setDeathSaveSuccess(index, index >= grp.n)
+                                                   : sheetBridge.setDeathSaveFailure(index, index >= grp.n)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Initiative, Speed, and the attacks the Attack action has
+            // left (a dot each, emptied as you attack; New Turn fills them) ──
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
                 Repeater {
                     model: [
-                        { label: "AC", value: String(sheetBridge.armorClass) },
                         { label: "Initiative", value: sheetBridge.initiativeText, rollBonus: sheetBridge.initiative },
-                        { label: "Speed", value: String(sheetBridge.speed) },
-                        { label: "Prof", value: "+" + sheetBridge.proficiencyBonus },
-                        { label: "Passive", value: String(sheetBridge.passivePerception) },
+                        { label: "Speed", value: sheetBridge.speed + " ft" },
                     ]
                     delegate: Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredWidth: 1
-                        Layout.preferredHeight: 64
+                        Layout.preferredHeight: 60
                         radius: 10
                         color: Theme.surf
                         border.color: modelData.rollBonus !== undefined ? Theme.border2 : Theme.border
@@ -90,7 +154,7 @@ Page {
                             spacing: 2
                             Label {
                                 text: modelData.value
-                                color: Theme.teal2
+                                color: modelData.rollBonus !== undefined ? Theme.teal2 : Theme.text
                                 font.pixelSize: Theme.fsHead
                                 font.bold: true
                                 width: parent.width
@@ -106,7 +170,6 @@ Page {
                             }
                         }
                         // Initiative is tap-to-roll, same as desktop's
-                        // clickable initiative stat.
                         MIcon {
                             visible: modelData.rollBonus !== undefined
                             name: "dice"
@@ -120,106 +183,150 @@ Page {
                         }
                     }
                 }
+                Rectangle {
+                    id: atkBox
+                    objectName: "attacksCounter"
+                    readonly property var ac: sheetBridge.attacksCounter
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 1
+                    Layout.preferredHeight: 60
+                    radius: 10
+                    color: Theme.surf
+                    border.color: Qt.rgba(Theme.teal.r, Theme.teal.g, Theme.teal.b, 0.35)
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: ac.noAction ? "Attacks: no action" : "Attacks: " + ac.left + " of " + ac.of + " left"
+                    Column {
+                        anchors.centerIn: parent
+                        width: parent.width - 6
+                        spacing: 4
+                        Row {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            spacing: 4
+                            visible: !atkBox.ac.noAction
+                            Repeater {
+                                model: atkBox.ac.of
+                                delegate: Rectangle {
+                                    readonly property bool full: index < atkBox.ac.left
+                                    width: 12; height: 12; radius: 6
+                                    color: full ? Theme.teal2 : "transparent"
+                                    border.color: full ? Theme.teal2 : Theme.text3
+                                    border.width: 2
+                                }
+                            }
+                        }
+                        Label {
+                            visible: atkBox.ac.noAction
+                            text: "—"
+                            color: Theme.crimson2
+                            font.pixelSize: Theme.fsBody
+                            font.bold: true
+                            width: parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                        Label {
+                            text: atkBox.ac.noAction ? "No action"
+                                  : "Attacks: " + atkBox.ac.left + " of " + atkBox.ac.of
+                            color: Theme.text3
+                            font.pixelSize: Theme.fsSmall
+                            width: parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                            elide: Text.ElideRight
+                        }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: Window.window.showToast(
+                            "Your Attack action makes " + atkBox.ac.of + " attack" + (atkBox.ac.of === 1 ? "" : "s")
+                            + ": a dot comes off each time you roll one. The first takes your action; New Turn fills them again.")
+                    }
+                }
             }
 
-            // ── Hit points ──────────────────────────────────────────────
+            // ── Hit points: AC, Temp, Max and Current as tiles, then how
+            // much over Damage | Heal | Temp (as desktop's card) ──────────
             MCard {
                 title: "Hit Points"
                 iconName: "heart"
+                // Undo for the last Damage or Heal: there from the moment
+                // one's applied until the hit points change some other way
+                // (core/hp_undo.py, as desktop's)
+                headerRight: MButton {
+                    objectName: "hpUndo"
+                    visible: sheetBridge.hpUndoLabel !== ""
+                    primary: false
+                    implicitHeight: 34
+                    iconName: "undo"
+                    iconSize: 15
+                    text: "Undo"
+                    onClicked: sheetBridge.undoHpChange()
+                }
 
                 RowLayout {
+                    objectName: "hpTiles"
                     Layout.fillWidth: true
-                    spacing: 10
-                    Label {
-                        text: sheetBridge.currentHp + " / " + sheetBridge.maxHp
-                        color: sheetBridge.currentHp > 0 ? Theme.text : Theme.crimson2
-                        font.pixelSize: Theme.fsTitle
-                        font.bold: true
-                    }
-                    Rectangle {
-                        visible: sheetBridge.tempHp > 0
-                        radius: 6
-                        color: Qt.rgba(Theme.indigo.r, Theme.indigo.g, Theme.indigo.b, 0.18)
-                        border.color: Theme.indigo2
-                        implicitWidth: tempLbl.implicitWidth + 14
-                        implicitHeight: tempLbl.implicitHeight + 6
-                        Label {
-                            id: tempLbl
-                            anchors.centerIn: parent
-                            text: "+" + sheetBridge.tempHp + " temp"
-                            color: Theme.indigo2
-                            font.pixelSize: Theme.fsSmall
-                            font.bold: true
+                    spacing: 8
+                    Repeater {
+                        model: [
+                            { label: "AC", value: sheetBridge.armorClass, tone: Theme.gold2,
+                              note: sheetBridge.hasteAcBonus > 0 ? "+" + sheetBridge.hasteAcBonus + " Haste" : "" },
+                            { label: "Temp", value: sheetBridge.tempHp, tone: Theme.teal2, note: "" },
+                            { label: "Max", value: sheetBridge.maxHp, tone: Theme.indigo2, note: "" },
+                            { label: "Current", value: sheetBridge.currentHp,
+                              tone: sheetBridge.currentHp > 0 ? Theme.green2 : Theme.crimson2, note: "" },
+                        ]
+                        delegate: Column {
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 1
+                            spacing: 3
+                            Label {
+                                width: parent.width
+                                text: modelData.label + (modelData.note ? "  <font color='" + Theme.teal2 + "'>"
+                                                                          + modelData.note + "</font>" : "")
+                                textFormat: Text.StyledText
+                                color: Theme.text2
+                                font.pixelSize: Theme.fsSmall - 1
+                                font.bold: true
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
+                            }
+                            Rectangle {
+                                objectName: "hpTile_" + modelData.label
+                                width: parent.width
+                                height: 46
+                                radius: 8
+                                color: Theme.surf2
+                                border.color: Qt.rgba(modelData.tone.r, modelData.tone.g, modelData.tone.b, 0.4)
+                                border.width: 2
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: String(modelData.value)
+                                    color: modelData.tone
+                                    font.pixelSize: Theme.fsTitle
+                                    font.bold: true
+                                }
+                            }
                         }
-                    }
-                    Item { Layout.fillWidth: true }
-                    // Undo for the last Damage or Heal: there from the
-                    // moment one's applied until the hit points change
-                    // some other way (core/hp_undo.py, as desktop's)
-                    MButton {
-                        objectName: "hpUndo"
-                        visible: sheetBridge.hpUndoLabel !== ""
-                        primary: false
-                        implicitHeight: 34
-                        iconName: "undo"
-                        iconSize: 15
-                        text: "Undo"
-                        onClicked: sheetBridge.undoHpChange()
                     }
                 }
 
                 // HP bar: green while healthy, amber when bloodied, red near 0
                 Rectangle {
                     Layout.fillWidth: true
-                    height: 8
-                    radius: 4
+                    height: 6
+                    radius: 3
                     color: Theme.surf3
                     Rectangle {
                         width: parent.width * root.hpFraction
                         height: parent.height
-                        radius: 4
+                        radius: 3
                         color: root.hpFraction > 0.5 ? Theme.green2 : (root.hpFraction > 0.25 ? Theme.amber : Theme.crimson)
                     }
                 }
 
-                // Resistances, immunities and vulnerabilities (½, ⊘, ×2), the
-                // same as desktop's badges; a tap says where each comes from
-                Flow {
-                    objectName: "defenseBadges"
-                    visible: sheetBridge.defenseRows.length > 0
-                    Layout.fillWidth: true
-                    spacing: 6
-                    Repeater {
-                        model: sheetBridge.defenseRows
-                        delegate: Rectangle {
-                            readonly property color tone: modelData.kind === "resist" ? Theme.teal2
-                                                          : modelData.kind === "immune" ? Theme.gold2 : Theme.crimson2
-                            objectName: "defense_" + modelData.kind + "_" + modelData.label
-                            radius: 5
-                            color: Qt.rgba(tone.r, tone.g, tone.b, 0.18)
-                            border.color: tone
-                            implicitWidth: defLbl.implicitWidth + 14
-                            implicitHeight: defLbl.implicitHeight + 6
-                            Label {
-                                id: defLbl
-                                anchors.centerIn: parent
-                                text: (modelData.kind === "resist" ? "½ " : modelData.kind === "immune" ? "⊘ " : "×2 ")
-                                      + modelData.label
-                                color: Theme.text
-                                font.pixelSize: Theme.fsSmall
-                                font.bold: true
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: Window.window.showToast(modelData.tip.replace("\n", ". "))
-                            }
-                        }
-                    }
-                }
-
-                // Concentration: what's being held, and a way to drop it
+                // Took damage while concentrating: roll to keep it, or say
+                // what you rolled yourself (the Spells screen shows the spell)
                 Rectangle {
-                    visible: sheetBridge.isConcentrating
+                    visible: sheetBridge.isConcentrating && sheetBridge.concentrationSaveDc > 0
                     Layout.fillWidth: true
                     radius: 8
                     color: Qt.rgba(Theme.amber.r, Theme.amber.g, Theme.amber.b, 0.12)
@@ -232,21 +339,15 @@ Page {
                         MIcon { name: "spells"; size: 16; color: Theme.amber2 }
                         Label {
                             objectName: "concentrationLine"
-                            text: "Concentrating: " + sheetBridge.concentratingSpell
-                                  + (sheetBridge.concentrationRoundsLeft === 1 ? " · last round"
-                                     : sheetBridge.concentrationRoundsLeft > 1
-                                       ? " · " + sheetBridge.concentrationRoundsLeft + " rounds left" : "")
+                            text: "Keep " + sheetBridge.concentratingSpell + "?"
                             color: Theme.amber2
                             font.pixelSize: Theme.fsSmall
                             font.bold: true
                             wrapMode: Text.WordWrap
                             Layout.fillWidth: true
                         }
-                        // took damage while concentrating: roll to keep it,
-                        // or say what you rolled yourself
                         MButton {
                             objectName: "concSaveButton"
-                            visible: sheetBridge.concentrationSaveDc > 0
                             implicitHeight: 36
                             text: "Save DC " + sheetBridge.concentrationSaveDc
                             onClicked: concSaveDialog.open()
@@ -260,38 +361,34 @@ Page {
                     }
                 }
 
-                // One row on wider phones; on narrow ones the amount gets its
-                // own line so Damage / Heal / Temp keep room for their text.
-                GridLayout {
-                    id: hpGrid
+                // how much, then Damage | Heal | Temp
+                MSpinBox {
+                    id: hpAmount
                     Layout.fillWidth: true
-                    columns: width >= 400 ? 4 : 3
-                    columnSpacing: 8
-                    rowSpacing: 8
-                    MSpinBox {
-                        id: hpAmount
-                        Layout.preferredWidth: 100
-                        Layout.columnSpan: hpGrid.columns === 4 ? 1 : 3
-                        from: 0
-                        to: 999
-                        value: 1
-                    }
+                    from: 0
+                    to: 999
+                    value: 1
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
                     MButton {
                         Layout.fillWidth: true
-                        Layout.preferredWidth: 0
+                        Layout.preferredWidth: 1
                         primary: false
+                        danger: true
                         text: "Damage"
                         onClicked: sheetBridge.applyDamage(hpAmount.value)
                     }
                     MButton {
                         Layout.fillWidth: true
-                        Layout.preferredWidth: 0
+                        Layout.preferredWidth: 1
                         text: "Heal"
                         onClicked: sheetBridge.applyHealing(hpAmount.value)
                     }
                     MButton {
                         Layout.fillWidth: true
-                        Layout.preferredWidth: 0
+                        Layout.preferredWidth: 1
                         primary: false
                         text: "Temp"
                         onClicked: sheetBridge.setTempHp(hpAmount.value)
@@ -347,620 +444,7 @@ Page {
                 }
             }
 
-            // ── Death saves (only at 0 HP, directly under HP so it can't
-            // be missed -- same as desktop) ─────────────────────────────
-            MCard {
-                visible: sheetBridge.showDeathSaves
-                title: "Death Saves"
-                iconName: "skull"
-                accent: Theme.crimson2
-                border.color: Theme.crimson
-
-                Label {
-                    text: sheetBridge.deathStatusText
-                    color: Theme.text
-                    font.pixelSize: Theme.fsBody
-                    font.bold: true
-                    wrapMode: Text.WordWrap
-                    Layout.fillWidth: true
-                }
-                Row {
-                    spacing: 24
-                    Column {
-                        spacing: 4
-                        Label { text: "Successes"; color: Theme.teal2; font.pixelSize: Theme.fsSmall }
-                        Row {
-                            spacing: 6
-                            Repeater {
-                                model: 3
-                                delegate: CheckBox {
-                                    checked: sheetBridge.deathSaveSuccesses > index
-                                    onToggled: sheetBridge.setDeathSaveSuccess(index, checked)
-                                }
-                            }
-                        }
-                    }
-                    Column {
-                        spacing: 4
-                        Label { text: "Failures"; color: Theme.crimson2; font.pixelSize: Theme.fsSmall }
-                        Row {
-                            spacing: 6
-                            Repeater {
-                                model: 3
-                                delegate: CheckBox {
-                                    checked: sheetBridge.deathSaveFailures > index
-                                    onToggled: sheetBridge.setDeathSaveFailure(index, checked)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── Turn tracker ────────────────────────────────────────────
-            // Tap a chip to mark it spent (or free again) -- same as
-            // desktop's turn chips. Casting a spell and the Actions
-            // screen's Use buttons also spend them.
-            MCard {
-                title: "This Turn"
-                iconName: "short_rest"
-                headerRight: MButton {
-                    primary: false
-                    implicitHeight: 36
-                    iconName: "refresh"
-                    iconSize: 16
-                    text: "New Turn"
-                    onClicked: sheetBridge.newTurn()
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-                    Repeater {
-                        model: [
-                            { key: "Action", label: "Action", icon: "combat",
-                              used: sheetBridge.turnCounts.action, limit: sheetBridge.turnCounts.actionLimit,
-                              blocked: (sheetBridge.turnCounts.blocked || {}).action || "" },
-                            { key: "Bonus Action", label: "Bonus", icon: "bonus",
-                              used: sheetBridge.turnCounts.bonusAction, limit: sheetBridge.turnCounts.bonusActionLimit,
-                              blocked: (sheetBridge.turnCounts.blocked || {}).bonusAction || "" },
-                            { key: "Reaction", label: "Reaction", icon: "bolt",
-                              used: sheetBridge.turnCounts.reaction, limit: sheetBridge.turnCounts.reactionLimit,
-                              blocked: (sheetBridge.turnCounts.blocked || {}).reaction || "" },
-                        ]
-                        delegate: Rectangle {
-                            id: chip
-                            objectName: "turnChip_" + modelData.key
-                            // captured: the pip Repeater below has its own modelData
-                            readonly property int usedCount: modelData.used
-                            readonly property int limitCount: modelData.limit
-                            readonly property bool spent: usedCount >= limitCount
-                            // a condition (Stunned, Surprised, ...) has taken this part of the turn
-                            readonly property bool blocked: modelData.blocked.length > 0
-                            Layout.fillWidth: true
-                            Layout.preferredWidth: 1
-                            Layout.preferredHeight: 62
-                            radius: 10
-                            color: spent ? Theme.surf2 : Qt.rgba(Theme.teal.r, Theme.teal.g, Theme.teal.b, 0.14)
-                            border.color: blocked ? Theme.crimson2 : (spent ? Theme.border : Theme.teal2)
-                            border.width: spent ? 1 : 2
-                            opacity: spent ? 0.65 : 1.0
-                            Column {
-                                anchors.centerIn: parent
-                                spacing: 4
-                                Row {
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    spacing: 6
-                                    MIcon {
-                                        name: modelData.icon
-                                        size: 16
-                                        color: spent ? Theme.text3 : Theme.teal2
-                                        anchors.verticalCenter: parent.verticalCenter
-                                    }
-                                    Label {
-                                        text: modelData.label
-                                        color: spent ? Theme.text3 : Theme.text
-                                        font.pixelSize: Theme.fsSmall
-                                        font.bold: true
-                                    }
-                                }
-                                Label {
-                                    visible: chip.blocked
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    text: "Blocked"
-                                    color: Theme.crimson2
-                                    font.pixelSize: Theme.fsSmall - 2
-                                }
-                                // one pip per use this turn: filled = still available
-                                Row {
-                                    visible: !chip.blocked
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    spacing: 5
-                                    Repeater {
-                                        model: chip.limitCount
-                                        delegate: Rectangle {
-                                            width: 9; height: 9; radius: 4.5
-                                            color: index < chip.limitCount - chip.usedCount ? Theme.teal2 : "transparent"
-                                            border.color: index < chip.limitCount - chip.usedCount ? Theme.teal2 : Theme.text3
-                                        }
-                                    }
-                                }
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: sheetBridge.toggleTurnSlot(modelData.key)
-                            }
-                        }
-                    }
-                }
-                Label {
-                    objectName: "turnBlockedReason"
-                    readonly property var blocks: sheetBridge.turnCounts.blocked || {}
-                    visible: text.length > 0
-                    text: blocks.action || blocks.bonusAction || blocks.reaction || ""
-                    color: Theme.crimson2
-                    font.pixelSize: Theme.fsSmall
-                    wrapMode: Text.WordWrap
-                    Layout.fillWidth: true
-                }
-            }
-
-            // ── Attacks ─────────────────────────────────────────────────
-            MCard {
-                title: "Attacks"
-                iconName: "combat"
-
-                Label {
-                    visible: sheetBridge.weapons.length === 0
-                    text: "No weapons equipped -- equip one in your Inventory."
-                    color: Theme.text3
-                    font.pixelSize: Theme.fsSmall
-                    wrapMode: Text.WordWrap
-                    Layout.fillWidth: true
-                }
-
-                Repeater {
-                    objectName: "weaponsRepeater"
-                    model: sheetBridge.weapons
-                    delegate: Rectangle {
-                        Layout.fillWidth: true
-                        implicitHeight: wCol.implicitHeight + 20
-                        radius: 10
-                        color: Theme.surf2
-                        border.color: Theme.border
-
-                        ColumnLayout {
-                            id: wCol
-                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
-                            spacing: 8
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
-                                Label {
-                                    text: modelData.name
-                                    color: Theme.text
-                                    font.pixelSize: Theme.fsBody
-                                    font.bold: true
-                                    elide: Text.ElideRight
-                                    Layout.fillWidth: true
-                                }
-                                // what it is, for an attack that isn't a held
-                                // weapon (Martial Arts, Natural, Hybrid Form...)
-                                Label {
-                                    visible: modelData.badge !== ""
-                                    text: modelData.badge
-                                    color: Theme.text2
-                                    font.pixelSize: Theme.fsSmall
-                                    font.bold: true
-                                }
-                                // advantage / disadvantage die (green A / red D)
-                                MIcon {
-                                    visible: modelData.advantage !== modelData.disadvantage
-                                    name: modelData.advantage ? "adv" : "disadv"
-                                    color: modelData.advantage ? Theme.green2 : Theme.crimson2
-                                    size: 22
-                                }
-                            }
-
-                            // to-hit and damage, side by side
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 14
-                                Column {
-                                    Label {
-                                        text: modelData.attackBonusText
-                                        color: modelData.proficient ? Theme.teal2 : Theme.amber
-                                        font.pixelSize: Theme.fsHead
-                                        font.bold: true
-                                    }
-                                    Label { text: "to hit"; color: Theme.text3; font.pixelSize: Theme.fsSmall }
-                                }
-                                Column {
-                                    Layout.fillWidth: true
-                                    Label {
-                                        text: modelData.damageDisplay
-                                        color: Theme.text
-                                        font.pixelSize: Theme.fsHead
-                                        font.bold: true
-                                    }
-                                    Label {
-                                        text: modelData.damageType
-                                        color: Theme.text3
-                                        font.pixelSize: Theme.fsSmall
-                                        wrapMode: Text.WordWrap
-                                        width: parent.width
-                                    }
-                                }
-                            }
-
-                            // the extra damage its hits carry -- spells, features,
-                            // items -- each with its damage type (core/riders.py);
-                            // plain text, the player rolls it
-                            Label {
-                                objectName: "weaponRiders_" + modelData.name
-                                visible: modelData.onHitBonusText !== ""
-                                text: modelData.onHitBonusText
-                                color: Theme.text2
-                                font.pixelSize: Theme.fsSmall
-                                wrapMode: Text.WordWrap
-                                Layout.fillWidth: true
-                            }
-                            // holding two weapons: the off-hand bonus action attack's damage
-                            Label {
-                                visible: modelData.offhandText !== ""
-                                text: modelData.offhandText
-                                color: Theme.text2
-                                font.pixelSize: Theme.fsSmall
-                                wrapMode: Text.WordWrap
-                                Layout.fillWidth: true
-                            }
-                            // what an attack that isn't a held weapon is (desktop shows it on hover)
-                            Label {
-                                visible: modelData.note !== ""
-                                text: modelData.note
-                                color: Theme.text3
-                                font.pixelSize: Theme.fsSmall
-                                wrapMode: Text.WordWrap
-                                Layout.fillWidth: true
-                            }
-
-                            Flow {
-                                Layout.fillWidth: true
-                                spacing: 6
-                                visible: modelData.magicBonus > 0 || modelData.material !== "" || !modelData.proficient
-                                Label {
-                                    visible: modelData.magicBonus > 0
-                                    text: "+" + modelData.magicBonus + " magic"
-                                    color: Theme.amber2
-                                    font.pixelSize: Theme.fsSmall
-                                    font.bold: true
-                                }
-                                Label {
-                                    visible: modelData.material !== ""
-                                    text: modelData.material
-                                    color: Theme.teal2
-                                    font.pixelSize: Theme.fsSmall
-                                    font.bold: true
-                                }
-                                Label {
-                                    visible: !modelData.proficient
-                                    text: "not proficient"
-                                    color: Theme.amber
-                                    font.pixelSize: Theme.fsSmall
-                                }
-                            }
-
-                            MCheckBox {
-                                visible: modelData.canPowerAttack
-                                text: "Power Attack (-5 to hit / +10 damage)"
-                                checked: modelData.powerAttackActive
-                                onToggled: sheetBridge.toggleWeaponPowerAttack(modelData.name)
-                            }
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
-                                // shots left in the inventory (bundles count every
-                                // piece) -- tap to change how many; a shot uses one
-                                MButton {
-                                    objectName: "ammoButton_" + modelData.name
-                                    visible: modelData.ammoKind !== ""
-                                    primary: false
-                                    iconName: "ammo"
-                                    iconSize: 14
-                                    text: modelData.ammoLabel + ": " + modelData.ammoCount
-                                    onClicked: {
-                                        root.ammoEditKind = modelData.ammoKind
-                                        root.ammoEditLabel = modelData.ammoLabel
-                                        ammoQty.value = modelData.ammoCount
-                                        ammoDialog.open()
-                                    }
-                                }
-                                MButton {
-                                    objectName: "attackButton_" + modelData.name
-                                    visible: modelData.attackBonusText !== ""
-                                    Layout.fillWidth: true
-                                    iconName: "dice"
-                                    iconSize: 16
-                                    text: "Roll to Hit"
-                                    onClicked: sheetBridge.rollWeaponAttack(modelData.name)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── Spells ──────────────────────────────────────────────────
-            MCard {
-                visible: sheetBridge.knownSpells.length > 0 || root.combatSpellGroups.length > 0
-                title: "Spells"
-                iconName: "spells"
-
-                // slot pips, same as the Spells screen (and desktop):
-                // tap one to spend or restore it
-                ColumnLayout {
-                    visible: sheetBridge.spellSlots.length > 0 || sheetBridge.pactSlots.max > 0
-                    Layout.fillWidth: true
-                    spacing: 0
-                    Repeater {
-                        model: sheetBridge.spellSlots
-                        delegate: MSlotBar {
-                            Layout.fillWidth: true
-                            label: "Level " + modelData.level
-                            max: modelData.max
-                            used: modelData.used
-                            onToggled: (n) => sheetBridge.setSlotsUsed(modelData.level, n)
-                        }
-                    }
-                    MSlotBar {
-                        Layout.fillWidth: true
-                        label: "Pact L" + sheetBridge.pactSlots.level
-                        max: sheetBridge.pactSlots.max
-                        used: sheetBridge.pactSlots.used
-                        fillColor: Theme.purple
-                        accentColor: Theme.purple2
-                        onToggled: (n) => sheetBridge.setSlotsUsed(-1, n)
-                    }
-                }
-
-                Label {
-                    visible: root.combatSpellGroups.length === 0
-                             && sheetBridge.unavailableFavourites.length === 0
-                    text: "No favourite spells yet -- tap the star on a spell on the Spells screen "
-                          + "and it'll appear here, ready to cast."
-                    color: Theme.text3
-                    font.pixelSize: Theme.fsSmall
-                    wrapMode: Text.WordWrap
-                    Layout.fillWidth: true
-                }
-
-                Repeater {
-                    model: root.combatSpellGroups
-                    delegate: ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 6
-                        Label {
-                            text: modelData.bucket
-                            color: Theme.text3
-                            font.pixelSize: Theme.fsSmall
-                            font.bold: true
-                        }
-                        Repeater {
-                            model: modelData.items
-                            delegate: RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
-                                // level badge: C for cantrips, else the level
-                                Rectangle {
-                                    implicitWidth: 30
-                                    implicitHeight: 24
-                                    radius: 6
-                                    color: Theme.surf2
-                                    border.color: modelData.spellLevel === 0 ? Theme.border : Theme.indigo2
-                                    Label {
-                                        anchors.centerIn: parent
-                                        text: modelData.spellLevel === 0 ? "C" : "L" + modelData.spellLevel
-                                        color: modelData.spellLevel === 0 ? Theme.text3 : Theme.indigo2
-                                        font.pixelSize: Theme.fsSmall
-                                        font.bold: true
-                                    }
-                                }
-                                MIcon {
-                                    visible: modelData.pinned
-                                    name: "star_solid"
-                                    size: 14
-                                }
-                                Label {
-                                    text: modelData.spellName
-                                    color: Theme.text
-                                    font.pixelSize: Theme.fsBody
-                                    elide: Text.ElideRight
-                                    Layout.fillWidth: true
-                                }
-                                Label {
-                                    visible: modelData.concentration
-                                    text: "Conc."
-                                    color: Theme.amber
-                                    font.pixelSize: Theme.fsSmall
-                                }
-                                MButton {
-                                    objectName: "castButton_" + modelData.spellName
-                                    implicitHeight: 36
-                                    implicitWidth: 72
-                                    text: "Cast"
-                                    onClicked: sheetBridge.castSpell(modelData.spellName)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Starred spells that can't be cast from here, shown anyway
-                // with the reason (usually: a prepared caster hasn't
-                // prepared it) rather than silently left out.
-                Label {
-                    visible: sheetBridge.unavailableFavourites.length > 0
-                    text: "Starred, not castable here"
-                    color: Theme.text3
-                    font.pixelSize: Theme.fsSmall
-                    font.bold: true
-                }
-                Repeater {
-                    model: sheetBridge.unavailableFavourites
-                    delegate: ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            Rectangle {
-                                implicitWidth: 30
-                                implicitHeight: 24
-                                radius: 6
-                                color: Theme.surf2
-                                border.color: Theme.border
-                                Label {
-                                    anchors.centerIn: parent
-                                    text: modelData.level === 0 ? "C" : modelData.levelText
-                                    color: Theme.text3
-                                    font.pixelSize: Theme.fsSmall
-                                    font.bold: true
-                                }
-                            }
-                            MIcon {
-                                name: "star_solid"
-                                size: 14
-                                color: Theme.text3
-                            }
-                            Label {
-                                text: modelData.name
-                                color: Theme.text3
-                                font.pixelSize: Theme.fsBody
-                                elide: Text.ElideRight
-                                Layout.fillWidth: true
-                            }
-                            MButton {
-                                implicitHeight: 36
-                                implicitWidth: 72
-                                text: "Cast"
-                                enabled: false
-                            }
-                        }
-                        Label {
-                            text: modelData.reason
-                            color: Theme.text3
-                            font.pixelSize: Theme.fsSmall
-                            font.italic: true
-                            wrapMode: Text.WordWrap
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 38
-                        }
-                    }
-                }
-            }
-
-            // ── Hit dice ────────────────────────────────────────────────
-            MCard {
-                visible: sheetBridge.hitDiceList.length > 0
-                title: "Hit Dice"
-                iconName: "dice"
-
-                Repeater {
-                    model: sheetBridge.hitDiceList
-                    delegate: RowLayout {
-                        Layout.fillWidth: true
-                        Label {
-                            text: modelData.dieKey + "  (" + modelData.remaining + " / " + modelData.total + ")"
-                            color: Theme.text
-                            font.pixelSize: Theme.fsBody
-                            Layout.fillWidth: true
-                        }
-                        MButton {
-                            primary: false
-                            implicitHeight: 36
-                            iconName: "dice"
-                            iconSize: 16
-                            text: "Spend"
-                            enabled: modelData.remaining > 0
-                            onClicked: sheetBridge.spendHitDie(modelData.dieKey)
-                        }
-                    }
-                }
-            }
-
-            // ── Wild Shape (Druids only) ────────────────────────────────
-            // While transformed, the HP/AC cards above already show the
-            // beast's own numbers (CharacterSheetBridge repurposes them).
-            // (anyone's, in another creature's form: Polymorph, Shapechange)
-            MCard {
-                visible: sheetBridge.wildShapeAvailable || sheetBridge.wildShapeActive
-                title: sheetBridge.formKind || "Wild Shape"
-                iconName: "paw"
-                accent: Theme.indigo2
-
-                Column {
-                    id: wsCol
-                    Layout.fillWidth: true
-                    spacing: 10
-
-                    ColumnLayout {
-                        visible: sheetBridge.wildShapeActive
-                        width: wsCol.width
-                        spacing: 6
-                        Label {
-                            text: (sheetBridge.formKind === "Wild Shape" ? "Currently: " : sheetBridge.formKind + ": ")
-                                  + sheetBridge.wildShapeActiveBeast
-                            color: Theme.text
-                            font.pixelSize: Theme.fsBody
-                            font.bold: true
-                        }
-                        MButton {
-                            primary: false
-                            text: sheetBridge.formKind === "Wild Shape" ? "Revert to Normal Form"
-                                                                        : "End " + sheetBridge.formKind
-                            onClicked: sheetBridge.revertWildShape()
-                        }
-                    }
-
-                    ColumnLayout {
-                        visible: !sheetBridge.wildShapeActive
-                        width: wsCol.width
-                        spacing: 6
-                        ComboBox {
-                            id: beastPicker
-                            Layout.fillWidth: true
-                            model: sheetBridge.availableWildShapeBeasts
-                            textRole: "name"
-                            valueRole: "name"
-                            displayText: currentIndex >= 0 && model.length > 0
-                                         ? model[currentIndex].name + " (CR " + model[currentIndex].crLabel + ")"
-                                         : "No beasts available"
-                        }
-                        Label {
-                            text: sheetBridge.wildShapeUsesLeft < 0
-                                  ? "Unlimited uses (Archdruid)"
-                                  : sheetBridge.wildShapeUsesLeft + " / " + sheetBridge.wildShapeUsesMax + " uses remaining (short/long rest)"
-                            color: Theme.text3
-                            font.pixelSize: Theme.fsSmall
-                        }
-                        Label {
-                            text: sheetBridge.wildShapeRestrictionText
-                            color: Theme.text3
-                            font.pixelSize: Theme.fsSmall
-                        }
-                        MButton {
-                            text: sheetBridge.wildShapeUsesLeft < 0 ? "Transform" : "Transform (" + sheetBridge.wildShapeUsesLeft + " left)"
-                            enabled: beastPicker.model.length > 0
-                                     && (sheetBridge.wildShapeUsesLeft < 0 || sheetBridge.wildShapeUsesLeft > 0)
-                            onClicked: sheetBridge.transformWildShape(beastPicker.currentValue)
-                        }
-                    }
-                }
-            }
-
-            // ── Conditions & Effects: one card, a tab each (as desktop's) ──
+            // ── Defences, Conditions & Effects: one card, a tab each (as desktop's) ──
             // Conditions: tap one to put it on or take it off, press and
             // hold for what it does. Effects: Bless or Guidance an ally
             // cast, a potion...: what each does, End to take it off, and
@@ -968,9 +452,10 @@ Page {
             MCard {
                 id: ceCard
                 objectName: "conditionsEffectsCard"
-                title: "Conditions & Effects"
+                title: "Defences & Conditions"
                 iconName: "cond_stunned"
-                property int page: 0
+                // pages: conditions 0, effects 1, defences 2; Defences is first
+                property int page: 2
                 readonly property int condCount: sheetBridge.activeConditions.filter(function(c) { return c.name.indexOf("Exhaustion") !== 0 }).length
                                                  + (sheetBridge.exhaustionLevel > 0 ? 1 : 0)
                 readonly property int fxCount: sheetBridge.activeEffectRows.length
@@ -979,16 +464,17 @@ Page {
                     Layout.fillWidth: true
                     spacing: 0
                     Repeater {
-                        model: [["Conditions", ceCard.condCount], ["Effects", ceCard.fxCount]]
+                        model: [["Defences", sheetBridge.defenseRows.length, 2],
+                                ["Conditions", ceCard.condCount, 0], ["Effects", ceCard.fxCount, 1]]
                         delegate: Button {
                             id: ceTab
                             objectName: "ceTab_" + modelData[0]
-                            readonly property bool on: ceCard.page === index
+                            readonly property bool on: ceCard.page === modelData[2]
                             Layout.fillWidth: true
                             implicitHeight: 40
                             topInset: 0
                             bottomInset: 0
-                            onClicked: ceCard.page = index
+                            onClicked: ceCard.page = modelData[2]
                             contentItem: Text {
                                 text: modelData[0] + (modelData[1] > 0 ? " (" + modelData[1] + ")" : "")
                                 color: ceTab.on ? Theme.gold2 : Theme.text2
@@ -1003,6 +489,75 @@ Page {
                                     anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                                     height: ceTab.on ? 3 : 1
                                     color: ceTab.on ? Theme.gold : Theme.border
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── your defences: Vulnerabilities, Resistances, Immunities,
+                // always each group -- its types three to a row, or "None";
+                // a tap says where one comes from (as desktop's)
+                ColumnLayout {
+                    objectName: "defencesPage"
+                    visible: ceCard.page === 2
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Repeater {
+                        model: [{ kind: "vulnerable", mark: "×2", word: "Vulnerabilities", tone: Theme.crimson2 },
+                                { kind: "resist", mark: "½", word: "Resistances", tone: Theme.teal2 },
+                                { kind: "immune", mark: "⊘", word: "Immunities", tone: Theme.gold2 }]
+                        delegate: ColumnLayout {
+                            readonly property var grp: modelData
+                            readonly property var items: sheetBridge.defenseRows.filter(function(d) { return d.kind === grp.kind })
+                            Layout.fillWidth: true
+                            spacing: 4
+                            Label {
+                                text: grp.mark + "  " + grp.word + (items.length ? "  (" + items.length + ")" : "")
+                                color: items.length ? grp.tone : Theme.text3
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                            }
+                            Label {
+                                visible: items.length === 0
+                                text: "None"
+                                color: Theme.text3
+                                font.pixelSize: Theme.fsSmall
+                            }
+                            GridLayout {
+                                visible: items.length > 0
+                                Layout.fillWidth: true
+                                columns: 3
+                                columnSpacing: 6
+                                rowSpacing: 6
+                                Repeater {
+                                    model: items
+                                    delegate: Rectangle {
+                                        // a condition shows by its name alone, dashed-looking (fainter)
+                                        readonly property bool cond: modelData.label.indexOf(" (condition)") > 0
+                                        objectName: "defense_" + modelData.kind + "_" + modelData.label
+                                        Layout.fillWidth: true
+                                        Layout.preferredWidth: 1
+                                        implicitHeight: 30
+                                        radius: 6
+                                        color: Qt.rgba(grp.tone.r, grp.tone.g, grp.tone.b, cond ? 0.08 : 0.16)
+                                        border.color: Qt.rgba(grp.tone.r, grp.tone.g, grp.tone.b, cond ? 0.4 : 0.6)
+                                        Label {
+                                            anchors { fill: parent; leftMargin: 8; rightMargin: 4 }
+                                            verticalAlignment: Text.AlignVCenter
+                                            text: cond ? modelData.label.replace(" (condition)", "") : modelData.label
+                                            color: grp.tone
+                                            font.pixelSize: Theme.fsSmall
+                                            font.bold: true
+                                            font.italic: cond
+                                            elide: Text.ElideRight
+                                        }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            onClicked: Window.window.showToast((cond ? "Condition. " : "")
+                                                                               + modelData.tip.replace("\n", ". "))
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1346,6 +901,602 @@ Page {
                         primary: false
                         text: "Add an effect on you"
                         onClicked: effectPicker.open()
+                    }
+                }
+            }
+
+            // ── Weapons: each attack's damage, the hand it's in and what
+            // it costs, and its to-hit as the roll button (as desktop's
+            // rows); then what's ready to throw ──────────────────────────
+            MCard {
+                title: "Weapons"
+                iconName: "combat"
+
+                Label {
+                    visible: sheetBridge.weapons.length === 0
+                    text: "No weapons equipped -- equip one in your Inventory."
+                    color: Theme.text3
+                    font.pixelSize: Theme.fsSmall
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+
+                Repeater {
+                    objectName: "weaponsRepeater"
+                    model: sheetBridge.weapons
+                    delegate: Rectangle {
+                        readonly property string advWord: modelData.advantage && modelData.disadvantage ? "ADV/DISADV"
+                                                          : modelData.advantage ? "ADV"
+                                                          : modelData.disadvantage ? "DISADV" : ""
+                        Layout.fillWidth: true
+                        implicitHeight: wCol.implicitHeight + 16
+                        radius: 10
+                        color: Theme.surf2
+                        border.color: Theme.border
+
+                        ColumnLayout {
+                            id: wCol
+                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8; leftMargin: 10 }
+                            spacing: 6
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Label {
+                                    text: modelData.name
+                                    color: Theme.text
+                                    font.pixelSize: Theme.fsBody
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                                // what it is, for an attack that isn't a held
+                                // weapon (Martial Arts, Natural, Brown Bear...)
+                                Label {
+                                    visible: modelData.badge !== ""
+                                    text: modelData.badge
+                                    color: Theme.text2
+                                    font.pixelSize: Theme.fsSmall
+                                    font.bold: true
+                                }
+                                MButton {
+                                    objectName: "attackButton_" + modelData.name
+                                    visible: modelData.attackBonusText !== ""
+                                    implicitWidth: 64
+                                    implicitHeight: 36
+                                    text: modelData.attackBonusText
+                                    Accessible.name: "Roll to hit, " + modelData.attackBonusText
+                                    onClicked: sheetBridge.rollWeaponAttack(modelData.name)
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Label {
+                                    text: modelData.damageDisplay + " " + modelData.damageType
+                                    color: Theme.gold2
+                                    font.pixelSize: Theme.fsBody
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                                Label {
+                                    visible: advWord !== ""
+                                    text: advWord
+                                    color: Theme.amber
+                                    font.pixelSize: Theme.fsSmall - 1
+                                    font.bold: true
+                                }
+                            }
+
+                            // the extra damage its hits carry (core/riders.py)
+                            Label {
+                                objectName: "weaponRiders_" + modelData.name
+                                visible: modelData.onHitBonusText !== ""
+                                text: modelData.onHitBonusText
+                                color: Theme.text2
+                                font.pixelSize: Theme.fsSmall
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+
+                            // the hand it's in, what it costs, its ammunition
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 6
+                                Repeater {
+                                    model: [modelData.hand,
+                                            modelData.cost === "Bonus Action" ? "Bonus action" : modelData.cost]
+                                    delegate: Rectangle {
+                                        visible: modelData !== ""
+                                        readonly property color tone: modelData === "Action" ? Theme.green2
+                                                                      : modelData === "Bonus action" ? Theme.indigo2 : Theme.text2
+                                        implicitWidth: tagLbl.implicitWidth + 14
+                                        implicitHeight: 24
+                                        radius: 5
+                                        color: Qt.rgba(tone.r, tone.g, tone.b, 0.12)
+                                        border.color: Qt.rgba(tone.r, tone.g, tone.b, 0.5)
+                                        Label {
+                                            id: tagLbl
+                                            anchors.centerIn: parent
+                                            text: modelData
+                                            color: parent.tone
+                                            font.pixelSize: Theme.fsSmall - 1
+                                            font.bold: true
+                                        }
+                                    }
+                                }
+                                Item { Layout.fillWidth: true }
+                                // shots left in the inventory -- tap to change
+                                // how many; a shot uses one
+                                MButton {
+                                    objectName: "ammoButton_" + modelData.name
+                                    visible: modelData.ammoKind !== ""
+                                    primary: false
+                                    implicitHeight: 32
+                                    iconName: "ammo"
+                                    iconSize: 14
+                                    text: modelData.ammoLabel + ": " + modelData.ammoCount
+                                    onClicked: {
+                                        root.ammoEditKind = modelData.ammoKind
+                                        root.ammoEditLabel = modelData.ammoLabel
+                                        ammoQty.value = modelData.ammoCount
+                                        ammoDialog.open()
+                                    }
+                                }
+                            }
+
+                            MCheckBox {
+                                visible: modelData.canPowerAttack
+                                text: "Power Attack (-5 to hit / +10 damage)"
+                                checked: modelData.powerAttackActive
+                                onToggled: sheetBridge.toggleWeaponPowerAttack(modelData.name)
+                            }
+                        }
+                    }
+                }
+
+                // flasks and explosives marked ready in the Loadout: each
+                // one's count and its roll (an attack bonus, or a save DC);
+                // throwing one is an action and uses it up
+                Label {
+                    objectName: "readyToThrowHead"
+                    visible: sheetBridge.readyThrows.length > 0
+                    text: "READY TO THROW"
+                    color: Theme.amber2
+                    font.pixelSize: Theme.fsSmall - 1
+                    font.bold: true
+                    font.letterSpacing: 1
+                }
+                GridLayout {
+                    visible: sheetBridge.readyThrows.length > 0
+                    Layout.fillWidth: true
+                    columns: width >= 420 ? 2 : 1
+                    columnSpacing: 8
+                    rowSpacing: 8
+                    Repeater {
+                        model: sheetBridge.readyThrows
+                        delegate: Rectangle {
+                            objectName: "throwRow_" + modelData.name
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 1
+                            implicitHeight: 48
+                            radius: 10
+                            color: Theme.surf2
+                            border.color: Qt.rgba(Theme.amber.r, Theme.amber.g, Theme.amber.b, 0.5)
+                            RowLayout {
+                                anchors { fill: parent; leftMargin: 10; rightMargin: 6 }
+                                spacing: 6
+                                Label {
+                                    text: modelData.label + "  ×" + modelData.qty
+                                    color: Theme.text
+                                    font.pixelSize: Theme.fsBody
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                                Rectangle {
+                                    implicitWidth: actLbl.implicitWidth + 14
+                                    implicitHeight: 24
+                                    radius: 5
+                                    color: Qt.rgba(Theme.green2.r, Theme.green2.g, Theme.green2.b, 0.12)
+                                    border.color: Qt.rgba(Theme.green2.r, Theme.green2.g, Theme.green2.b, 0.5)
+                                    Label {
+                                        id: actLbl
+                                        anchors.centerIn: parent
+                                        text: "Action"
+                                        color: Theme.green2
+                                        font.pixelSize: Theme.fsSmall - 1
+                                        font.bold: true
+                                    }
+                                }
+                                MButton {
+                                    objectName: "throwButton_" + modelData.name
+                                    implicitWidth: 70
+                                    implicitHeight: 36
+                                    text: modelData.roll || "Throw"
+                                    Accessible.name: "Throw " + modelData.label
+                                    onClicked: sheetBridge.throwItem(modelData.name)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Wild Shape (Druids only) ────────────────────────────────
+            // While transformed, the HP/AC cards above already show the
+            // beast's own numbers (CharacterSheetBridge repurposes them).
+            // (anyone's, in another creature's form: Polymorph, Shapechange)
+            MCard {
+                visible: sheetBridge.wildShapeAvailable || sheetBridge.wildShapeActive
+                title: sheetBridge.formKind || "Wild Shape"
+                iconName: "paw"
+                accent: Theme.indigo2
+
+                Column {
+                    id: wsCol
+                    Layout.fillWidth: true
+                    spacing: 10
+
+                    ColumnLayout {
+                        visible: sheetBridge.wildShapeActive
+                        width: wsCol.width
+                        spacing: 6
+                        Label {
+                            text: (sheetBridge.formKind === "Wild Shape" ? "Currently: " : sheetBridge.formKind + ": ")
+                                  + sheetBridge.wildShapeActiveBeast
+                            color: Theme.text
+                            font.pixelSize: Theme.fsBody
+                            font.bold: true
+                        }
+                        MButton {
+                            primary: false
+                            text: sheetBridge.formKind === "Wild Shape" ? "Revert to Normal Form"
+                                                                        : "End " + sheetBridge.formKind
+                            onClicked: sheetBridge.revertWildShape()
+                        }
+                    }
+
+                    ColumnLayout {
+                        visible: !sheetBridge.wildShapeActive
+                        width: wsCol.width
+                        spacing: 6
+                        ComboBox {
+                            id: beastPicker
+                            Layout.fillWidth: true
+                            model: sheetBridge.availableWildShapeBeasts
+                            textRole: "name"
+                            valueRole: "name"
+                            displayText: currentIndex >= 0 && model.length > 0
+                                         ? model[currentIndex].name + " (CR " + model[currentIndex].crLabel + ")"
+                                         : "No beasts available"
+                        }
+                        Label {
+                            text: sheetBridge.wildShapeUsesLeft < 0
+                                  ? "Unlimited uses (Archdruid)"
+                                  : sheetBridge.wildShapeUsesLeft + " / " + sheetBridge.wildShapeUsesMax + " uses remaining (short/long rest)"
+                            color: Theme.text3
+                            font.pixelSize: Theme.fsSmall
+                        }
+                        Label {
+                            text: sheetBridge.wildShapeRestrictionText
+                            color: Theme.text3
+                            font.pixelSize: Theme.fsSmall
+                        }
+                        MButton {
+                            text: sheetBridge.wildShapeUsesLeft < 0 ? "Transform" : "Transform (" + sheetBridge.wildShapeUsesLeft + " left)"
+                            enabled: beastPicker.model.length > 0
+                                     && (sheetBridge.wildShapeUsesLeft < 0 || sheetBridge.wildShapeUsesLeft > 0)
+                            onClicked: sheetBridge.transformWildShape(beastPicker.currentValue)
+                        }
+                    }
+                }
+            }
+
+            // ── Turn tracker ────────────────────────────────────────────
+            // Tap a chip to mark it spent (or free again) -- same as
+            // desktop's turn chips. Casting a spell and the Actions
+            // screen's Use buttons also spend them.
+            MCard {
+                title: "This Turn"
+                iconName: "short_rest"
+                headerRight: MButton {
+                    primary: false
+                    implicitHeight: 36
+                    iconName: "refresh"
+                    iconSize: 16
+                    text: "New Turn"
+                    onClicked: sheetBridge.newTurn()
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Repeater {
+                        model: [
+                            { key: "Action", label: "Action", icon: "combat",
+                              used: sheetBridge.turnCounts.action, limit: sheetBridge.turnCounts.actionLimit,
+                              blocked: (sheetBridge.turnCounts.blocked || {}).action || "" },
+                            { key: "Bonus Action", label: "Bonus", icon: "bonus",
+                              used: sheetBridge.turnCounts.bonusAction, limit: sheetBridge.turnCounts.bonusActionLimit,
+                              blocked: (sheetBridge.turnCounts.blocked || {}).bonusAction || "" },
+                            { key: "Reaction", label: "Reaction", icon: "bolt",
+                              used: sheetBridge.turnCounts.reaction, limit: sheetBridge.turnCounts.reactionLimit,
+                              blocked: (sheetBridge.turnCounts.blocked || {}).reaction || "" },
+                        ]
+                        delegate: Rectangle {
+                            id: chip
+                            objectName: "turnChip_" + modelData.key
+                            // captured: the pip Repeater below has its own modelData
+                            readonly property int usedCount: modelData.used
+                            readonly property int limitCount: modelData.limit
+                            readonly property bool spent: usedCount >= limitCount
+                            // a condition (Stunned, Surprised, ...) has taken this part of the turn
+                            readonly property bool blocked: modelData.blocked.length > 0
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 1
+                            Layout.preferredHeight: 62
+                            radius: 10
+                            color: spent ? Theme.surf2 : Qt.rgba(Theme.teal.r, Theme.teal.g, Theme.teal.b, 0.14)
+                            border.color: blocked ? Theme.crimson2 : (spent ? Theme.border : Theme.teal2)
+                            border.width: spent ? 1 : 2
+                            opacity: spent ? 0.65 : 1.0
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 4
+                                Row {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    spacing: 6
+                                    MIcon {
+                                        name: modelData.icon
+                                        size: 16
+                                        color: spent ? Theme.text3 : Theme.teal2
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                    Label {
+                                        text: modelData.label
+                                        color: spent ? Theme.text3 : Theme.text
+                                        font.pixelSize: Theme.fsSmall
+                                        font.bold: true
+                                    }
+                                }
+                                Label {
+                                    visible: chip.blocked
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: "Blocked"
+                                    color: Theme.crimson2
+                                    font.pixelSize: Theme.fsSmall - 2
+                                }
+                                // one pip per use this turn: filled = still available
+                                Row {
+                                    visible: !chip.blocked
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    spacing: 5
+                                    Repeater {
+                                        model: chip.limitCount
+                                        delegate: Rectangle {
+                                            width: 9; height: 9; radius: 4.5
+                                            color: index < chip.limitCount - chip.usedCount ? Theme.teal2 : "transparent"
+                                            border.color: index < chip.limitCount - chip.usedCount ? Theme.teal2 : Theme.text3
+                                        }
+                                    }
+                                }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: sheetBridge.toggleTurnSlot(modelData.key)
+                            }
+                        }
+                    }
+                }
+                Label {
+                    objectName: "turnBlockedReason"
+                    readonly property var blocks: sheetBridge.turnCounts.blocked || {}
+                    visible: text.length > 0
+                    text: blocks.action || blocks.bonusAction || blocks.reaction || ""
+                    color: Theme.crimson2
+                    font.pixelSize: Theme.fsSmall
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+            }
+
+            // ── Spells ──────────────────────────────────────────────────
+            MCard {
+                visible: sheetBridge.knownSpells.length > 0 || root.combatSpellGroups.length > 0
+                title: "Spells"
+                iconName: "spells"
+
+                // slot pips, same as the Spells screen (and desktop):
+                // tap one to spend or restore it
+                ColumnLayout {
+                    visible: sheetBridge.spellSlots.length > 0 || sheetBridge.pactSlots.max > 0
+                    Layout.fillWidth: true
+                    spacing: 0
+                    Repeater {
+                        model: sheetBridge.spellSlots
+                        delegate: MSlotBar {
+                            Layout.fillWidth: true
+                            label: "Level " + modelData.level
+                            max: modelData.max
+                            used: modelData.used
+                            onToggled: (n) => sheetBridge.setSlotsUsed(modelData.level, n)
+                        }
+                    }
+                    MSlotBar {
+                        Layout.fillWidth: true
+                        label: "Pact L" + sheetBridge.pactSlots.level
+                        max: sheetBridge.pactSlots.max
+                        used: sheetBridge.pactSlots.used
+                        fillColor: Theme.purple
+                        accentColor: Theme.purple2
+                        onToggled: (n) => sheetBridge.setSlotsUsed(-1, n)
+                    }
+                }
+
+                Label {
+                    visible: root.combatSpellGroups.length === 0
+                             && sheetBridge.unavailableFavourites.length === 0
+                    text: "No favourite spells yet -- tap the star on a spell on the Spells screen "
+                          + "and it'll appear here, ready to cast."
+                    color: Theme.text3
+                    font.pixelSize: Theme.fsSmall
+                    wrapMode: Text.WordWrap
+                    Layout.fillWidth: true
+                }
+
+                Repeater {
+                    model: root.combatSpellGroups
+                    delegate: ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Label {
+                            text: modelData.bucket
+                            color: Theme.text3
+                            font.pixelSize: Theme.fsSmall
+                            font.bold: true
+                        }
+                        Repeater {
+                            model: modelData.items
+                            delegate: RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                // level badge: C for cantrips, else the level
+                                Rectangle {
+                                    implicitWidth: 30
+                                    implicitHeight: 24
+                                    radius: 6
+                                    color: Theme.surf2
+                                    border.color: modelData.spellLevel === 0 ? Theme.border : Theme.indigo2
+                                    Label {
+                                        anchors.centerIn: parent
+                                        text: modelData.spellLevel === 0 ? "C" : "L" + modelData.spellLevel
+                                        color: modelData.spellLevel === 0 ? Theme.text3 : Theme.indigo2
+                                        font.pixelSize: Theme.fsSmall
+                                        font.bold: true
+                                    }
+                                }
+                                MIcon {
+                                    visible: modelData.pinned
+                                    name: "star_solid"
+                                    size: 14
+                                }
+                                Label {
+                                    text: modelData.spellName
+                                    color: Theme.text
+                                    font.pixelSize: Theme.fsBody
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                                Label {
+                                    visible: modelData.concentration
+                                    text: "Conc."
+                                    color: Theme.amber
+                                    font.pixelSize: Theme.fsSmall
+                                }
+                                MButton {
+                                    objectName: "castButton_" + modelData.spellName
+                                    implicitHeight: 36
+                                    implicitWidth: 72
+                                    text: "Cast"
+                                    onClicked: sheetBridge.castSpell(modelData.spellName)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Starred spells that can't be cast from here, shown anyway
+                // with the reason (usually: a prepared caster hasn't
+                // prepared it) rather than silently left out.
+                Label {
+                    visible: sheetBridge.unavailableFavourites.length > 0
+                    text: "Starred, not castable here"
+                    color: Theme.text3
+                    font.pixelSize: Theme.fsSmall
+                    font.bold: true
+                }
+                Repeater {
+                    model: sheetBridge.unavailableFavourites
+                    delegate: ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Rectangle {
+                                implicitWidth: 30
+                                implicitHeight: 24
+                                radius: 6
+                                color: Theme.surf2
+                                border.color: Theme.border
+                                Label {
+                                    anchors.centerIn: parent
+                                    text: modelData.level === 0 ? "C" : modelData.levelText
+                                    color: Theme.text3
+                                    font.pixelSize: Theme.fsSmall
+                                    font.bold: true
+                                }
+                            }
+                            MIcon {
+                                name: "star_solid"
+                                size: 14
+                                color: Theme.text3
+                            }
+                            Label {
+                                text: modelData.name
+                                color: Theme.text3
+                                font.pixelSize: Theme.fsBody
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                            MButton {
+                                implicitHeight: 36
+                                implicitWidth: 72
+                                text: "Cast"
+                                enabled: false
+                            }
+                        }
+                        Label {
+                            text: modelData.reason
+                            color: Theme.text3
+                            font.pixelSize: Theme.fsSmall
+                            font.italic: true
+                            wrapMode: Text.WordWrap
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 38
+                        }
+                    }
+                }
+            }
+
+            // ── Hit dice ────────────────────────────────────────────────
+            MCard {
+                visible: sheetBridge.hitDiceList.length > 0
+                title: "Hit Dice"
+                iconName: "dice"
+
+                Repeater {
+                    model: sheetBridge.hitDiceList
+                    delegate: RowLayout {
+                        Layout.fillWidth: true
+                        Label {
+                            text: modelData.dieKey + "  (" + modelData.remaining + " / " + modelData.total + ")"
+                            color: Theme.text
+                            font.pixelSize: Theme.fsBody
+                            Layout.fillWidth: true
+                        }
+                        MButton {
+                            primary: false
+                            implicitHeight: 36
+                            iconName: "dice"
+                            iconSize: 16
+                            text: "Spend"
+                            enabled: modelData.remaining > 0
+                            onClicked: sheetBridge.spendHitDie(modelData.dieKey)
+                        }
                     }
                 }
             }
