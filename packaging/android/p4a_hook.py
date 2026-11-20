@@ -780,6 +780,10 @@ def _patch_manifest_theme_icons(dist, slugs) -> bool:
     if len(filters) != 1:
         warning("p4a_hook: PythonActivity's launcher intent-filter not found -- one launcher icon only")
         return False
+    # Qt reads its start-up settings (android.app.lib_name...) from the
+    # meta-data of the component that launched it -- for an alias, the
+    # alias's own -- so each alias carries a copy of the activity's
+    meta = "".join(f"        {m}\n" for m in re.findall(r"<meta-data\b[^>]*?/>", block, re.S))
     app_icon = re.search(r'<application\b[^>]*android:icon="([^"]+)"', xml)
     default_icon = app_icon.group(1) if app_icon else "@mipmap/icon"
     launcher = ('\n        <intent-filter>\n'
@@ -792,7 +796,7 @@ def _patch_manifest_theme_icons(dist, slugs) -> bool:
                 f'        android:targetActivity="org.kivy.android.PythonActivity"\n'
                 f'        android:icon="{icon}" android:roundIcon="{icon}"\n'
                 f'        android:enabled="{"true" if on else "false"}" android:exported="true">{launcher}'
-                f'    </activity-alias>\n')
+                f'{meta}    </activity-alias>\n')
     aliases = (f"\n    <!-- {THEME_ICON_MARK} (packaging/android/p4a_hook.py) -->\n"
                + alias("default", default_icon, True)
                + "".join(alias(sl, f"@mipmap/icon_{sl}", False) for sl in slugs))

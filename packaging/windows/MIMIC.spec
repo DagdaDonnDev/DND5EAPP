@@ -319,7 +319,7 @@ if os.path.isfile(_SPLASH_PNG):
         binaries=a.binaries,
         datas=a.datas,
         text_pos=None,          # no bootloader-drawn progress text
-        always_on_top=True,
+        always_on_top=False,     # it never covers what you're doing
     )
     _splash_target = [splash]
     _splash_binaries = [splash.binaries]

@@ -1754,7 +1754,7 @@ def main(app=None, splash=None):
     win = CharacterCreatorApp()   # build eagerly; window itself stays hidden
 
     def _reveal():
-        win.show()
+        # (the splash fades, then shows the window: no flash of both)
         splash.finish_and_close(win)
 
     if splash.loop_complete:

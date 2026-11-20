@@ -38,7 +38,9 @@ has been rebuilt so everything fits, even on your worst day.
   damage. A throw you go through with uses one up.
 - **The app icon in your theme's colours** (both apps): the d20 takes the
   colours of the theme picked on the character chooser. On desktop that's
-  the window and taskbar icon, and it changes with the theme. On Android
+  the window and taskbar icon, and it changes with the theme; on Windows
+  your pins (taskbar and Start) and desktop shortcuts to MIMIC.exe take
+  the menu's theme's d20 too. On Android
   it's the icon you tap to open the app; it changes when you leave the
   app. Obsidian keeps the icon as it is, and Blood Moon has the classic
   bright red d20.
@@ -60,7 +62,10 @@ has been rebuilt so everything fits, even on your worst day.
   a border in the theme's colours, plays at an unhurried pace and holds
   on the name for a moment before the app shows. The still image shown
   while the desktop app unpacks is its first frame, so the two run into
-  each other. On Android it plays as the app opens, and a tap skips it.
+  each other. On desktop it's a rounded card that never takes the focus
+  or sits over other windows, so you can carry on elsewhere while it
+  loads, and it fades out as the app appears. On Android it plays as the
+  app opens, and a tap skips it.
 
 ### 🔧 Fixes
 

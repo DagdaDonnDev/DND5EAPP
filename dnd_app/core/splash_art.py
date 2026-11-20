@@ -73,10 +73,16 @@ def _recolour(img: QImage, t: dict) -> QImage:
 
 
 def _compose(i: int, art: QImage, t: dict, last: bool) -> QImage:
-    out = QImage(SIZE, SIZE, QImage.Format_ARGB32)
-    out.fill(QColor(t["BG"]))
+    # a rounded card: outside its corners stays see-through
+    from PySide6.QtGui import QPainterPath
+    out = QImage(SIZE, SIZE, QImage.Format_ARGB32_Premultiplied)
+    out.fill(Qt.transparent)
     p = QPainter(out)
     p.setRenderHint(QPainter.Antialiasing)
+    card = QPainterPath()
+    card.addRoundedRect(QRectF(4, 4, SIZE - 8, SIZE - 8), 44, 44)
+    p.fillPath(card, QColor(t["BG"]))
+    p.setClipPath(card)
     strength = 150 if i in _BITE else (95 if i in _AWAKE else 55)
     g = QRadialGradient(QPointF(SIZE / 2, SIZE * 0.46), SIZE * 0.32)
     c = QColor(t["INDIGO"]); c.setAlpha(strength)
@@ -85,6 +91,7 @@ def _compose(i: int, art: QImage, t: dict, last: bool) -> QImage:
     p.drawImage(0, -30, art)
     # the border: the theme's accent edge round a rounded frame
     from PySide6.QtGui import QPen
+    p.setClipping(False)
     p.setBrush(Qt.NoBrush)
     p.setPen(QPen(QColor(t["BORDER2"]), 10))
     p.drawRoundedRect(QRectF(9, 9, SIZE - 18, SIZE - 18), 40, 40)

@@ -90,7 +90,12 @@ class AnimatedSplash(QSplashScreen):
         else:
             pm = _fallback_pixmap()
         super().__init__(pm)
-        self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
+        # a rounded card (see-through corners) that never takes the focus
+        # or sits over other windows: you can carry on elsewhere while it
+        # loads
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
+        self.setWindowFlags(Qt.SplashScreen | Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus)
         if self._frames:
             self._timer = QTimer(self)
             self._timer.setSingleShot(True)
@@ -151,6 +156,19 @@ class AnimatedSplash(QSplashScreen):
             pass
 
     def finish_and_close(self, widget):
+        """It fades out (a quarter of a second), then the window it was
+        covering for shows."""
         if self._frames:
             self._timer.stop()
-        self.finish(widget)
+        from PySide6.QtCore import QPropertyAnimation
+        anim = QPropertyAnimation(self, b"windowOpacity", self)
+        anim.setDuration(250)
+        anim.setStartValue(1.0)
+        anim.setEndValue(0.0)
+
+        def done():
+            widget.show()
+            self.finish(widget)
+        anim.finished.connect(done)
+        self._fade_out = anim
+        anim.start()
