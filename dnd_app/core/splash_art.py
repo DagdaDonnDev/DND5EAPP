@@ -125,3 +125,28 @@ def frame_count() -> int:
 def delays() -> list:
     """Each frame's time on screen, in ms, at the animation's speed."""
     return [max(15, int(d / SPEED)) for _, d in _frames()]
+
+
+def still(theme: str = "(Dark) Obsidian") -> QImage:
+    """The first frame with hard edges, for the .exe's still image
+    (ui_desktop/splash/splash.png, shown by PyInstaller before Python
+    starts). That splash draws see-through pixels over magenta and then
+    keys the magenta out, so a soft, half see-through edge comes out
+    pink: here each pixel is either fully see-through or fully solid
+    (laid over the theme's background)."""
+    img = frame(theme, 0).convertToFormat(QImage.Format_ARGB32)
+    bg = QColor(_palette(theme)["BG"])
+    out = QImage(img.size(), QImage.Format_ARGB32)
+    for y in range(img.height()):
+        for x in range(img.width()):
+            c = img.pixelColor(x, y)
+            a = c.alphaF()
+            if a >= 1.0:
+                out.setPixelColor(x, y, c)
+            elif a < 0.5:
+                out.setPixelColor(x, y, QColor(0, 0, 0, 0))
+            else:
+                out.setPixelColor(x, y, QColor.fromRgbF(c.redF() * a + bg.redF() * (1 - a),
+                                                        c.greenF() * a + bg.greenF() * (1 - a),
+                                                        c.blueF() * a + bg.blueF() * (1 - a), 1.0))
+    return out

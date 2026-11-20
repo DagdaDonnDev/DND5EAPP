@@ -9,6 +9,8 @@ drawn. Run from the DND5EAPP folder after changing a theme's colours:
   packaging/android/theme_icons/<theme>/     the Android launcher icon:
       icon_foreground.png, icon_background.png   (Android 8+, 432 px)
       icon.png                                   (older Android, 192 px)
+  dnd_app/ui_desktop/splash/splash.png       the .exe's still splash: the
+                                             animation's first frame, hard-edged
 """
 import os
 import sys
@@ -42,3 +44,7 @@ for theme in THEMES:
     recolour(fg, theme).save(os.path.join(out, "icon_foreground.png"))
     recolour(bg, theme).save(os.path.join(out, "icon_background.png"))
     print(theme, "->", s)
+
+from dnd_app.core.splash_art import still
+still().save(os.path.join(ROOT, "dnd_app", "ui_desktop", "splash", "splash.png"))
+print("splash.png")
