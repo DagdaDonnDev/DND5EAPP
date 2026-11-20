@@ -760,8 +760,9 @@ def _hit_lines(row, crit: bool, nat20: bool) -> list:
     are already doubled: the numbers are the ones to roll. A spell that
     replaces the weapon's damage (Lightning Arrow) takes the first line."""
     twice = _double if crit else str
-    lines = [{"dice": twice(row.get("damage", "")), "type": row.get("damage_type", ""),
-              "source": row.get("name", ""), "note": "", "apart": False}]
+    # (hit_note: what a hit does besides its dice -- a thrown flask's)
+    lines = [{"dice": twice(row["damage"]) if row.get("damage") else "", "type": row.get("damage_type", ""),
+              "source": row.get("name", ""), "note": row.get("hit_note", ""), "apart": False}]
     for r in row.get("riders", []):
         if r.get("use", "on") != "on" or r["flat"]:
             continue

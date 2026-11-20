@@ -721,12 +721,160 @@ def _install_adaptive_icon(dist):
     return True
 
 
+# ── The launcher icon in the menu's theme ─────────────────────────────────
+# Android can't recolour an app's icon, but it can switch between launcher
+# entries built in: one <activity-alias> of PythonActivity per theme, each
+# with its own icon (packaging/android/theme_icons/<theme>/, written by
+# packaging/make_theme_icons.py), only one of them enabled. The app writes
+# the theme it wants to files/launcher_icon.txt (core/app_icon.py); as it
+# goes to the background PythonActivity turns that entry on and the rest
+# off. "default" is the icon as drawn (the default theme's).
+THEME_ICON_MARK = "MIMIC theme launcher icons"
+ALIAS_PREFIX = "org.kivy.android.Icon_"
+
+
+def _theme_icon_slugs() -> list:
+    src = Path(__file__).resolve().parent / "theme_icons"
+    if not src.is_dir():
+        return []
+    return sorted(d.name for d in src.iterdir()
+                  if d.is_dir() and re.fullmatch(r"[a-z0-9_]+", d.name)
+                  and all((d / f).exists() for f in ("icon.png", "icon_foreground.png", "icon_background.png")))
+
+
+def _install_theme_icons(dist, slugs) -> None:
+    """Each theme's icon into res/: a plain one for older Android, and the
+    adaptive layers with their XML for Android 8+ (as _install_adaptive_icon)."""
+    src = Path(__file__).resolve().parent / "theme_icons"
+    res = dist / "src" / "main" / "res"
+    (res / "mipmap").mkdir(parents=True, exist_ok=True)
+    (res / "mipmap-anydpi-v26").mkdir(parents=True, exist_ok=True)
+    for sl in slugs:
+        shutil.copy(src / sl / "icon.png", res / "mipmap" / f"icon_{sl}.png")
+        shutil.copy(src / sl / "icon_foreground.png", res / "mipmap" / f"icon_{sl}_fg.png")
+        shutil.copy(src / sl / "icon_background.png", res / "mipmap" / f"icon_{sl}_bg.png")
+        (res / "mipmap-anydpi-v26" / f"icon_{sl}.xml").write_text(
+            ADAPTIVE_ICON_XML.replace("@mipmap/icon_background", f"@mipmap/icon_{sl}_bg")
+                             .replace("@mipmap/icon_foreground", f"@mipmap/icon_{sl}_fg"))
+
+
+def _patch_manifest_theme_icons(dist, slugs) -> bool:
+    """PythonActivity's launcher entry moves to an alias per theme (the
+    default enabled). All or nothing: if the manifest isn't as expected
+    it's left alone, and the app keeps its one icon."""
+    path = dist / "src" / "main" / "AndroidManifest.xml"
+    if not path.exists():
+        warning(f"p4a_hook: no AndroidManifest.xml at {path} -- one launcher icon only")
+        return False
+    xml = path.read_text()
+    if THEME_ICON_MARK in xml:
+        return True
+    m = re.search(r'<activity\b[^>]*android:name="org\.kivy\.android\.PythonActivity"[^>]*>.*?</activity>',
+                  xml, re.S)
+    if not m:
+        warning("p4a_hook: PythonActivity not found in the manifest -- one launcher icon only")
+        return False
+    block = m.group(0)
+    filters = [f for f in re.findall(r"<intent-filter\b.*?</intent-filter>", block, re.S)
+               if "android.intent.action.MAIN" in f and "android.intent.category.LAUNCHER" in f]
+    if len(filters) != 1:
+        warning("p4a_hook: PythonActivity's launcher intent-filter not found -- one launcher icon only")
+        return False
+    app_icon = re.search(r'<application\b[^>]*android:icon="([^"]+)"', xml)
+    default_icon = app_icon.group(1) if app_icon else "@mipmap/icon"
+    launcher = ('\n        <intent-filter>\n'
+                '            <action android:name="android.intent.action.MAIN" />\n'
+                '            <category android:name="android.intent.category.LAUNCHER" />\n'
+                '        </intent-filter>\n')
+
+    def alias(sl, icon, on):
+        return (f'    <activity-alias android:name="{ALIAS_PREFIX}{sl}"\n'
+                f'        android:targetActivity="org.kivy.android.PythonActivity"\n'
+                f'        android:icon="{icon}" android:roundIcon="{icon}"\n'
+                f'        android:enabled="{"true" if on else "false"}" android:exported="true">{launcher}'
+                f'    </activity-alias>\n')
+    aliases = (f"\n    <!-- {THEME_ICON_MARK} (packaging/android/p4a_hook.py) -->\n"
+               + alias("default", default_icon, True)
+               + "".join(alias(sl, f"@mipmap/icon_{sl}", False) for sl in slugs))
+    new_block = block.replace(filters[0], "", 1) + aliases
+    path.write_text(xml.replace(block, new_block, 1))
+    return True
+
+
+def _patch_java_theme_icons(target, slugs) -> bool:
+    """As the app goes to the background: the launcher entry the app asked
+    for on, then the others off (so there's never none). Added to
+    PythonActivity.onCreate as an activity-lifecycle listener."""
+    src = target.read_text()
+    if THEME_ICON_MARK in src:
+        return True
+    anchor = re.search(r"super\.onCreate\([^)]*\);", src)
+    if not anchor:
+        warning("p4a_hook: super.onCreate not found in PythonActivity.java -- the launcher icon won't switch")
+        return False
+    names = ", ".join(f'"{s}"' for s in ["default"] + list(slugs))
+    code = f"""
+        // {THEME_ICON_MARK} (packaging/android/p4a_hook.py)
+        getApplication().registerActivityLifecycleCallbacks(new android.app.Application.ActivityLifecycleCallbacks() {{
+            public void onActivityStopped(android.app.Activity a) {{ mimicLauncherIcon(a); }}
+            public void onActivityCreated(android.app.Activity a, android.os.Bundle b) {{}}
+            public void onActivityStarted(android.app.Activity a) {{}}
+            public void onActivityResumed(android.app.Activity a) {{}}
+            public void onActivityPaused(android.app.Activity a) {{}}
+            public void onActivitySaveInstanceState(android.app.Activity a, android.os.Bundle b) {{}}
+            public void onActivityDestroyed(android.app.Activity a) {{}}
+            private void mimicLauncherIcon(android.app.Activity a) {{
+                try {{
+                    java.io.File f = new java.io.File(a.getFilesDir(), "launcher_icon.txt");
+                    if (!f.exists()) return;
+                    java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(f));
+                    String want = r.readLine();
+                    r.close();
+                    if (want == null) return;
+                    want = want.trim();
+                    String[] all = {{{names}}};
+                    if (!java.util.Arrays.asList(all).contains(want)) return;
+                    android.content.pm.PackageManager pm = a.getPackageManager();
+                    String pkg = a.getPackageName();
+                    int on = android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
+                    int off = android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
+                    int keep = android.content.pm.PackageManager.DONT_KILL_APP;
+                    android.content.ComponentName mine = new android.content.ComponentName(pkg, "{ALIAS_PREFIX}" + want);
+                    boolean wantOnAlready = pm.getComponentEnabledSetting(mine) == on
+                        || (want.equals("default") && pm.getComponentEnabledSetting(mine)
+                            == android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT);
+                    if (!wantOnAlready) pm.setComponentEnabledSetting(mine, on, keep);
+                    for (String s : all) {{
+                        if (s.equals(want)) continue;
+                        android.content.ComponentName cn = new android.content.ComponentName(pkg, "{ALIAS_PREFIX}" + s);
+                        int now = pm.getComponentEnabledSetting(cn);
+                        boolean isOn = now == on || (s.equals("default")
+                            && now == android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT);
+                        if (isOn) pm.setComponentEnabledSetting(cn, off, keep);
+                    }}
+                }} catch (Exception e) {{
+                    android.util.Log.w("MIMIC", "launcher icon: " + e);
+                }}
+            }}
+        }});
+"""
+    target.write_text(src[:anchor.end()] + code + src[anchor.end():])
+    return True
+
+
 def before_apk_assemble(toolchain, *args, **kwargs):
     info("p4a_hook: before_apk_assemble — patching PythonActivity.java")
     dist = _dist_dir(toolchain)
 
     if _install_adaptive_icon(dist):
         info("p4a_hook: installed the adaptive launcher icon (res/mipmap-anydpi-v26/icon.xml)")
+    theme_slugs = _theme_icon_slugs()
+    theme_icons = False
+    if theme_slugs:
+        _install_theme_icons(dist, theme_slugs)
+        theme_icons = _patch_manifest_theme_icons(dist, theme_slugs)
+        if theme_icons:
+            info(f"p4a_hook: a launcher icon for each theme ({len(theme_slugs)} + the default)")
 
     # p4a's own "Copying libs" step (which runs after our before_apk_build)
     # copies every .so from libs_collections/ into libs/arm64-v8a/, ignoring
@@ -766,6 +914,8 @@ def before_apk_assemble(toolchain, *args, **kwargs):
         info(f"p4a_hook: PATCHED {target}")
     else:
         info(f"p4a_hook: no change needed {target}")
+    if theme_icons and _patch_java_theme_icons(target, theme_slugs):
+        info("p4a_hook: PythonActivity switches the launcher icon to the menu's theme")
 
     _src = target.read_text()
     for needle in ("Qt6Core_arm64-v8a",

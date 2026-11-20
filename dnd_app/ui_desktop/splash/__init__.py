@@ -54,7 +54,7 @@ def _fallback_pixmap(size=QSize(480, 300)) -> QPixmap:
 
 class AnimatedSplash(QSplashScreen):
     """The startup animation: the mimic chest of splash.gif in the colours of
-    the app's theme (core/splash_art.py), at 1.5x speed, its last frame
+    the app's theme (core/splash_art.py), at its own speed, its last frame
     carrying the name.
 
     loop_complete: True once every frame has played at least once (or
@@ -96,20 +96,55 @@ class AnimatedSplash(QSplashScreen):
             self._timer.setSingleShot(True)
             self._timer.timeout.connect(self._next)
             self._timer.start(self._frames[0])
+            # the still image the .exe shows first is Obsidian's first
+            # frame (it's fixed when the .exe is built): in another theme
+            # the animation starts from it and fades into the theme's
+            # colours over half a second, rather than jumping
+            self._fade = 0
+            if self._theme != "(Dark) Obsidian":
+                try:
+                    self._still = self._art.frame("(Dark) Obsidian", 0)
+                    self.setPixmap(QPixmap.fromImage(self._still))
+                    self._fader = QTimer(self)
+                    self._fader.timeout.connect(self._fade_step)
+                    self._fader.start(50)
+                except Exception:
+                    pass
         else:
             # nothing to loop, so nothing to wait on
             self.loop_complete = True
 
+    def _fade_step(self):
+        """One step of the fade from the .exe's still image into the theme."""
+        from PySide6.QtGui import QPainter
+        self._fade += 1
+        k = min(1.0, self._fade / 10)
+        img = self._still.copy()
+        p = QPainter(img)
+        p.setOpacity(k)
+        p.drawImage(0, 0, self._art.frame(self._theme, self._i))
+        p.end()
+        self.setPixmap(QPixmap.fromImage(img))
+        if k >= 1.0:
+            self._fader.stop()
+
     def _next(self):
         last = len(self._frames) - 1
         if self._i >= last:
-            # the end: it stays on its last frame, the name showing
+            # the end: it stays on its last frame, the name showing, a
+            # moment longer (splash_art.HOLD) before the app shows
+            if not getattr(self, "_held", False):
+                self._held = True
+                self._timer.start(getattr(self._art, "HOLD", 0))
+                return
             if not self.loop_complete:
                 self.loop_complete = True
                 self.loop_finished.emit()
             return
         self._i += 1
         self._timer.start(self._frames[self._i])
+        if getattr(self, "_fader", None) is not None and self._fader.isActive():
+            return                       # (the fade draws this frame)
         try:
             self.setPixmap(QPixmap.fromImage(self._art.frame(self._theme, self._i)))
         except Exception:

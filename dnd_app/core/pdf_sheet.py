@@ -946,6 +946,113 @@ def _ability_scores(values: dict) -> tuple[dict, str]:
 
 
 # ── Building the character ───────────────────────────────────────────────
+def _style_name(style: str) -> str:
+    """"Archery" from "Archery (+2 ...)" or "Archery – +2 ..."."""
+    return re.split(r"\s+[(\u2013-]", str(style), maxsplit=1)[0].strip().lower()
+
+
+def _claim_sheet_picks(char: dict, skills: set, experts: set, langs: set, tools: set) -> None:
+    """A sheet lists what you have, not which choice gave it: each skill,
+    expertise, language, tool and fighting style the race, class and
+    background don't give anyway goes to a choice still open that offers
+    it -- the narrowest choices first (a class's list before "any skill")
+    -- so the Choices tab counts it as made."""
+    import copy
+    from .builder import rebuild
+    from .choices import _generate_choices
+    choices = char["_choices"]
+    # what the race, class and background give without a pick
+    scratch = copy.deepcopy(char)
+    sc = scratch["_choices"]
+    for k in [k for k in sc if k.startswith("pdf_") or k in (
+            "class_skill_profs", "class_skill_expertise", "extra_languages", "tool_profs")]:
+        sc.pop(k)
+    # (rebuild() only ever raises a skill, so start them all from nothing)
+    scratch["skills"] = {k: 0 for k in scratch.get("skills", {})}
+    rebuild(scratch)
+    lv = scratch.get("skills", {})
+    left = {
+        "skill": skills - {k for k, n in lv.items() if n >= 2},
+        "expertise": experts - {k for k, n in lv.items() if n >= 3},
+        "language": langs - set(scratch.get("languages", [])),
+        "tool": tools - set(scratch.get("tool_proficiencies", [])),
+        "style": set(char.get("fighting_styles", [])),
+    }
+    kinds = {"skill_prof": ("skill",), "expertise": ("expertise",), "language": ("language",),
+             "tool_prof": ("tool",), "skill_or_tool_prof": ("skill", "tool"),
+             "weapon_or_tool_prof": ("tool",), "fighting_style": ("style",)}
+    for _ in range(3):              # an answer can open another choice
+        open_ = [c for c in _generate_choices(char)
+                 if c.get("type") in kinds and c.get("id")
+                 and len(c.get("already_chosen") or []) < (c.get("count") or 1)]
+        open_.sort(key=lambda c: len(c.get("pool") or []) or 999)
+        claimed = False
+        for c in open_:
+            have = list(c.get("already_chosen") or [])
+            need = (c.get("count") or 1) - len(have)
+            pool = c.get("pool")
+            if pool and all(str(p).lower().startswith("any ") for p in pool):
+                pool = None             # ("Any 3 skills": any at all)
+            for kind in kinds[c["type"]]:
+                if need <= 0:
+                    break
+                for x in sorted(left[kind]):
+                    if need <= 0:
+                        break
+                    if kind == "style":
+                        # the same style, however its rule is written after the name
+                        pick = next((q for q in (pool or []) if _style_name(q) == _style_name(x)), None)
+                    else:
+                        pick = x if (not pool or x in pool) else None
+                    if pick is not None and pick not in have:
+                        have.append(pick); left[kind].discard(x); need -= 1
+                        if kind == "style":     # written the way the Choices tab writes it
+                            char["fighting_styles"] = [pick if y == x else y
+                                                       for y in char.get("fighting_styles", [])]
+            if len(have) > len(c.get("already_chosen") or []):
+                choices[c["id"]] = have
+                claimed = True
+        if not claimed:
+            break
+        rebuild(char)
+
+    open_ = {c["id"]: c for c in _generate_choices(char) if c.get("id")
+             and len(c.get("already_chosen") or []) < (c.get("count") or 1)}
+    # a race's cantrip (High Elf...): the sheet lists it with the rest --
+    # one from that list, not on your class's own list if one fits
+    from dnd_app.data.spells import RACIAL_SPELL_PICK_KEYS, SPELL_DICT
+    mine = {cl.get("class") for cl in char.get("classes", [])}
+    for cid in RACIAL_SPELL_PICK_KEYS:
+        c = open_.get(cid)
+        if not c:
+            continue
+        cands = [x for x in char.get("cantrips", []) if x in (c.get("pool") or [])]
+        cands.sort(key=lambda x: bool(mine & set(SPELL_DICT.get(x, {}).get("classes", []))))
+        if cands:
+            choices[cid] = [cands[0]]
+            char["cantrips"] = [x for x in char["cantrips"] if x != cands[0]]
+    # feats: Variant Human's, then each level's ASI-or-feat in turn
+    used = {str(x).split(":", 1)[-1] for k, val in choices.items() if isinstance(val, list)
+            for x in val if isinstance(x, str)}
+    feats = [f for f in char.get("feats", []) if f not in used]
+    feat_ids = sorted((i for i, c in open_.items() if c.get("type") in ("feat", "asi_or_feat")),
+                      key=lambda i: (i != "variant_human_feat", open_[i].get("lvl", 0)))
+    for cid in feat_ids:
+        if not feats:
+            break
+        f = feats.pop(0)
+        choices[cid] = [f] if open_[cid]["type"] == "feat" else [f"feat:{f}"]
+    # an ability score increase the sheet doesn't say: it's already in the
+    # scores written on it, so it's made (and adds nothing more)
+    for cid, c in open_.items():
+        if c.get("type") in ("asi", "asi_or_feat") and cid not in choices:
+            choices[cid] = [IMPORTED_ASI]
+
+
+# what an ability score increase from a sheet shows as on the Choices tab
+IMPORTED_ASI = "In your scores (from the sheet)"
+
+
 def character_from_values(values: dict, how: str = "form") -> tuple[dict, list[str]]:
     """(character dict, notes on what was and wasn't imported).
 
@@ -1073,7 +1180,9 @@ def character_from_values(values: dict, how: str = "form") -> tuple[dict, list[s
         choices["pdf_skill_expertise"] = experts
 
     # languages / tools from PROFICIENCIES & LANGUAGES
-    langs = [l for l in LANGUAGES if re.search(rf"\b{re.escape(l)}\b", v("ProficienciesLang"), re.I)]
+    # (a name can wrap onto the next line: "Deep\nSpeech", "Alchemist's\nsupplies")
+    _words = lambda t: r"\s+".join(re.escape(w) for w in t.split())
+    langs = [l for l in LANGUAGES if re.search(rf"\b{_words(l)}\b", v("ProficienciesLang"), re.I)]
     if langs:
         choices["extra_languages"] = sorted(set(langs) | {"Common"})
 
@@ -1087,6 +1196,16 @@ def character_from_values(values: dict, how: str = "form") -> tuple[dict, list[s
         style = raw.split("\u2013")[0].split(" - ")[0].strip()
         if re.search(rf"fighting style[^\n]*\b{re.escape(style)}\b", feats_text, re.I):
             char.setdefault("fighting_styles", []).append(raw)
+
+    # tools named in PROFICIENCIES & LANGUAGES
+    from dnd_app.data.items import ALL_TOOLS
+    tools = [t for t in ALL_TOOLS if re.search(rf"(?<![\w']){_words(t)}(?![\w'])", v("ProficienciesLang"), re.I)]
+    if langs:
+        # (kept under a language pick's name too, so a later pick on the
+        # Choices tab, which gathers every language pick, keeps them)
+        choices["pdf_languages"] = sorted(set(langs) | {"Common"})
+    if tools:
+        choices["pdf_tool_profs"] = tools
 
     rebuild(char)
 
@@ -1110,6 +1229,20 @@ def character_from_values(values: dict, how: str = "form") -> tuple[dict, list[s
     if unknown_spells:
         report.append("Spells not recognised: " + ", ".join(unknown_spells))
         leftovers.append("Spells: " + ", ".join(unknown_spells))
+
+    # the sheet's picks go to the choices they answer, so the Choices tab
+    # shows them made (Fighter skills 2/2) rather than still to do
+    _claim_sheet_picks(char, set(profs + experts), set(experts), set(langs), set(tools))
+    rebuild(char)
+    # the scores stay as written, whatever bonus a feat or pick added since
+    changed = False
+    for ab, score in sheet_scores.items():
+        diff = score - (char["abilities"][ab] + char["ability_bonuses"].get(ab, 0))
+        if diff:
+            char["abilities"][ab] += diff
+            changed = True
+    if changed:
+        rebuild(char)
 
     # weapons, gear, magic items
     weights = _item_catalogue()

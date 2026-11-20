@@ -231,7 +231,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 
 Open them with **Ctrl+,** on desktop, or from the menu on Android.
 
-- **Appearance:** 26 themes (16 dark, 10 light), every one with readable text (WCAG AA contrast, coloured text included), and the text size (Small, Medium or Large).
+- **Appearance:** 32 themes (16 dark, 16 light: each dark one has a light partner), every one with readable text (WCAG AA contrast, coloured text included), and the text size (Small, Medium or Large).
 - **Health bar:** the menu bar (desktop) or the top bar (Android) fills with the open character's hit points. On unless you turn it off.
 - **Immersion:** Immersive Health drains some of the colour from the sheet as you lose hit points; Immersive Exhaustion closes a dark frame in from the screen's edges with each level of exhaustion. Each is Full, Reduced or Off. The numbers never change, and Reduced never covers any text.
 - **Character Folder:** where characters are saved.

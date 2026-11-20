@@ -1465,7 +1465,7 @@ ApplicationWindow {
                 if (s.frame >= s.delays.length - 1) { s.finish(); return }
                 s.frame += 1
                 // the last frame (the name) stays up a little longer
-                interval = s.frame === s.delays.length - 1 ? 700 : s.delays[s.frame]
+                interval = s.frame === s.delays.length - 1 ? 1200 : s.delays[s.frame]
                 start()
             }
         }
@@ -1474,7 +1474,7 @@ ApplicationWindow {
             target: startupSplash
             property: "opacity"
             to: 0
-            duration: 300
+            duration: 450
             onFinished: startupSplash.visible = false
         }
         MouseArea {

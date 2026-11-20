@@ -2565,21 +2565,29 @@ class CombatMixin:
         self._weapon_rows.addWidget(host)
 
     def _throw(self, t: dict):
-        """Throw one: it's used up (core/throwables.py) and the toast says
-        what happened. A flask's throw is an attack -- one of the Attack
-        action's -- and an explosive takes the action."""
-        from dnd_app.core.throwables import throw
-        said = throw(self.char, t["name"])
-        if not said:
-            return
+        """Throw one (core/throwables.py), with the same popup a weapon's
+        Hit opens: a flask is an attack roll -- one of the Attack action's
+        attacks -- and an explosive shows its save DC and damage, with
+        Throw it and Cancel, and takes the action. Only a throw made uses
+        one up."""
+        from dnd_app.core.throwables import attack_row, save_report, use_one, label
         if t["roll"].startswith(("+", "-")):
-            self._attack_made({"cost": "Action"})
+            if not self._attack(attack_row(self.char, t["name"])):
+                return
         else:
+            if self._turn_limit("Action") == 0 or self._turn_counts.get("Action", 0) >= self._turn_limit("Action"):
+                self._toast("No action left this turn to throw it")
+                return
+            from dnd_app.ui_desktop.dialogs.attack import AttackDialog
+            dlg = AttackDialog(save_report(self.char, t["name"]), self)
+            if dlg.exec() != QDialog.Accepted or not dlg.hit:
+                return
             self._mark_turn_used("Action")
+        left = use_one(self.char, t["name"])
         self._mark_dirty()
         self._refresh_gear_equipment()
         self._refresh_combat_weapons()
-        self._toast(said)
+        self._toast(f"{label(t['name'])} thrown: {left} left")
 
     def _fit_weapons_card(self):
         """The weapons card is at least as wide as its widest row, so no

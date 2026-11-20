@@ -267,6 +267,10 @@ a = Analysis(
         # entries same as the old dnd_app/assets dir they moved out of.
         *([(_SPLASH_GIF, 'dnd_app/core')] if os.path.isfile(_SPLASH_GIF) else []),
         *([(_SPLASH_PNG, 'dnd_app/ui_desktop/splash')] if os.path.isfile(_SPLASH_PNG) else []),
+        # the window icon in each theme's colours (core/app_icon.py,
+        # written by packaging/make_theme_icons.py)
+        *([(os.path.join(_ROOT, 'dnd_app', 'core', 'theme_icons'), 'dnd_app/core/theme_icons')]
+          if os.path.isdir(os.path.join(_ROOT, 'dnd_app', 'core', 'theme_icons')) else []),
         *pyside6_datas,
     ],
     hiddenimports=[

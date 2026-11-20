@@ -252,7 +252,7 @@ THEMES = {
         "BORDER":"#a69161","BORDER2":"#9a7840",
         "TEXT":"#18100a","TEXT2":"#3a2808","TEXT3":"#6a4820",
         "GOLD":"#724707","GOLD2":"#63400e",
-        "INDIGO":"#1e3ea0","IND2":"#153eaa",
+        "INDIGO":"#724708","IND2":"#664007",
         "TEAL":"#0c5c3e","TEAL2":"#0a512f",
         "CRIMSON":"#8c1818","CRIM2":"#8f1414",
         "PURPLE":"#5a1878","PURP2":"#6e1c98",
@@ -282,7 +282,7 @@ THEMES = {
         "BORDER":"#9f966e","BORDER2":"#8e814b",
         "TEXT":"#312d1b","TEXT2":"#544f33","TEXT3":"#554f36",
         "GOLD":"#654a08","GOLD2":"#584211",
-        "INDIGO":"#354f81","IND2":"#324771",
+        "INDIGO":"#495519","IND2":"#404b16",
         "TEAL":"#135a36","TEAL2":"#174f32",
         "CRIMSON":"#8e2f24","CRIM2":"#7b2d22",
         "PURPLE":"#6d3e7b","PURP2":"#5c3867",
@@ -296,7 +296,7 @@ THEMES = {
         "BORDER":"#87b181","BORDER2":"#60ab54",
         "TEXT":"#182815","TEXT2":"#324c2f","TEXT3":"#3b5736",
         "GOLD":"#6e4c14","GOLD2":"#614311",
-        "INDIGO":"#693c9c","IND2":"#5d348a",
+        "INDIGO":"#105d31","IND2":"#0f552c",
         "TEAL":"#1c5e3d","TEAL2":"#185235",
         "CRIMSON":"#952c46","CRIM2":"#83263e",
         "PURPLE":"#6e3c92","PURP2":"#613481",
@@ -338,7 +338,7 @@ THEMES = {
         "BORDER":"#b19781","BORDER2":"#ab7d54",
         "TEXT":"#281e15","TEXT2":"#4c3c2f","TEXT3":"#5e4d3d",
         "GOLD":"#664b11","GOLD2":"#58420e",
-        "INDIGO":"#225661","IND2":"#1e4b55",
+        "INDIGO":"#89340e","IND2":"#7b2e0c",
         "TEAL":"#195952","TEAL2":"#164d48",
         "CRIMSON":"#893420","CRIM2":"#782e1c",
         "PURPLE":"#6c3b83","PURP2":"#5e3373",
@@ -366,7 +366,7 @@ THEMES = {
         "BORDER":"#b19d81","BORDER2":"#ab8754",
         "TEXT":"#282015","TEXT2":"#4c402f","TEXT3":"#5d4f3c",
         "GOLD":"#694c11","GOLD2":"#5c420f",
-        "INDIGO":"#33527e","IND2":"#2d476d",
+        "INDIGO":"#75461c","IND2":"#673e19",
         "TEAL":"#1e5a4f","TEAL2":"#1a4f45",
         "CRIMSON":"#8f321e","CRIM2":"#7e2b1b",
         "PURPLE":"#713a83","PURP2":"#633373",
@@ -388,5 +388,123 @@ THEMES = {
         "GREEN":"#275742","GREEN2":"#224c39",
         "PANELDK":"#192437",
     },
+    # ── 11. Tinker's Bench — Steel and brass on a pale workbench. Clockwork and gadgets. The light partner of Gearworks ──
+    # (made from Sky Citadel's layout; every text and accent colour is at
+    # least 4.5:1 against every surface -- WCAG AA)
+    "(Light) Tinker's Bench": {
+        "BG":"#eceff1","SURF":"#dde2e7","SURF2":"#cdd5db","SURF3":"#b8c3cc",
+        "BORDER":"#819cb1","BORDER2":"#5384ac",
+        "TEXT":"#191f24","TEXT2":"#2c343a","TEXT3":"#444f57",
+        "GOLD":"#5e4c16","GOLD2":"#514313",
+        "INDIGO":"#265073","IND2":"#224867",
+        "TEAL":"#20565a","TEAL2":"#1b4b4e",
+        "CRIMSON":"#8d2d29","CRIM2":"#7b2724",
+        "PURPLE":"#524097","PURP2":"#473883",
+        "AMBER":"#6c4617","AMBE2":"#5d3d14",
+        "GREEN":"#275742","GREEN2":"#224c39",
+        "PANELDK":"#1b2a37",
+    },
+    # ── 12. Marble Sanctum — White marble and slate-blue. A sunlit temple. The light partner of Hallowed Stone ──
+    # (made from Sky Citadel's layout; every text and accent colour is at
+    # least 4.5:1 against every surface -- WCAG AA)
+    "(Light) Marble Sanctum": {
+        "BG":"#edeef0","SURF":"#dfe1e5","SURF2":"#d0d2d8","SURF3":"#bcc0c8",
+        "BORDER":"#8791ab","BORDER2":"#536dac",
+        "TEXT":"#191c24","TEXT2":"#2c303a","TEXT3":"#444957",
+        "GOLD":"#5a4915","GOLD2":"#514313",
+        "INDIGO":"#2e498a","IND2":"#28417a",
+        "TEAL":"#1f5256","TEAL2":"#1b4b4e",
+        "CRIMSON":"#892c28","CRIM2":"#7b2724",
+        "PURPLE":"#503e93","PURP2":"#473883",
+        "AMBER":"#684316","AMBE2":"#5d3d14",
+        "GREEN":"#25533f","GREEN2":"#224c39",
+        "PANELDK":"#1b2337",
+    },
+    # ── 13. Amethyst Grotto — Pale lilac stone with violet crystal. The Underdark's glow by day. The light partner of Underdark ──
+    # (made from Sky Citadel's layout; every text and accent colour is at
+    # least 4.5:1 against every surface -- WCAG AA)
+    "(Light) Amethyst Grotto": {
+        "BG":"#f0ecf1","SURF":"#e5dde7","SURF2":"#d8ccdc","SURF3":"#c7b7cd",
+        "BORDER":"#a67eb4","BORDER2":"#ab26d9",
+        "TEXT":"#211924","TEXT2":"#342a37","TEXT3":"#524457",
+        "GOLD":"#5a4915","GOLD2":"#4d4012",
+        "INDIGO":"#781a98","IND2":"#671782",
+        "TEAL":"#1f5256","TEAL2":"#1a474a",
+        "CRIMSON":"#852a27","CRIM2":"#772623",
+        "PURPLE":"#4e3d90","PURP2":"#45367f",
+        "AMBER":"#684316","AMBE2":"#593a13",
+        "GREEN":"#25533f","GREEN2":"#204836",
+        "PANELDK":"#301b37",
+    },
+    # ── 14. Sulphur Springs — Pale ash and sulphur yellow-green. Brimstone in daylight. The light partner of Nine Hells ──
+    # (made from Sky Citadel's layout; every text and accent colour is at
+    # least 4.5:1 against every surface -- WCAG AA)
+    "(Light) Sulphur Springs": {
+        "BG":"#f0f1ec","SURF":"#e5e7dd","SURF2":"#d9dbcd","SURF3":"#c9ccb8",
+        "BORDER":"#aab181","BORDER2":"#b2c639",
+        "TEXT":"#232419","TEXT2":"#393a2c","TEXT3":"#525442",
+        "GOLD":"#5e4c16","GOLD2":"#514313",
+        "INDIGO":"#4e5719","IND2":"#444c16",
+        "TEAL":"#20565a","TEAL2":"#1b4b4e",
+        "CRIMSON":"#8d2d29","CRIM2":"#7b2724",
+        "PURPLE":"#524097","PURP2":"#473883",
+        "AMBER":"#6c4617","AMBE2":"#5d3d14",
+        "GREEN":"#275742","GREEN2":"#224c39",
+        "PANELDK":"#33371b",
+    },
+    # ── 15. Pearl Shallows — Pearl white and sea-cyan. The shallows above the deep. The light partner of Kraken's Depth ──
+    # (made from Sky Citadel's layout; every text and accent colour is at
+    # least 4.5:1 against every surface -- WCAG AA)
+    "(Light) Pearl Shallows": {
+        "BG":"#ecf0f1","SURF":"#dde4e7","SURF2":"#ccd8dc","SURF3":"#b7c7cd",
+        "BORDER":"#7ea6b4","BORDER2":"#28a9d7",
+        "TEXT":"#192124","TEXT2":"#2c373a","TEXT3":"#445257",
+        "GOLD":"#5e4c16","GOLD2":"#514313",
+        "INDIGO":"#14546b","IND2":"#114a5e",
+        "TEAL":"#20565a","TEAL2":"#1b4b4e",
+        "CRIMSON":"#8d2d29","CRIM2":"#7b2724",
+        "PURPLE":"#524097","PURP2":"#473883",
+        "AMBER":"#6c4617","AMBE2":"#5d3d14",
+        "GREEN":"#275742","GREEN2":"#224c39",
+        "PANELDK":"#1b3037",
+    },
+    # ── 16. Cloud Giant's Keep — Bright cloud white and stormy blue. A castle above the storm. The light partner of Storm Giant's Eye ──
+    # (made from Sky Citadel's layout; every text and accent colour is at
+    # least 4.5:1 against every surface -- WCAG AA)
+    "(Light) Cloud Giant's Keep": {
+        "BG":"#eceef1","SURF":"#dee2e6","SURF2":"#ced3da","SURF3":"#b9c1cb",
+        "BORDER":"#8396af","BORDER2":"#2d76d2",
+        "TEXT":"#191e24","TEXT2":"#2c323a","TEXT3":"#444c57",
+        "GOLD":"#5a4915","GOLD2":"#514313",
+        "INDIGO":"#1d4b86","IND2":"#1a447a",
+        "TEAL":"#1f5256","TEAL2":"#1b4b4e",
+        "CRIMSON":"#892c28","CRIM2":"#7b2724",
+        "PURPLE":"#503e93","PURP2":"#473883",
+        "AMBER":"#684316","AMBE2":"#5d3d14",
+        "GREEN":"#25533f","GREEN2":"#224c39",
+        "PANELDK":"#1b2737",
+    },
 
+}
+
+
+# Each light theme's dark partner: the two share the app icon's die colour
+# (core/app_icon.py), so whichever mode you like, the d20 can be the same.
+DARK_PARTNER = {
+    "(Light) Arcane Scroll": "(Dark) Obsidian",
+    "(Light) Elven Grove": "(Dark) Dragon's Hoard",
+    "(Light) Moonlit Vellum": "(Dark) Shadowfell",
+    "(Light) Coastal Tide": "(Dark) Feywild",
+    "(Light) Rose Chantry": "(Dark) Blood Moon",
+    "(Light) Frostlight": "(Dark) Frostspire",
+    "(Light) Desert Oasis": "(Dark) Cinderveil",
+    "(Light) Harvest Gold": "(Dark) Tavern Hearth",
+    "(Light) Sunlit Meadow": "(Dark) Mossgrove",
+    "(Light) Sky Citadel": "(Dark) Astral Sea",
+    "(Light) Tinker's Bench": "(Dark) Gearworks",
+    "(Light) Marble Sanctum": "(Dark) Hallowed Stone",
+    "(Light) Amethyst Grotto": "(Dark) Underdark",
+    "(Light) Sulphur Springs": "(Dark) Nine Hells",
+    "(Light) Pearl Shallows": "(Dark) Kraken's Depth",
+    "(Light) Cloud Giant's Keep": "(Dark) Storm Giant's Eye",
 }

@@ -4,8 +4,9 @@ colours of a theme.
 The art itself is never changed. Behind it goes the theme's background and a
 glow in its accent colour (brightest while the mimic bites); the platform's
 stones take the theme's border colour, keeping their shading; and the last
-frame, where it has settled back into a chest, carries the name. It plays
-at 1.5x the GIF's own speed.
+frame, where it has settled back into a chest, carries the name, and
+stays a moment (HOLD). It plays at the GIF's own speed, inside a border
+in the theme's colours.
 
 frame(theme, i) -> QImage, made when first asked for and kept; delays() ->
 each frame's time on screen in ms. Each frame takes a few ms to make, so a
@@ -18,7 +19,9 @@ from PySide6.QtCore import Qt, QRectF, QPointF
 
 # (here in core, not with the desktop code, so the Android build has it too)
 GIF = os.path.join(os.path.dirname(__file__), "splash.gif")
-SPEED = 1.5
+SPEED = 1.0
+# how long the last frame (the name) stays before the app shows, in ms
+HOLD = 1200
 SIZE = 720
 
 # the platform's stones, and how much lighter or darker than the theme's
@@ -80,6 +83,13 @@ def _compose(i: int, art: QImage, t: dict, last: bool) -> QImage:
     g.setColorAt(0, c); c2 = QColor(c); c2.setAlpha(0); g.setColorAt(1, c2)
     p.fillRect(out.rect(), QBrush(g))
     p.drawImage(0, -30, art)
+    # the border: the theme's accent edge round a rounded frame
+    from PySide6.QtGui import QPen
+    p.setBrush(Qt.NoBrush)
+    p.setPen(QPen(QColor(t["BORDER2"]), 10))
+    p.drawRoundedRect(QRectF(9, 9, SIZE - 18, SIZE - 18), 40, 40)
+    p.setPen(QPen(QColor(t["INDIGO"]), 2))
+    p.drawRoundedRect(QRectF(20, 20, SIZE - 40, SIZE - 40), 32, 32)
     if last:
         light = QColor(t["BG"]).lightness() > 128
         f = QFont(); f.setPixelSize(84); f.setBold(True); f.setLetterSpacing(QFont.AbsoluteSpacing, 10)

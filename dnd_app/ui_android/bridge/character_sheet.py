@@ -860,11 +860,15 @@ class CharacterSheetBridge(QObject):
                 if self._turn_counts.get(b, 0) < self._turn_limit(b)]
 
     def _roll_weapon_attack(self, name: str):
-        from dnd_app.core.attacks import attack_before
         _ = self.weapons                       # the rows as they are now
         row = getattr(self, "_attack_rows", {}).get(name)
         if row is None or row.get("atk") is None:
             return
+        self._roll_row(row)
+
+    def _roll_row(self, row):
+        """An attack row's roll: what you'd decide first, then the popup."""
+        from dnd_app.core.attacks import attack_before
         self._ask_through(row["name"], lambda a: attack_before(self.char, row, a, self._free_now()),
                           lambda res: self._roll_weapon_attack_now(row, res.get("before", "")))
 
@@ -941,6 +945,16 @@ class CharacterSheetBridge(QObject):
         paid for (a slot, ki, a die, once a turn...), asking first when
         there's a choice, and a hit sets off what it carries (a smite)."""
         from dnd_app.core.attacks import take_attack_options
+        if getattr(self, "_roll_kind", "") == "throw":
+            # an explosive's popup: "Throw it" uses one and the action
+            from dnd_app.core.throwables import use_one, label
+            name, self._roll_kind = getattr(self, "_pending_throw", ""), ""
+            if hit and name:
+                left = use_one(self.char, name)
+                self._mark_turn_used("Action")
+                self.toastRequested.emit(f"{label(name)} thrown: {left} left")
+                self._changed()
+            return
         row = getattr(self, "_last_attack_row", None)
         picked = [str(k) for k in keys]
         if row is None:
@@ -958,6 +972,10 @@ class CharacterSheetBridge(QObject):
                     self._start_attack_action()
                 self._attack_action_slot = None
             self._attack_made(row)
+            if row.get("throwable"):              # a thrown flask: used up, hit or miss
+                from dnd_app.core.throwables import use_one, label
+                left = use_one(self.char, row["throwable"])
+                self.toastRequested.emit(f"{label(row['throwable'])} thrown: {left} left")
             if res.get("toast"):
                 self.toastRequested.emit(res["toast"])
             if res.get("refresh"):
@@ -2975,20 +2993,26 @@ class CharacterSheetBridge(QObject):
 
     @Slot(str)
     def throwItem(self, name: str):
-        """Throw one (an action): used up, and what happens is said."""
-        from dnd_app.core.throwables import throw, rows
+        """Throw one, with the same popup a weapon's roll opens: a flask is
+        an attack roll (one of the Attack action's attacks), an explosive
+        shows its save DC and damage with Throw it and Cancel, and takes
+        the action. Only a throw made uses one up."""
+        from dnd_app.core.throwables import rows, attack_row, save_report
         if self._turn_blocked("Action"):
             return
         t = next((r for r in rows(self.char) if r["name"] == name), None)
-        said = throw(self.char, name)
-        if not said:
+        if t is None:
             return
-        if t and t["roll"].startswith(("+", "-")):
-            self._attack_made({"cost": "Action"})
-        else:
-            self._mark_turn_used("Action")
-        self.toastRequested.emit(said)
-        self._changed()
+        if t["roll"].startswith(("+", "-")):
+            self._attack_action_slot = None
+            self._roll_row(attack_row(self.char, name))
+            return
+        if self._turn_counts.get("Action", 0) >= self._turn_limit("Action"):
+            self.toastRequested.emit("No action left this turn to throw it")
+            return
+        self._roll_kind, self._pending_throw = "throw", name
+        report = save_report(self.char, name)
+        self._later(self.attackReport.emit, report["title"], report)
 
     def _check_bonus_action_spell_rule(self, is_cantrip: bool, bucket: str) -> bool:
         if has_extra_action(self.char):

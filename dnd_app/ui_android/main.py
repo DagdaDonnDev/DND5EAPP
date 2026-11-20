@@ -125,6 +125,14 @@ def main():
     print(f"[MIMIC] error log: {_log_errors(get_save_dir()) or 'none'}", file=sys.stderr)
     # before the engine exists -- Qt reads these when it's created
     _setup_qml_disk_cache()
+    # the launcher icon to switch to as the app goes to the background:
+    # the menu's theme's (core/app_icon.py; packaging/android/p4a_hook.py)
+    try:
+        from dnd_app.core.app_settings import get_app_theme
+        from dnd_app.core.app_icon import remember_launcher_icon
+        remember_launcher_icon(get_app_theme())
+    except Exception as e:
+        print(f"[MIMIC] launcher icon: {e}", file=sys.stderr)
 
     # Diagnostics for the "QML fails to load, app silently exits"
     # failure mode -- confirms path resolution (__file__ can behave

@@ -932,11 +932,8 @@ class CreditsDialog(QDialog):
 class CharacterCreatorApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        import os
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "icon.ico")
-        if os.path.exists(icon_path):
-            from PySide6.QtGui import QIcon
-            self.setWindowIcon(QIcon(icon_path))
+        # (its icon is the app's: the d20 in the theme's colours, set with
+        # each theme -- style/theme.py apply_theme)
         self.setWindowTitle("MIMIC")
         self.setMinimumSize(1200, 800)
         self.resize(1400, 900)
@@ -1320,18 +1317,27 @@ class CharacterCreatorApp(QMainWindow):
             # self._stack, and isn't rebuilt/closed by anything else
             # here) -- rebuilt in place, preserving its screen position
             # and only re-shown if it was actually visible.
-            if self._dice_roller:
-                from dnd_app.ui_desktop.dialogs.dice_roller import DiceRollerPanel
-                was_visible = self._dice_roller.isVisible()
-                pos = self._dice_roller.pos()
-                dice_char = self._dice_roller.char
-                self._dice_roller.deleteLater()
-                self._dice_roller = DiceRollerPanel(dice_char, parent=self)
-                self._dice_roller.move(pos)
-                if was_visible:
-                    self._dice_roller.show()
+            self._restyle_dice_roller()
         finally:
             self._switching_theme = False
+
+    def _restyle_dice_roller(self):
+        """The Dice Roller in the theme now on: built again in its place,
+        shown again only if it was showing. (Its colours are set when it's
+        made, so a theme change -- from Settings, or a character opened
+        with its own theme, or the menu's -- needs a new one.)"""
+        if not self._dice_roller:
+            return
+        from dnd_app.ui_desktop.dialogs.dice_roller import DiceRollerPanel
+        was_visible = self._dice_roller.isVisible()
+        pos = self._dice_roller.pos()
+        dice_char = self._dice_roller.char
+        self._dice_roller.hide()
+        self._dice_roller.deleteLater()
+        self._dice_roller = DiceRollerPanel(dice_char, parent=self)
+        self._dice_roller.move(pos)
+        if was_visible:
+            self._dice_roller.show()
 
     def _ok_to_leave_sheet(self) -> bool:
         """Before the open character is closed or replaced (another one
@@ -1488,6 +1494,7 @@ class CharacterCreatorApp(QMainWindow):
                 if app is not None:
                     app.setStyleSheet(qss)
                 self._current_theme_name = saved_theme
+                self._restyle_dice_roller()
         else:
             # New characters (and old saves from before "theme" existed)
             # have no theme of their own recorded yet -- stamp the
@@ -1602,6 +1609,7 @@ class CharacterCreatorApp(QMainWindow):
             if app is not None:
                 app.setStyleSheet(qss)
             self._current_theme_name = saved_theme
+            self._restyle_dice_roller()
         self._start = StartMenu(self)
         self._start.new_char.connect(self._go_wizard)
         self._start.load_char.connect(self._go_sheet_from_path)

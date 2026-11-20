@@ -5,9 +5,9 @@ Quality of Life, Fixes and Known Issues.
 
 ---
 
-## Next Update · In progress
+## v7.1 · "Call of the Wild" · In progress
 
-*On development; ships with v8.*
+*On development: fixes and finishing touches for v7.*
 
 ### 🌍 Overview
 
@@ -33,16 +33,34 @@ has been rebuilt so everything fits, even on your worst day.
 - **Ready to throw** (both apps): mark flasks and explosives you carry as
   ready in the Loadout (desktop: also right-click one in your inventory).
   They're listed on the Combat page under your weapons, each with its
-  count and its roll. Throwing one takes an action and uses it up.
+  count and its roll. Throwing one opens the same popup as a weapon's
+  attack: a flask rolls to hit, an explosive shows its save DC and
+  damage. A throw you go through with uses one up.
+- **The app icon in your theme's colours** (both apps): the d20 takes the
+  colours of the theme picked on the character chooser. On desktop that's
+  the window and taskbar icon, and it changes with the theme. On Android
+  it's the icon you tap to open the app; it changes when you leave the
+  app. Obsidian keeps the icon as it is, and Blood Moon has the classic
+  bright red d20.
+- **Six new light themes:** Tinker's Bench, Marble Sanctum, Amethyst
+  Grotto, Sulphur Springs, Pearl Shallows and Cloud Giant's Keep. Every
+  dark theme now has a light partner with the same d20, so you can switch
+  between light and dark and keep your dice colour.
+- **Five light themes' accent matches their die:** Arcane Scroll (amber),
+  Sunlit Meadow (olive), Elven Grove (green), Desert Oasis (rust) and
+  Harvest Gold (amber) had a blue or purple accent; it's now their die's
+  colour, still readable (WCAG AA).
 - **Explosives from the Dungeon Master's Guide:** Bomb, Dynamite,
   Fragmentation Grenade and Smoke Grenade.
 
 - **The startup animation in your theme** (both apps): the mimic chest
   plays in the colours of the theme picked on the character chooser. Its
   background is the theme's, its stone platform takes the theme's border
-  colour, and a glow in the accent colour flares as it bites. It plays a
-  little faster than before and ends on the name. On Android it plays as
-  the app opens, and a tap skips it.
+  colour, and a glow in the accent colour flares as it bites. It sits in
+  a border in the theme's colours, plays at an unhurried pace and holds
+  on the name for a moment before the app shows. The still image shown
+  while the desktop app unpacks is its first frame, so the two run into
+  each other. On Android it plays as the app opens, and a tap skips it.
 
 ### 🔧 Fixes
 
@@ -58,6 +76,16 @@ has been rebuilt so everything fits, even on your worst day.
 - **Undo works on a hit that ends a Wild Shape or Polymorph** (both apps),
   even one that then kills you: it puts the form back, with its hit points,
   the spell and your concentration on it.
+- **A character imported from a PDF has its choices made** (both apps):
+  the skills, expertise, languages, tools, fighting style, feats and a
+  High Elf's cantrip on the sheet now fill the choices they answer, so the
+  Choices tab no longer shows them as 0/2. An ability score increase the
+  sheet doesn't spell out shows as "In your scores (from the sheet)", and
+  the scores stay as written. Tool and language names split over two
+  lines on the sheet are read too.
+- **The Dice Roller follows the theme** when you open a character with a
+  different theme, or go back to the menu, on desktop. It kept the old
+  theme's colours.
 - **Action cards' source tags** no longer cut a word short ("Acid (via",
   "Brown Bea"): they show whole words, with the full name on hover.
 

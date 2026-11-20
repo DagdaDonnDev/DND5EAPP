@@ -347,3 +347,14 @@ once, and nobody has to again.
 | `compileall` fails under `lib2to3/tests/` | Add `lib2to3/tests/*` to the dist's `blacklist.txt` |
 | Black screen, no crash; logcat shows `dlopen failed: library "org.kivy.android.PythonActivity" not found` | `QtNative.startApplication(params, mainLib)` got its arguments swapped, so Python never started. `p4a_hook.py` passes `("", <nativeLibraryDir>/libmain_arm64-v8a.so)`, migrates the old call in an already-patched dist, and fails the build if the old call survives |
 | `:mergeReleaseResources` fails with `AAPT2 ... Daemon startup failed` | Environment, not code — usually transient on WSL from a `/mnt/c/` path. Retry; if it persists, run `./gradlew --stop` in the dist directory first |
+
+## The launcher icon in each theme
+
+`packaging/android/theme_icons/<theme>/` holds the launcher icon for every
+theme but the default (Obsidian), written by
+`python packaging/make_theme_icons.py` (run it again after changing a
+theme's colours). `p4a_hook.py` adds each one to the APK as its own
+launcher entry, with only the default one on, and has the app switch to the
+menu's theme's entry as it goes to the background. If the manifest isn't
+laid out as the hook expects, it leaves it alone and the app keeps its one
+icon; the build log says so ("one launcher icon only").

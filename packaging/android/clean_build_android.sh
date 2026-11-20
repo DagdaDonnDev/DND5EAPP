@@ -269,9 +269,12 @@ rsync -a --delete \
     --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' \
     --exclude='buildozer.spec*' --exclude='*.sh' \
     --exclude='ui_desktop' --exclude='/main.py' --exclude='/run_dnd_creator.py' \
+    --exclude='core/theme_icons' \
     "$ROOT/dnd_app/" "$STAGE/dnd_app/"
 # (ui_desktop/ is left out: the Android app shares only core/ and data/
-# with the desktop app, and never imports the desktop UI. So are the two
+# with the desktop app, and never imports the desktop UI. So are the
+# desktop's window icons (core/theme_icons/; the launcher's own go in
+# through p4a_hook.py from packaging/android/theme_icons/), and the two
 # launchers: main.py is already at the staging root, run_dnd_creator.py
 # is the desktop's.)
 [ -f "$STAGE/dnd_app/ui_android/qml/App.qml" ] || die "App.qml missing from staging"
