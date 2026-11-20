@@ -783,7 +783,10 @@ def _patch_manifest_theme_icons(dist, slugs) -> bool:
     # Qt reads its start-up settings (android.app.lib_name...) from the
     # meta-data of the component that launched it -- for an alias, the
     # alias's own -- so each alias carries a copy of the activity's
-    meta = "".join(f"        {m}\n" for m in re.findall(r"<meta-data\b[^>]*?/>", block, re.S))
+    meta = "".join(f"        {m}\n" for m in re.findall(r"<meta-data\b[^>]*?(?:/>|>\s*</meta-data>)", block, re.S))
+    if "android.app.lib_name" not in meta:
+        warning("p4a_hook: PythonActivity's Qt meta-data not found -- one launcher icon only")
+        return False
     app_icon = re.search(r'<application\b[^>]*android:icon="([^"]+)"', xml)
     default_icon = app_icon.group(1) if app_icon else "@mipmap/icon"
     launcher = ('\n        <intent-filter>\n'
@@ -872,7 +875,8 @@ def before_apk_assemble(toolchain, *args, **kwargs):
 
     if _install_adaptive_icon(dist):
         info("p4a_hook: installed the adaptive launcher icon (res/mipmap-anydpi-v26/icon.xml)")
-    theme_slugs = _theme_icon_slugs()
+    # MIMIC_THEME_ICONS=0 builds with the one launcher icon (no aliases)
+    theme_slugs = _theme_icon_slugs() if os.environ.get("MIMIC_THEME_ICONS", "1") != "0" else []
     theme_icons = False
     if theme_slugs:
         _install_theme_icons(dist, theme_slugs)

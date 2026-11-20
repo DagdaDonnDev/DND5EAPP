@@ -358,3 +358,6 @@ launcher entry, with only the default one on, and has the app switch to the
 menu's theme's entry as it goes to the background. If the manifest isn't
 laid out as the hook expects, it leaves it alone and the app keeps its one
 icon; the build log says so ("one launcher icon only").
+
+To build with the one launcher icon instead (no per-theme entries), run the
+build with `MIMIC_THEME_ICONS=0`, e.g. `MIMIC_THEME_ICONS=0 ./clean_build_android.sh`.
