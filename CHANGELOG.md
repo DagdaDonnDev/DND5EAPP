@@ -1,20 +1,21 @@
 # MIMIC Patch Notes
 
-Newest first. Every version has the same sections: Overview, New, Rules,
-Quality of Life, Fixes and Known Issues.
+Newest first. Each version has the same sections: Overview, New, Rules,
+Changes, Fixes and Known issues.
 
 ---
 
 ## v7.1 · "Call of the Wild" · In progress
 
-*On development: fixes and finishing touches for v7.*
+*In development: fixes and smaller additions to v7.*
 
-### 🌍 Overview
+### Overview
 
-Adventurers, the mimic now wakes up in your colours, and the Combat page
-has been rebuilt so everything fits, even on your worst day.
+A rebuilt Combat page that fits everything on screen at once, throwable
+flasks and explosives, the app icon and startup animation in your theme's
+colours, six new light themes, and fixes to PDF import and Undo.
 
-### ✨ New
+### New
 
 - **A new Combat page** (both apps):
   - **Death saves** run as one flat line across the top at 0 HP: what it
@@ -36,40 +37,32 @@ has been rebuilt so everything fits, even on your worst day.
   count and its roll. Throwing one opens the same popup as a weapon's
   attack: a flask rolls to hit, an explosive shows its save DC and
   damage. A throw you go through with uses one up.
-- **The app icon in your theme's colours** (both apps): the d20 takes the
-  colours of your theme. On desktop the window and taskbar icon change
-  with it, and on Windows your pins (taskbar and Start) and desktop
-  shortcuts to MIMIC.exe take the menu's theme's d20 too. On Android it's
-  the icon you tap to open the app, in the menu's theme; it changes when
-  you leave the app. Obsidian keeps the icon as it is, and Blood Moon has
-  the classic bright red d20.
+- **The app icon in your theme's colours** (both apps). On desktop: the
+  window and taskbar icon, and on Windows any pins and desktop shortcuts
+  to MIMIC.exe, which follow the menu's theme. On Android: the launcher
+  icon, in the menu's theme, changed when you leave the app. Obsidian
+  keeps the original icon; Blood Moon's die is red.
 - **Six new light themes:** Tinker's Bench, Marble Sanctum, Amethyst
-  Grotto, Sulphur Springs, Pearl Shallows and Cloud Giant's Keep. Every
-  dark theme now has a light partner with the same d20, so you can switch
-  between light and dark and keep your dice colour.
-- **Five light themes' accent matches their die:** Arcane Scroll (amber),
-  Sunlit Meadow (olive), Elven Grove (green), Desert Oasis (rust) and
-  Harvest Gold (amber) had a blue or purple accent; it's now their die's
-  colour, still readable (WCAG AA).
+  Grotto, Sulphur Springs, Pearl Shallows and Cloud Giant's Keep. Each
+  dark theme now has a light theme with the same die colour.
+- **Five light themes' accent colour changed to match their die:** Arcane
+  Scroll (amber), Sunlit Meadow (olive), Elven Grove (green), Desert Oasis
+  (rust) and Harvest Gold (amber). They were blue or purple. All still
+  meet WCAG AA.
 - **Explosives from the Dungeon Master's Guide:** Bomb, Dynamite,
   Fragmentation Grenade and Smoke Grenade.
 
-- **The startup animation in your theme** (desktop): the mimic chest
-  plays in the colours of the theme picked on the character chooser. Its
-  background is the theme's, its stone platform takes the theme's border
-  colour, and a glow in the accent colour flares as it bites. It sits in
-  a border in the theme's colours, plays at an unhurried pace and holds
-  on the name for a moment before the app shows. The still image shown
-  while the desktop app unpacks is its first frame, so the two run into
-  each other. On desktop it's a rounded card that never takes the focus
-  or sits over other windows, so you can carry on elsewhere while it
-  loads, and it fades out as the app appears.
+- **The startup animation in your theme** (desktop): the mimic chest is
+  drawn in the menu theme's colours, inside a rounded border, and holds on
+  the name for a moment before the app opens. The still image shown while
+  the .exe unpacks is its first frame. The splash doesn't take focus or
+  stay on top of other windows, and it fades out when the app opens.
 
-### 🔧 Fixes
+### Fixes
 
-- **Desktop is much quicker:** opening a character and Refresh take less
-  than half as long as before, changing the theme about a sixth as long,
-  and going back to the menu is almost instant.
+- **Desktop is faster:** opening a character and Refresh take under half
+  as long, changing the theme about a sixth as long, and going back to the
+  menu is near instant.
 - **The Hit Points card keeps its size** while you're in Wild Shape or
   Polymorph: the form's card beside it no longer takes its room, and its
   button is shorter ("Spend a Slot to Heal").
@@ -96,16 +89,13 @@ has been rebuilt so everything fits, even on your worst day.
 
 ## v7.0 · "Call of the Wild" · 17 November 2026
 
-### 🌍 Overview
+### Overview
 
-Adventurers, this one is about creatures and slots. The new Bestiary has
-every creature, 2,754 of them, and everything that turns you into one or
-calls one up now uses it: Wild Shape, Polymorph, summons, mounts and
-steeds. Your own creatures get a page of their own. A spell that does
-more from a higher slot asks which slot to use, every magic item does
-what it says, and magic armor counts as the armor it is.
+A Bestiary of 2,754 creatures, used by Wild Shape, Polymorph, summons,
+mounts and steeds. Your own creatures have their own page. Upcast spells
+ask which slot to use, and magic armor counts as the armor it's made from.
 
-### ✨ New
+### New
 
 - **The Bestiary** (Tools → Bestiary or Ctrl+B on desktop, the menu on
   Android): every creature with its whole stat block, legendary and lair
@@ -177,7 +167,7 @@ what it says, and magic armor counts as the armor it is.
 - **Change a class:** the ⋯ beside a class on the Choices tab changes it
   for another at the same level (its subclass and choices are asked
   afresh), or removes it. Removing is greyed for your only class.
-- **The Notes page, redone:** a list of pages down the side (on Android,
+- **The Notes page:** a list of pages down the side (on Android,
   a list to tap through): Character, Backstory, then your own pages in
   groups you open and close, name and make. Character has your
   appearance, your background, and your personality traits, ideals, bonds
@@ -187,7 +177,7 @@ what it says, and magic armor counts as the armor it is.
   Drag a page onto a group to move it (press and hold → Move to on
   Android); right-click for a new page or group, or to rename or remove
   one.
-- **The Features page, redone:** sections for your race, background,
+- **The Features page:** sections for your race, background,
   feats, each kind of gift your DM gave (Supernatural Gifts, Dark Gifts,
   Character Secrets) and each class on its own. Your race and each class
   run down a timeline by level: what you have now, with the next level's
@@ -207,7 +197,7 @@ what it says, and magic armor counts as the armor it is.
   Shape form has its own, and any other creature its family's (dragons
   roar, liches cackle, golems clank).
 
-### ⚖️ Rules
+### Rules
 
 - A Rogue picks its four skills from the Rogue's list of eleven, not any
   skill.
@@ -216,7 +206,7 @@ what it says, and magic armor counts as the armor it is.
   and its +2), Elven Chain a chain shirt. An item that can be any armor
   (+1 Armor, Armor of Fire Resistance...) asks which, as Flame Tongue asks
   which sword.
-  - *Designer note: before, magic armor counted as no armor at all.*
+  - *Before, magic armor counted as no armor at all.*
 - Ioun stones of knowledge give the skill's proficiency, or +1 if you
   already have it. Vulnerabilities (Infernal Plate Armor, the Canian Fork)
   are tracked and shown.
@@ -230,9 +220,9 @@ what it says, and magic armor counts as the armor it is.
 - Aid raises your hit point maximum and current hit points by 5, and 5
   more for each slot level above 2nd. The maximum goes back down when it
   ends.
-  - *Designer note: before, you had to add it to your maximum yourself.*
+  - *Before, you had to add it to your maximum yourself.*
 
-### 🧰 Quality of Life
+### Changes
 
 - **Shorter tab names (desktop):** Inventory and Notes, which leaves room
   for Creatures. Android's Equipment is now Inventory too.
@@ -252,7 +242,7 @@ what it says, and magic armor counts as the armor it is.
   what it's for.
 - **ADV / DIS on skills:** a skill with advantage says ADV in green, one
   with disadvantage DIS in red (stealth in heavy armour), on Android too.
-- **New character, redone:** six steps in the app's new look, with a bar
+- **New character:** six steps, with a bar
   showing where you are. Races and backgrounds are searchable lists with
   their details beside them. Abilities are one card: pick a method,
   set each score and tap where your race's +1s go. A new **Spells &
@@ -272,7 +262,7 @@ what it says, and magic armor counts as the armor it is.
   lose the Add button on each row: choose a row and press Add Selected at
   the foot, as in the Inventory's and Spells' browsers (a double-click or
   right-click → Add still works).
-- **Inventory, redone:** what you carry is in tabs: **Loadout**,
+- **Inventory:** what you carry is in tabs: **Loadout**,
   **Inventory**, and **Infusions** for an artificer (it was beside the
   browser).
   - **Loadout:** what's in your hands (main hand, off hand, armor), then
@@ -312,7 +302,7 @@ what it says, and magic armor counts as the armor it is.
 - **Popups in light themes (Android):** popups and the menu sit on a light
   veil in your theme's colour, so the page still shows behind them.
 
-### 🔧 Fixes
+### Fixes
 
 - **Windows flashing when a character opens:** some feature cards, Loadout
   slots and choices briefly opened as tiny windows of their own while the
@@ -344,7 +334,7 @@ what it says, and magic armor counts as the armor it is.
 - Fixed the rest screen's buttons running off the bottom of the screen
   (Android).
 
-### ⚠️ Known Issues
+### Known issues
 
 - The 2024 rules aren't supported.
 
@@ -352,17 +342,14 @@ what it says, and magic armor counts as the armor it is.
 
 ## v6.0 · "Keep Your Focus" · 13 November 2026
 
-### 🌍 Overview
+### Overview
 
-Adventurers, this one looks after your character, at the table and
-between sessions. Spells and features that last a minute count down
-their own rounds, concentration ends when you can't hold it, and the
-concentration save takes your own roll if you'd rather throw the die.
-Nothing unsaved is lost quietly any more, a slip on the Damage button
-can be undone, and your last character is one button away when you open
-the app.
+Round counting for spells and features that last a minute, concentration
+that ends when it should, and a concentration save that takes your own
+roll. Unsaved changes are backed up, Damage and Heal can be undone, and
+the start menu reopens your last character.
 
-### ✨ New
+### New
 
 - **Rounds left:** a spell of a minute or less counts its rounds once
   it's cast (Bless, Hold Person, a smite…), and so do Rage and the other
@@ -376,36 +363,35 @@ the app.
   one button. The rest are listed newest first, each with its race, class
   and when you last played it, and a search box appears once there are
   more than five.
-- **Undo for Damage and Heal:** typed 50 for 5? **Undo** on the Hit Points
-  card puts your hit points, temp HP, death saves and any concentration
-  you lost back as they were, and the YOU DIED screen has it too.
-- **Unsaved changes are kept safe:** closing the window, opening another
+- **Undo for Damage and Heal:** **Undo** on the Hit Points card restores
+  your hit points, temp HP, death saves and any concentration you lost.
+  The YOU DIED screen has it too.
+- **Unsaved changes:** closing the window, opening another
   character, starting a new one or importing a PDF asks first (desktop).
   While you have unsaved changes, both apps keep a backup next to the
   save and offer it back if the app ends before you've saved.
 - **Find a feature:** the Features page has a search box that looks in
   each feature's name and in what it does. Click a feature to read it
   (desktop), or tap it (Android).
-  - *Designer note: on Android there was no way to read what a feature
-    did. Now there is.*
+  - *Before, Android had no way to read what a feature did.*
 - **At a Glance (Android):** the Abilities screen shows what desktop's
   Derived Stats do: proficiency bonus, speed, senses, your passive scores,
   attacks per action and carrying capacity.
 - **Cast from your spell list (desktop):** every spell on My Spells has
   its own Cast button, and a star that pins it to the Combat tab.
 
-### ⚖️ Rules
+### Rules
 
 - Concentration ends on its own when you're incapacitated, paralyzed,
   petrified, stunned or unconscious (asleep too), raging, or at 0 hit
   points, and the sheet says why.
-  - *Designer note: before, only a failed save or dropping to 0 by
+  - *Before, only a failed save or dropping to 0 by
     damage ended it. A stunned wizard kept their Hold Person.*
 - 89 spells you concentrate on (Bless, Entangle, the summons…) now have
   their real duration, from a round to a day.
-  - *Designer note: they were listed as Instantaneous.*
+  - *They were listed as Instantaneous.*
 
-### 🧰 Quality of Life
+### Changes
 
 - **Rounds on the concentration line:** "Concentrating: Bless · 9 rounds
   left", on the Combat and Spells pages.
@@ -426,7 +412,7 @@ the app.
 - **Chosen options on the Features page** (Metamagic, invocations,
   infusions…) open to what each one does, under larger group headings.
 
-### 🔧 Fixes
+### Fixes
 
 - Fixed a Bard's and a Sorcerer's Spellcasting feature showing the
   Paladin's text, and a Druid's and a Ranger's showing the Cleric's.
@@ -446,7 +432,7 @@ the app.
 - Fixed the "Extra Attacks" box showing 1 for a character with none. It's
   the attacks one Attack action makes, and is now labelled so.
 
-### ⚠️ Known Issues
+### Known issues
 
 - The 2024 rules aren't supported.
 
@@ -454,15 +440,13 @@ the app.
 
 ## v5.0 · "Catch Your Breath" · 5 November 2026
 
-### 🌍 Overview
+### Overview
 
-Adventurers, this one's about spells, the fight and the rest after it.
-MIMIC now tells you what you've still got to learn and lets you swap
-spells as you level, keeps every roll you make, the Combat page has been
-cleared for action, a rest shows (and does) everything it lets you do,
-and every theme is easier on the eyes.
+Spell learning and level-up spell swaps, a roll history, a simpler Combat
+page, one Rest dialog that covers everything a rest allows, and readable
+contrast in every theme.
 
-### ✨ New
+### New
 
 - **Spells to Learn:** a card on the Choices tab shows the spells and
   cantrips each class can still learn. The Choices and Spells tabs pulse
@@ -475,14 +459,14 @@ and every theme is easier on the eyes.
   next to your slots.
 - **Roll history:** every roll the sheet makes (checks, saves, initiative,
   attacks and whether they hit, hit dice, what your actions roll,
-  potions) is kept with your character, ready to show your DM.
+  potions) is saved with your character.
 - **A new Dice Roller:** pick dice or type them (2d6 + 1d4 + 3, or 4d6kh3
   for an ability score), add one of your bonuses, take advantage or
   disadvantage on a d20, and tap a roll in the history to roll it again.
-- **One Rest:** one button (desktop) and one menu entry (Android). Pick a
+- **One Rest dialog:** one button (desktop) and one menu entry (Android). Pick a
   short or long rest, see what it gives back, choose the hit dice to
   spend, and change what that rest lets you (prepared spells, your pact
-  weapon…), all in one go.
+  weapon…).
 - **Help on a rest:** tick what else a rest gives you (Song of Rest, a
   Chef's food, Celestial Resilience, Tireless) and what your party gives
   you (a bard's song, a chef's food, an ally's Inspiring Leader).
@@ -495,25 +479,25 @@ and every theme is easier on the eyes.
 - **Metamagic on Android:** the Spells screen has the Metamagic card: tick
   what's for your next cast and spend the points.
 
-### ⚖️ Rules
+### Rules
 
 - Eldritch Knights and Arcane Tricksters are only offered spells from their
   own schools of magic, plus their picks from any school.
-  - *Designer note: that's how the book has it. Until now they were offered
+  - *That's how the book has it. Until now they were offered
     every Wizard spell.*
 - Grapple and Shove are a contested Athletics check in place of one of
   your attacks.
-  - *Designer note: the sheet had the 2024 version, a saving throw.*
+  - *The sheet had the 2024 version, a saving throw.*
 - A Circle of the Land druid's Natural Recovery picks the spell slots to
   get back on a short rest, the same as a Wizard's Arcane Recovery.
 - Hit Dice follow a Periapt of Wound Closure (twice the hit points) and a
   verdan's Black Blood Healing (a 1 or 2 is rolled again).
 
-### 🧰 Quality of Life
+### Changes
 
-- **Readable everywhere:** every theme meets WCAG AA contrast, coloured
-  text included.
-- **A cleaner Combat page:** AC sits with your hit points, Initiative and
+- **Contrast:** every theme meets WCAG AA contrast, coloured text
+  included.
+- **Combat page layout:** AC sits with your hit points, Initiative and
   Speed have their own card, and the turn tracker sits beside your
   actions (desktop).
 - **Conditions and effects** share one card, a tab each. Hover a condition
@@ -521,15 +505,15 @@ and every theme is easier on the eyes.
   and hold it (Android).
 - **Actions in order:** your own come first, then the basic ones everyone
   has, then the optional rules.
-- **A tidier top bar (desktop):** your name is on the menu bar,
+- **Top bar (desktop):** your name is on the menu bar,
   Proficiency Bonus and Rest are up top on every page, and the tabs fill
   the width.
 - **More room on the Spells page (desktop):** each Metamagic option shows
   what it does, and the side column scrolls when a multiclass caster's
   cards don't fit.
-- **Immersive Health is gentler:** the colour only drains near the end.
+- **Immersive Health** only drains the colour near 0 hit points.
 
-### 🔧 Fixes
+### Fixes
 
 - Fixed the desktop level-up's spell swap and Versatility swaps being lost
   when the window closed.
@@ -545,7 +529,7 @@ and every theme is easier on the eyes.
 - Fixed the Metamagic card charging 1 sorcery point for every option:
   Quickened Spell costs 2, Heightened 3 and Twinned the spell's level.
 
-### ⚠️ Known Issues
+### Known issues
 
 - The 2024 rules aren't supported.
 
@@ -553,13 +537,12 @@ and every theme is easier on the eyes.
 
 ## v4.0 · "Roll for Initiative" · 3 November 2026
 
-### 🌍 Overview
+### Overview
 
-Adventurers, the sheet now plays along. Attacks, checks, saves and
-initiative roll for you, every action does what it says, and your old
-paper characters can come with you.
+Attacks, checks, saves and initiative roll from the sheet, every action
+applies its effect, and filled-in PDF character sheets can be imported.
 
-### ✨ New
+### New
 
 - **Rolling from the sheet:** attacks, ability checks, saving throws and
   initiative roll on the sheet, listing everything you can add (Bardic
@@ -579,24 +562,21 @@ paper characters can come with you.
 - **DM-granted proficiencies:** add any weapon, armour, tool or language
   your DM hands out.
 
-### ⚖️ Rules
+### Rules
 
 - Every action, bonus action and reaction spends its cost and applies its
   effect, for every class.
 - The Spell Browser only offers spells your classes can still learn,
   multiclassing included.
-  - *Designer note: no more accidentally learning a seventh spell on a
-    six-spell Bard.*
+  - *Before, it was possible to learn more spells than the class allows.*
 - A spell from your race or a feat uses its own ability, save DC and
   attack, and its free casts have their own counter.
 - Races, backgrounds, spells and spell slots checked against the books.
   25 spells added (Healing Spirit, Summon Fiend, Tenser's Transformation…),
   4 that were listed twice under a shorter name and 11 playtest spells
   taken out: 521 spells.
-  - *Designer note: a new character should start with exactly what its
-    book gives it.*
 
-### 🧰 Quality of Life
+### Changes
 
 - **Items show their weight and value**, and the same item is one row
   with how many you have.
@@ -609,7 +589,7 @@ paper characters can come with you.
 - **Duplicate Character** makes a copy to try a different build on.
 - **An error log** to send in if anything goes wrong.
 
-### 🔧 Fixes
+### Fixes
 
 - Fixed a crash when changing a race's language.
 - Fixed a crash when attacking with Sneak Attack.
@@ -620,7 +600,7 @@ paper characters can come with you.
 - Fixed the action list jumping to the bottom after pressing an action
   (desktop).
 
-### ⚠️ Known Issues
+### Known issues
 
 - The 2024 rules aren't supported.
 
@@ -628,28 +608,26 @@ paper characters can come with you.
 
 ## v3.0 · "Travelling Light" · 5 October 2026
 
-### 🌍 Overview
+### Overview
 
-Adventurers, MIMIC is coming with you. The whole app is now on Android, and
-your character goes wherever you do.
+The Android app, using the same character files as desktop.
 
-### ✨ New
+### New
 
-- **MIMIC for Android:** the full app on your phone (character creation,
-  the whole sheet, combat, levelling up, rests and the dice roller), built
-  for touch.
-- **One save, both apps:** the same character file opens on your phone and
+- **Android app:** character creation, the full sheet, combat, levelling
+  up, rests and the dice roller.
+- **Shared save files:** the same character file opens on your phone and
   your computer.
 - **New icon set:** 74 hand-drawn icons in your theme's colours, and a new
   d20 app icon.
 - **Notes pages:** personality, backstory, and Campaign Notes split into
   pages of your own.
-- **Auto-save:** creating a character, levelling up or down and confirming
-  a choice save it for you.
+- **Auto-save** when you create a character, level up or down, or confirm
+  a choice.
 - **Export on both apps:** a character file to share or back up, a
   plain-text summary, or the filled-in official PDF sheet.
 
-### ⚖️ Rules
+### Rules
 
 - Aberrant Mind, Clockwork Soul and Lunar Sorcery sorcerers get their
   origin spells, always prepared.
@@ -659,7 +637,7 @@ your character goes wherever you do.
   Resistance, Absorbing Tattoo, Orb of Shielding, Wyrmreaver Gauntlets)
   ask which.
 
-### 🧰 Quality of Life
+### Changes
 
 - **Inventory grouped by kind** (weapons, armour, magic items, consumables,
   tools and gear), with what's equipped first.
@@ -668,13 +646,13 @@ your character goes wherever you do.
 - **One Remove Page button** for your notes pages, in place of a close
   button on every tab.
 
-### 🔧 Fixes
+### Fixes
 
 - Fixed personality traits, backstory and campaign notes being wiped
   after saving or refreshing the sheet.
 - Fixed the notes page tabs being sized like the sheet's main tabs.
 
-### ⚠️ Known Issues
+### Known issues
 
 - Tool checks can't be rolled from the sheet yet.
 - The 2024 rules aren't supported.
@@ -683,12 +661,12 @@ your character goes wherever you do.
 
 ## v2.0 · "By the Book" · 3 September 2026
 
-### 🌍 Overview
+### Overview
 
-Adventurers, the rules are filled in. Every subclass gets its spells, you
-can level by XP, and your character prints onto the official sheet.
+Subclass spells for every subclass, XP levelling, and export to the
+official character sheet.
 
-### ✨ New
+### New
 
 - **XP levelling** as well as milestone. A big award carries you up more
   than one level.
@@ -702,12 +680,12 @@ can level by XP, and your character prints onto the official sheet.
   new condition.
 - **14 new themes**, 26 in all.
 
-### ⚖️ Rules
+### Rules
 
 - Every subclass now gets its spells: every Cleric domain, every
   Warlock patron, and the Ranger conclaves and Druid circles that were
   missing them.
-  - *Designer note: five Warlock patrons had no expanded spells at all.*
+  - *Five Warlock patrons had no expanded spells at all.*
 - Three missing spells added (Evard's Black Tentacles, Leomund's Secret
   Chest, Staggering Smite), and Thundering Smite renamed to Thunderous
   Smite: 511 spells.
@@ -715,7 +693,7 @@ can level by XP, and your character prints onto the official sheet.
 - A githyanki's Astral Knowledge and an astral elf's Astral Trance give
   their skill and tool until the next long rest.
 
-### 🧰 Quality of Life
+### Changes
 
 - **Death saves** have their own card, with larger pips and a line saying
   where you stand.
@@ -723,7 +701,7 @@ can level by XP, and your character prints onto the official sheet.
   the rest are together.
 - **The Choices tab** is easier to read.
 
-### 🔧 Fixes
+### Fixes
 
 - Fixed rests not restoring Wild Shape and some other resources.
 - Fixed combat toggles and concentration staying on after a rest.
@@ -736,7 +714,7 @@ can level by XP, and your character prints onto the official sheet.
   subclass.
 - Fixed actions used from the Action tabs not applying their effect.
 
-### ⚠️ Known Issues
+### Known issues
 
 - Tool checks can't be rolled from the sheet yet.
 - A few items that guard against a damage type of your choice don't ask
@@ -747,12 +725,12 @@ can level by XP, and your character prints onto the official sheet.
 
 ## v1.0 · "Session Zero" · 20 August 2026
 
-### 🌍 Overview
+### Overview
 
-Adventurers, welcome to MIMIC: a D&D 5e character creator and sheet for
-your computer, offline and free.
+The first version: a D&D 5e character creator and character sheet for
+desktop.
 
-### ✨ New
+### New
 
 - **Step-by-step character creation:** race, ability scores (point buy,
   standard array or your own), background, class, spells and equipment.
@@ -769,24 +747,24 @@ your computer, offline and free.
   fighting style and infusion.
 - **A dice roller** with advantage, disadvantage and a history.
 
-### ⚖️ Rules
+### Rules
 
 - Conditions do what they say to your saves, attacks, checks and speed.
 - Immunity wins over resistance to the same damage type.
 - One leveled spell a turn, with Haste's extra action allowed.
 
-### 🧰 Quality of Life
+### Changes
 
 - **12 themes.**
 - **Right-click a feature or trait** for everything it does.
 - **Search** spells, feats, items and equipment.
 - **Resizable panels** you can drag.
 
-### 🔧 Fixes
+### Fixes
 
 - None: this is the first version.
 
-### ⚠️ Known Issues
+### Known issues
 
 - Ability checks and tool checks can't be rolled from the sheet yet.
 - Some subclasses don't get their spells prepared for them yet.

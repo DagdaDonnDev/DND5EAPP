@@ -7,8 +7,8 @@
 <h1 align="center">MIMIC</h1>
 
 <p align="center">
-  <b>A complete D&D 5e character creator and character sheet</b><br>
-  for Windows, macOS, Linux and Android — offline, and free
+  <b>A D&D 5e character creator and character sheet</b><br>
+  for Windows, macOS, Linux and Android. Free, and works offline.
 </p>
 
 <!-- github-only -->
@@ -36,10 +36,10 @@
 </p>
 <!-- /github-only -->
 
-Build a character, level it up and play it at the table, on your computer or
-your phone, from the same character file. MIMIC keeps the books: slots,
-uses, rests, and what every feature, item and condition does to your
-numbers. The dice, and your DM's calls, stay with you.
+MIMIC builds a character, levels it up and runs its sheet at the table,
+on desktop or Android, from the same character file. It tracks spell
+slots, uses and rests, and works out how features, items and conditions
+change your numbers. You roll the damage, and your DM makes the calls.
 
 <!-- github-only -->
 
@@ -49,11 +49,11 @@ numbers. The dice, and your DM's calls, stay with you.
 
 <!-- /github-only -->
 
-- **It keeps count** — spell slots, uses, ki, hit dice and the rest, each back on the right rest
-- **Change your mind freely** — level down, swap your race or drop a feat, and everything that came with it goes
-- **Bring your old sheets** — a filled-in official 5e PDF character sheet becomes a full character
-- **One character, both apps** — the same file opens on your phone and your computer
-- **Yours, offline** — no account, no internet, free
+- Tracks spell slots, uses, ki and hit dice, and restores each on the right rest
+- Levelling down, changing race or removing a feat removes everything it gave
+- Imports a filled-in official 5e PDF character sheet
+- The same character file opens on desktop and Android
+- No account or internet connection needed
 
 ---
 
@@ -72,7 +72,7 @@ python dnd_app/run_dnd_creator.py
 
 - **Windows** — `packaging\windows\build_exe.bat` makes `dist\MIMIC.exe`: one file, no Python needed
 - **macOS / Linux** — `./packaging/windows/build_exe.sh` makes `dist/MIMIC`
-- **Android** — `packaging\android\clean_build_android.bat` makes `dist\MIMIC.apk`, ready to copy to your phone
+- **Android** — `packaging\android\clean_build_android.bat` makes `dist\MIMIC.apk` to copy to your phone
 - **A new computer** — double-click `packaging\setup_new_computer.bat` once first: it installs what both builds need (Python; WSL, Java and the Android tools)
 
 The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Android](packaging/android/README.md) — cover first-time setup. The version, **7.0.0**, is set in one place (`dnd_app/ui_android/buildozer.spec`), and both the APK and the Windows EXE (right-click → Properties → Details) carry it.
@@ -101,7 +101,7 @@ The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Androi
 2. When it finishes, the sheet opens and the character is saved.
 3. Anything the wizard didn't ask (a Variant Human's feat, say) waits on the **Choices** tab, which pulses until you're done.
 
-Playing a character from paper? **Import PDF Sheet** on the start screen turns a filled-in official character sheet into a full character (see *Saving, sharing and PDFs*).
+To bring in a paper character, use **Import PDF Sheet** on the start screen with a filled-in official character sheet (see *Saving, sharing and PDFs*).
 
 </details>
 
@@ -140,7 +140,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **The Bestiary** (beside your creatures on the Creatures tab, or Ctrl+B for a window of its own; on Android, in the menu): every creature, 2,754 of them, to find by name or type and narrow by type, size, challenge rating and how it moves, with the whole stat block. Where Monsters of the Multiverse reprinted one, both are there, the reprint marked (MPMM). Your own creatures are on the **Creatures** tab (Ctrl+Shift+B).
 - **Advantage and disadvantage are reminders.** Every roll is one d20, with a note of what the sheet knows applies (Reckless Attack, Poisoned, exhaustion…). Roll the second die yourself, since cover, the target and your DM can change it. Advantage you spend something on, like Inspiration, is rolled for you.
 - **Taking damage:** type the amount and press **Damage**. Halve it yourself for a resistance; yours are listed just below. Temporary hit points, concentration saves, Wild Shape hit points and death saves follow on their own.
-- **Typed the wrong number?** **Undo** on the Hit Points card puts your hit points, temp HP and death saves back as they were before the last Damage or Heal. It's there until your hit points change some other way, and on the YOU DIED screen if that's where the slip left you.
+- **Undo:** **Undo** on the Hit Points card puts your hit points, temp HP and death saves back as they were before the last Damage or Heal. It's there until your hit points change some other way, and on the YOU DIED screen if that's where the slip left you.
 - **Buffs from someone else:** when an ally casts Bless, Guidance, Haste and the like on you, add it with **＋ Add** on the Combat tab's **Effects** page (on Android, **Effects on You** on the Combat screen) so its bonuses count. Its hourglass counts down the rounds it has left, and it comes off when they run out.
 - **Conditions** go on with **＋ Add** and show up on the rolls they change. Hover one for what it does; right-click it to take it off or read the rules. Exhaustion's level is the six pips under them. On Android, tap a condition to put it on or take it off, and press and hold it for what it does.
 - **Wild Shape:** the Wild Shape card on the Combat tab lists the forms you can take, strongest first. Anything that needs hands asks before going ahead.
@@ -190,7 +190,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **Level Down** takes a level away, and a class's **⋯ → Remove** the whole class, with everything it brought: invocations, maneuvers, the spells it alone gave. Level back up and you're asked again. **⋯ → Change class** swaps it for another at the same level; the new class's subclass and choices wait on Choices.
 - Change your race, subrace, background, alignment or a feat later and the same clean-up happens. Anything new to pick waits on Choices (a new alignment asks for Divinely Favored's spell again).
 - Your own edits to skills and saves on the Overview stay until you press their **↺ Reset**.
-- **Levelling by XP?** Settings → Advancement → Leveling → Experience Points adds an XP tracker and tells you when you can level. Levelling up is still your click.
+- **XP levelling:** Settings → Advancement → Leveling → Experience Points adds an XP tracker and says when you can level. You still level up yourself.
 
 </details>
 
@@ -231,11 +231,11 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 
 Open them with **Ctrl+,** on desktop, or from the menu on Android.
 
-- **Appearance:** 32 themes (16 dark, 16 light: each dark one has a light partner), every one with readable text (WCAG AA contrast, coloured text included), and the text size (Small, Medium or Large).
+- **Appearance:** 32 themes (16 dark, 16 light, each dark theme paired with a light one), all meeting WCAG AA contrast, and the text size (Small, Medium or Large).
 - **Health bar:** the menu bar (desktop) or the top bar (Android) fills with the open character's hit points. On unless you turn it off.
 - **Immersion:** Immersive Health drains some of the colour from the sheet as you lose hit points; Immersive Exhaustion closes a dark frame in from the screen's edges with each level of exhaustion. Each is Full, Reduced or Off. The numbers never change, and Reduced never covers any text.
 - **Character Folder:** where characters are saved.
-- **Saved with each character:** levelling by milestone or XP, the table rules (see *For DMs and house rules*), and **DM Secrets**: purely cosmetic surprises, off by default. Try them and see.
+- **Saved with each character:** levelling by milestone or XP, the table rules (see *For DMs and house rules*), and **DM Secrets**: cosmetic extras, off by default.
 
 </details>
 
@@ -265,7 +265,7 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 <summary><b>On Android</b></summary>
 
 - **The menu** has every page of the sheet, plus Rest, the Dice Roller, the Bestiary, Settings, Reference (what the book codes stand for), Save & Export and Credits.
-- **Big buttons for what you do often** (Cast, Equip, Drink, Use), a magnifying glass for details, and press and hold for the rest: preparing, favourites, attunement, removing.
+- **Buttons** for common actions (Cast, Equip, Drink, Use), a magnifying glass for details, and press and hold for the rest: preparing, favourites, attunement, removing.
 - **Favourite a spell** (press and hold → Add to favourites) to cast it from the Combat screen.
 - **Holding − or +** on a quantity or an ammunition count changes it by 5.
 
@@ -286,7 +286,7 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 - **Companion stat blocks** for the Steel Defender, Wildfire Spirit, Drake Companion, Dancing Item, the Primal Companions, the Eldritch Cannon and mounts
 - **Summons from the Bestiary**: Conjure Animals and the other Conjure spells, Animate Dead, Create Undead, Danse Macabre, Find Familiar, Find Steed and Find Greater Steed, Giant Insect, the demon and devil spells and Summon Beast, Summon Fey and the other spirit spells, and the Figurines of Wondrous Power, Bag of Tricks, Horn of Valhalla and the elemental bowls and braziers. Each creature is on your Creatures page with its own hit points, and one held by concentration goes when it ends
 - **Polymorph, True Polymorph and Shapechange** into any creature they allow, your sheet becoming it
-- **One engine, two apps** — desktop and Android build, level and save a character the same way
+- **Shared rules code:** desktop and Android build, level and save a character the same way
 
 <!-- github-only -->
 ## Screenshots
@@ -406,5 +406,3 @@ D&D 5e content is used under the Open Gaming License (OGL) and/or with permissio
 - PySide6 (Qt), for both the desktop and Android interfaces
 - PyInstaller, for packaging the desktop app into a single executable
 - Buildozer and python-for-android, for packaging the Android app
-
-Thank you for downloading MIMIC, and for supporting the project.
