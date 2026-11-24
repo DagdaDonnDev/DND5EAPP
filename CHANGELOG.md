@@ -5,95 +5,16 @@ Changes, Fixes and Known issues.
 
 ---
 
-## v7.1 · "Call of the Wild" · In progress
-
-*In development: fixes and smaller additions to v7.*
-
-### Overview
-
-A rebuilt Combat page that fits everything on screen at once, throwable
-flasks and explosives, the app icon and startup animation in your theme's
-colours, six new light themes, and fixes to PDF import and Undo.
-
-### New
-
-- **A new Combat page** (both apps):
-  - **Death saves** run as one flat line across the top at 0 HP: what it
-    means now, then your successes and failures. Tap a dot to fill it.
-  - **Hit Points** are four tiles (AC, Temp, Max, Current), with how much
-    over Damage and Heal. While hasted, AC says "+2 Haste".
-  - **Defences, Conditions and Effects** share one card, Defences first.
-    Vulnerabilities, Resistances and Immunities are always listed, three
-    to a row, or "None".
-  - **Attacks left:** beside Initiative and Speed, a dot for each attack
-    your Attack action makes. Each attack takes one off, and New Turn
-    fills them again. Haste's extra action makes one.
-  - **Weapons:** each row shows the hand it's in and what it costs
-    (Action or Bonus action). Its to-hit is the roll button ("+7"). The off
-    hand's row shows its own damage.
-- **Ready to throw** (both apps): mark flasks and explosives you carry as
-  ready in the Loadout (desktop: also right-click one in your inventory).
-  They're listed on the Combat page under your weapons, each with its
-  count and its roll. Throwing one opens the same popup as a weapon's
-  attack: a flask rolls to hit, an explosive shows its save DC and
-  damage. A throw you go through with uses one up.
-- **The app icon in your theme's colours** (both apps). On desktop: the
-  window and taskbar icon, and on Windows any pins and desktop shortcuts
-  to MIMIC.exe, which follow the menu's theme. On Android: the launcher
-  icon, in the menu's theme, changed when you leave the app. Obsidian
-  keeps the original icon; Blood Moon's die is red.
-- **Six new light themes:** Tinker's Bench, Marble Sanctum, Amethyst
-  Grotto, Sulphur Springs, Pearl Shallows and Cloud Giant's Keep. Each
-  dark theme now has a light theme with the same die colour.
-- **Five light themes' accent colour changed to match their die:** Arcane
-  Scroll (amber), Sunlit Meadow (olive), Elven Grove (green), Desert Oasis
-  (rust) and Harvest Gold (amber). They were blue or purple. All still
-  meet WCAG AA.
-- **Explosives from the Dungeon Master's Guide:** Bomb, Dynamite,
-  Fragmentation Grenade and Smoke Grenade.
-
-- **The startup animation in your theme** (desktop): the mimic chest is
-  drawn in the menu theme's colours, inside a rounded border, and holds on
-  the name for a moment before the app opens. The still image shown while
-  the .exe unpacks is its first frame. The splash doesn't take focus or
-  stay on top of other windows, and it fades out when the app opens.
-
-### Fixes
-
-- **Desktop is faster:** opening a character and Refresh take under half
-  as long, changing the theme about a sixth as long, and going back to the
-  menu is near instant.
-- **The Hit Points card keeps its size** while you're in Wild Shape or
-  Polymorph: the form's card beside it no longer takes its room, and its
-  button is shorter ("Spend a Slot to Heal").
-- **Polymorph cast with the sheet open gets its card** on desktop: the
-  form, its hit points and End Polymorph, which only came before for a
-  druid or a character opened already polymorphed.
-- **Undo works on a hit that ends a Wild Shape or Polymorph** (both apps),
-  even one that then kills you: it puts the form back, with its hit points,
-  the spell and your concentration on it.
-- **A character imported from a PDF has its choices made** (both apps):
-  the skills, expertise, languages, tools, fighting style, feats and a
-  High Elf's cantrip on the sheet now fill the choices they answer, so the
-  Choices tab no longer shows them as 0/2. An ability score increase the
-  sheet doesn't spell out shows as "In your scores (from the sheet)", and
-  the scores stay as written. Tool and language names split over two
-  lines on the sheet are read too.
-- **The Dice Roller follows the theme** when you open a character with a
-  different theme, or go back to the menu, on desktop. It kept the old
-  theme's colours.
-- **Action cards' source tags** no longer cut a word short ("Acid (via",
-  "Brown Bea"): they show whole words, with the full name on hover.
-
----
-
 ## v7.0 · "Call of the Wild" · 17 November 2026
 
 ### Overview
 
 A Bestiary of 2,754 creatures, used by Wild Shape, Polymorph, summons,
-mounts and steeds. Your own creatures have their own page. Upcast spells
-ask which slot to use, and magic armor counts as the armor it's made from.
+mounts and steeds, with your own creatures on a page of their own. A
+rebuilt Combat page, flasks and explosives to throw, upcast spells that
+ask which slot to use, and magic armor that counts as the armor it's made
+from. The app icon and startup animation take your theme's colours, and
+there are six new light themes.
 
 ### New
 
@@ -196,6 +117,45 @@ ask which slot to use, and magic armor counts as the armor it's made from.
 - **A sound for every creature** in the immersive spell names: each Wild
   Shape form has its own, and any other creature its family's (dragons
   roar, liches cackle, golems clank).
+- **A new Combat page** (both apps):
+  - **Death saves** run as one flat line across the top at 0 HP: what it
+    means now, then your successes and failures. Tap a dot to fill it.
+  - **Hit Points** are four tiles (AC, Temp, Max, Current), with how much
+    over Damage and Heal. While hasted, AC says "+2 Haste".
+  - **Defences, Conditions and Effects** share one card, Defences first.
+    Vulnerabilities, Resistances and Immunities are always listed, three
+    to a row, or "None".
+  - **Attacks left:** beside Initiative and Speed, a dot for each attack
+    your Attack action makes. Each attack takes one off, and New Turn
+    fills them again. Haste's extra action makes one.
+  - **Weapons:** each row shows the hand it's in and what it costs
+    (Action or Bonus action). Its to-hit is the roll button ("+7"). The off
+    hand's row shows its own damage.
+- **Ready to throw** (both apps): mark flasks and explosives you carry as
+  ready in the Loadout (desktop: also right-click one in your inventory).
+  They're listed on the Combat page under your weapons, each with its
+  count and its roll. Throwing one opens the same popup as a weapon's
+  attack: a flask rolls to hit, an explosive shows its save DC and
+  damage. A throw you go through with uses one up.
+- **The app icon in your theme's colours** (both apps). On desktop: the
+  window and taskbar icon, and on Windows any pins and desktop shortcuts
+  to MIMIC.exe, which follow the menu's theme. On Android: the launcher
+  icon, in the menu's theme, changed when you leave the app. Obsidian
+  keeps the original icon; Blood Moon's die is red.
+- **Six new light themes:** Tinker's Bench, Marble Sanctum, Amethyst
+  Grotto, Sulphur Springs, Pearl Shallows and Cloud Giant's Keep. Each
+  dark theme now has a light theme with the same die colour.
+- **Five light themes' accent colour changed to match their die:** Arcane
+  Scroll (amber), Sunlit Meadow (olive), Elven Grove (green), Desert Oasis
+  (rust) and Harvest Gold (amber). They were blue or purple. All still
+  meet WCAG AA.
+- **Explosives from the Dungeon Master's Guide:** Bomb, Dynamite,
+  Fragmentation Grenade and Smoke Grenade.
+- **The startup animation in your theme** (desktop): the mimic chest is
+  drawn in the menu theme's colours, inside a rounded border, and holds on
+  the name for a moment before the app opens. The still image shown while
+  the .exe unpacks is its first frame. The splash doesn't take focus or
+  stay on top of other windows, and it fades out when the app opens.
 
 ### Rules
 
@@ -292,9 +252,6 @@ ask which slot to use, and magic armor counts as the armor it's made from.
     you carry against what you can.
 - **Search long lists:** a question with many answers (a Polymorph's
   creature, a summon's) has a search box over it.
-- **Resistances on Android:** resistances, immunities and vulnerabilities
-  show as badges on the Hit Points card (½, ⊘, ×2), as on desktop. Tap one
-  to see where it comes from.
 - **Infusions** sit beside the item browsers on desktop, and after
   Inventory in Android's menu.
 - **Rest buttons in reach (Android):** Cancel and Take a Rest stay at the
@@ -304,6 +261,21 @@ ask which slot to use, and magic armor counts as the armor it's made from.
 
 ### Fixes
 
+- **Desktop is faster:** opening a character and Refresh take under half
+  as long, changing the theme about a sixth as long, and going back to the
+  menu is near instant.
+- **A character imported from a PDF has its choices made** (both apps):
+  the skills, expertise, languages, tools, fighting style, feats and a
+  High Elf's cantrip on the sheet now fill the choices they answer, so the
+  Choices tab no longer shows them as 0/2. An ability score increase the
+  sheet doesn't spell out shows as "In your scores (from the sheet)", and
+  the scores stay as written. Tool and language names split over two
+  lines on the sheet are read too.
+- **The Dice Roller follows the theme** when you open a character with a
+  different theme, or go back to the menu, on desktop. It kept the old
+  theme's colours.
+- **Action cards' source tags** no longer cut a word short ("Acid (via",
+  "Brown Bea"): they show whole words, with the full name on hover.
 - **Windows flashing when a character opens:** some feature cards, Loadout
   slots and choices briefly opened as tiny windows of their own while the
   sheet was being built. They no longer do.
