@@ -359,5 +359,10 @@ menu's theme's entry as it goes to the background. If the manifest isn't
 laid out as the hook expects, it leaves it alone and the app keeps its one
 icon; the build log says so ("one launcher icon only").
 
-To build with the one launcher icon instead (no per-theme entries), run the
-build with `MIMIC_THEME_ICONS=0`, e.g. `MIMIC_THEME_ICONS=0 ./clean_build_android.sh`.
+Each theme's launcher entry opens `IconTrampoline`, a tiny invisible
+activity that starts `PythonActivity` by its own name and closes. (Started
+straight through an alias, Qt looks for its start-up settings under the
+alias's name and the app dies at launch with `initAndroidQpaPlugin`.)
+
+To build with the one launcher icon instead, run the build with
+`MIMIC_THEME_ICONS=0`, e.g. `MIMIC_THEME_ICONS=0 ./clean_build_android.sh`.

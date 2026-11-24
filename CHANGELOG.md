@@ -37,13 +37,12 @@ has been rebuilt so everything fits, even on your worst day.
   attack: a flask rolls to hit, an explosive shows its save DC and
   damage. A throw you go through with uses one up.
 - **The app icon in your theme's colours** (both apps): the d20 takes the
-  colours of the theme picked on the character chooser. On desktop that's
-  the window and taskbar icon, and it changes with the theme; on Windows
-  your pins (taskbar and Start) and desktop shortcuts to MIMIC.exe take
-  the menu's theme's d20 too. On Android
-  it's the icon you tap to open the app; it changes when you leave the
-  app. Obsidian keeps the icon as it is, and Blood Moon has the classic
-  bright red d20.
+  colours of your theme. On desktop the window and taskbar icon change
+  with it, and on Windows your pins (taskbar and Start) and desktop
+  shortcuts to MIMIC.exe take the menu's theme's d20 too. On Android it's
+  the icon you tap to open the app, in the menu's theme; it changes when
+  you leave the app. Obsidian keeps the icon as it is, and Blood Moon has
+  the classic bright red d20.
 - **Six new light themes:** Tinker's Bench, Marble Sanctum, Amethyst
   Grotto, Sulphur Springs, Pearl Shallows and Cloud Giant's Keep. Every
   dark theme now has a light partner with the same d20, so you can switch
@@ -55,7 +54,7 @@ has been rebuilt so everything fits, even on your worst day.
 - **Explosives from the Dungeon Master's Guide:** Bomb, Dynamite,
   Fragmentation Grenade and Smoke Grenade.
 
-- **The startup animation in your theme** (both apps): the mimic chest
+- **The startup animation in your theme** (desktop): the mimic chest
   plays in the colours of the theme picked on the character chooser. Its
   background is the theme's, its stone platform takes the theme's border
   colour, and a glow in the accent colour flares as it bites. It sits in
@@ -64,8 +63,7 @@ has been rebuilt so everything fits, even on your worst day.
   while the desktop app unpacks is its first frame, so the two run into
   each other. On desktop it's a rounded card that never takes the focus
   or sits over other windows, so you can carry on elsewhere while it
-  loads, and it fades out as the app appears. On Android it plays as the
-  app opens, and a tap skips it.
+  loads, and it fades out as the app appears.
 
 ### 🔧 Fixes
 

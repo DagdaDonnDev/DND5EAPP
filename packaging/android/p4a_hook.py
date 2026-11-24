@@ -731,6 +731,32 @@ def _install_adaptive_icon(dist):
 # off. "default" is the icon as drawn (the default theme's).
 THEME_ICON_MARK = "MIMIC theme launcher icons"
 ALIAS_PREFIX = "org.kivy.android.Icon_"
+TRAMPOLINE = "org.kivy.android.IconTrampoline"
+TRAMPOLINE_JAVA = """package org.kivy.android;
+
+// MIMIC theme launcher icons (packaging/android/p4a_hook.py): each theme's
+// launcher entry opens this, and it starts PythonActivity by its own name
+// -- so Qt finds its start-up settings as it always has -- and closes.
+public class IconTrampoline extends android.app.Activity {
+    @Override
+    protected void onCreate(android.os.Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        android.content.Intent i = new android.content.Intent(this, PythonActivity.class);
+        i.setAction(android.content.Intent.ACTION_MAIN);
+        i.addCategory(android.content.Intent.CATEGORY_LAUNCHER);
+        i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                   | android.content.Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+        startActivity(i);
+        finish();
+    }
+}
+"""
+
+
+def _install_trampoline(dist) -> None:
+    d = dist / "src" / "main" / "java" / "org" / "kivy" / "android"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "IconTrampoline.java").write_text(TRAMPOLINE_JAVA)
 
 
 def _theme_icon_slugs() -> list:
@@ -780,13 +806,12 @@ def _patch_manifest_theme_icons(dist, slugs) -> bool:
     if len(filters) != 1:
         warning("p4a_hook: PythonActivity's launcher intent-filter not found -- one launcher icon only")
         return False
-    # Qt reads its start-up settings (android.app.lib_name...) from the
-    # meta-data of the component that launched it -- for an alias, the
-    # alias's own -- so each alias carries a copy of the activity's
-    meta = "".join(f"        {m}\n" for m in re.findall(r"<meta-data\b[^>]*?(?:/>|>\s*</meta-data>)", block, re.S))
-    if "android.app.lib_name" not in meta:
-        warning("p4a_hook: PythonActivity's Qt meta-data not found -- one launcher icon only")
-        return False
+    # Each alias opens IconTrampoline (an invisible activity that starts
+    # PythonActivity by its own name and closes), never PythonActivity
+    # itself: launched through an alias, Qt looks for its start-up
+    # settings under the alias's name and the app dies at once
+    # (initAndroidQpaPlugin). This way PythonActivity always starts as it
+    # did with the one icon.
     app_icon = re.search(r'<application\b[^>]*android:icon="([^"]+)"', xml)
     default_icon = app_icon.group(1) if app_icon else "@mipmap/icon"
     launcher = ('\n        <intent-filter>\n'
@@ -796,11 +821,14 @@ def _patch_manifest_theme_icons(dist, slugs) -> bool:
 
     def alias(sl, icon, on):
         return (f'    <activity-alias android:name="{ALIAS_PREFIX}{sl}"\n'
-                f'        android:targetActivity="org.kivy.android.PythonActivity"\n'
+                f'        android:targetActivity="{TRAMPOLINE}"\n'
                 f'        android:icon="{icon}" android:roundIcon="{icon}"\n'
                 f'        android:enabled="{"true" if on else "false"}" android:exported="true">{launcher}'
-                f'{meta}    </activity-alias>\n')
+                f'    </activity-alias>\n')
     aliases = (f"\n    <!-- {THEME_ICON_MARK} (packaging/android/p4a_hook.py) -->\n"
+               + f'    <activity android:name="{TRAMPOLINE}"\n'
+               + '        android:theme="@android:style/Theme.NoDisplay"\n'
+               + '        android:noHistory="true" android:exported="false" />\n'
                + alias("default", default_icon, True)
                + "".join(alias(sl, f"@mipmap/icon_{sl}", False) for sl in slugs))
     new_block = block.replace(filters[0], "", 1) + aliases
@@ -881,6 +909,8 @@ def before_apk_assemble(toolchain, *args, **kwargs):
     if theme_slugs:
         _install_theme_icons(dist, theme_slugs)
         theme_icons = _patch_manifest_theme_icons(dist, theme_slugs)
+        if theme_icons:
+            _install_trampoline(dist)
         if theme_icons:
             info(f"p4a_hook: a launcher icon for each theme ({len(theme_slugs)} + the default)")
 
