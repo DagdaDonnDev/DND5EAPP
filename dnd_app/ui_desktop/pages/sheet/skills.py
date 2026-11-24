@@ -101,7 +101,7 @@ class SkillsMixin:
             _btn("", CRIMSON, variant="danger", bg_alpha=0x22, border_width=1,
                  text_color=CRIM2, hover_text="white", font_size=FS_SMALL,
                  padding="2px 12px", min_height0=True).styleSheet())
-        reset_skills_btn.setFixedHeight(28)
+        exact_height(reset_skills_btn, 28)
         reset_skills_btn.clicked.connect(self._reset_manual_skill_changes)
         leg.addWidget(reset_skills_btn)
         skcl.addLayout(leg)
@@ -202,7 +202,7 @@ class SkillsMixin:
         self._wpn_prof_lbl, self._tool_prof_lbl = made["Weapons"], made["Tools"]
         cl.addSpacing(8)
         # anything the DM grants outside the rules (core/dm_proficiencies.py)
-        dm_btn = _btn("DM-granted proficiencies…", GOLD, variant="neutral", height=32,
+        dm_btn = _btn("DM-granted proficiencies…", GOLD, variant="neutral", height=40, min_height0=True,
                       tooltip="Add or remove weapons, armour, tools and languages your DM gave you")
         dm_btn.setObjectName("dmProficienciesBtn")
         dm_btn.clicked.connect(self._open_dm_proficiencies)

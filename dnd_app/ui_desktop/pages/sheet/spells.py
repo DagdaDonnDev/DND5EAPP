@@ -61,6 +61,7 @@ from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
+from dnd_app.ui_desktop.popups import Ask, Tell
 
 
 class SlotBar(QWidget):
@@ -373,6 +374,7 @@ class SpellsMixin:
             _btn("", PURPLE, variant="danger", radius=6, border_width=1,
                  text_color=PURP2, hover_text="white", font_size=FS_SMALL,
                  padding="4px 12px").styleSheet())
+        exact_height(self._mm_apply_btn, 40)
         self._mm_apply_btn.clicked.connect(self._apply_metamagic_selection)
         mmcl.addWidget(self._mm_apply_btn)
         self._mm_active_lbl = _lbl("", TEAL2, FS_SMALL, bold=True, wrap=True)
@@ -400,6 +402,7 @@ class SpellsMixin:
                  text_color=CRIM2, hover_text="white", font_size=FS_SMALL,
                  padding="0px").styleSheet())
         drop_btn.clicked.connect(self._drop_concentration)
+        exact_height(drop_btn, 32)
         self._conc_drop_btn = drop_btn   # enabled only while concentrating (_refresh_concentration)
         cf.addWidget(drop_btn)
         self._conc_save_btn = QPushButton("Conc. Save")
@@ -407,6 +410,7 @@ class SpellsMixin:
         self._conc_save_btn.setStyleSheet(
             _btn("", AMBER, variant="danger", border_width=1, bg_alpha=0x44,
                  hover_text="white", font_size=FS_SMALL, padding="0px").styleSheet())
+        exact_height(self._conc_save_btn, 32)
         self._conc_save_btn.clicked.connect(self._prompt_concentration_save)
         cf.addWidget(self._conc_save_btn)
         ll.addWidget(conc_frame)
@@ -1356,7 +1360,7 @@ class SpellsMixin:
         question = slot_question(spell, choices)
         if question:
             labels = [c["label"] for c in choices]
-            got, ok = QInputDialog.getItem(self, spell["name"], question, labels, 0, False)
+            got, ok = Ask.getItem(self, spell["name"], question, labels, 0, False)
             if not ok:
                 return
             pick = choices[labels.index(got)]
@@ -1426,12 +1430,14 @@ class SpellsMixin:
 
     def _action_cat_btn_style(self, active: bool, small: bool = False) -> str:
         fs = FS_TINY if small else FS_SMALL
-        pad = "2px 8px" if small else "3px 12px"
+        pad = "0px 8px" if small else "0px 12px"
+        # exactly 28 tall (24 the level row): the chip size app-wide
+        hgt = f"min-height:{22 if small else 26}px;max-height:{22 if small else 26}px;"
         if active:
             return (f"QPushButton{{background:{GOLD};color:{on_fill(GOLD)};border:1px solid {GOLD};"
-                    f"border-radius:5px;font-size:{fs}px;font-weight:700;padding:{pad};min-height:0px;}}")
+                    f"border-radius:5px;font-size:{fs}px;font-weight:700;padding:{pad};{hgt}}}")
         return (f"QPushButton{{background:{SURF2};color:{TEXT2};border:1px solid {qa(AMBER,0x33)};"
-                f"border-radius:5px;font-size:{fs}px;font-weight:600;padding:{pad};min-height:0px;}}"
+                f"border-radius:5px;font-size:{fs}px;font-weight:600;padding:{pad};{hgt}}}"
                 f"QPushButton:hover{{background:{qa(AMBER,0x22)};color:{AMBE2};}}")
 
     def _classify_action_entry(self, entry):
@@ -1485,7 +1491,7 @@ class SpellsMixin:
             if res.get("toast"):
                 self._toast(res["toast"])
             return False
-        QMessageBox.information(self, spell["name"], res["message"])
+        Tell.information(self, spell["name"], res["message"])
         return True
 
     def _drop_concentration(self):
@@ -1495,9 +1501,9 @@ class SpellsMixin:
 
     def _prompt_concentration_save(self):
         if not self.char.get("concentration", {}).get("spell"):
-            QMessageBox.information(self, "Concentration", "Not concentrating on a spell.")
+            Tell.information(self, "Concentration", "Not concentrating on a spell.")
             return
-        dmg, ok = QInputDialog.getInt(self, "Concentration Save", "Damage taken this turn:", 10, 0, 999)
+        dmg, ok = Ask.getInt(self, "Concentration Save", "Damage taken this turn:", 10, 0, 999)
         if not ok:
             return
         self._concentration_save_prompt(max(10, dmg // 2))     # combat.py: the shared save

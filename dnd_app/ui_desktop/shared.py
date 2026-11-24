@@ -123,7 +123,10 @@ def card(accent=BORDER):
 _card = card
 
 
-def _btn(label, color=None, *, variant="cta", height=28, width=None,
+_DEFAULT_H = object()     # _btn's height when none is given: 28
+
+
+def _btn(label, color=None, *, variant="cta", height=_DEFAULT_H, width=None,
          radius=6, padding=None, bold=True, font_size=None, tooltip="",
          enabled=True, bg_alpha=None, border_alpha=None, text_color=None,
          hover_text=None, hover_bg_alpha=None, min_height0=False,
@@ -163,6 +166,11 @@ def _btn(label, color=None, *, variant="cta", height=28, width=None,
     text_color/hover_text (full color strings) override the variant's
     defaults when the original call site used something else.
     """
+    # (only a height asked for is written into the style sheet: callers
+    # that copy the style sheet onto a button of their own size set theirs)
+    asked_h = height is not _DEFAULT_H
+    if not asked_h:
+        height = 28
     if variant == "danger" and color is None:
         color = CRIMSON
     if variant != "neutral" and color is None:
@@ -177,6 +185,20 @@ def _btn(label, color=None, *, variant="cta", height=28, width=None,
     weight = "font-weight:700;" if bold else ""
     fs = f"font-size:{font_size}px;" if font_size else ""
     mh = "min-height:0px;" if min_height0 else ""
+    if min_height0 and height and asked_h:
+        # exactly `height` tall: a style sheet's min-height outranks
+        # setFixedHeight, so "min-height:0" alone let the button shrink to
+        # its text (a 28 drawn 22), and the app's min-height stretched others
+        bw_ = (border_width if border_width is not None
+               else 2 if variant in ("cta", "danger") else 1)
+        pad_ = padding or {"cta": "4px 20px", "danger": "4px 20px", "chip": "2px 10px",
+                           "neutral": "5px 10px", "ghost": "0px"}.get(variant, "0px")
+        try:
+            pv = int(str(pad_).split()[0].replace("px", ""))
+        except ValueError:
+            pv = 0
+        inner = max(0, height - 2 * bw_ - 2 * pv)
+        mh = f"min-height:{inner}px;max-height:{inner}px;"
 
     if variant in ("cta", "danger"):
         pad = padding or "4px 20px"
@@ -241,6 +263,20 @@ def _pill(label, value, color, width=96):
     lay.addWidget(val); lay.addWidget(ttl)
     f._val = val
     return f
+
+
+def exact_height(btn, height: int, border: int = 1):
+    """Makes a button exactly `height` tall whatever its style sheet says
+    (a style sheet's min-height outranks setFixedHeight, which is why
+    buttons set to one height were drawn at another). The sizes in use:
+    28 a chip or filter, 32 a button on a row, 40 an action button,
+    54 the button along a page's foot."""
+    inner = max(0, height - 2 * border)
+    btn.setStyleSheet(btn.styleSheet() +
+                      f"QPushButton{{min-height:{inner}px;max-height:{inner}px;"
+                      f"padding-top:0px;padding-bottom:0px;}}")
+    btn.setFixedHeight(height)
+    return btn
 
 
 def pill_btn(text, bg=None, fg=None, hover=None):
@@ -680,7 +716,7 @@ class SpellRow(QFrame):
 
         # Cast: on the row itself (the right-click menu has it too, and
         # casting as a ritual). Off while a spell that needs preparing isn't.
-        self._cast_btn = QPushButton("Cast"); self._cast_btn.setFixedSize(56, 28)
+        self._cast_btn = QPushButton("Cast"); self._cast_btn.setFixedSize(56, 32)
         self._cast_btn.setAccessibleName(f"Cast {spell.get('name', 'spell')}")
         _ink = readable(IND2, SURF, SURF2)
         self._cast_btn.setStyleSheet(
@@ -694,7 +730,7 @@ class SpellRow(QFrame):
         self._sync_cast_btn()
 
         # Magnifying glass: the spell's details (right-click has them too)
-        view = QPushButton(); view.setFixedSize(28, 28)
+        view = QPushButton(); view.setFixedSize(32, 32)
         view.setToolTip("Details"); view.setAccessibleName(f"Details of {spell.get('name', 'spell')}")
         _icons.set_button_icon(view, "search", 17)
         view.setStyleSheet(f"QPushButton{{background:transparent;border:1px solid transparent;border-radius:6px;"
@@ -707,7 +743,7 @@ class SpellRow(QFrame):
         # (a drawn star, not the "☆" glyph: at this size the glyph didn't
         # show on the row at all)
         self._pinned = False
-        self._star_btn = QPushButton(); self._star_btn.setFixedSize(28, 28)
+        self._star_btn = QPushButton(); self._star_btn.setFixedSize(32, 32)
         self._star_btn.setStyleSheet(
             f"QPushButton{{background:transparent;border:1px solid transparent;border-radius:6px;"
             f"min-height:0;padding:0;}}"
@@ -717,7 +753,7 @@ class SpellRow(QFrame):
         self.set_pinned(False)
 
         # Remove button: a trash can
-        rm = QPushButton(); rm.setFixedSize(28,28)
+        rm = QPushButton(); rm.setFixedSize(32, 32)
         rm.setToolTip("Remove from list"); rm.setAccessibleName(f"Remove {spell.get('name', 'spell')}")
         _icons.set_button_icon(rm, "trash", 17)
         rm.setStyleSheet(f"QPushButton{{background:transparent;border:none;border-radius:6px;min-height:0;padding:0;}}"

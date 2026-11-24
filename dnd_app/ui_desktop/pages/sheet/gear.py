@@ -56,6 +56,7 @@ from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
+from dnd_app.ui_desktop.popups import Ask, Tell
 
 
 class GearMixin:
@@ -499,7 +500,7 @@ class GearMixin:
         if not item: return
         name = item.data(0, Qt.UserRole) if hasattr(item,'data') else item
         if not name or name == "__section__": return
-        qty, ok = QInputDialog.getInt(self, f"Add {name}", f"How many {name}?", 1, 1, 9999, 1)
+        qty, ok = Ask.getInt(self, f"Add {name}", f"How many {name}?", 1, 1, 9999, 1)
         if not ok: return
         # onto its row if it's already carried, with the rules' weight and
         # cost (core/inventory.py, as Android)
@@ -651,7 +652,7 @@ class GearMixin:
                    if has_shield else
                    f"You don't currently have a shield equipped.\n"
                    f"Equip a +{bonus} magic shield now?")
-            reply = QMessageBox.question(
+            reply = Tell.question(
                 self, f"+{bonus} Shield", msg,
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
             if reply != QMessageBox.Yes:
@@ -744,7 +745,7 @@ class GearMixin:
         else:
             base_name = name_edit.text().strip()
             if not base_name or base_name not in valid_names:
-                QMessageBox.warning(self, "Unknown Item",
+                Tell.warning(self, "Unknown Item",
                     f"'{base_name}' isn't a recognized {kind.lower()} name.")
                 return
 
@@ -807,7 +808,7 @@ class GearMixin:
                 # every scroll carries a spell -- cancelling adds nothing
                 if not choices:
                     return
-                spell_choice, ok = QInputDialog.getItem(
+                spell_choice, ok = Ask.getItem(
                     self, "Spell Scroll", f"Which spell is inscribed on this {name}?",
                     choices, 0, False)
                 if not ok or not spell_choice:
@@ -851,11 +852,7 @@ class GearMixin:
 
     def _show_item_details(self, name: str, html: str):
         """The magnifying glass on an owned item: its full details."""
-        box = QMessageBox(self)
-        box.setWindowTitle(name)
-        box.setTextFormat(Qt.RichText)
-        box.setText(html or f"<b>{name}</b>")
-        box.exec()
+        Tell.information(self, name, html or f"<b>{name}</b>")
 
     def _fit_gear_split(self):
         """(The left side is in tabs now: nothing to share out.)"""
@@ -1134,14 +1131,14 @@ class GearMixin:
             self._refresh_magic_items()
             return
         if is_tattoo(name):
-            where, ok = QInputDialog.getItem(self, name, f"Where is your {name}?", TATTOO_PLACES, 0, False)
+            where, ok = Ask.getItem(self, name, f"Where is your {name}?", TATTOO_PLACES, 0, False)
             if not ok:
                 return
             set_tattoo_place(self.char, uid, where)
         taken = slot_taken_by(self.char, uid)
         if taken:
             names = [t.get("name", "") for t in taken]
-            pick, ok = QInputDialog.getItem(self, name, f"Take off which, to put on {name}?", names, 0, False)
+            pick, ok = Ask.getItem(self, name, f"Take off which, to put on {name}?", names, 0, False)
             if not ok:
                 return
             out = taken[names.index(pick)].get("uid", "")
@@ -1185,7 +1182,7 @@ class GearMixin:
         now = weapon_base_of(self.char, item_name)
         from dnd_app.core.magic_items import armor_base_options
         what = "armor" if armor_base_options(item_name) else "weapon"
-        pick, ok = QInputDialog.getItem(self, item_name, f"Which {what} is your {item_name}?",
+        pick, ok = Ask.getItem(self, item_name, f"Which {what} is your {item_name}?",
                                         opts, opts.index(now) if now in opts else 0, False)
         if ok and set_weapon_base(self.char, item_name, pick):
             self._mark_dirty()
@@ -1213,7 +1210,7 @@ class GearMixin:
         if why:
             if "doesn't qualify" in why:
                 why += "\n\n(Disable this check under Optional Rules if your table allows it anyway.)"
-            QMessageBox.warning(self, "Attunement", why)
+            Tell.warning(self, "Attunement", why)
             self._refresh_magic_items(); return
         # Deferred: self.ctrl.refresh() -> _on_char_updated() ->
         # _refresh_magic_items() clears and rebuilds the whole tree,
@@ -1288,7 +1285,7 @@ class GearMixin:
 
     def _set_magic_ammo_qty(self, uid: str, entry: dict):
         from dnd_app.core.magic_items import set_owned_magic_item_qty
-        n, ok = QInputDialog.getInt(self, "Quantity", f"How many {entry.get('name', '')}? (0 removes them)",
+        n, ok = Ask.getInt(self, "Quantity", f"How many {entry.get('name', '')}? (0 removes them)",
                                     entry.get("qty", 1), 0, 9999)
         if not ok:
             return
@@ -1817,7 +1814,7 @@ class GearMixin:
         from dnd_app.core.calculator import get_max_active_infusions
         max_active = get_max_active_infusions(self.char)
         if len(active) >= max_active:
-            QMessageBox.warning(self, "Infusion Limit Reached",
+            Tell.warning(self, "Infusion Limit Reached",
                                  f"You can only have {max_active} infusions active at once.")
             return
         active.append({"infusion": infusion_name, "target_item": item_name if not give_away else None,
@@ -1953,7 +1950,7 @@ class GearMixin:
         level, spell_name = parse_spell_scroll(name)
         if not spell_name:
             choices = spell_for_scroll_level(level)
-            spell_name, ok = QInputDialog.getItem(self, "Spell Scroll", "Which spell is on this scroll?",
+            spell_name, ok = Ask.getItem(self, "Spell Scroll", "Which spell is on this scroll?",
                                                   choices, 0, False)
             if not ok or not spell_name:
                 return
@@ -2051,7 +2048,7 @@ class GearMixin:
         opts = hand_choice(self.char, name, another)
         if not opts:
             return ""
-        pick, ok = QInputDialog.getItem(self, name, f"Your hands are full. {name} replaces:", opts, 1, False)
+        pick, ok = Ask.getItem(self, name, f"Your hands are full. {name} replaces:", opts, 1, False)
         if not ok:
             return None
         return "main" if pick.startswith("Main") else "off"

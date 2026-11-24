@@ -718,7 +718,14 @@ class FilterSidebar(QFrame):
         """The browser's top row: the search box, then the funnel button."""
         row = QHBoxLayout(); row.setSpacing(6)
         row.addWidget(search, 1)
-        h = max(34, search.sizeHint().height())
+        # (42, the same in every browser: their boxes had their own padding)
+        import dnd_app.ui_desktop.style.theme as _T
+        base = search.styleSheet() or (
+            f"QLineEdit{{background:{_T.SURF2};border:1px solid {_T.BORDER2};border-radius:7px;"
+            f"padding:0px 10px;color:{_T.TEXT};font-size:{_T.FS_BODY}px;}}")
+        search.setStyleSheet(base + "QLineEdit{padding-top:0px;padding-bottom:0px;"
+                             "min-height:40px;max-height:40px;}")
+        h = 42
         self.button.setFixedHeight(h)
         self.button.setMinimumWidth(h + 4)
         row.addWidget(self.button)
@@ -806,37 +813,5 @@ class FilterSidebar(QFrame):
 def pick_from_long_list(parent, title: str, label: str, options: list):
     """A long list to choose from (a Polymorph's creature, a summon's): a
     search box over it, as the browsers have. Returns (choice, ok)."""
-    from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QLineEdit, QListWidget, QDialogButtonBox
-    from PySide6.QtCore import Qt
-    from PySide6.QtGui import QIcon
-    from dnd_app.ui_desktop import icons as _icons
-    dlg = QDialog(parent); dlg.setWindowTitle(title); dlg.setObjectName("longPickDialog")
-    dlg.resize(420, 520)
-    lay = QVBoxLayout(dlg)
-    q = QLabel(label); q.setWordWrap(True); lay.addWidget(q)
-    search = QLineEdit(); search.setObjectName("longPickSearch")
-    search.setPlaceholderText("Search…"); search.setClearButtonEnabled(True)
-    _icons.set_action_icon(search.addAction(QIcon(), QLineEdit.LeadingPosition), "search")
-    lay.addWidget(search)
-    lst = QListWidget(); lst.setObjectName("longPickList"); lst.addItems(options); lay.addWidget(lst, 1)
-    if options:
-        lst.setCurrentRow(0)
-
-    def _filter(text):
-        words = text.casefold().split()
-        first = None
-        for i in range(lst.count()):
-            it = lst.item(i)
-            hide = bool(words) and not all(w in it.text().casefold() for w in words)
-            it.setHidden(hide)
-            if not hide and first is None:
-                first = it
-        if first is not None and (lst.currentItem() is None or lst.currentItem().isHidden()):
-            lst.setCurrentItem(first)
-    search.textChanged.connect(_filter)
-    bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-    bb.accepted.connect(dlg.accept); bb.rejected.connect(dlg.reject); lay.addWidget(bb)
-    lst.itemDoubleClicked.connect(lambda _it: dlg.accept())
-    search.returnPressed.connect(dlg.accept)
-    ok = dlg.exec() == QDialog.Accepted and lst.currentItem() is not None and not lst.currentItem().isHidden()
-    return (lst.currentItem().text() if ok else ""), ok
+    from dnd_app.ui_desktop.popups import Ask
+    return Ask.getItem(parent, title, label, list(options), 0, False)

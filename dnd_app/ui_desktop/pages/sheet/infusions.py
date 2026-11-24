@@ -54,6 +54,7 @@ from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
+from dnd_app.ui_desktop.popups import Ask, Tell
 
 
 class InfusionsMixin:
@@ -138,11 +139,11 @@ class InfusionsMixin:
         tab."""
         active = self.char.get("active_infusions", [])
         if not active:
-            QMessageBox.information(self, "Soul of Artifice",
+            Tell.information(self, "Soul of Artifice",
                                     "You have no active infusions to end.")
             return
         names = [a["infusion"] for a in active]
-        choice, ok = QInputDialog.getItem(
+        choice, ok = Ask.getItem(
             self, "Soul of Artifice", "End which infusion to drop to 1 HP instead of 0?",
             names, 0, False)
         if ok and choice:
@@ -176,7 +177,7 @@ class InfusionsMixin:
         from dnd_app.data.classes import ARTIFICER_INFUSION_TARGETS
         from dnd_app.core.calculator import get_max_active_infusions
         if len(self.char.get("active_infusions", [])) >= get_max_active_infusions(self.char):
-            QMessageBox.warning(self, "Infusion Limit Reached",
+            Tell.warning(self, "Infusion Limit Reached",
                                  "You're already at your maximum number of active infusions.")
             return
         target_type = ARTIFICER_INFUSION_TARGETS.get(infusion_name, "standalone")
@@ -187,7 +188,7 @@ class InfusionsMixin:
             # another character?" prompt (you can't hand off your own
             # bonded companion).
             if infusion_name == "Homunculus Servant":
-                reply = QMessageBox.question(
+                reply = Tell.question(
                     self, infusion_name,
                     "Activate Homunculus Servant? This infuses a gem to summon your "
                     "homunculus companion.",
@@ -200,7 +201,7 @@ class InfusionsMixin:
                 return
             # No existing item needed — this infusion creates its own
             # item/effect once activated.
-            reply = QMessageBox.question(
+            reply = Tell.question(
                 self, infusion_name,
                 f"Activate {infusion_name}? This creates its own item — give it to yourself, "
                 f"or to another character?",
@@ -228,19 +229,19 @@ class InfusionsMixin:
                (target_type == "armor_or_shield" and (is_armor or is_shield)):
                 candidates.append(name)
         if not candidates:
-            QMessageBox.information(
+            Tell.information(
                 self, infusion_name,
                 f"You don't own a mundane item {infusion_name} can apply to yet. Add one from the "
                 f"Equipment Browser first, or right-click it directly once you own it.")
             return
-        choice, ok = QInputDialog.getItem(
+        choice, ok = Ask.getItem(
             self, infusion_name, "Apply to which item?", candidates, 0, False)
         if ok and choice:
             self._infuse_item(choice, infusion_name)
             # Resistant Armor: the real rule requires picking one damage
             # type when the armor is infused.
             if infusion_name == "Resistant Armor":
-                dmg_type, ok2 = QInputDialog.getItem(
+                dmg_type, ok2 = Ask.getItem(
                     self, infusion_name, "Choose a damage type to resist:",
                     ["Acid", "Cold", "Fire", "Force", "Lightning", "Necrotic",
                      "Poison", "Psychic", "Radiant", "Thunder", "Bludgeoning",

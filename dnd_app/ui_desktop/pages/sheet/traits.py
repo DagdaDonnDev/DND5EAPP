@@ -53,6 +53,7 @@ from dnd_app.data.items import (ARMOR, ARMOR_DICT, ALL_WEAPONS, WEAPON_DICT,
 from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
+from dnd_app.ui_desktop.popups import Ask, Tell
 
 
 class _PickRow(QFrame):
@@ -400,7 +401,7 @@ class TraitsNotesMixin:
 
     def _add_notes_group(self):
         from dnd_app.core import notes as N
-        name, ok = QInputDialog.getText(self, "New Group", "Group name (NPCs, Places, an arc…):")
+        name, ok = Ask.getText(self, "New Group", "Group name (NPCs, Places, an arc…):")
         if not ok:
             return
         why = N.add_group(self.char, name)
@@ -410,7 +411,7 @@ class TraitsNotesMixin:
 
     def _rename_notes_group(self, old):
         from dnd_app.core import notes as N
-        name, ok = QInputDialog.getText(self, "Rename Group", "Group name:", text=old)
+        name, ok = Ask.getText(self, "Rename Group", "Group name:", text=old)
         if not ok:
             return
         why = N.rename_group(self.char, old, name)
@@ -424,7 +425,7 @@ class TraitsNotesMixin:
         msg = (f'Remove the group "{name}" and its {len(pages)} page{"s" if len(pages) != 1 else ""}, '
                f"with everything written on them? This can't be undone." if pages
                else f'Remove the empty group "{name}"?')
-        if QMessageBox.question(self, "Remove Group", msg, QMessageBox.Yes | QMessageBox.No,
+        if Tell.question(self, "Remove Group", msg, QMessageBox.Yes | QMessageBox.No,
                                 QMessageBox.No) != QMessageBox.Yes:
             return
         N.remove_group(self.char, name)
@@ -436,7 +437,7 @@ class TraitsNotesMixin:
         group = group or (gs[0]["name"] if gs else None)
         if group is None:
             self._toast("Make a group first: right-click the space under the list"); return
-        title, ok = QInputDialog.getText(self, "New Page", f"Page name (in {group}):")
+        title, ok = Ask.getText(self, "New Page", f"Page name (in {group}):")
         if not ok:
             return
         i = N.add_page(self.char, group, title)
@@ -449,7 +450,7 @@ class TraitsNotesMixin:
         if not (0 <= index < len(pages)):
             return
         title = pages[index].get("title", "this page")
-        if QMessageBox.question(self, "Remove Page",
+        if Tell.question(self, "Remove Page",
                                 f'Remove "{title}" and everything written on it? This can\'t be undone.',
                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
             return
@@ -464,7 +465,7 @@ class TraitsNotesMixin:
         pages = self.char.get("notes_pages", [])
         if not (0 <= index < len(pages)):
             return
-        title, ok = QInputDialog.getText(self, "Rename Page", "Page name:", text=pages[index].get("title", ""))
+        title, ok = Ask.getText(self, "Rename Page", "Page name:", text=pages[index].get("title", ""))
         if ok:
             N.rename_page(self.char, index, title)
             self._notes_changed()

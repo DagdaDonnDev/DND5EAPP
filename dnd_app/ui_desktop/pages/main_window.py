@@ -27,6 +27,7 @@ from dnd_app.core.save_load import (
 # ── Recent files helpers ──────────────────────────────────────────────────────
 import json as _json_mod
 from dnd_app.ui_desktop import icons as _icons
+from dnd_app.ui_desktop.popups import Ask, Tell
 _RECENT_FILE = os.path.join(os.path.expanduser("~"), ".dnd5e_recent.json")
 
 def _load_recent() -> list:
@@ -358,7 +359,7 @@ class StartMenu(QWidget):
         self._apply_saved_filter()
 
     def _rename_folder(self, folder: str):
-        new_name, ok = QInputDialog.getText(
+        new_name, ok = Ask.getText(
             self, "Rename Folder", f"New name for “{folder}”:", text=folder,
         )
         if not ok:
@@ -378,7 +379,7 @@ class StartMenu(QWidget):
         when it's non-empty, since a single misclick here could
         otherwise destroy hours of someone's work with no way back."""
         if count > 0:
-            confirm_text, ok = QInputDialog.getText(
+            confirm_text, ok = Ask.getText(
                 self, "Delete Folder",
                 f"This will PERMANENTLY delete all {count} character"
                 f"{'s' if count != 1 else ''} in “{folder}”. "
@@ -397,7 +398,7 @@ class StartMenu(QWidget):
             current = ""
         options = ["Uncategorized"] + [f for f in named_folders if f]
         start_index = options.index(current) if current in options else 0
-        text, ok = QInputDialog.getItem(
+        text, ok = Ask.getItem(
             self, "Move to Folder",
             "Pick an existing folder or type a new campaign name:",
             options, start_index, editable=True,
@@ -409,7 +410,7 @@ class StartMenu(QWidget):
         self._rebuild_saved_list()
 
     def _delete_saved_row(self, path: str, name: str = "this character"):
-        if QMessageBox.question(
+        if Tell.question(
             self, "Delete?", f"Delete {name} permanently?",
             QMessageBox.Yes | QMessageBox.No,
         ) == QMessageBox.Yes:
@@ -776,11 +777,11 @@ class SettingsDialog(QDialog):
         if os.path.abspath(target) == os.path.abspath(old_dir):
             return
         if not is_writable_dir(target):
-            QMessageBox.warning(self, "Can't use that folder",
+            Tell.warning(self, "Can't use that folder",
                                 f"MIMIC can't save files in:\n{target}")
             return
         if list_saved_characters(old_dir):
-            ans = QMessageBox.question(
+            ans = Tell.question(
                 self, "Copy your characters?",
                 f"Copy the characters saved in\n{old_dir}\ninto the new folder too?\n\n"
                 "(The originals stay where they are.)")
@@ -1384,7 +1385,7 @@ class CharacterCreatorApp(QMainWindow):
         try:
             char = load_character(path)
         except Exception as e:
-            QMessageBox.warning(self, "Load Error", str(e))
+            Tell.warning(self, "Load Error", str(e))
             return
         # Changes from a session that ended without a save or a discard (a
         # crash, the power going): offered back, once. Restored, they're
@@ -1395,7 +1396,7 @@ class CharacterCreatorApp(QMainWindow):
         if backup:
             name = (char.get("name") or "").strip() or "This character"
             when = f" from {backup['when']}" if backup["when"] else ""
-            ans = QMessageBox.question(
+            ans = Tell.question(
                 self, "Unsaved Changes Found",
                 f"{name} has changes{when} that were never saved.\n\nRestore them?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
@@ -1411,16 +1412,9 @@ class CharacterCreatorApp(QMainWindow):
     def _import_pdf_dialog(self):
         """What a PDF import can and can't do first, then the file picker."""
         from dnd_app.core.pdf_sheet import PDF_IMPORT_INTRO, PDF_IMPORT_LIMITS
-        box = QMessageBox(self)
-        box.setWindowTitle("Import from a PDF Character Sheet")
-        box.setIcon(QMessageBox.Information)
-        box.setText(PDF_IMPORT_INTRO)
-        box.setInformativeText("Good to know:\n" + "\n".join(f"• {l}" for l in PDF_IMPORT_LIMITS))
-        choose = box.addButton("Choose PDF…", QMessageBox.AcceptRole)
-        box.addButton(QMessageBox.Cancel)
-        box.setDefaultButton(choose)
-        box.exec()
-        if box.clickedButton() is not choose:
+        if not Tell.choose(self, "Import from a PDF Character Sheet",
+                           PDF_IMPORT_INTRO + "\n\nGood to know:\n"
+                           + "\n".join(f"• {l}" for l in PDF_IMPORT_LIMITS), "Choose PDF…"):
             return
         path, _ = QFileDialog.getOpenFileName(self, "Import a 5e Character Sheet (PDF)", "",
                                               "PDF character sheets (*.pdf)")
@@ -1435,9 +1429,9 @@ class CharacterCreatorApp(QMainWindow):
         try:
             char, notes = import_character_pdf(path)
         except SheetImportError as e:
-            QMessageBox.warning(self, "Import from PDF", str(e)); return
+            Tell.warning(self, "Import from PDF", str(e)); return
         except Exception as e:
-            QMessageBox.warning(self, "Import from PDF", f"Couldn't import that sheet: {e}"); return
+            Tell.warning(self, "Import from PDF", f"Couldn't import that sheet: {e}"); return
         if not char.get("name"):
             char["name"] = os.path.splitext(os.path.basename(path))[0]
         if name_in_use(char["name"]):
@@ -1453,7 +1447,7 @@ class CharacterCreatorApp(QMainWindow):
         if notes:
             msg += "\n\nWorth checking:\n" + "\n".join(f"\u2022 {n}" for n in notes)
             msg += "\n\n(These are also on the \u201cImported from PDF\u201d notes page.)"
-        QMessageBox.information(self, "Import from PDF", msg)
+        Tell.information(self, "Import from PDF", msg)
 
     def _show_new_sheet(self, char: dict):
         """The wizard's finish: show the new character's sheet and save

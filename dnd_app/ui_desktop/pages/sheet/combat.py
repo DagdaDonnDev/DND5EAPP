@@ -58,6 +58,7 @@ from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
+from dnd_app.ui_desktop.popups import Ask, Tell
 
 
 class PickerPopup(QFrame):
@@ -155,7 +156,7 @@ class CombatMixin:
         if verdict == "dead":
             self._show_death_screen()
         elif verdict == "stable":
-            QMessageBox.information(self, "Stable", STABLE_MESSAGE.replace(" -- ", " — "))
+            Tell.information(self, "Stable", STABLE_MESSAGE.replace(" -- ", " — "))
         self._mark_dirty()
 
     def _show_death_screen(self):
@@ -552,7 +553,7 @@ class CombatMixin:
         available_levels = [i+1 for i in range(9) if slots_max[i] - (slots_used[i] if i < len(slots_used) else 0) > 0]
         if not available_levels:
             return
-        level, ok = QInputDialog.getItem(
+        level, ok = Ask.getItem(
             self, "Combat Wild Shape",
             "Expend which spell slot level? (heals 1d8 per level)",
             [str(l) for l in available_levels], 0, False)
@@ -1101,7 +1102,7 @@ class CombatMixin:
                 btn = QPushButton(cat)
                 if cat in CAT_ICONS:
                     _icons.set_button_icon(btn, CAT_ICONS[cat], 13)
-                btn.setFixedHeight(26)
+                btn.setFixedHeight(28)
                 btn.setStyleSheet(self._action_cat_btn_style(cat == "All"))
                 btn.clicked.connect(_make_cat_click(cat))
                 btn.setToolTip({"All": "Everything in this tab",
@@ -1131,7 +1132,7 @@ class CombatMixin:
                 return _click
             for lvl_label in ["All", "Cantrip"] + [f"L{n}" for n in range(1, 10)]:
                 btn = QPushButton(lvl_label)
-                btn.setFixedHeight(22); btn.setMaximumWidth(48)
+                btn.setFixedHeight(24); btn.setMaximumWidth(48)
                 btn.setStyleSheet(self._action_cat_btn_style(lvl_label == "All", small=True))
                 btn.clicked.connect(_make_lvl_click(lvl_label))
                 self._action_lvl_btns_by_bucket[bucket_name][lvl_label] = btn
@@ -1169,14 +1170,14 @@ class CombatMixin:
             chip = QPushButton(f"{short}  ●")
             _icons.set_button_icon(chip, icon, 14)
             chip.setProperty("_short", short)
-            chip.setCheckable(False); chip.setFixedHeight(26)
+            chip.setCheckable(False); chip.setFixedHeight(28)
             chip.setAccessibleName(f"{bname} this turn — click to mark it used or ready")
             chip.clicked.connect(lambda checked=False, b=bname: self._toggle_turn_slot(b))
             tb.addWidget(chip)
             self._turn_chips[bname] = chip
         new_turn = QPushButton("New Turn")
         _icons.set_button_icon(new_turn, "refresh", 14)
-        new_turn.setFixedHeight(26)
+        new_turn.setFixedHeight(28)
         new_turn.setAccessibleName("Start a new turn — resets action, bonus action, reaction and sneak attack")
         new_turn.setToolTip("Start your next turn: your action, bonus action and reaction are ready again")
         # (the turn chips' look: on the action tabs' darker strip, its text
@@ -1184,7 +1185,7 @@ class CombatMixin:
         _nt_ink = readable(GREEN2, tint(PANELDK, GREEN2, 0x1e))
         new_turn.setStyleSheet(
             f"QPushButton{{background:{qa(GREEN2,0x1e)};border:2px solid {GREEN2};font-size:{FS_SMALL}px;"
-            f"border-radius:6px;color:{_nt_ink};font-weight:700;padding:0px 12px;min-height:0px;}}"
+            f"border-radius:6px;color:{_nt_ink};font-weight:700;padding:0px 12px;min-height:24px;max-height:24px;}}"
             f"QPushButton:hover{{background:{GREEN2};color:{on_fill(GREEN2)};}}"
             f"QPushButton:focus{{border:2px solid {TEAL2};}}")
         new_turn.clicked.connect(self._new_turn)
@@ -1617,7 +1618,7 @@ class CombatMixin:
         """Set the rounds an effect or a condition has left (0: not counted)."""
         from dnd_app.core.durations import rounds_left, set_rounds
         left = rounds_left(self.char, kind, name)
-        n, ok = QInputDialog.getInt(
+        n, ok = Ask.getInt(
             self, name, "Rounds left (a minute is 10).\nNew Turn takes one off and ends it at none. "
                         "0: not counted, it lasts until you end it.", left or 10, 0, 999)
         if not ok:
@@ -1668,7 +1669,7 @@ class CombatMixin:
             ink = readable(col, tint(PANELDK, col, 0x1e))
             chip.setStyleSheet(
                 f"QPushButton{{background:{qa(col,0x1e)};border:2px solid {col};font-size:{FS_SMALL}px;"
-                f"border-radius:6px;color:{ink};font-weight:700;padding:0px 10px;min-height:0px;}}"
+                f"border-radius:6px;color:{ink};font-weight:700;padding:0px 10px;min-height:24px;max-height:24px;}}"
                 f"QPushButton:hover{{border-color:{TEAL2};}}"
                 f"QPushButton:focus{{border:2px solid {TEAL2};}}")
             # Grey the bucket's buttons + dim cards
@@ -1718,7 +1719,7 @@ class CombatMixin:
             ink = readable(col, tint(SURF, col, 0x1e))
             self._sneak_chip.setStyleSheet(
                 f"QPushButton{{background:{qa(col,0x1e)};border:2px solid {col};font-size:{FS_SMALL}px;"
-                f"border-radius:6px;color:{ink};font-weight:700;padding:0px 10px;min-height:0px;}}"
+                f"border-radius:6px;color:{ink};font-weight:700;padding:0px 10px;min-height:24px;max-height:24px;}}"
                 f"QPushButton:hover{{border-color:{TEAL2};}}"
                 f"QPushButton:focus{{border:2px solid {TEAL2};}}")
         else:
@@ -1752,7 +1753,7 @@ class CombatMixin:
         cur = self._exhaustion_spin.value()
         new = level - 1 if cur == level else level
         if new >= 6 > cur:
-            ans = QMessageBox.question(self, "Exhaustion 6",
+            ans = Tell.question(self, "Exhaustion 6",
                                        "Exhaustion level 6 is death. Set it?",
                                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if ans != QMessageBox.Yes:
@@ -1810,7 +1811,7 @@ class CombatMixin:
         from dnd_app.core.spell_effects import added_effect_levels
         levels = added_effect_levels(name)
         if levels:
-            got, ok = QInputDialog.getItem(self, name, f"What level was {name} cast at?", levels, 0, False)
+            got, ok = Ask.getItem(self, name, f"What level was {name} cast at?", levels, 0, False)
             if not ok:
                 return
             self.char.setdefault("effect_details", {})[name] = {"level": int(got.split()[0][:-2])}
@@ -2147,7 +2148,7 @@ class CombatMixin:
             wpn_name = f"{material} {base_name}" if material else base_name
             equipped = self.char.setdefault("equipped_weapons", [])
             if wpn_name in equipped:
-                QMessageBox.information(self, "Weapon", f"{wpn_name} is already equipped.")
+                Tell.information(self, "Weapon", f"{wpn_name} is already equipped.")
                 return
             equipped.append(wpn_name)
             self._add_weapon_row(wpn_name)
@@ -2292,7 +2293,7 @@ class CombatMixin:
             ammo_lbl.setFixedHeight(26)
             def _set_ammo(checked=False, _key=ammo_key):
                 label = ammo_label(_key)
-                n, ok = QInputDialog.getInt(
+                n, ok = Ask.getInt(
                     None, label, f"How many {label.lower()} do you have?",
                     ammo_count(self.char, _key), 0, 9999)
                 if ok:
@@ -2351,7 +2352,7 @@ class CombatMixin:
         if row.get("ammo"):
             label = ammo_label(row["ammo"])
             if not spend_ammo(self.char, row["ammo"]):
-                QMessageBox.warning(None, "No Ammo",
+                Tell.warning(None, "No Ammo",
                                     f"Out of {label.lower()}!\nClick the {label} counter to add more.")
                 return False
             self._refresh_gear_equipment()

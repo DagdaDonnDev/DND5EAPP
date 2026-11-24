@@ -184,6 +184,18 @@ there are six new light themes.
 
 ### Changes
 
+- **Pop-ups in your theme (desktop):** naming a page or group, "are you
+  sure?", how many to add, picking a class and the other questions open
+  beside where you clicked, in the theme's colours, and always stay on
+  the screen. A long message scrolls inside its pop-up. Long lists to pick
+  from have a search box.
+- **Button sizes (desktop):** the same size for the same kind of button on
+  every page: chips and filters, buttons on a row (Cast on Combat and on
+  Spells alike), action buttons and search rows. Some were drawn shorter
+  or taller than they were meant to be.
+- **Choices tab headings:** Auto-applied and Class features by level are
+  cards with headings like Class & Level and Identity, and each class
+  reads "Sorcerer 5 · Wild Magic".
 - **Shorter tab names (desktop):** Inventory and Notes, which leaves room
   for Creatures. Android's Equipment is now Inventory too.
 - **Save proficiency:** right-click a save on the Overview (press and hold

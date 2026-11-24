@@ -237,8 +237,8 @@ class FeaturesMixin:
             b.setCheckable(True); b.setChecked(chip == self._feat_chip)
             b.setCursor(Qt.PointingHandCursor)
             b.setStyleSheet(
-                f"QPushButton{{background:{SURF2};color:{TEXT2};border:1px solid {BORDER};border-radius:15px;"
-                f"padding:0 12px;min-height:30px;max-height:30px;font-size:{FS_SMALL}px;font-weight:700;}}"
+                f"QPushButton{{background:{SURF2};color:{TEXT2};border:1px solid {BORDER};border-radius:14px;"
+                f"padding:0 12px;min-height:26px;max-height:26px;font-size:{FS_SMALL}px;font-weight:700;}}"
                 f"QPushButton:hover{{border-color:{BORDER2};color:{TEXT};}}"
                 f"QPushButton:checked{{background:{GOLD};color:{on_fill(GOLD)};border-color:{GOLD};}}")
             b.clicked.connect(lambda _=False, c=chip: self._set_feature_chip(c))

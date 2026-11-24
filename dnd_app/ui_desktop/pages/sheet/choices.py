@@ -56,6 +56,7 @@ from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
+from dnd_app.ui_desktop.popups import Ask, Tell
 
 
 class ChoicesMixin:
@@ -82,7 +83,7 @@ class ChoicesMixin:
 
     def _on_set_total_xp(self):
         current = self.char.get("experience", 0)
-        new_val, ok = QInputDialog.getInt(
+        new_val, ok = Ask.getInt(
             self, "Set Total XP", "Total experience points:", current, 0, 999999999, 1)
         if ok:
             self.ctrl.update("experience", new_val, rebuild_char=False)
@@ -95,7 +96,7 @@ class ChoicesMixin:
         from dnd_app.core.calculator import update_all
         if slot == "race":
             from dnd_app.data.races import RACE_NAMES
-            name, ok = QInputDialog.getItem(self, "Edit Race", "Species / Race:", RACE_NAMES, 0, False)
+            name, ok = Ask.getItem(self, "Edit Race", "Species / Race:", RACE_NAMES, 0, False)
             if ok and name:
                 old_race = self.char.get("race", "")
                 # Whatever the old race asked for and the new one doesn't goes
@@ -115,7 +116,7 @@ class ChoicesMixin:
             rdata = RACE_DICT.get(race, {})
             subraces_raw = rdata.get("subraces", [])
             if not subraces_raw:
-                QMessageBox.information(self, "No Subraces", f"{race} has no subraces."); return
+                Tell.information(self, "No Subraces", f"{race} has no subraces."); return
             _ASI_PAT = r"[+]([A-Z]{3})[ ](\d+)"
             _STRIP_PAT = r"[+][A-Z]{3}[ ]\d+,?[ ]*"
             options = []
@@ -128,7 +129,7 @@ class ChoicesMixin:
                 options.append(f"{name_part}  ({desc})")
             current = self.char.get("subrace", "")
             cur_idx = next((i for i, o in enumerate(options) if o.startswith(current)), 0)
-            choice, ok = QInputDialog.getItem(self, f"Choose Subrace — {race}", "Subrace:", options, cur_idx, False)
+            choice, ok = Ask.getItem(self, f"Choose Subrace — {race}", "Subrace:", options, cur_idx, False)
             if ok and choice:
                 subrace_name = choice.split("(")[0].strip()
                 change_and_prune(self.char, lambda: self.char.update(subrace=subrace_name))
@@ -146,7 +147,7 @@ class ChoicesMixin:
             options = [f"{a}  –  {DRACONIC_ANCESTRY[a][0]}, {DRACONIC_ANCESTRY[a][1]}" for a in avail]
             cur = self.char.get("draconic_ancestry", "")
             cur_idx = next((i for i, o in enumerate(options) if o.startswith(cur)), 0)
-            choice, ok = QInputDialog.getItem(self, "Draconic Ancestry", "Dragon type:", options, cur_idx, False)
+            choice, ok = Ask.getItem(self, "Draconic Ancestry", "Dragon type:", options, cur_idx, False)
             if ok and choice:
                 self.char["draconic_ancestry"] = choice.split("–")[0].strip().split("  ")[0].strip()
                 self._rebuild_features()
@@ -155,7 +156,7 @@ class ChoicesMixin:
 
         elif slot == "background":
             from dnd_app.data.backgrounds import BACKGROUND_NAMES, get_background
-            name, ok = QInputDialog.getItem(self, "Edit Background", "Background:", BACKGROUND_NAMES, 0, False)
+            name, ok = Ask.getItem(self, "Edit Background", "Background:", BACKGROUND_NAMES, 0, False)
             if ok and name:
                 old_bg = self.char.get("background", "")
                 # Same as the race change above: bg_skill_profs/bg_tool_profs/
@@ -169,7 +170,7 @@ class ChoicesMixin:
                 bg = get_background(name)
                 feat_choices = (bg or {}).get("feat_choices") or []
                 if feat_choices:
-                    feat_name, ok2 = QInputDialog.getItem(
+                    feat_name, ok2 = Ask.getItem(
                         self, name, f"{name} grants a choice of feat — which one?",
                         feat_choices, 0, False)
                     if ok2 and feat_name:
@@ -181,7 +182,7 @@ class ChoicesMixin:
         elif slot == "alignment":
             from .base import ALIGNMENTS
             cur = self.char.get("alignment", "")
-            name, ok = QInputDialog.getItem(self, "Edit Alignment", "Alignment:", ALIGNMENTS,
+            name, ok = Ask.getItem(self, "Edit Alignment", "Alignment:", ALIGNMENTS,
                                             ALIGNMENTS.index(cur) if cur in ALIGNMENTS else 0, False)
             if ok and name and name != cur:
                 from dnd_app.core.builder import change_alignment

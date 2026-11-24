@@ -54,6 +54,7 @@ from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
+from dnd_app.ui_desktop.popups import Ask, Tell
 
 
 class CreatureGroup(QFrame):
@@ -414,7 +415,7 @@ class CompanionsMixin:
             dice = sb.get("hit_dice") or ""
             hint = (f"Its hit dice: {dice} (average {dice_average(dice)}). Roll them, or set any number."
                     if dice else "Set any number.")
-            v, ok = QInputDialog.getInt(self, f"{sb['display_name']}: max HP", hint, cur, 1, 9999, 1)
+            v, ok = Ask.getInt(self, f"{sb['display_name']}: max HP", hint, cur, 1, 9999, 1)
             if ok:
                 set_max_hp(self.char, hp_key, v)
                 self._mark_dirty()

@@ -55,6 +55,7 @@ from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
+from dnd_app.ui_desktop.popups import Ask, Tell
 
 
 
@@ -450,7 +451,7 @@ class ActionTabsMixin:
                 return res
             opts = ask["options"]
             if len(opts) == 2 and opts[1] in ("No", "Cancel"):
-                yes = QMessageBox.question(self, title, ask["title"],
+                yes = Tell.question(self, title, ask["title"],
                                            QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes
                 answers[ask["key"]] = opts[0] if yes else opts[1]
                 continue
@@ -459,7 +460,7 @@ class ActionTabsMixin:
                 from dnd_app.ui_desktop.widgets import pick_from_long_list
                 choice, ok = pick_from_long_list(self, title, ask["title"], opts)
             else:
-                choice, ok = QInputDialog.getItem(self, title, ask["title"], opts, 0, False)
+                choice, ok = Ask.getItem(self, title, ask["title"], opts, 0, False)
             if not ok:
                 return None
             answers[ask["key"]] = choice
@@ -711,6 +712,7 @@ class ActionTabsMixin:
                 use_btn.setStyleSheet(
                     _btn("", src_color, variant="danger", radius=5, border_width=1,
                          hover_text="white", font_size=FS_TINY, padding="0px").styleSheet())
+                exact_height(use_btn, 32)
                 use_btn.setToolTip(tooltip_text)
 
                 if is_spell:
@@ -724,7 +726,7 @@ class ActionTabsMixin:
                     use_btn.clicked.connect(_use_ability)
                     # Row click → full rules text (button = do it)
                     card.mousePressEvent = (lambda e, _d=display, _s=source, _x=desc:
-                        QMessageBox.information(self, _d,
+                        Tell.information(self, _d,
                             f"<b>{_d}</b><br><i>Source: {_s}</i><br><br>{_x}"))
 
                 for w in (card, lbl_name, lbl_desc, src_badge):
