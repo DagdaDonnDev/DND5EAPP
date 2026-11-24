@@ -1473,11 +1473,13 @@ Page {
                                         onClicked: sheetBridge.levelDownClass(clsRow.clsName)
                                     }
                                     MButton {
-                                        text: "Remove"
+                                        objectName: "classMore_" + clsRow.clsName
+                                        text: "⋯"
                                         primary: false
                                         height: 36
-                                        visible: !modelData.isNew && sheetBridge.canRemoveClass
-                                        onClicked: sheetBridge.removeClass(clsRow.clsName)
+                                        implicitWidth: 52
+                                        visible: !modelData.isNew
+                                        onClicked: root.classOptions(clsRow.clsName, modelData.currentLevel)
                                     }
                                     MButton {
                                         text: modelData.isNew ? "Multiclass In" : "Level Up"
@@ -1493,6 +1495,42 @@ Page {
                 }
             }
         }
+    }
+
+    // a class's ⋯ : Change class (same level), or Remove (greyed when it's
+    // your only class) -- desktop's ⋯ beside its subclass
+    property string _cls: ""
+    function classOptions(name, level) {
+        _cls = name
+        classOptionsDialog.heading = name + " " + level
+        classOptionsDialog.options = [
+            {key: "change", text: "Change class (stays level " + level + ")", icon: "refresh"},
+            {key: "remove", text: sheetBridge.canRemoveClass ? "Remove " + name : "Remove " + name + " (your only class)",
+             icon: "trash", enabled: sheetBridge.canRemoveClass}]
+        classOptionsDialog.open()
+    }
+    MOptionsDialog {
+        id: classOptionsDialog
+        objectName: "classOptionsDialog"
+        onPicked: (key) => {
+            if (key === "remove")
+                sheetBridge.removeClass(root._cls)
+            else {
+                var opts = []
+                var names = sheetBridge.otherClasses(root._cls)
+                for (var i = 0; i < names.length; ++i)
+                    opts.push({key: names[i], text: names[i], icon: ""})
+                changeClassDialog.heading = root._cls + " becomes…"
+                changeClassDialog.options = opts
+                changeClassDialog.open()
+            }
+        }
+    }
+    MOptionsDialog {
+        id: changeClassDialog
+        objectName: "changeClassDialog"
+        message: "Same level. Its subclass and choices are asked afresh."
+        onPicked: (key) => sheetBridge.changeClass(root._cls, key)
     }
 
     MPickerDialog {
@@ -1547,7 +1585,7 @@ Page {
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
         // Matches MFullPageDialog.qml's dimming -- the default modal
         // overlay is a much lighter wash than this app's dark theme calls for.
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         ColumnLayout {
             anchors.fill: parent

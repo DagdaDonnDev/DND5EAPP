@@ -218,7 +218,10 @@ STDLIB_EXCLUDES = [
     'setuptools',
     'pkg_resources',
     'email',
-    'html',
+    # NOTE: do not add 'html' to this list. The app escapes text with it
+    # (the Bestiary's stat blocks, the dice roller, the rest screen), so a
+    # build without it fails with "No module named 'html'" on opening a
+    # character. It's a few kilobytes.
     'http',
     # NOTE: do not add 'urllib' to this list. PyInstaller's own runtime
     # hooks (pyi_rth_inspect -> zipfile._path -> pathlib) import it
@@ -247,7 +250,7 @@ STDLIB_EXCLUDES = [
 EXCLUDES = QT_EXCLUDES + STDLIB_EXCLUDES
 
 _README = os.path.join(_ROOT, 'README.md')
-_SPLASH_GIF = os.path.join(_ROOT, 'dnd_app', 'ui_desktop', 'splash', 'splash.gif')
+_SPLASH_GIF = os.path.join(_ROOT, 'dnd_app', 'core', 'splash.gif')
 _SPLASH_PNG = os.path.join(_ROOT, 'dnd_app', 'ui_desktop', 'splash', 'splash.png')
 
 a = Analysis(
@@ -258,12 +261,16 @@ a = Analysis(
         (os.path.join(_ROOT, 'dnd_app', 'data'), 'dnd_app/data'),
         (os.path.join(_ROOT, 'dnd_app', 'ui_desktop', 'icon.ico'), 'dnd_app/ui_desktop'),
         *([(_README, '.')] if os.path.isfile(_README) else []),
-        # splash.gif/splash.png live in dnd_app/ui_desktop/splash alongside the code
-        # that reads them. Analysis only auto-bundles .py files it traces
+        # splash.gif lives in dnd_app/core (both apps theme it, core/splash_art.py),
+        # splash.png in dnd_app/ui_desktop/splash. Analysis only auto-bundles .py files it traces
         # through imports, so these binary assets need explicit datas
         # entries same as the old dnd_app/assets dir they moved out of.
-        *([(_SPLASH_GIF, 'dnd_app/ui_desktop/splash')] if os.path.isfile(_SPLASH_GIF) else []),
+        *([(_SPLASH_GIF, 'dnd_app/core')] if os.path.isfile(_SPLASH_GIF) else []),
         *([(_SPLASH_PNG, 'dnd_app/ui_desktop/splash')] if os.path.isfile(_SPLASH_PNG) else []),
+        # the window icon in each theme's colours (core/app_icon.py,
+        # written by packaging/make_theme_icons.py)
+        *([(os.path.join(_ROOT, 'dnd_app', 'core', 'theme_icons'), 'dnd_app/core/theme_icons')]
+          if os.path.isdir(os.path.join(_ROOT, 'dnd_app', 'core', 'theme_icons')) else []),
         *pyside6_datas,
     ],
     hiddenimports=[
@@ -302,7 +309,7 @@ pyz = PYZ(a.pure)
 # gap that otherwise looks like a frozen/dead window on cold start, since
 # nothing the app itself does can run until extraction finishes. Requires a
 # static image (no GIF support at this layer); splash.png here is just the
-# first frame of dnd_app/ui_desktop/splash/splash.gif so the two splashes look
+# first frame of dnd_app/core/splash.gif so the two splashes look
 # continuous.
 _splash_target = []
 _splash_binaries = []
@@ -312,7 +319,7 @@ if os.path.isfile(_SPLASH_PNG):
         binaries=a.binaries,
         datas=a.datas,
         text_pos=None,          # no bootloader-drawn progress text
-        always_on_top=True,
+        always_on_top=False,     # it never covers what you're doing
     )
     _splash_target = [splash]
     _splash_binaries = [splash.binaries]

@@ -138,6 +138,100 @@ def parse_material_prefix(name: str) -> tuple[str, str]:
     return name, ""
 
 
+# ── Magic armour: the armour it is ────────────────────────────────────────
+# A magic suit is a real armour underneath -- Dwarven Plate is plate, Elven
+# Chain a chain shirt -- and its AC, Stealth and Strength requirement are
+# that armour's. One that can be any armour (+1 Armor, Armor of Fire
+# Resistance...) is the one the player picks (char["weapon_bases"], the
+# same store and the same "Which ... is it?" as an "any sword" weapon).
+BODY_ARMORS = ["Padded", "Leather", "Studded Leather", "Hide", "Chain Shirt", "Scale Mail",
+               "Breastplate", "Half Plate", "Ring Mail", "Chain Mail", "Splint", "Plate"]
+NAMED_ARMOR_BASES = {
+    "Demon Armor": "Plate", "Armor of Invulnerability": "Plate", "Scorpion Armor": "Plate",
+    "Armor of Vulnerability": "Plate", "Armor of Vulnerability (Bludgeoning)": "Plate",
+    "Armor of Vulnerability (Piercing)": "Plate", "Armor of Vulnerability (Slashing)": "Plate",
+    "Efreeti Chain": "Chain Mail", "Heward's Hireling Armor": "Chain Mail",
+    "Elven Chain": "Chain Shirt", "Vanrak's Mithral Shirt": "Chain Shirt",
+    "Voidwalker Armor": "Studded Leather", "Hunter's Coat": "Breastplate", "Dragonguard": "Breastplate",
+}
+# what an "any armour" item can be, when it can't be every one
+_ARMOR_KINDS = {
+    "Mithral Armor": "medium or heavy", "Mithral +1 Armor": "medium or heavy",
+    "Adamantine Armor": "medium or heavy", "Mind Carapace Armor": "heavy", "Powered Armor": "heavy",
+}
+_SHIELD_RE = _re.compile(r"\b(shield|buckler|aegis)\b", _re.I)
+
+
+def is_magic_shield(name: str) -> bool:
+    """A magic shield (+1 Shield, Sentinel Shield, Sapphire Buckler...):
+    carried as your shield, not worn as armour."""
+    item = get_magic_item(name) or {}
+    return item.get("type") in ("Armor", "Shield") and bool(_SHIELD_RE.search(name or ""))
+
+
+def _named_armor_base(name: str) -> str:
+    """The armour a named magic armour always is ("" if it can be any)."""
+    name = (name or "").strip()
+    if name in NAMED_ARMOR_BASES:
+        return NAMED_ARMOR_BASES[name]
+    for base in sorted(BODY_ARMORS, key=len, reverse=True):
+        if _re.search(rf"\b{_re.escape(base)}\b", name, _re.I):
+            return base
+    return ""
+
+
+def armor_base_options(name: str) -> list:
+    """The armours an "any armour" magic item can be ([] for one that's
+    always the same armour, a shield, or not armour at all)."""
+    from dnd_app.data.items import ARMOR_DICT
+    item = get_magic_item(name) or {}
+    if item.get("type") != "Armor" or is_magic_shield(name) or _named_armor_base(name):
+        return []
+    kind = _ARMOR_KINDS.get((name or "").strip(), "any")
+    out = []
+    for base in BODY_ARMORS:
+        t = (ARMOR_DICT.get(base) or {}).get("type", "")
+        if kind == "any" or kind == "heavy" and t == "heavy" or \
+                kind == "medium or heavy" and t in ("medium", "heavy") and base != "Hide":
+            out.append(base)
+    return out
+
+
+def armor_base(char: dict, name: str) -> str:
+    """The armour a worn suit is: "Plate" for "Plate +1", "Adamantine
+    Splint" or "Dwarven Plate"; the player's pick for "+1 Armor"; "No
+    Armor" for a magic shield worn by an older save; otherwise the name
+    as it is (not a known armour)."""
+    from dnd_app.data.items import ARMOR_DICT
+    raw = (name or "No Armor").strip()
+    base, _ = parse_magic_suffix(raw)
+    base, _ = parse_material_prefix(base)
+    if base in ARMOR_DICT:
+        return base
+    if raw in ARMOR_DICT:
+        return raw
+    if is_magic_shield(raw):
+        return "No Armor"
+    if not get_magic_item(raw):
+        return base                 # Mage Armor (spell), Dragon Hide (feat)...
+    picked = ((char or {}).get("weapon_bases") or {}).get(raw)
+    if picked and picked in armor_base_options(raw):
+        return picked
+    return _named_armor_base(raw) or base
+
+
+def worn_armor(char: dict) -> tuple:
+    """(the armour worn underneath, its +N) -- ("Plate", 1) for "Plate +1",
+    ("Plate", 0) for Dwarven Plate, whose +2 is its own item bonus."""
+    worn = char.get("armor_worn") or "No Armor"
+    return armor_base(char, worn), parse_magic_suffix(worn)[1]
+
+
+def armor_has_drawbacks(char: dict) -> bool:
+    """Mithral armour has no Stealth disadvantage and no Strength need."""
+    return "mithral" not in (char.get("armor_worn") or "").lower()
+
+
 def _active_item_names(char: dict) -> list[str]:
     """Items that apply mechanical effects: attuned items must ALSO be
     equipped (not just sitting attuned in a backpack — the attunement
@@ -145,13 +239,20 @@ def _active_item_names(char: dict) -> list[str]:
     items just need to be equipped."""
     names: list[str] = []
     attuned = set(char.get("attuned_items", []))
+    worn = (char.get("armor_worn") or "").strip()
+
+    def _off_body(n):
+        # a suit of magic armour works only while it's the armour you wear
+        # (a second suit in your pack adds nothing); shields aren't worn
+        item = get_magic_item(n) or {}
+        return item.get("type") == "Armor" and not is_magic_shield(n) and n != worn
     equipped_lookup = {}
     for entry in char.get("magic_items", []):
         if isinstance(entry, dict):
             equipped_lookup[entry.get("name", "")] = entry.get("equipped", False)
 
     for n in attuned:
-        if n and n not in names and equipped_lookup.get(n, False):
+        if n and n not in names and equipped_lookup.get(n, False) and not _off_body(n):
             names.append(n)
 
     for entry in char.get("magic_items", []):
@@ -162,7 +263,7 @@ def _active_item_names(char: dict) -> list[str]:
             name = entry.get("name", "")
         if not name or name in names:
             continue
-        if not entry.get("equipped", False):
+        if not entry.get("equipped", False) or _off_body(name):
             continue
         catalog = get_magic_item(name)
         requires_attune = bool(catalog.get("attunement")) if catalog else False
@@ -213,6 +314,17 @@ def reset_magic_item_modifiers(char: dict) -> None:
     char["magic_prof_bonus"] = 0
     char["magic_senses"] = {}     # {"darkvision": 60, ...} from equipped/attuned items
     char["magic_hp_max_bonus"] = 0
+    # Ioun stones of knowledge: proficiency in a skill (or +1 to it if
+    # you're proficient already); +1 to one ability's checks or saves
+    char["magic_skill_profs"] = []        # [skill, ...]
+    char["_skill_prof_sources"] = {}      # {skill: [item, ...]}
+    char["magic_ability_check_bonus"] = {}   # {"INT": 1}
+    char["magic_ability_save_bonus"] = {}    # {"INT": 1}
+    char["_ability_bonus_sources"] = []   # [(item, "Intelligence checks", value), ...]
+    char["damage_vulnerabilities"] = []   # [(damage_type, item_name), ...]
+    char["magic_languages"] = []          # [(language, item_name), ...]
+    char["magic_death_save_bonus"] = 0
+    char["_death_save_sources"] = []      # [(item_name, value), ...]
 
 
 def apply_magic_item_effect(char: dict, item_name: str) -> None:
@@ -223,12 +335,31 @@ def apply_magic_item_effect(char: dict, item_name: str) -> None:
 
     # An item can grant multiple simultaneous effects (e.g. an ability score
     # bonus AND a damage immunity) — represented as a list of effect dicts.
-    if isinstance(effect, list):
-        for sub_effect in effect:
+    for sub_effect in (effect if isinstance(effect, list) else [effect]):
+        if _effect_applies(char, sub_effect.get("if", ""), item_name):
             _apply_single_effect(char, item_name, sub_effect)
-        return
 
-    _apply_single_effect(char, item_name, effect)
+
+def _effect_applies(char: dict, cond: str, item_name: str = "") -> bool:
+    """An effect that only works some of the time, when the sheet can tell:
+       "no_armor_no_shield"  (Bracers of Defense's kind: no armour, no shield)
+       "off_hand"  while the item is the weapon in your off hand
+       "good", "evil", "lawful", "chaotic"  (your alignment)"""
+    if not cond:
+        return True
+    if cond == "off_hand":
+        from dnd_app.core.weapons import hand_of
+        return hand_of(char, item_name) in ("off hand", "one in each hand")
+    if cond == "no_armor_no_shield":
+        armor = (char.get("armor_worn") or "No Armor").strip()
+        return armor in ("No Armor", "Mage Armor (spell)") and not char.get("shield", False)
+    if cond in ("good", "evil", "lawful", "chaotic"):
+        return cond in (char.get("alignment") or "").lower()
+    return True
+
+
+_ABILITY_WORDS = {"STR": "Strength", "DEX": "Dexterity", "CON": "Constitution",
+                  "INT": "Intelligence", "WIS": "Wisdom", "CHA": "Charisma"}
 
 
 def _apply_single_effect(char: dict, item_name: str, effect: dict) -> None:
@@ -245,7 +376,32 @@ def _apply_single_effect(char: dict, item_name: str, effect: dict) -> None:
         sk = effect["skill"]
         if sk not in skills:
             skills.append(sk)
-        char.setdefault("_skill_advantage_sources", {}).setdefault(sk, []).append(item_name)
+        # "when": the advantage is only some of the time ("to swim")
+        src = f"{item_name} ({effect['when']})" if effect.get("when") else item_name
+        char.setdefault("_skill_advantage_sources", {}).setdefault(sk, []).append(src)
+
+    elif etype == "skill_proficiency":
+        # proficiency in the skill, or +1 to it if you already have it
+        # (the Ioun stones of knowledge)
+        sk = effect["skill"]
+        if (char.get("skills") or {}).get(sk, 0) >= 2 or sk in char.get("magic_skill_profs", []):
+            bonus = char.setdefault("magic_skill_bonus", {})
+            bonus[sk] = bonus.get(sk, 0) + 1
+            char.setdefault("_check_bonus_sources", []).append((f"{item_name} ({sk})", 1))
+        else:
+            char.setdefault("magic_skill_profs", []).append(sk)
+        char.setdefault("_skill_prof_sources", {}).setdefault(sk, []).append(item_name)
+
+    elif etype == "vulnerability":
+        char.setdefault("damage_vulnerabilities", []).append((effect.get("damage_type", ""), item_name))
+
+    elif etype == "language":
+        char.setdefault("magic_languages", []).append((effect.get("language", ""), item_name))
+
+    elif etype == "death_save_bonus":
+        val = effect.get("value", 0)
+        char["magic_death_save_bonus"] = char.get("magic_death_save_bonus", 0) + val
+        char.setdefault("_death_save_sources", []).append((item_name, val))
 
     elif etype == "skill_disadvantage":
         skills = char.setdefault("skill_disadvantages", [])
@@ -307,10 +463,27 @@ def _apply_single_effect(char: dict, item_name: str, effect: dict) -> None:
             char["magic_save_bonus"] = char.get("magic_save_bonus", 0) + sb
             char.setdefault("_save_bonus_sources", []).append((item_name, sb))
 
+    elif etype == "save_bonus" and effect.get("ability"):
+        # one ability's saves (Ioun Stone, Self-Preservation: Intelligence)
+        val, ab = effect.get("value", 0), effect["ability"]
+        bonus = char.setdefault("magic_ability_save_bonus", {})
+        bonus[ab] = bonus.get(ab, 0) + val
+        char.setdefault("_ability_bonus_sources", []).append(
+            (item_name, f"{_ABILITY_WORDS.get(ab, ab)} saving throws", val))
+
     elif etype == "save_bonus":
         val = effect.get("value", 0)
         char["magic_save_bonus"] = char.get("magic_save_bonus", 0) + val
         char.setdefault("_save_bonus_sources", []).append((item_name, val))
+
+    elif etype == "check_bonus" and effect.get("ability"):
+        # one ability's checks, its skills too (Ioun Stone, Supreme
+        # Intellect: Intelligence)
+        val, ab = effect.get("value", 0), effect["ability"]
+        bonus = char.setdefault("magic_ability_check_bonus", {})
+        bonus[ab] = bonus.get(ab, 0) + val
+        char.setdefault("_ability_bonus_sources", []).append(
+            (item_name, f"{_ABILITY_WORDS.get(ab, ab)} checks", val))
 
     elif etype == "check_bonus":
         # every ability check, initiative too (calculator.py)
@@ -428,10 +601,9 @@ def apply_equipment_skill_effects(char: dict) -> None:
     """
     from dnd_app.data.items import ARMOR_DICT
 
-    armor_name = char.get("armor_worn", "No Armor")
-    base_armor_name, _ = parse_magic_suffix(armor_name)
+    base_armor_name, _ = worn_armor(char)
     armor = ARMOR_DICT.get(base_armor_name)
-    if armor and armor.get("stealth"):
+    if armor and armor.get("stealth") and armor_has_drawbacks(char):
         dis = char.setdefault("skill_disadvantages", [])
         if "Stealth" not in dis:
             dis.append("Stealth")
@@ -716,7 +888,10 @@ def add_owned_magic_item(char: dict, name: str, qty: int = 1) -> dict:
         if stack:
             stack["qty"] = stack.get("qty", 1) + qty
             return stack
-    entry = {"name": name, "attunement": False, "equipped": True, "notes": "",
+    # a suit of armour starts in your pack: ticking Equipped puts it on
+    # (and takes off the one you wore); anything else starts at hand
+    body_armor = (get_magic_item(name) or {}).get("type") == "Armor" and not is_magic_shield(name)
+    entry = {"name": name, "attunement": False, "equipped": not body_armor, "notes": "",
              "uid": _uuid.uuid4().hex[:10]}
     if is_magic_ammunition(name):
         entry["qty"] = max(1, qty)
@@ -758,6 +933,8 @@ def set_owned_magic_item_qty(char: dict, uid: str, qty: int):
 
 def _unequip_slot(char: dict, name: str):
     itype = (get_magic_item(name) or {}).get("type", "")
+    if is_magic_shield(name):
+        itype = "Shield"
     if itype == "Weapon":
         wpns = char.get("equipped_weapons", [])
         if name in wpns:
@@ -778,11 +955,14 @@ def set_owned_magic_item_equipped(char: dict, uid: str, on: bool):
     entry["equipped"] = on
     name = entry.get("name", "")
     itype = (get_magic_item(name) or {}).get("type", "")
+    if is_magic_shield(name):
+        itype = "Shield"            # carried as your shield, over your armour
     if on:
         if itype == "Weapon":
-            wpns = char.setdefault("equipped_weapons", [])
-            if name not in wpns:
-                wpns.append(name)
+            # taken up the way any weapon is: two light ones, one in each
+            # hand; a two-handed one puts the rest away (core/weapons.py)
+            from dnd_app.core.weapons import equip_weapon
+            equip_weapon(char, name)
         elif itype == "Armor":
             char["armor_worn"] = name
         elif itype == "Shield":
@@ -884,7 +1064,7 @@ def charges_at_dawn(char: dict, rng=None) -> list:
     out = []
     for name, data in char.get("item_charges", {}).items():
         mx, cur = data.get("max", 0), data.get("current", 0)
-        if data.get("recharge", "dawn") not in ("dawn", "dusk") or cur >= mx:
+        if data.get("recharge", "dawn") not in ("dawn", "dusk", "long", "short") or cur >= mx:
             continue
         catalog = get_magic_item(name) or {}
         m = _REGAIN_RE.search(catalog.get("desc", "") or "")

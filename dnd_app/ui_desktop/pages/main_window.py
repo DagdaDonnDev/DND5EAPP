@@ -27,6 +27,7 @@ from dnd_app.core.save_load import (
 # ── Recent files helpers ──────────────────────────────────────────────────────
 import json as _json_mod
 from dnd_app.ui_desktop import icons as _icons
+from dnd_app.ui_desktop.popups import Ask, Tell
 _RECENT_FILE = os.path.join(os.path.expanduser("~"), ".dnd5e_recent.json")
 
 def _load_recent() -> list:
@@ -48,6 +49,25 @@ def _save_recent(path: str):
 # Same shape/param order as shared.py's h() — safe direct alias.
 _lbl = h
 
+
+
+# Every keyboard shortcut on desktop, for Reference (and the README's list)
+SHORTCUTS = [
+    ("Ctrl+N", "New character"),
+    ("Ctrl+O", "Open a character file"),
+    ("Ctrl+S", "Save"),
+    ("Ctrl+E", "Export"),
+    ("Ctrl+Shift+D", "Duplicate the character"),
+    ("Ctrl+D", "Dice Roller (the d20 at the top of the sheet)"),
+    ("Ctrl+B", "Bestiary, in a window of its own"),
+    ("Ctrl+Shift+B", "Your creatures (the Creatures tab)"),
+    ("Ctrl+R", "Rest, short rest picked"),
+    ("Ctrl+Shift+R", "Rest, long rest picked"),
+    ("Ctrl+1 … Ctrl+9", "Jump to that tab"),
+    ("Ctrl+F", "The search box of the tab you're on, or the start screen's"),
+    ("Ctrl+,", "Settings"),
+    ("Ctrl+Q", "Quit"),
+]
 
 class StartMenu(QWidget):
     new_char  = Signal()
@@ -339,7 +359,7 @@ class StartMenu(QWidget):
         self._apply_saved_filter()
 
     def _rename_folder(self, folder: str):
-        new_name, ok = QInputDialog.getText(
+        new_name, ok = Ask.getText(
             self, "Rename Folder", f"New name for “{folder}”:", text=folder,
         )
         if not ok:
@@ -359,7 +379,7 @@ class StartMenu(QWidget):
         when it's non-empty, since a single misclick here could
         otherwise destroy hours of someone's work with no way back."""
         if count > 0:
-            confirm_text, ok = QInputDialog.getText(
+            confirm_text, ok = Ask.getText(
                 self, "Delete Folder",
                 f"This will PERMANENTLY delete all {count} character"
                 f"{'s' if count != 1 else ''} in “{folder}”. "
@@ -378,7 +398,7 @@ class StartMenu(QWidget):
             current = ""
         options = ["Uncategorized"] + [f for f in named_folders if f]
         start_index = options.index(current) if current in options else 0
-        text, ok = QInputDialog.getItem(
+        text, ok = Ask.getItem(
             self, "Move to Folder",
             "Pick an existing folder or type a new campaign name:",
             options, start_index, editable=True,
@@ -390,7 +410,7 @@ class StartMenu(QWidget):
         self._rebuild_saved_list()
 
     def _delete_saved_row(self, path: str, name: str = "this character"):
-        if QMessageBox.question(
+        if Tell.question(
             self, "Delete?", f"Delete {name} permanently?",
             QMessageBox.Yes | QMessageBox.No,
         ) == QMessageBox.Yes:
@@ -757,11 +777,11 @@ class SettingsDialog(QDialog):
         if os.path.abspath(target) == os.path.abspath(old_dir):
             return
         if not is_writable_dir(target):
-            QMessageBox.warning(self, "Can't use that folder",
+            Tell.warning(self, "Can't use that folder",
                                 f"MIMIC can't save files in:\n{target}")
             return
         if list_saved_characters(old_dir):
-            ans = QMessageBox.question(
+            ans = Tell.question(
                 self, "Copy your characters?",
                 f"Copy the characters saved in\n{old_dir}\ninto the new folder too?\n\n"
                 "(The originals stay where they are.)")
@@ -913,11 +933,8 @@ class CreditsDialog(QDialog):
 class CharacterCreatorApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        import os
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "icon.ico")
-        if os.path.exists(icon_path):
-            from PySide6.QtGui import QIcon
-            self.setWindowIcon(QIcon(icon_path))
+        # (its icon is the app's: the d20 in the theme's colours, set with
+        # each theme -- style/theme.py apply_theme)
         self.setWindowTitle("MIMIC")
         self.setMinimumSize(1200, 800)
         self.resize(1400, 900)
@@ -950,6 +967,7 @@ class CharacterCreatorApp(QMainWindow):
         self._wizard = None
         self._sheet  = None
         self._dice_roller = None
+        self._bestiary = None
 
         # Characters used to be saved in the hidden ~/.dnd_characters
         # folder; they now live in Documents/MIMIC Characters (or the
@@ -970,13 +988,27 @@ class CharacterCreatorApp(QMainWindow):
         # just for fun. An application-wide event filter is the only
         # way to catch it regardless of which widget currently has
         # focus (a text field, a spell search box, the sheet itself).
+        #
+        # It watches the focused window only (every keypress reaches that
+        # QWindow first) rather than the whole app: an app-wide filter in
+        # Python runs for every event of every widget -- hundreds of
+        # thousands while a sheet is built -- and slowed everything down.
         self._cheese_buffer = ""
         app = QApplication.instance()
         if app is not None:
-            app.installEventFilter(self)
+            app.focusWindowChanged.connect(self._watch_window)
+            from dnd_app.ui_desktop.diagnostics import LOG_WINDOW_SHOWS
+            if LOG_WINDOW_SHOWS:          # (the opt-in trace needs every window)
+                app.installEventFilter(self)
+
+    def _watch_window(self, w):
+        if w is not None:
+            w.removeEventFilter(self)    # (never twice)
+            w.installEventFilter(self)
 
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.KeyPress and isinstance(obj, QWindow) and not event.isAutoRepeat():
+        t = event.type()
+        if t == QEvent.KeyPress and isinstance(obj, QWindow) and not event.isAutoRepeat():
             # One physical keypress reaches this app-wide filter several
             # times: once for the top-level QWindow, again for the focused
             # widget, and once more for each parent it propagates to when a
@@ -991,7 +1023,7 @@ class CharacterCreatorApp(QMainWindow):
                     self._show_cheese_easter_egg()
                     self._cheese_buffer = ""
         # Opt-in trace, off by default -- see dnd_app/ui_desktop/diagnostics.py.
-        if event.type() == QEvent.Show:
+        if t == QEvent.Show:
             from dnd_app.ui_desktop.diagnostics import log_window_show
             log_window_show(obj, event)
         return super().eventFilter(obj, event)
@@ -1079,6 +1111,21 @@ class CharacterCreatorApp(QMainWindow):
         if sheet is not None:   # the name, at the bar's right, reads on it too
             sheet.set_name_color(T.readable(name_ink, base, fill, tfill))
 
+    def _drop(self, w):
+        """A sheet, wizard or start menu that's being replaced, gone now
+        rather than at the next turn of the event loop (deleteLater): a new
+        theme applied while it's still alive restyles every one of its
+        thousands of widgets first, which took many seconds. Safe because
+        none of its own code is running at the time -- the sheet's Back and
+        Refresh reach here queued (see _show_sheet, _force_full_refresh)."""
+        if w is None:
+            return
+        import shiboken6
+        self._stack.removeWidget(w)
+        w.hide()
+        if shiboken6.isValid(w):
+            shiboken6.delete(w)
+
     def _set_menu_corner(self, widget):
         """The menu bar's right-hand corner: the open character's name (an
         editable field the sheet owns), or nothing. The bar takes the
@@ -1105,15 +1152,18 @@ class CharacterCreatorApp(QMainWindow):
         fm.addSeparator()
         a = QAction("Quit", self);           a.setShortcut("Ctrl+Q"); a.triggered.connect(self.close); fm.addAction(a)
 
-        tm = mb.addMenu("&Tools")
-        a = QAction("Dice Roller", self); _icons.set_action_icon(a, "dice"); a.setShortcut("Ctrl+D"); a.triggered.connect(self._open_dice_roller); tm.addAction(a)
-        a = QAction("Short Rest",  self); _icons.set_action_icon(a, "short_rest"); a.setShortcut("Ctrl+R"); a.triggered.connect(self._short_rest);       tm.addAction(a)
-        a = QAction("Long Rest",   self); _icons.set_action_icon(a, "long_rest"); a.setShortcut("Ctrl+Shift+R"); a.triggered.connect(self._long_rest); tm.addAction(a)
+        # No Tools menu: the Dice Roller has its d20 beside Refresh, Rest its
+        # button, the Bestiary the Creatures tab. Their keys still work (the
+        # window's own actions), and Reference lists them (SHORTCUTS).
+        for keys, slot in (("Ctrl+D", self._open_dice_roller), ("Ctrl+B", lambda: self._open_bestiary()),
+                           ("Ctrl+Shift+B", self._open_creatures)):
+            a = QAction(self); a.setShortcut(keys); a.triggered.connect(slot); self.addAction(a)
 
         # Settings/Credits are single actions, not menus with one item
         # inside them -- addAction() straight onto the menu bar makes
         # each a direct single-click, no dropdown to open first.
         a = QAction("Settings…", self); a.setShortcut("Ctrl+,"); a.triggered.connect(self._open_settings); mb.addAction(a)
+        a = QAction("Reference", self); a.triggered.connect(self._open_reference); mb.addAction(a)
         a = QAction("Credits", self); a.triggered.connect(self._open_credits); mb.addAction(a)
 
     def _open_settings(self):
@@ -1135,6 +1185,42 @@ class CharacterCreatorApp(QMainWindow):
             if not getattr(dlg, "_reopen_for_theme", False):
                 break
 
+    def _open_reference(self):
+        """Reference (beside Settings): what the book codes mean, and the
+        keyboard shortcuts."""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem, \
+            QHeaderView, QDialogButtonBox, QAbstractItemView, QTabWidget, QWidget
+        from PySide6.QtGui import QKeySequence
+        from dnd_app.data.books import book_rows
+        dlg = QDialog(self); dlg.setWindowTitle("Reference"); dlg.setObjectName("referenceDialog")
+        dlg.resize(540, 600)
+        lay = QVBoxLayout(dlg)
+        tabs = QTabWidget(); tabs.setObjectName("referenceTabs")
+
+        def table(name, intro, heads, rows):
+            page = QWidget(); pl = QVBoxLayout(page); pl.setContentsMargins(8, 10, 8, 8)
+            lbl = QLabel(intro); lbl.setWordWrap(True); pl.addWidget(lbl)
+            t = QTableWidget(len(rows), 2); t.setObjectName(name)
+            t.setHorizontalHeaderLabels(heads)
+            t.verticalHeader().setVisible(False)
+            t.setEditTriggers(QAbstractItemView.NoEditTriggers)
+            t.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+            t.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+            for i, (a_, b_) in enumerate(rows):
+                t.setItem(i, 0, QTableWidgetItem(a_)); t.setItem(i, 1, QTableWidgetItem(b_))
+            pl.addWidget(t, 1)
+            return page
+
+        tabs.addTab(table("referenceTable", "The book codes beside spells, feats, magic items and creatures, "
+                          "and the book each one means.", ["Code", "Book"], book_rows()), "Book codes")
+        # (the keys as this computer writes them: ⌘ on a Mac)
+        native = lambda k: QKeySequence(k).toString(QKeySequence.NativeText) if "…" not in k else k
+        tabs.addTab(table("shortcutsTable", "What the keyboard does on desktop.", ["Keys", "Does"],
+                          [(native(k), d) for k, d in SHORTCUTS]), "Shortcuts")
+        lay.addWidget(tabs, 1)
+        bb = QDialogButtonBox(QDialogButtonBox.Close); bb.rejected.connect(dlg.reject); lay.addWidget(bb)
+        dlg.exec()
+
     def _open_credits(self):
         from dnd_app.ui_desktop.pages.main_window import CreditsDialog
         dlg = CreditsDialog(self)
@@ -1144,6 +1230,22 @@ class CharacterCreatorApp(QMainWindow):
         from dnd_app.ui_desktop.style.theme import apply_theme
         self._switching_theme = True
         try:
+            # What's rebuilt below goes first, so the new theme isn't
+            # applied to it on its way out (see _drop). (Which one was
+            # showing is noted before any goes.)
+            was_current_start = (self._stack.currentWidget() is self._start)
+            sheet_state = None
+            if self._sheet:
+                sh = self._sheet
+                sheet_state = (sh.char, sh._save_path, bool(sh._dirty), sh._tabs.currentIndex())
+                self._set_menu_corner(None)
+                self._drop(sh); self._sheet = None
+            wizard_state = None
+            if self._wizard:
+                wizard_state = (self._stack.currentWidget() is self._wizard,
+                                self._wizard.state, self._wizard._step)
+                self._drop(self._wizard); self._wizard = None
+            self._drop(self._start); self._start = None
             qss = apply_theme(name)
             self.setStyleSheet(qss)
             # QToolTip (and a few other selectors) don't reliably cascade
@@ -1157,19 +1259,17 @@ class CharacterCreatorApp(QMainWindow):
             if app is not None:
                 app.setStyleSheet(qss)
             self._current_theme_name = name
-            if self._sheet:
-                char = self._sheet.char
+            if sheet_state:
+                char, save_path, dirty, cur_tab = sheet_state
                 # (what's unsaved stays unsaved on the rebuilt sheet, and a
                 # new theme is itself a change to this character)
-                unsaved = bool(self._sheet._dirty) or char.get("theme") != name
+                unsaved = dirty or char.get("theme") != name
                 char["theme"] = name
-                cur_tab = self._sheet._tabs.currentIndex()
                 # This rebuilds the SAME character (just re-themed), not
                 # a different one being loaded -- must carry over its
                 # existing _save_path, or the freshly-constructed sheet
                 # would fall back to a name-derived path on its next
                 # Save, discarding the file identity it already had.
-                save_path = self._sheet._save_path
                 self._show_sheet(char, save_path=save_path)
                 if self._sheet:
                     self._sheet._tabs.setCurrentIndex(cur_tab)
@@ -1191,20 +1291,12 @@ class CharacterCreatorApp(QMainWindow):
             # only ever runs once, at construction. Rebuilt in place,
             # preserving in-progress selections (self.char) and which
             # step the player was on, same pattern as the sheet above.
-            if self._wizard:
-                was_current_wizard = (self._stack.currentWidget() is self._wizard)
-                old_char, old_step = self._wizard.char, self._wizard._step
-                self._stack.removeWidget(self._wizard); self._wizard.deleteLater()
+            if wizard_state:
+                was_current_wizard, old_state, old_step = wizard_state
                 self._wizard = CharacterWizard(self)
-                self._wizard.char = old_char
                 self._wizard.done.connect(self._show_new_sheet)
                 self._stack.addWidget(self._wizard)
-                self._wizard._step = old_step
-                steps = [self._wizard._step1, self._wizard._step2, self._wizard._step3,
-                         self._wizard._step4, self._wizard._step5]
-                steps[old_step].populate(self._wizard.char)
-                self._wizard._stack.setCurrentIndex(old_step)
-                self._wizard._update_pills()
+                self._wizard.restore(old_state, old_step)
                 if was_current_wizard:
                     self._stack.setCurrentWidget(self._wizard)
 
@@ -1213,8 +1305,6 @@ class CharacterCreatorApp(QMainWindow):
             # which screen is showing) needs it explicitly rebuilt in
             # place, restoring which stack widget was current if
             # StartMenu itself was showing.
-            was_current_start = (self._stack.currentWidget() is self._start)
-            self._stack.removeWidget(self._start); self._start.deleteLater()
             self._start = StartMenu(self)
             self._start.new_char.connect(self._go_wizard)
             self._start.load_char.connect(self._go_sheet_from_path)
@@ -1228,18 +1318,27 @@ class CharacterCreatorApp(QMainWindow):
             # self._stack, and isn't rebuilt/closed by anything else
             # here) -- rebuilt in place, preserving its screen position
             # and only re-shown if it was actually visible.
-            if self._dice_roller:
-                from dnd_app.ui_desktop.dialogs.dice_roller import DiceRollerPanel
-                was_visible = self._dice_roller.isVisible()
-                pos = self._dice_roller.pos()
-                dice_char = self._dice_roller.char
-                self._dice_roller.deleteLater()
-                self._dice_roller = DiceRollerPanel(dice_char, parent=self)
-                self._dice_roller.move(pos)
-                if was_visible:
-                    self._dice_roller.show()
+            self._restyle_dice_roller()
         finally:
             self._switching_theme = False
+
+    def _restyle_dice_roller(self):
+        """The Dice Roller in the theme now on: built again in its place,
+        shown again only if it was showing. (Its colours are set when it's
+        made, so a theme change -- from Settings, or a character opened
+        with its own theme, or the menu's -- needs a new one.)"""
+        if not self._dice_roller:
+            return
+        from dnd_app.ui_desktop.dialogs.dice_roller import DiceRollerPanel
+        was_visible = self._dice_roller.isVisible()
+        pos = self._dice_roller.pos()
+        dice_char = self._dice_roller.char
+        self._dice_roller.hide()
+        self._dice_roller.deleteLater()
+        self._dice_roller = DiceRollerPanel(dice_char, parent=self)
+        self._dice_roller.move(pos)
+        if was_visible:
+            self._dice_roller.show()
 
     def _ok_to_leave_sheet(self) -> bool:
         """Before the open character is closed or replaced (another one
@@ -1286,7 +1385,7 @@ class CharacterCreatorApp(QMainWindow):
         try:
             char = load_character(path)
         except Exception as e:
-            QMessageBox.warning(self, "Load Error", str(e))
+            Tell.warning(self, "Load Error", str(e))
             return
         # Changes from a session that ended without a save or a discard (a
         # crash, the power going): offered back, once. Restored, they're
@@ -1297,7 +1396,7 @@ class CharacterCreatorApp(QMainWindow):
         if backup:
             name = (char.get("name") or "").strip() or "This character"
             when = f" from {backup['when']}" if backup["when"] else ""
-            ans = QMessageBox.question(
+            ans = Tell.question(
                 self, "Unsaved Changes Found",
                 f"{name} has changes{when} that were never saved.\n\nRestore them?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
@@ -1313,16 +1412,9 @@ class CharacterCreatorApp(QMainWindow):
     def _import_pdf_dialog(self):
         """What a PDF import can and can't do first, then the file picker."""
         from dnd_app.core.pdf_sheet import PDF_IMPORT_INTRO, PDF_IMPORT_LIMITS
-        box = QMessageBox(self)
-        box.setWindowTitle("Import from a PDF Character Sheet")
-        box.setIcon(QMessageBox.Information)
-        box.setText(PDF_IMPORT_INTRO)
-        box.setInformativeText("Good to know:\n" + "\n".join(f"• {l}" for l in PDF_IMPORT_LIMITS))
-        choose = box.addButton("Choose PDF…", QMessageBox.AcceptRole)
-        box.addButton(QMessageBox.Cancel)
-        box.setDefaultButton(choose)
-        box.exec()
-        if box.clickedButton() is not choose:
+        if not Tell.choose(self, "Import from a PDF Character Sheet",
+                           PDF_IMPORT_INTRO + "\n\nGood to know:\n"
+                           + "\n".join(f"• {l}" for l in PDF_IMPORT_LIMITS), "Choose PDF…"):
             return
         path, _ = QFileDialog.getOpenFileName(self, "Import a 5e Character Sheet (PDF)", "",
                                               "PDF character sheets (*.pdf)")
@@ -1337,9 +1429,9 @@ class CharacterCreatorApp(QMainWindow):
         try:
             char, notes = import_character_pdf(path)
         except SheetImportError as e:
-            QMessageBox.warning(self, "Import from PDF", str(e)); return
+            Tell.warning(self, "Import from PDF", str(e)); return
         except Exception as e:
-            QMessageBox.warning(self, "Import from PDF", f"Couldn't import that sheet: {e}"); return
+            Tell.warning(self, "Import from PDF", f"Couldn't import that sheet: {e}"); return
         if not char.get("name"):
             char["name"] = os.path.splitext(os.path.basename(path))[0]
         if name_in_use(char["name"]):
@@ -1355,7 +1447,7 @@ class CharacterCreatorApp(QMainWindow):
         if notes:
             msg += "\n\nWorth checking:\n" + "\n".join(f"\u2022 {n}" for n in notes)
             msg += "\n\n(These are also on the \u201cImported from PDF\u201d notes page.)"
-        QMessageBox.information(self, "Import from PDF", msg)
+        Tell.information(self, "Import from PDF", msg)
 
     def _show_new_sheet(self, char: dict):
         """The wizard's finish: show the new character's sheet and save
@@ -1379,6 +1471,10 @@ class CharacterCreatorApp(QMainWindow):
         # state check, etc), which is a very plausible source of a
         # stray dialog flashing and immediately closing again when that
         # first sheet gets torn down moments later.
+        # (the old sheet goes before a new theme is applied: see _drop)
+        if self._sheet:
+            self._set_menu_corner(None)
+            self._drop(self._sheet); self._sheet = None
         saved_theme = char.get("theme")
         if saved_theme in THEMES:
             if (saved_theme != self._current_theme_name
@@ -1392,6 +1488,7 @@ class CharacterCreatorApp(QMainWindow):
                 if app is not None:
                     app.setStyleSheet(qss)
                 self._current_theme_name = saved_theme
+                self._restyle_dice_roller()
         else:
             # New characters (and old saves from before "theme" existed)
             # have no theme of their own recorded yet -- stamp the
@@ -1400,8 +1497,6 @@ class CharacterCreatorApp(QMainWindow):
             char["theme"] = self._current_theme_name
         self._stack.setUpdatesEnabled(False)
         try:
-            if self._sheet:
-                self._stack.removeWidget(self._sheet); self._sheet.deleteLater()
             # Explicit parent (self, not the default None) matters here:
             # CharacterSheet.__init__ runs a lot of work -- every tab's
             # _build_tab_* -- before this line's addWidget() reparents it
@@ -1414,7 +1509,9 @@ class CharacterCreatorApp(QMainWindow):
             # StartMenu()/CharacterWizard() construction sites need the
             # same explicit parent, for the same reason.
             self._sheet = CharacterSheet(char, self, save_path=save_path)
-            self._sheet.back_to_menu.connect(self._sheet_back_to_menu)
+            # (queued: the menu replaces the sheet, which mustn't happen
+            # while its own button's code is still running)
+            self._sheet.back_to_menu.connect(self._sheet_back_to_menu, Qt.QueuedConnection)
             # the menu bar has this sheet's name on it, and is its health
             # bar from here on
             self._set_menu_corner(self._sheet._name_box)
@@ -1450,6 +1547,24 @@ class CharacterCreatorApp(QMainWindow):
         finally:
             self._stack.setUpdatesEnabled(True)
 
+    def _rebuild_sheet(self):
+        """Refresh: the open character on a freshly built sheet. It keeps
+        the file it saves to, what's still unsaved and the tab that was
+        showing. (Rebuilt without them, the next Save was refused as a name
+        already in use -- its own -- and leaving no longer asked about the
+        changes.)"""
+        sh = self._sheet
+        if sh is None:
+            return
+        char, save_path, unsaved, cur_tab = sh.char, sh._save_path, sh._dirty, sh._tabs.currentIndex()
+        self._show_sheet(char, save_path=save_path)
+        if self._sheet:
+            self._sheet._tabs.setCurrentIndex(cur_tab)
+            if unsaved:
+                self._sheet._mark_dirty()
+                self._sheet._update_title()
+            self._sheet._toast("Refreshed")
+
     def _sheet_back_to_menu(self):
         if self._sheet and not self._sheet.confirm_leave():
             return
@@ -1465,13 +1580,12 @@ class CharacterCreatorApp(QMainWindow):
         # silently keep operating on it even after "back to menu", and
         # _set_theme() below would misattribute a menu-time theme change
         # to it instead of saving it as the app's own default.
+        self._set_menu_corner(None)
         if self._sheet:
-            self._stack.removeWidget(self._sheet); self._sheet.deleteLater()
-            self._sheet = None
+            self._drop(self._sheet); self._sheet = None
         self.setWindowTitle("MIMIC")
         self._set_health_bar(None)   # a plain menu bar again
-        self._set_menu_corner(None)
-        self._stack.removeWidget(self._start); self._start.deleteLater()
+        self._drop(self._start); self._start = None
         # Revert away from that character's theme to the app's own
         # remembered default (Settings changes made with no character
         # open) -- same "only if it actually differs" guard _show_sheet()
@@ -1489,6 +1603,7 @@ class CharacterCreatorApp(QMainWindow):
             if app is not None:
                 app.setStyleSheet(qss)
             self._current_theme_name = saved_theme
+            self._restyle_dice_roller()
         self._start = StartMenu(self)
         self._start.new_char.connect(self._go_wizard)
         self._start.load_char.connect(self._go_sheet_from_path)
@@ -1580,6 +1695,29 @@ class CharacterCreatorApp(QMainWindow):
         else:
             self._dice_roller.raise_(); self._dice_roller.activateWindow()
 
+    def _open_creatures(self):
+        """Ctrl+Shift+B: the open sheet's Creatures tab."""
+        sheet = getattr(self, "_sheet", None)
+        if sheet is not None and self._stack.currentWidget() is sheet:
+            sheet._tabs.setCurrentWidget(sheet._creatures_tab_page)
+
+    def _open_bestiary(self, name: str = ""):
+        """Ctrl+B: the Bestiary window, every creature to find and read. One
+        window; a closed one is made afresh, so it takes the current theme."""
+        from dnd_app.ui_desktop.dialogs.bestiary import BestiaryWindow
+        if self._bestiary is None or self._bestiary.isHidden():
+            if self._bestiary is not None:
+                old = self._bestiary
+                old.setParent(None); old.deleteLater()
+            self._bestiary = BestiaryWindow(self)
+            geo = self.geometry()
+            self._bestiary.move(geo.left() + 60, geo.top() + 60)
+            self._bestiary.show()
+        else:
+            self._bestiary.raise_(); self._bestiary.activateWindow()
+        if name:
+            self._bestiary.show_creature(name)
+
 
 def main(app=None, splash=None):
     """If app/splash aren't provided (e.g. main_window is imported and run
@@ -1600,8 +1738,8 @@ def main(app=None, splash=None):
     if splash is None:
         # Show a splash immediately — building the sheet (magic items, spells,
         # every tab widget) takes a couple of seconds on some machines, and an
-        # empty frame during that time reads as a frozen/crashed app. Drop
-        # dnd_app/ui_desktop/splash/splash.gif (or splash.png) in to use a custom splash.
+        # empty frame during that time reads as a frozen/crashed app
+        # (the themed mimic of dnd_app/core/splash.gif; see ui_desktop/splash).
         from dnd_app.ui_desktop.splash import AnimatedSplash
         splash = AnimatedSplash()
         splash.show()
@@ -1610,7 +1748,7 @@ def main(app=None, splash=None):
     win = CharacterCreatorApp()   # build eagerly; window itself stays hidden
 
     def _reveal():
-        win.show()
+        # (the splash fades, then shows the window: no flash of both)
         splash.finish_and_close(win)
 
     if splash.loop_complete:

@@ -913,7 +913,10 @@ ALL_CLASSES = [
         armor="Light armor",
         weapons="Simple weapons, hand crossbows, longswords, rapiers, shortswords",
         tools="Thieves' tools",
-        skill_choices=["Any 4 skills"],
+        # PHB: four from the Rogue's list
+        skill_choices=["Acrobatics", "Athletics", "Deception", "Insight", "Intimidation",
+                       "Investigation", "Perception", "Performance", "Persuasion",
+                       "Sleight of Hand", "Stealth"],
         skill_count=4, spell_ability=None, has_spells=False,
         spell_slots=None, subclass_level=3,
         features={

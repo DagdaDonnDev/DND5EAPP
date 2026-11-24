@@ -286,7 +286,8 @@ def ability_score(char: dict, ability: str, ignore_wildshape: bool = False) -> i
     # transformation — your own hit point maximum doesn't change while
     # wild shaped, you use the beast's separate HP pool instead.
     active_beast = char.get("_wildshape_active")
-    if active_beast and not ignore_wildshape and ability in ("STR", "DEX", "CON"):
+    from .forms import replaces_mind       # Polymorph: INT, WIS and CHA are the form's too
+    if active_beast and not ignore_wildshape and (ability in ("STR", "DEX", "CON") or replaces_mind(char)):
         from dnd_app.data.statblocks import WILDSHAPE_BEASTS
         beast = WILDSHAPE_BEASTS.get(active_beast)
         if beast and ability in beast.get("abilities", {}):
@@ -347,6 +348,27 @@ def add_class(char: dict, class_name: str, level: int = 1,
 
 def remove_class(char: dict, class_name: str) -> None:
     char["classes"] = [c for c in char["classes"] if c["class"] != class_name]
+
+
+def change_class(char: dict, old: str, new: str):
+    """A class swapped for another at the same level, in the same place
+    (a first class stays first, with its saves). The new class has no
+    subclass yet; the old one's spells that the new classes can't have go,
+    and so do its choices -- the new class's are asked on the Choices tab,
+    as a level up's are. Returns the spells that went, or None when the
+    swap can't be made (no such class, or the new one is already there)."""
+    from dnd_app.core.choices import _all_relevant_choice_ids, _prune_stale_choices
+    entry = get_class_entry(char, old)
+    if entry is None or not new or new == old or get_class_entry(char, new):
+        return None
+    old_ids = _all_relevant_choice_ids(char)
+    removed = dict(entry)
+    entry.update({"class": new, "subclass": "", "hit_die": _lookup_hit_die(new)})
+    lost = drop_spells_of_removed_class(char, removed)
+    char.get("_choices", {}).pop(f"{old}_subclass", None)
+    new_ids = _all_relevant_choice_ids(char)
+    _prune_stale_choices(char, old_ids - new_ids)
+    return lost
 
 
 def set_class_level(char: dict, class_name: str, level: int) -> None:
@@ -662,6 +684,12 @@ def short_rest(char: dict) -> None:
     for res in char.get("resources", []):
         if res.get("reset") in ("SR", "SR/LR"):
             res["current"] = res.get("current_max") or res.get("max", 0)
+    # an item's use or charges that come back on a short rest (Gauntlets
+    # of Rage); a long rest's come back at dawn (magic_items.charges_at_dawn)
+    for pool in ("item_uses", "item_charges"):
+        for data in (char.get(pool) or {}).values():
+            if data.get("recharge") == "short":
+                data["current"] = data.get("max", 1)
     # Cleric Channel Divinity recovers 1 on SR (2024)
     for res in char.get("resources", []):
         if res.get("key") == "channel_divinity" and res.get("reset") == "LR":

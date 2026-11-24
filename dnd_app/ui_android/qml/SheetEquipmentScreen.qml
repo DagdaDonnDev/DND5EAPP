@@ -5,7 +5,7 @@ import Mimic
 
 Page {
     id: root
-    readonly property string screenTitle: "Equipment"
+    readonly property string screenTitle: "Inventory"
     background: Rectangle { color: Theme.bg }
     readonly property QtObject sheetBridge: Window.window.sheetBridge
 
@@ -65,6 +65,219 @@ Page {
         }
     }
 
+    // ── Loadout slots ────────────────────────────────────────────────
+    // One slot: its label (a tattoo's place), the item and what it does.
+    // Purple and a ◆ when attuned, teal when worn, dashed when empty.
+    component SlotTile: Rectangle {
+        id: tile
+        property var slot
+        readonly property bool empty: !slot.name
+        readonly property color tone: slot.state === "att" ? Theme.purple2
+                                      : (empty ? Theme.border : (slot.key === "tattoo" ? Theme.amber : Theme.teal))
+        objectName: "slot_" + slot.key + (slot.name ? "_" + slot.name : "")
+        Layout.fillWidth: true
+        Layout.preferredWidth: 1
+        Layout.columnSpan: slot.key === "both" ? 2 : 1
+        implicitHeight: 58
+        radius: 9
+        color: tileTap.pressed ? Theme.surf3 : (slot.state === "att" ? Qt.rgba(Theme.purple2.r, Theme.purple2.g, Theme.purple2.b, 0.10) : Theme.surf2)
+        border.color: tone
+        border.width: empty ? 1 : 1.5
+        opacity: empty ? 0.75 : 1
+        // tap: what could go here; press and hold: take it off
+        MouseArea {
+            id: tileTap
+            objectName: "slotTap_" + tile.slot.key + (tile.slot.name ? "_" + tile.slot.name : "")
+            anchors.fill: parent
+            pressAndHoldInterval: 450
+            onClicked: root.openSlotOptions(tile.slot)
+            onPressAndHold: if (tile.slot.name) sheetBridge.takeOffLoadoutSlot(tile.slot.key, tile.slot.uid)
+        }
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 8
+            spacing: 0
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    text: (tile.slot.key === "tattoo" && tile.slot.where ? tile.slot.where : tile.slot.label).toUpperCase()
+                    color: Theme.text3
+                    font.pixelSize: Theme.fsSmall - 2
+                    font.bold: true
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+                Label { visible: tile.slot.attuned; text: "◆"; color: Theme.purple2; font.pixelSize: Theme.fsSmall - 2 }
+                // a versatile weapon: in one hand or two
+                Rectangle {
+                    objectName: "gripToggle"
+                    visible: !!tile.slot.versatile
+                    width: gripText.implicitWidth + 12
+                    height: 20
+                    radius: 5
+                    color: Qt.rgba(Theme.teal.r, Theme.teal.g, Theme.teal.b, 0.18)
+                    border.color: Theme.teal
+                    Label { id: gripText; anchors.centerIn: parent; text: tile.slot.grip || "1H"; color: Theme.teal2; font.pixelSize: Theme.fsSmall - 2; font.bold: true }
+                    MouseArea { anchors.fill: parent; onClicked: sheetBridge.setTwoHandedGrip(tile.slot.grip !== "2H") }
+                }
+            }
+            Label {
+                text: tile.slot.name || "Empty"
+                color: tile.empty ? Theme.text3 : (tile.slot.state === "att" ? Theme.purple2 : Theme.text)
+                font.pixelSize: Theme.fsSmall
+                font.bold: !tile.empty
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+            }
+            Label {
+                visible: tile.slot.what.length > 0
+                text: tile.slot.what
+                color: Theme.text2
+                font.pixelSize: Theme.fsSmall - 2
+                elide: Text.ElideRight
+                Layout.fillWidth: true
+            }
+        }
+    }
+
+    property var heldSlot: null
+    property var pendingPutOn: null        // {uid, name, ask, uids}
+    function magicEntry(uid) {
+        var all = sheetBridge.magicItems
+        for (var i = 0; i < all.length; i++)
+            if (all[i].uid === uid) return all[i]
+        return null
+    }
+    property var slotChoices: []
+    function openSlotOptions(slot) {
+        heldSlot = slot
+        var opts = []
+        slotChoices = slot.key === "tattoo" ? [] : sheetBridge.loadoutSlotOptions(slot.key)
+        for (var i = 0; i < slotChoices.length; i++)
+            opts.push({key: "eq:" + i, text: (slot.name ? "Swap for " : "Put on ") + slotChoices[i].name,
+                       icon: (slot.key === "main" || slot.key === "off" || slot.key === "both") ? "combat" : "shield"})
+        if (slot.name) {
+            opts.push({key: "details", text: "Details", icon: "search"})
+            if (slot.uid && slot.needs)
+                opts.push({key: "attune", text: slot.attuned ? "End attunement" : "Attune", icon: "magic"})
+            var entry = slot.uid ? magicEntry(slot.uid) : null
+            if (entry && entry.resistanceChoicePool.length > 0)
+                opts.push({key: "dmgtype", icon: "shield",
+                           text: "Damage type" + (entry.resistanceChoiceCurrent ? " (now " + entry.resistanceChoiceCurrent.toLowerCase() + ")" : "")})
+            if (slot.key === "tattoo")
+                opts.push({key: "move", text: "Move it" + (slot.where ? " (now " + slot.where.toLowerCase() + ")" : ""), icon: "pencil"})
+            if (slot.swap)
+                opts.push({key: "swap", text: "Swap hands", icon: "combat"})
+        }
+        if (opts.length === 0) {
+            sheetBridge.notify("Nothing you carry goes here.")
+            return
+        }
+        slotOptions.heading = slot.name || slot.label
+        slotOptions.message = slot.name ? "Press and hold a slot to take it off." : ""
+        slotOptions.options = opts
+        slotOptions.open()
+    }
+    // Both hands full and a weapon that could go in either: which it replaces
+    property var pendingHand: null          // {name, another, uid}
+    function equipWeapon(name, another) {
+        var opts = sheetBridge.weaponHandChoice(name, another)
+        if (opts.length === 0) {
+            if (another) sheetBridge.holdAnotherWeapon(name)
+            else sheetBridge.toggleWeaponEquipped(name, true)
+            return
+        }
+        pendingHand = {name: name, another: another, uid: ""}
+        askHand(name, opts)
+    }
+    function askHand(name, opts) {
+        handDialog.heading = "Your hands are full"
+        handDialog.message = name + " replaces:"
+        handDialog.options = [{key: "main", text: opts[0], icon: "combat"}, {key: "off", text: opts[1], icon: "combat"}]
+        handDialog.open()
+    }
+    MOptionsDialog {
+        id: handDialog
+        objectName: "handDialog"
+        onPicked: (key) => {
+            var p = root.pendingHand
+            if (!p) return
+            if (p.uid) sheetBridge.putOnMagicItemInHand(p.uid, key)
+            else sheetBridge.equipWeaponInHand(p.name, key, p.another)
+        }
+    }
+
+    function putOn(uid, name) {
+        var r = sheetBridge.putOnMagicItem(uid)
+        if (!r || !r.ask) return
+        if (r.ask === "hand") {
+            pendingHand = {name: name, another: false, uid: uid}
+            askHand(name, r.options)
+            return
+        }
+        pendingPutOn = {uid: uid, name: name, ask: r.ask, uids: r.uids || []}
+        putOnPicker.dialogTitle = r.ask === "where" ? "Where is your " + name + "?" : "Take off which, to put on " + name + "?"
+        putOnPicker.options = r.options
+        putOnPicker.open()
+    }
+
+    MOptionsDialog {
+        id: slotOptions
+        objectName: "slotOptionsDialog"
+        onPicked: (key) => {
+            var s = root.heldSlot
+            if (!s) return
+            if (key.indexOf("eq:") === 0) {
+                var o = root.slotChoices[parseInt(key.slice(3))]
+                if (o) sheetBridge.equipLoadoutSlot(s.key, o.name, o.uid)
+            }
+            else if (key === "details") root.showItemDetail(s.name)
+            else if (key === "attune") sheetBridge.setMagicItemAttuned(s.uid, !s.attuned)
+            else if (key === "dmgtype") {
+                var e = root.magicEntry(s.uid)
+                dmgTypePicker.itemName = s.name
+                dmgTypePicker.options = e ? e.resistanceChoicePool : []
+                dmgTypePicker.open()
+            }
+            else if (key === "move") { tattooPlacePicker.options = sheetBridge.loadout.places; tattooPlacePicker.open() }
+            else if (key === "swap") sheetBridge.swapHands()
+            else if (key === "remove") sheetBridge.removeMagicItem(s.uid)
+            else if (key === "off") {
+                if (s.uid) sheetBridge.takeOffMagicItem(s.uid)
+                else if (s.key === "armor") sheetBridge.toggleArmorWorn(s.name, false)
+                else if (s.shield) sheetBridge.toggleShieldWorn(false)
+                else sheetBridge.putAwayOneWeapon(s.name)
+            }
+        }
+    }
+    MPickerDialog {
+        id: putOnPicker
+        objectName: "putOnPicker"
+        onPicked: (value) => {
+            var p = root.pendingPutOn
+            if (!p) return
+            if (p.ask === "where") {
+                var r = sheetBridge.setTattooPlace(p.uid, value)
+                if (r && r.ask) root.putOn(p.uid, p.name)
+            } else {
+                var i = options.indexOf(value)
+                if (i >= 0) sheetBridge.putOnMagicItemSwapping(p.uid, p.uids[i])
+            }
+        }
+    }
+    MPickerDialog {
+        id: tattooPlacePicker
+        objectName: "tattooPlacePicker"
+        dialogTitle: "Where is it?"
+        onPicked: (value) => { if (root.heldSlot) sheetBridge.setTattooPlace(root.heldSlot.uid, value) }
+    }
+    MPickerDialog {
+        id: dmgTypePicker
+        property string itemName: ""
+        dialogTitle: "Which damage type?"
+        onPicked: (value) => sheetBridge.setMagicItemDamageType(itemName, value)
+    }
+
     function showItemDetail(name) {
         Window.window.pendingItemDetail = sheetBridge.getItemDetail(name)
         itemDetail.open()
@@ -77,7 +290,8 @@ Page {
     // (magic ammunition uses the same dialog -- its stack has a uid)
     function openAmountDialog(item) {
         heldItem = item
-        amountQty.value = Math.max(1, item.qty || 1)
+        // the whole stack, held ones included (a row may be only the spares)
+        amountQty.value = Math.max(1, item.total || item.qty || 1)
         amountDialog.open()
     }
 
@@ -85,18 +299,21 @@ Page {
     //   How many / Make dedicated weapon (or Stop using as dedicated weapon)
     // Anything else goes straight to how many you have.
     function openInventoryHold(item) {
-        if (!item.canDedicate && !item.dedicated) {
+        if (!item.canDedicate && !item.dedicated && !item.canSwapHands) {
             openAmountDialog(item)
             return
         }
         heldItem = item
         weaponOptionsDialog.heading = item.name
-        weaponOptionsDialog.options = [
-            {key: "amount", text: "How many", icon: "package"},
-            item.dedicated
-                ? {key: "undedicate", text: "Stop using as dedicated weapon", icon: "dagger"}
-                : {key: "dedicate", text: "Make dedicated weapon", icon: "dagger"}
-        ]
+        var opts = [{key: "amount", text: "How many", icon: "package"}]
+        // holding two weapons: which is in your main hand, which in your off hand
+        if (item.canSwapHands)
+            opts.push({key: "swap", text: "Swap hands", icon: "combat"})
+        if (item.canDedicate || item.dedicated)
+            opts.push(item.dedicated
+                      ? {key: "undedicate", text: "Stop using as dedicated weapon", icon: "dagger"}
+                      : {key: "dedicate", text: "Make dedicated weapon", icon: "dagger"})
+        weaponOptionsDialog.options = opts
         weaponOptionsDialog.open()
     }
 
@@ -107,6 +324,7 @@ Page {
             var it = root.heldItem
             if (!it) return
             if (key === "amount") root.openAmountDialog(it)
+            else if (key === "swap") sheetBridge.swapHands()
             else if (key === "dedicate") sheetBridge.setDedicatedWeapon(it.name)
             else if (key === "undedicate") sheetBridge.setDedicatedWeapon("")
         }
@@ -124,8 +342,11 @@ Page {
             opts.push({key: "attune", text: item.attuned ? "End attunement" : "Attune", icon: "magic"})
         if (item.canStudy)
             opts.push({key: "study", text: "Study", icon: "spells"})
+        if (item.canSwapHands)
+            opts.push({key: "swap", text: "Swap hands (now in your " + item.hand + ")", icon: "combat"})
         if (item.baseOptions && item.baseOptions.length > 0)
-            opts.push({key: "base", text: "Which weapon is it? (now a " + item.base + ")", icon: "combat"})
+            opts.push({key: "base", icon: item.baseKind === "armor" ? "shield" : "combat",
+                       text: "Which " + item.baseKind + " is it?" + (item.base ? " (now " + item.base.toLowerCase() + ")" : "")})
         opts.push({key: "remove", text: "Remove", icon: "trash"})
         magicOptionsDialog.heading = item.name
         magicOptionsDialog.accent = Theme.rarityColor(item.rarity)
@@ -142,8 +363,9 @@ Page {
             if (key === "attune") sheetBridge.setMagicItemAttuned(it.uid, !it.attuned)
             else if (key === "study") sheetBridge.studyAbilityManual(it.uid)
             else if (key === "remove") sheetBridge.removeMagicItem(it.uid)
+            else if (key === "swap") sheetBridge.swapHands()
             else if (key === "base") {
-                weaponBasePicker.dialogTitle = "Which weapon is your " + it.name + "?"
+                weaponBasePicker.dialogTitle = "Which " + it.baseKind + " is your " + it.name + "?"
                 weaponBasePicker.options = it.baseOptions
                 weaponBasePicker.open()
             }
@@ -168,7 +390,7 @@ Page {
         width: Math.min(parent ? parent.width - 32 : 340, 340)
         padding: 16
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         contentItem: ColumnLayout {
             spacing: 12
@@ -182,8 +404,11 @@ Page {
             }
             Label {
                 text: "How many do you have?"
+                      + (root.heldItem && root.heldItem.heldCount > 0
+                         ? " (" + (root.heldItem.heldCount === 1 ? "one is" : "two are") + " in your hands)" : "")
                 color: Theme.text2
                 font.pixelSize: Theme.fsSmall
+                wrapMode: Text.WordWrap
                 Layout.fillWidth: true
             }
             MSpinBox {
@@ -237,9 +462,9 @@ Page {
     // NavDrawer.qml's sectionSelected).
     function scrollToSection(name) {
         var anchorItem = null
-        if (name === "Inventory") anchorItem = invAnchor
+        if (name === "Loadout") anchorItem = loadoutAnchor
+        else if (name === "Inventory") anchorItem = invAnchor
         else if (name === "Add Equipment") anchorItem = addEqAnchor
-        else if (name === "Magic Items") anchorItem = magicAnchor
         else if (name === "Add a Magic Item") anchorItem = addMiAnchor
         if (anchorItem) {
             var pt = anchorItem.mapToItem(flick.contentItem, 0, 0)
@@ -262,81 +487,144 @@ Page {
 
             SheetHeader {}
 
-            // ── Armor & load ────────────────────────────────────────────
+            // ── Loadout: what you hold and wear (core/loadout.py) ─────────
+            // In hand, then the worn slots two to a row, then tattoos. Tap a
+            // slot for what can be done with it; an empty one offers what you
+            // carry that goes there.
             MCard {
-                title: "Armor & Load"
+                id: loadoutAnchor
+                objectName: "loadoutCard"
+                title: "Loadout"
                 iconName: "shield"
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 10
-                    ColumnLayout {
+                    spacing: 6
+                    Label {
+                        text: "AC " + sheetBridge.loadout.ac + (sheetBridge.loadout.saves ? "  ·  " + sheetBridge.loadout.saves : "")
+                        color: Theme.indigo2
+                        font.pixelSize: Theme.fsSmall
+                        font.bold: true
                         Layout.fillWidth: true
-                        spacing: 2
-                        Label {
-                            text: sheetBridge.armorWorn + (sheetBridge.hasShield ? "  +  Shield" : "")
-                            color: Theme.text
-                            font.pixelSize: Theme.fsBody
-                            font.bold: true
-                            wrapMode: Text.WordWrap
-                            Layout.fillWidth: true
+                    }
+                    Label {
+                        text: "ATTUNED " + sheetBridge.loadout.attuned + " / " + sheetBridge.loadout.limit
+                        color: Theme.purple2
+                        font.pixelSize: Theme.fsSmall - 1
+                        font.bold: true
+                    }
+                    Repeater {
+                        model: sheetBridge.loadout.limit
+                        delegate: Rectangle {
+                            width: 10; height: 10; radius: 5
+                            border.width: 2
+                            border.color: Theme.purple2
+                            color: index < sheetBridge.loadout.attuned ? Theme.purple2 : "transparent"
                         }
-                        Label {
-                            text: "AC " + sheetBridge.armorClass
-                            color: Theme.teal2
-                            font.pixelSize: Theme.fsSmall
-                            font.bold: true
-                        }
-                    }
-                    MButton {
-                        primary: false
-                        implicitHeight: 36
-                        text: "Change"
-                        onClicked: armorDialog.open()
-                    }
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-                    visible: sheetBridge.armorWorn !== "No Armor" || sheetBridge.ownsShield
-                    MCheckBox {
-                        visible: sheetBridge.ownsShield
-                        text: "Shield"
-                        checked: sheetBridge.hasShield
-                        onToggled: sheetBridge.toggleShieldWorn(checked)
-                    }
-                    Item { Layout.fillWidth: true }
-                    MButton {
-                        primary: false
-                        implicitHeight: 36
-                        visible: sheetBridge.armorWorn !== "No Armor"
-                        text: "Take Off Armor"
-                        onClicked: sheetBridge.toggleArmorWorn(sheetBridge.armorWorn, false)
                     }
                 }
 
-                // carrying capacity
-                RowLayout {
+                Label { text: "IN HAND"; color: Theme.gold; font.pixelSize: Theme.fsSmall - 1; font.bold: true; font.letterSpacing: 1 }
+                GridLayout {
                     Layout.fillWidth: true
-                    Label { text: "Carrying"; color: Theme.text3; font.pixelSize: Theme.fsSmall; Layout.fillWidth: true }
-                    Label {
-                        text: sheetBridge.carryLoad.weight + " / " + sheetBridge.carryLoad.capacity + " lb"
-                        color: sheetBridge.carryLoad.fraction >= 1 ? Theme.crimson2 : Theme.text2
-                        font.pixelSize: Theme.fsSmall
-                        font.bold: true
+                    columns: 2
+                    columnSpacing: 8
+                    rowSpacing: 8
+                    Repeater {
+                        model: sheetBridge.loadout.in_hand
+                        delegate: SlotTile { slot: modelData }
                     }
                 }
-                Rectangle {
+                Label { text: "WORN"; color: Theme.gold; font.pixelSize: Theme.fsSmall - 1; font.bold: true; font.letterSpacing: 1; Layout.topMargin: 4 }
+                GridLayout {
                     Layout.fillWidth: true
-                    height: 6
-                    radius: 3
-                    color: Theme.surf3
-                    Rectangle {
-                        width: parent.width * sheetBridge.carryLoad.fraction
-                        height: parent.height
-                        radius: 3
-                        color: sheetBridge.carryLoad.fraction >= 1 ? Theme.crimson
-                             : sheetBridge.carryLoad.fraction > 0.66 ? Theme.amber : Theme.teal2
+                    columns: 2
+                    columnSpacing: 8
+                    rowSpacing: 8
+                    Repeater {
+                        model: sheetBridge.loadout.worn
+                        delegate: SlotTile { slot: modelData }
+                    }
+                }
+                Label {
+                    visible: sheetBridge.loadout.other.length > 0
+                    text: "ALSO IN USE"; color: Theme.gold; font.pixelSize: Theme.fsSmall - 1; font.bold: true; font.letterSpacing: 1; Layout.topMargin: 4
+                }
+                GridLayout {
+                    visible: sheetBridge.loadout.other.length > 0
+                    Layout.fillWidth: true
+                    columns: 2
+                    columnSpacing: 8
+                    rowSpacing: 8
+                    Repeater {
+                        model: sheetBridge.loadout.other
+                        delegate: SlotTile { slot: modelData }
+                    }
+                }
+                // flasks and explosives you carry: tap the ones on your
+                // belt, and the Combat screen lists them under Ready to throw
+                RowLayout {
+                    visible: sheetBridge.carriedThrowables.length > 0
+                    Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    Label {
+                        text: "READY TO THROW"; color: Theme.gold; font.pixelSize: Theme.fsSmall - 1; font.bold: true; font.letterSpacing: 1
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        text: sheetBridge.carriedThrowables.filter(function(t) { return t.ready }).length + " ready"
+                        color: Theme.amber2; font.pixelSize: Theme.fsSmall - 1; font.bold: true
+                    }
+                }
+                GridLayout {
+                    visible: sheetBridge.carriedThrowables.length > 0
+                    Layout.fillWidth: true
+                    columns: 2
+                    columnSpacing: 8
+                    rowSpacing: 8
+                    Repeater {
+                        model: sheetBridge.carriedThrowables
+                        delegate: Rectangle {
+                            objectName: "throwChip_" + modelData.name
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 1
+                            implicitHeight: 44
+                            radius: 9
+                            color: modelData.ready ? Qt.rgba(Theme.amber.r, Theme.amber.g, Theme.amber.b, 0.11) : Theme.surf
+                            border.color: modelData.ready ? Qt.rgba(Theme.amber.r, Theme.amber.g, Theme.amber.b, 0.67) : Theme.border2
+                            Accessible.role: Accessible.CheckBox
+                            Accessible.name: modelData.label + (modelData.ready ? ", ready to throw" : ", not ready")
+                            Accessible.checked: modelData.ready
+                            Label {
+                                anchors { fill: parent; leftMargin: 10; rightMargin: 6 }
+                                verticalAlignment: Text.AlignVCenter
+                                text: (modelData.ready ? "✓  " : "") + modelData.label + "  ×" + modelData.qty
+                                color: modelData.ready ? Theme.amber2 : Theme.text2
+                                font.pixelSize: Theme.fsSmall
+                                font.bold: true
+                                elide: Text.ElideRight
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: sheetBridge.setReadyThrow(modelData.name, !modelData.ready)
+                            }
+                        }
+                    }
+                }
+                Label {
+                    visible: sheetBridge.loadout.tattoos.length > 0
+                    text: "TATTOOS (" + sheetBridge.loadout.tattoos.length + ")"
+                    color: Theme.gold; font.pixelSize: Theme.fsSmall - 1; font.bold: true; font.letterSpacing: 1; Layout.topMargin: 4
+                }
+                GridLayout {
+                    visible: sheetBridge.loadout.tattoos.length > 0
+                    Layout.fillWidth: true
+                    columns: 2
+                    columnSpacing: 8
+                    rowSpacing: 8
+                    Repeater {
+                        model: sheetBridge.loadout.tattoos
+                        delegate: SlotTile { slot: modelData }
                     }
                 }
             }
@@ -384,7 +672,7 @@ Page {
 
             // ── Currency ────────────────────────────────────────────────
             MCard {
-                title: "Currency"
+                title: "Money & Carrying"
                 iconName: "coins"
 
                 GridLayout {
@@ -417,6 +705,31 @@ Page {
                         }
                     }
                 }
+                // what you carry against what you can
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: "Carrying"; color: Theme.text3; font.pixelSize: Theme.fsSmall; Layout.fillWidth: true }
+                    Label {
+                        objectName: "carryText"
+                        text: sheetBridge.carryLoad.weight + " / " + sheetBridge.carryLoad.capacity + " lb"
+                        color: sheetBridge.carryLoad.fraction >= 1 ? Theme.crimson2 : Theme.text2
+                        font.pixelSize: Theme.fsSmall
+                        font.bold: true
+                    }
+                }
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 6
+                    radius: 3
+                    color: Theme.surf3
+                    Rectangle {
+                        width: parent.width * sheetBridge.carryLoad.fraction
+                        height: parent.height
+                        radius: 3
+                        color: sheetBridge.carryLoad.fraction >= 1 ? Theme.crimson
+                             : sheetBridge.carryLoad.fraction > 0.66 ? Theme.amber : Theme.teal2
+                    }
+                }
             }
 
             // ── Inventory ───────────────────────────────────────────────
@@ -429,8 +742,8 @@ Page {
                 iconName: "gear"
 
                 Label {
-                    visible: sheetBridge.equipment.length === 0
-                    text: "No items yet -- add some below."
+                    visible: sheetBridge.inventoryGroups.length === 0 && sheetBridge.carriedMagicItems.length === 0
+                    text: "Nothing here yet -- add some below. What you hold and wear is on the Loadout."
                     color: Theme.text3
                     font.pixelSize: Theme.fsSmall
                 }
@@ -450,7 +763,7 @@ Page {
                                 font.bold: true
                             }
                             Label {
-                                text: modelData.items.length
+                                text: modelData.count
                                 color: Theme.text3
                                 font.pixelSize: Theme.fsSmall
                             }
@@ -459,7 +772,8 @@ Page {
                         Repeater {
                             model: modelData.items
                             delegate: Rectangle {
-                                objectName: "invRow_" + modelData.name
+                                // a weapon in hand has a row for each hand, the rest one of their own
+                                objectName: "invRow_" + (modelData.rowKey || modelData.name)
                                 Layout.fillWidth: true
                                 implicitHeight: invRow.implicitHeight + 14
                                 radius: 8
@@ -475,7 +789,7 @@ Page {
                                 // (or, for a monk, pick the Dedicated Weapon)
                                 MouseArea {
                                     id: invHold
-                                    objectName: "invHold_" + modelData.name
+                                    objectName: "invHold_" + (modelData.rowKey || modelData.name)
                                     anchors.fill: parent
                                     pressAndHoldInterval: 450
                                     onPressAndHold: root.openInventoryHold(modelData)
@@ -505,7 +819,9 @@ Page {
                                         }
                                         Label {
                                             // what it is -- cut short first on a narrow row
-                                            text: [modelData.equipped ? "Equipped" : "", modelData.detail]
+                                            // in hand: which hand ("Off hand"), or Equipped
+                                            text: [modelData.hand ? modelData.hand.charAt(0).toUpperCase() + modelData.hand.slice(1)
+                                                   : (modelData.equipped ? "Equipped" : ""), modelData.detail]
                                                   .filter(function(x) { return x.length > 0 }).join("  ·  ")
                                             visible: text.length > 0
                                             color: Theme.text3
@@ -530,15 +846,25 @@ Page {
                                     // Equip/Wear. Using an item -- a potion, a scroll,
                                     // a tinderbox -- is its card on the Actions screen.
                                     MButton {
+                                        objectName: "equipButton_" + (modelData.rowKey || modelData.name)
+                                        // the rest of a stack with one in hand: Equip
+                                        // only when a second can go in the other hand
                                         visible: modelData.equipKind !== ""
+                                                 && !(modelData.heldCount > 0 && !modelData.equipped && !modelData.canHoldAnother)
                                         primary: false
                                         implicitWidth: 86
                                         implicitHeight: 34
                                         text: modelData.equipKind === "weapon" ? (modelData.equipped ? "Unequip" : "Equip")
                                               : (modelData.equipped ? "Take off" : (modelData.equipKind === "shield" ? "Equip" : "Wear"))
                                         onClicked: {
-                                            if (modelData.equipKind === "weapon")
-                                                sheetBridge.toggleWeaponEquipped(modelData.name, !modelData.equipped)
+                                            if (modelData.equipKind === "weapon" && modelData.heldRow)
+                                                sheetBridge.putAwayOneWeapon(modelData.name)
+                                            else if (modelData.equipKind === "weapon" && modelData.heldCount > 0)
+                                                root.equipWeapon(modelData.name, true)
+                                            else if (modelData.equipKind === "weapon" && !modelData.equipped)
+                                                root.equipWeapon(modelData.name, false)
+                                            else if (modelData.equipKind === "weapon")
+                                                sheetBridge.toggleWeaponEquipped(modelData.name, false)
                                             else if (modelData.equipKind === "shield")
                                                 sheetBridge.toggleShieldWorn(!modelData.equipped)
                                             else
@@ -565,6 +891,80 @@ Page {
                                         Accessible.name: "View"
                                         onClicked: root.showItemDetail(modelData.name)
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // magic items you carry but aren't using: tap Put on (press
+                // and hold to attune, study or remove)
+                ColumnLayout {
+                    visible: sheetBridge.carriedMagicItems.length > 0
+                    Layout.fillWidth: true
+                    spacing: 6
+                    RowLayout {
+                        spacing: 6
+                        Label { text: "Magic Items"; color: Theme.text3; font.pixelSize: Theme.fsSmall; font.bold: true }
+                        Label { text: sheetBridge.carriedMagicItems.length; color: Theme.text3; font.pixelSize: Theme.fsSmall }
+                    }
+                    Repeater {
+                        objectName: "carriedMagicRepeater"
+                        model: sheetBridge.carriedMagicItems
+                        delegate: Rectangle {
+                            objectName: "carriedMagic_" + modelData.name
+                            Layout.fillWidth: true
+                            implicitHeight: cmRow.implicitHeight + 14
+                            radius: 8
+                            color: cmHold.pressed ? Theme.surf3 : Theme.surf2
+                            border.color: Theme.rarityColor(modelData.rarity)
+                            border.width: 2
+                            MouseArea {
+                                id: cmHold
+                                anchors.fill: parent
+                                pressAndHoldInterval: 450
+                                onPressAndHold: root.openMagicItemOptions(modelData)
+                            }
+                            RowLayout {
+                                id: cmRow
+                                anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 8 }
+                                spacing: 8
+                                MIcon { name: "magic"; size: 20; color: Theme.indigo2 }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    Layout.preferredWidth: 0
+                                    spacing: 1
+                                    Label {
+                                        text: (modelData.isAmmo ? modelData.qty + "× " : "") + modelData.name
+                                        color: Theme.text; font.pixelSize: Theme.fsBody
+                                        elide: Text.ElideRight; Layout.fillWidth: true
+                                    }
+                                    Label {
+                                        text: modelData.rarity + (modelData.attuned ? "  ·  Attuned" : (modelData.needsAttunement ? "  ·  Needs attuning" : ""))
+                                        color: modelData.attuned ? Theme.purple2 : Theme.text3
+                                        font.pixelSize: Theme.fsSmall
+                                        elide: Text.ElideRight; Layout.fillWidth: true
+                                    }
+                                }
+                                MButton {
+                                    objectName: "putOn_" + modelData.name
+                                    visible: modelData.type !== "Potion" && modelData.type !== "Scroll"
+                                             && (modelData.slot !== "" || modelData.needsAttunement
+                                                 || modelData.type === "Weapon" || modelData.type === "Armor")
+                                    primary: false
+                                    implicitWidth: 86
+                                    implicitHeight: 34
+                                    text: modelData.type === "Weapon" ? "Equip" : "Put on"
+                                    onClicked: root.putOn(modelData.uid, modelData.name)
+                                }
+                                MButton {
+                                    primary: false
+                                    implicitWidth: 40
+                                    implicitHeight: 34
+                                    iconName: "search"
+                                    iconSize: 22
+                                    Accessible.name: "View"
+                                    onClicked: root.showItemDetail(modelData.name)
                                 }
                             }
                         }
@@ -761,127 +1161,6 @@ Page {
                     sheetBridge.addCustomEquipmentItem(eqSearch.text.trim(), eqQty.value)
                     eqSearch.text = ""
                 }
-            }
-
-            }
-
-            // ── Magic Items ──────────────────────────────────────────
-            MCard {
-            id: magicAnchor
-            title: "Magic Items"
-            iconName: "magic"
-            Label {
-                visible: sheetBridge.magicItems.length === 0
-                text: "No magic items yet -- search below to add some."
-                color: Theme.text3
-                font.pixelSize: Theme.fsSmall
-            }
-            Repeater {
-                objectName: "magicItemsRepeater"
-                model: sheetBridge.magicItems
-                // Everyday: View and the Equipped box. Press and hold for the
-                // rest -- attune, study (manuals/tomes), remove.
-                delegate: Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: miCol.height + 16
-                    radius: 8
-                    color: miHold.pressed ? Theme.surf3 : Theme.surf2
-                    // border = rarity (dark grey common ... amber legendary, crimson artifact)
-                    border.color: Theme.rarityColor(modelData.rarity)
-                    border.width: 2
-
-                    MouseArea {
-                        id: miHold
-                        objectName: "magicItemHold_" + modelData.name
-                        anchors.fill: parent
-                        pressAndHoldInterval: 450
-                        onPressAndHold: root.openMagicItemOptions(modelData)
-                    }
-
-                    Column {
-                        id: miCol
-                        x: 10; y: 8
-                        width: parent.width - 20
-                        spacing: 4
-
-                        RowLayout {
-                            width: parent.width
-                            Label {
-                                text: modelData.name
-                                color: Theme.text
-                                font.pixelSize: Theme.fsBody
-                                font.bold: true
-                                Layout.fillWidth: true
-                                wrapMode: Text.WordWrap
-                            }
-                            Label {
-                                // plain text -- the card's border carries the colour
-                                text: modelData.rarity
-                                color: Theme.text2
-                                font.pixelSize: Theme.fsSmall
-                                font.bold: true
-                            }
-                            // magic ammunition stacks: how many -- tap to change
-                            MButton {
-                                objectName: "miQtyButton_" + modelData.name
-                                visible: modelData.isAmmo
-                                primary: false
-                                implicitWidth: Math.max(40, implicitContentWidth + 20)
-                                implicitHeight: 34
-                                text: "×" + modelData.qty
-                                Accessible.name: "Quantity " + modelData.qty
-                                onClicked: root.openAmountDialog(modelData)
-                            }
-                            MButton {
-                                primary: false
-                                implicitWidth: 40
-                                implicitHeight: 34
-                                iconName: "search"   // View -- a magnifying glass
-                                iconSize: 22
-                                Accessible.name: "View"
-                                onClicked: root.showItemDetail(modelData.name)
-                            }
-                        }
-                        Label {
-                            width: parent.width
-                            text: modelData.type
-                                  + (modelData.studied ? "  ·  Studied (its magic is spent)" : "")
-                                  + (modelData.attuned ? "  ·  Attuned"
-                                     : (modelData.needsAttunement ? "  ·  Requires attunement" : ""))
-                            color: modelData.attuned ? Theme.indigo2 : Theme.text3
-                            font.pixelSize: Theme.fsSmall
-                            wrapMode: Text.WordWrap
-                        }
-                        RowLayout {
-                            width: parent.width
-                            visible: modelData.resistanceChoicePool.length > 0
-                            spacing: 6
-                            Label { text: "Resists:"; color: Theme.text3; font.pixelSize: Theme.fsSmall }
-                            ComboBox {
-                                Layout.fillWidth: true
-                                model: ["— choose damage type —"].concat(modelData.resistanceChoicePool)
-                                currentIndex: modelData.resistanceChoiceCurrent
-                                             ? modelData.resistanceChoicePool.indexOf(modelData.resistanceChoiceCurrent) + 1
-                                             : 0
-                                onActivated: (idx) => sheetBridge.setMagicItemDamageType(
-                                    modelData.name, idx === 0 ? "" : modelData.resistanceChoicePool[idx - 1])
-                            }
-                        }
-                        MCheckBox {
-                            text: "Equipped"
-                            checked: modelData.equipped
-                            onToggled: sheetBridge.setMagicItemEquipped(modelData.uid, checked)
-                        }
-                    }
-                }
-            }
-            Label {
-                visible: sheetBridge.magicItems.length > 0
-                text: "Press and hold an item to attune, study or remove it."
-                color: Theme.text3
-                font.pixelSize: Theme.fsSmall
-                wrapMode: Text.WordWrap
-                Layout.fillWidth: true
             }
 
             }

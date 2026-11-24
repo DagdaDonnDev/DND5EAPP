@@ -1,405 +1,183 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Layouts
 import Mimic
 
+// Wizard step 2: the method as tabs, and each ability in one box -- its
+// score with − and +, the race's bonus or the +1 you place there, then the
+// total and modifier.
 Page {
     id: root
     readonly property string screenTitle: "Ability Scores"
+    readonly property var wb: Window.window.wizardBridge
+    readonly property var view: { wb ? wb.rev : 0; return wb ? wb.abilityView() : ({ cols: [] }) }
     background: Rectangle { color: Theme.bg }
 
-    Component.onCompleted: Window.window.abilityBridge.refresh()
-
-    function cardStyle(borderColor) {
-        return borderColor
-    }
+    WizSteps { id: steps; step: 1; width: parent.width }
 
     Flickable {
-        anchors.fill: parent
-        anchors.margins: 16
-        contentWidth: width
-        contentHeight: content.height
+        anchors.top: steps.bottom; anchors.bottom: nav.top
+        anchors.left: parent.left; anchors.right: parent.right
+        contentHeight: content.height + 24
         clip: true
-
         Column {
             id: content
-            width: parent.width
-            spacing: 14
-
-            Label {
-                visible: Window.window.abilityBridge.abilitiesConfirmedOnce
-                text: "Ability scores confirmed  ✓"
-                color: Theme.teal2
-                font.pixelSize: Theme.fsBody
-                font.bold: true
+            x: 12; y: 12
+            width: parent.width - 24
+            spacing: 10
+            Row {
+                width: parent.width
+                spacing: 4
+                Repeater {
+                    model: root.wb ? root.wb.methods : []
+                    delegate: Rectangle {
+                        objectName: "method_" + modelData
+                        readonly property bool on: root.wb && root.wb.method === modelData
+                        width: (content.width - 12) / 4; height: 36; radius: 8
+                        color: on ? Qt.rgba(Theme.gold.r, Theme.gold.g, Theme.gold.b, 0.12) : Theme.surf2
+                        border.color: on ? Theme.gold : Theme.border
+                        Label {
+                            anchors.centerIn: parent
+                            text: modelData === "Standard Array" ? "Array" : modelData === "Enter scores" ? "Enter" : modelData
+                            color: parent.on ? Theme.gold2 : Theme.text2
+                            font.pixelSize: Theme.fsSmall; font.bold: true
+                        }
+                        MouseArea { anchors.fill: parent; onClicked: root.wb.setMethod(modelData) }
+                    }
+                }
             }
-
             Label {
-                text: "Set your base ability scores, then apply racial and ASI bonuses below."
+                width: parent.width
+                wrapMode: Text.WordWrap
+                textFormat: Text.RichText
                 color: Theme.text2
                 font.pixelSize: Theme.fsSmall
-                wrapMode: Text.WordWrap
-                width: parent.width
+                text: (root.wb && root.wb.method === "Point Buy"
+                       ? "Points left <b><font color='" + (root.view.pointBuyLeft >= 0 ? Theme.teal2 : Theme.crimson2) + "'>"
+                         + root.view.pointBuyLeft + "</font></b> / 27 · " : "")
+                      + (root.view.text || "")
             }
-
-            // ── Method selector ──────────────────────────────────────
-            Label {
-                text: "Method"
-                color: Theme.gold
-                font.pixelSize: Theme.fsSmall
-                font.bold: true
+            Row {
+                spacing: 8
+                visible: root.view.hasFixed || (root.wb && root.wb.method === "Roll")
+                MButton {
+                    visible: root.wb && root.wb.method === "Roll"
+                    primary: false
+                    height: 32
+                    text: "🎲  Roll all"
+                    onClicked: root.wb.rollAll()
+                }
+                MButton {
+                    visible: root.view.hasFixed === true
+                    primary: false
+                    height: 32
+                    text: root.view.moving ? "Put my race bonus back" : "Move my race bonus"
+                    onClicked: root.wb.toggleMoved()
+                }
             }
-            ComboBox {
-                id: methodCombo
+            Grid {
                 width: parent.width
-                model: Window.window.abilityBridge.methodNames
-                currentIndex: Window.window.abilityBridge.methodIndex
-                onActivated: (idx) => Window.window.abilityBridge.selectMethodIndex(idx)
-            }
-
-            // ── Manual / Point Buy: editable base scores ─────────────
-            Rectangle {
-                visible: Window.window.abilityBridge.methodIsManual || Window.window.abilityBridge.methodIsPointBuy
-                width: parent.width
-                height: abGrid.height + 24
-                radius: 10
-                color: Theme.surf
-                border.color: Theme.border
-                Grid {
-                    id: abGrid
-                    anchors.centerIn: parent
-                    columns: 3
-                    rowSpacing: 10
-                    columnSpacing: 10
-                    Repeater {
-                        model: Window.window.abilityBridge.abilityNames
-                        delegate: Column {
-                            spacing: 2
-                            width: 110
-                            Label {
-                                text: modelData
-                                color: Theme.text3
-                                font.pixelSize: Theme.fsSmall
-                                font.bold: true
+                columns: 3
+                spacing: 8
+                Repeater {
+                    model: root.view.cols || []
+                    delegate: Rectangle {
+                        objectName: "abilityBox_" + modelData.ab
+                        width: (content.width - 16) / 3
+                        height: box.implicitHeight + 16
+                        radius: 10
+                        color: Theme.surf2; border.color: Theme.border
+                        Column {
+                            id: box
+                            y: 8
+                            width: parent.width
+                            spacing: 5
+                            Label { anchors.horizontalCenter: parent.horizontalCenter; text: modelData.ab; color: Theme.text2; font.pixelSize: Theme.fsSmall - 1; font.bold: true }
+                            Row {
                                 anchors.horizontalCenter: parent.horizontalCenter
+                                spacing: 4
+                                Rectangle {
+                                    visible: !(root.wb && root.wb.method === "Roll")
+                                    width: 26; height: 26; radius: 6; color: Theme.surf; border.color: Theme.border
+                                    Label { anchors.centerIn: parent; text: "−"; color: Theme.text; font.bold: true }
+                                    MouseArea { anchors.fill: parent; onClicked: root.wb.stepScore(modelData.ab, false) }
+                                }
+                                Label {
+                                    objectName: "abilityBase_" + modelData.ab
+                                    width: 26; horizontalAlignment: Text.AlignHCenter
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: modelData.base; color: Theme.text; font.pixelSize: Theme.fsBody; font.bold: true
+                                }
+                                Rectangle {
+                                    visible: !(root.wb && root.wb.method === "Roll")
+                                    width: 26; height: 26; radius: 6; color: Theme.surf; border.color: Theme.border
+                                    Label { anchors.centerIn: parent; text: "+"; color: Theme.text; font.bold: true }
+                                    MouseArea { anchors.fill: parent; onClicked: root.wb.stepScore(modelData.ab, true) }
+                                }
+                                Rectangle {
+                                    visible: root.wb && root.wb.method === "Roll"
+                                    width: 30; height: 26; radius: 6; color: "transparent"; border.color: Theme.border2
+                                    Label { anchors.centerIn: parent; text: "🎲"; font.pixelSize: Theme.fsSmall }
+                                    MouseArea { anchors.fill: parent; onClicked: root.wb.rollOne(modelData.ab) }
+                                }
                             }
-                            MSpinBox {
-                                width: 100
-                                from: 1
-                                to: 20
-                                value: Window.window.abilityBridge.baseScores[modelData]
-                                onValueModified: Window.window.abilityBridge.setBaseScore(modelData, value)
-                            }
-                        }
-                    }
-                }
-            }
-
-            Label {
-                visible: Window.window.abilityBridge.methodIsPointBuy
-                text: "Points remaining: " + Window.window.abilityBridge.pointBuyRemaining + " / 27"
-                color: Window.window.abilityBridge.pointBuyRemaining >= 0 ? Theme.gold2 : Theme.crimson2
-                font.pixelSize: Theme.fsBody
-                font.bold: true
-            }
-
-            // ── Standard Array: assign each value to one ability ─────
-            Rectangle {
-                visible: Window.window.abilityBridge.methodIsStandardArray
-                width: parent.width
-                height: saCol.height + 24
-                radius: 10
-                color: Theme.surf
-                border.color: Theme.gold
-                Column {
-                    id: saCol
-                    x: 12; y: 12
-                    width: parent.width - 24
-                    spacing: 8
-                    Label {
-                        text: "Assign each value to one ability:"
-                        color: Theme.gold
-                        font.pixelSize: Theme.fsBody
-                        font.bold: true
-                    }
-                    Repeater {
-                        model: Window.window.abilityBridge.abilityNames
-                        delegate: RowLayout {
-                            width: saCol.width
-                            Label {
-                                text: modelData
-                                color: Theme.text
-                                font.pixelSize: Theme.fsBody
-                                font.bold: true
-                                Layout.preferredWidth: 60
-                            }
-                            ComboBox {
-                                Layout.fillWidth: true
-                                model: Window.window.abilityBridge.standardArrayValues
-                                currentIndex: Window.window.abilityBridge.standardArrayValues.indexOf(Window.window.abilityBridge.standardArrayAssignment[modelData])
-                                onActivated: (idx) => Window.window.abilityBridge.setStandardArrayValue(modelData, Window.window.abilityBridge.standardArrayValues[idx])
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── Tasha's Reassignment ──────────────────────────────────
-            Rectangle {
-                visible: Window.window.abilityBridge.methodIsTashas
-                width: parent.width
-                height: tashasCol.height + 24
-                radius: 10
-                color: Theme.surf
-                border.color: Theme.gold
-                Column {
-                    id: tashasCol
-                    x: 12; y: 12
-                    width: parent.width - 24
-                    spacing: 8
-                    Label {
-                        text: "Redistribute your racial ASI points to any abilities. All other racial traits are unchanged."
-                        color: Theme.teal2
-                        font.pixelSize: Theme.fsSmall
-                        wrapMode: Text.WordWrap
-                        width: parent.width
-                    }
-                    Label {
-                        text: "Points used: " + Window.window.abilityBridge.tashasUsed + " / " + Window.window.abilityBridge.tashasPool
-                        color: Window.window.abilityBridge.tashasUsed === Window.window.abilityBridge.tashasPool ? Theme.teal2 : Theme.gold2
-                        font.pixelSize: Theme.fsSmall
-                        font.bold: true
-                    }
-                    Repeater {
-                        model: Window.window.abilityBridge.abilityNames
-                        delegate: RowLayout {
-                            width: tashasCol.width
-                            Label {
-                                text: modelData
-                                color: Theme.text
-                                font.pixelSize: Theme.fsBody
-                                font.bold: true
-                                Layout.preferredWidth: 60
-                            }
-                            MSpinBox {
-                                Layout.fillWidth: true
-                                from: 0
-                                to: Math.max(1, Window.window.abilityBridge.tashasPool)
-                                value: Window.window.abilityBridge.tashasPoints[modelData]
-                                onValueModified: Window.window.abilityBridge.setTashasPoints(modelData, value)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── Racial ASI preview ────────────────────────────────────
-            Rectangle {
-                width: parent.width
-                height: raceCol.height + 24
-                radius: 10
-                color: Theme.surf
-                border.color: Theme.teal
-                Column {
-                    id: raceCol
-                    x: 12; y: 12
-                    width: parent.width - 24
-                    spacing: 4
-                    Label {
-                        text: "Racial Ability Score Increases"
-                        color: Theme.teal2
-                        font.pixelSize: Theme.fsBody
-                        font.bold: true
-                    }
-                    Label {
-                        text: Window.window.abilityBridge.racialAsiText
-                        color: Theme.text2
-                        font.pixelSize: Theme.fsBody
-                        wrapMode: Text.WordWrap
-                        width: parent.width
-                    }
-                }
-            }
-
-            // ── Flex ASI picker (each-style, e.g. Half-Elf) ──────────
-            Rectangle {
-                visible: Window.window.abilityBridge.showFlexPicker
-                width: parent.width
-                height: flexCol.height + 24
-                radius: 10
-                color: Theme.surf
-                border.color: Theme.indigo
-                Column {
-                    id: flexCol
-                    x: 12; y: 12
-                    width: parent.width - 24
-                    spacing: 8
-                    Label {
-                        text: Window.window.abilityBridge.flexLabel
-                        color: Theme.indigo2
-                        font.pixelSize: Theme.fsBody
-                        font.bold: true
-                        wrapMode: Text.WordWrap
-                        width: parent.width
-                    }
-                    Flow {
-                        width: parent.width
-                        spacing: 8
-                        Repeater {
-                            model: Window.window.abilityBridge.abilityNames
-                            delegate: MCheckBox {
-                                objectName: "flexPick_" + modelData
-                                text: modelData
-                                checked: Window.window.abilityBridge.flexPicks.indexOf(modelData) >= 0
-                                onClicked: Window.window.abilityBridge.toggleFlexPick(modelData)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── Distribute ASI picker (2024/MPMM-style) ──────────────
-            Rectangle {
-                visible: Window.window.abilityBridge.showDistPicker
-                width: parent.width
-                height: distCol.height + 24
-                radius: 10
-                color: Theme.surf
-                border.color: Theme.indigo
-                Column {
-                    id: distCol
-                    x: 12; y: 12
-                    width: parent.width - 24
-                    spacing: 8
-                    Label {
-                        text: "Ability Score Increase — choose one option:"
-                        color: Theme.indigo2
-                        font.pixelSize: Theme.fsBody
-                        font.bold: true
-                        wrapMode: Text.WordWrap
-                        width: parent.width
-                    }
-                    RadioButton {
-                        id: distRadioA
-                        width: distCol.width
-                        checked: Window.window.abilityBridge.distOptionA
-                        onClicked: Window.window.abilityBridge.selectDistOptionA(true)
-                        text: "(a) +2 to one ability, +1 to a different ability"
-                        contentItem: Text {
-                            text: distRadioA.text
-                            color: Theme.text
-                            font.pixelSize: Theme.fsBody
-                            wrapMode: Text.WordWrap
-                            leftPadding: distRadioA.indicator.width + distRadioA.spacing
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-                    RowLayout {
-                        width: distCol.width
-                        enabled: Window.window.abilityBridge.distOptionA
-                        Label { text: "+2:"; color: Theme.text2; font.pixelSize: Theme.fsSmall }
-                        ComboBox {
-                            Layout.fillWidth: true
-                            model: Window.window.abilityBridge.abilityNames
-                            currentIndex: Window.window.abilityBridge.abilityNames.indexOf(Window.window.abilityBridge.distPlus2Ability)
-                            onActivated: (idx) => Window.window.abilityBridge.setDistPlus2(Window.window.abilityBridge.abilityNames[idx])
-                        }
-                        Label { text: "+1:"; color: Theme.text2; font.pixelSize: Theme.fsSmall }
-                        ComboBox {
-                            Layout.fillWidth: true
-                            model: Window.window.abilityBridge.abilityNames
-                            currentIndex: Window.window.abilityBridge.abilityNames.indexOf(Window.window.abilityBridge.distPlus1Ability)
-                            onActivated: (idx) => Window.window.abilityBridge.setDistPlus1(Window.window.abilityBridge.abilityNames[idx])
-                        }
-                    }
-                    RadioButton {
-                        id: distRadioB
-                        width: distCol.width
-                        checked: !Window.window.abilityBridge.distOptionA
-                        onClicked: Window.window.abilityBridge.selectDistOptionA(false)
-                        text: "(b) +1 to three different abilities"
-                        contentItem: Text {
-                            text: distRadioB.text
-                            color: Theme.text
-                            font.pixelSize: Theme.fsBody
-                            wrapMode: Text.WordWrap
-                            leftPadding: distRadioB.indicator.width + distRadioB.spacing
-                            verticalAlignment: Text.AlignVCenter
-                        }
-                    }
-                    Flow {
-                        width: parent.width
-                        spacing: 8
-                        enabled: !Window.window.abilityBridge.distOptionA
-                        Repeater {
-                            model: Window.window.abilityBridge.abilityNames
-                            delegate: MCheckBox {
-                                text: modelData
-                                checked: Window.window.abilityBridge.distTriplePicks.indexOf(modelData) >= 0
-                                onClicked: Window.window.abilityBridge.toggleDistTriplePick(modelData)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ── Totals ─────────────────────────────────────────────────
-            Rectangle {
-                width: parent.width
-                height: totalsGrid.height + 20
-                radius: 10
-                color: Theme.surf2
-                border.color: Theme.border
-                Grid {
-                    id: totalsGrid
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    y: 10
-                    columns: 3
-                    rowSpacing: 8
-                    columnSpacing: 10
-                    Repeater {
-                        model: Window.window.abilityBridge.abilityNames
-                        delegate: Column {
-                            spacing: 2
-                            width: 100
-                            Label {
-                                text: modelData
-                                color: Theme.text3
-                                font.pixelSize: Theme.fsSmall
-                                font.bold: true
+                            Row {
                                 anchors.horizontalCenter: parent.horizontalCenter
+                                spacing: 4
+                                height: 24
+                                // a Tasha's move: − race +
+                                Rectangle {
+                                    visible: root.view.moving === true
+                                    width: 22; height: 22; radius: 5; color: "transparent"; border.color: Theme.border
+                                    Label { anchors.centerIn: parent; text: "−"; color: Theme.text2; font.bold: true }
+                                    MouseArea { anchors.fill: parent; onClicked: root.wb.moveBonus(modelData.ab, -1) }
+                                }
+                                WizChip {
+                                    visible: root.view.moving === true || modelData.fixed > 0
+                                    height: 22
+                                    text: root.view.moving ? (modelData.moved ? "+" + modelData.moved : "race") : "+" + modelData.fixed
+                                    kind: (root.view.moving ? modelData.moved : modelData.fixed) ? "teal" : "off"
+                                }
+                                Rectangle {
+                                    visible: root.view.moving === true
+                                    width: 22; height: 22; radius: 5; color: "transparent"; border.color: Theme.border
+                                    Label { anchors.centerIn: parent; text: "+"; color: Theme.text2; font.bold: true }
+                                    MouseArea { anchors.fill: parent; onClicked: root.wb.moveBonus(modelData.ab, 1) }
+                                }
+                                WizChip {
+                                    objectName: "abilityPick_" + modelData.ab
+                                    visible: modelData.canPick
+                                    height: 22
+                                    text: modelData.pick ? "✓ +" + modelData.pick : "+1"
+                                    kind: modelData.pick ? "teal" : "off"
+                                    MouseArea { anchors.fill: parent; onClicked: root.wb.tapPick(modelData.ab) }
+                                }
                             }
                             Label {
-                                text: Window.window.abilityBridge.totals[modelData] || ""
-                                color: Theme.text
-                                font.pixelSize: Theme.fsSmall
-                                font.bold: true
+                                objectName: "abilityTotal_" + modelData.ab
                                 anchors.horizontalCenter: parent.horizontalCenter
+                                text: modelData.total
+                                color: modelData.total !== modelData.base ? Theme.teal2 : Theme.text
+                                font.pixelSize: Theme.fsTitle; font.bold: true
+                            }
+                            WizChip {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                height: 22
+                                text: modelData.mod
+                                kind: modelData.neg ? "red" : "teal"
                             }
                         }
-                    }
-                }
-            }
-
-            Label {
-                visible: Window.window.abilityBridge.errorMessage.length > 0
-                text: Window.window.abilityBridge.errorMessage
-                color: Theme.crimson2
-                font.pixelSize: Theme.fsSmall
-                wrapMode: Text.WordWrap
-                width: parent.width
-            }
-
-            MButton {
-                objectName: "confirmAbilitiesButton"
-                width: parent.width
-                text: "Confirm & Continue"
-                onClicked: {
-                    if (Window.window.abilityBridge.confirmAbilities()) {
-                        Window.window.advanceToClass()
                     }
                 }
             }
         }
+    }
+    WizNav {
+        id: nav
+        anchors.bottom: parent.bottom; width: parent.width
+        readonly property string why: { root.wb ? root.wb.rev : 0; return root.wb ? root.wb.block(1) : "" }
+        ready: why.length === 0
+        text: ready ? "Next →" : why
+        onBack: Window.window.goToWizardStep(0)
+        onNext: if (ready) Window.window.advanceToClass(); else Window.window.showToast(why)
     }
 }

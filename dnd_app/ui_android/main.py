@@ -37,11 +37,12 @@ from PySide6.QtCore import QUrl, QMetaObject, qInstallMessageHandler, QtMsgType
 
 from dnd_app.core.character import new_character
 from dnd_app.ui_android.bridge.wizard import (
-    RaceWizardBridge, AbilityWizardBridge, ClassWizardBridge, EquipmentWizardBridge,
+    WizardBridge,
 )
 from dnd_app.ui_android.bridge.save_load import SaveLoadBridge
 from dnd_app.ui_android.bridge.character_sheet import CharacterSheetBridge
 from dnd_app.ui_android.bridge.dice_roller import DiceRollerBridge
+from dnd_app.ui_android.bridge.bestiary import BestiaryBridge
 from dnd_app.ui_android.bridge.credits import CreditsBridge
 from dnd_app.ui_android.bridge.easter_eggs import EasterEggBridge
 from dnd_app.ui_android.bridge.app_settings import AppSettingsBridge
@@ -124,6 +125,14 @@ def main():
     print(f"[MIMIC] error log: {_log_errors(get_save_dir()) or 'none'}", file=sys.stderr)
     # before the engine exists -- Qt reads these when it's created
     _setup_qml_disk_cache()
+    # the launcher icon to switch to as the app goes to the background:
+    # the menu's theme's (core/app_icon.py; packaging/android/p4a_hook.py)
+    try:
+        from dnd_app.core.app_settings import get_app_theme
+        from dnd_app.core.app_icon import remember_launcher_icon
+        remember_launcher_icon(get_app_theme())
+    except Exception as e:
+        print(f"[MIMIC] launcher icon: {e}", file=sys.stderr)
 
     # Diagnostics for the "QML fails to load, app silently exits"
     # failure mode -- confirms path resolution (__file__ can behave
@@ -142,14 +151,12 @@ def main():
     engine.addImageProvider("immersive", ImmersiveFrameProvider())
 
     char = new_character()
-    race_bridge = RaceWizardBridge(char)
-    ability_bridge = AbilityWizardBridge(char)
-    class_bridge = ClassWizardBridge(char)
-    equipment_bridge = EquipmentWizardBridge(char)
+    wizard_bridge = WizardBridge(char)
     save_load_bridge = SaveLoadBridge(char)
     sheet_bridge = CharacterSheetBridge(char)
     dice_roller_bridge = DiceRollerBridge(char)      # (the shared character: its roll history)
     credits_bridge = CreditsBridge()
+    bestiary_bridge = BestiaryBridge()
     easter_egg_bridge = EasterEggBridge()
     app.installEventFilter(easter_egg_bridge)
     app_settings_bridge = AppSettingsBridge()
@@ -163,16 +170,14 @@ def main():
 
     # Assigned as plain QML properties AFTER load, not via
     # QQmlContext.setContextProperty() before it -- see App.qml's
-    # raceBridge/abilityBridge property comment for why.
+    # wizardBridge property comment for why.
     window = engine.rootObjects()[0]
-    window.setProperty("raceBridge", race_bridge)
-    window.setProperty("abilityBridge", ability_bridge)
-    window.setProperty("classBridge", class_bridge)
-    window.setProperty("equipmentBridge", equipment_bridge)
+    window.setProperty("wizardBridge", wizard_bridge)
     window.setProperty("saveLoadBridge", save_load_bridge)
     window.setProperty("sheetBridge", sheet_bridge)
     window.setProperty("diceRollerBridge", dice_roller_bridge)
     window.setProperty("creditsBridge", credits_bridge)
+    window.setProperty("bestiaryBridge", bestiary_bridge)
     window.setProperty("easterEggBridge", easter_egg_bridge)
     window.setProperty("appSettingsBridge", app_settings_bridge)
     # Applies the app's own remembered theme before the Start Menu is

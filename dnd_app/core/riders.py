@@ -62,11 +62,24 @@ NAMED_WEAPON_BASES = {
     "Sword of Kas": "Longsword", "Blade of Avernus": "Longsword", "Fane-Eater": "Battleaxe",
     "Vicious Weapon": "Longsword", "Hellfire Weapon": "Longsword", "Ruidium Weapon": "Longsword",
     "Crystal Blade": "Longsword", "Drown": "Trident", "Bloodshed Blade": "Longsword",
+    # the reference's later items whose names don't say the weapon
+    "Bob": "Battleaxe", "Canian Fork": "Trident", "Dragon Thighbone Club": "Greatclub",
+    "Dragongleam": "Spear", "Knife of Stolen Resistance": "Dagger", "Macuahuitl": "Longsword",
+    "Pirate's Cutlass": "Shortsword", "Prying Blade": "Shortsword", "Ranseur of Torture": "Pike",
+    "Ruby Rod of Asmodeus": "Morningstar", "Scourge of Shadow": "Whip", "Silver Sword": "Greatsword",
+    "Wrought-Iron Tower": "Warhammer", "Yester Hill Axe": "Battleaxe",
 }
 
 
 # What a named weapon changes about the weapon it is
-NAMED_WEAPON_CHANGES = {"Sun Blade": {"damage_type": "radiant", "finesse": True}}
+NAMED_WEAPON_CHANGES = {
+    "Sun Blade": {"damage_type": "radiant", "finesse": True},
+    "Ranseur of Torture": {"die": "2d10"},
+    "Scourge of Shadow": {"die": "3d4"},
+    "Ruby Rod of Asmodeus": {"damage_type": "necrotic"},
+    "True-Ice Shards (Dagger)": {"die": "1d6", "damage_type": "cold"},
+    "True-Ice Shards (Rapier)": {"die": "1d8", "damage_type": "cold"},
+}
 
 
 # Items that can be any weapon of a kind: the player picks which
@@ -88,7 +101,10 @@ def base_weapon_options(name: str) -> list:
     from dnd_app.data.items import WEAPON_DICT
     kind = NAMED_WEAPON_KINDS.get((name or "").strip())
     if not kind:
-        return []
+        # an "any armor" item (+1 Armor, Armor of Fire Resistance): which
+        # armor it is, kept in the same place (core/magic_items.py)
+        from dnd_app.core.magic_items import armor_base_options
+        return armor_base_options(name)
     out = []
     for wname, w in WEAPON_DICT.items():
         if wname == "Unarmed Strike":
@@ -105,7 +121,12 @@ def base_weapon_options(name: str) -> list:
 
 
 def weapon_base_of(char: dict, name: str) -> str:
-    """The weapon this item is now: the player's pick, or the usual one."""
+    """The weapon this item is now: the player's pick, or the usual one
+    (an "any armor" item: the armor picked, "" before one is)."""
+    from dnd_app.core.magic_items import armor_base_options
+    if armor_base_options(name):
+        picked = (char.get("weapon_bases") or {}).get((name or "").strip())
+        return picked if picked in armor_base_options(name) else ""
     picked = (char.get("weapon_bases") or {}).get((name or "").strip())
     return picked if picked in base_weapon_options(name) else named_weapon_base(name)
 
@@ -169,6 +190,8 @@ def weapon_profile(char: dict, weapon) -> dict:
         props.append("finesse")
     if changes.get("damage_type"):
         w = dict(w, dmg_type=changes["damage_type"])
+    if changes.get("die"):
+        w = dict(w, damage=changes["die"])
     from dnd_app.core.magic_items import parse_magic_suffix
     magic = bool(item) or bool(parse_magic_suffix(name)[1]) or any(
         i.get("target_item") == name for i in char.get("active_infusions", []))
@@ -849,6 +872,15 @@ ITEM_RIDERS = {
     "Stirring Dragon's Wrath Weapon": ("1d6", "of the dragon's type", ""),
     "Wakened Dragon's Wrath Weapon": ("2d6", "of the dragon's type", ""),
     "Ascendant Dragon's Wrath Weapon": ("3d6", "of the dragon's type", ""),
+    "Dragon Thighbone Club": ("2d8", "bludgeoning", "against dragons"),
+    "Macuahuitl": ("2d6", "weapon", "against plant creatures"),
+    "Yester Hill Axe": ("1d8", "slashing", "against plants"),
+    "Flame Tongue Shortsword of Greed": ("2d6", "fire", "while it's ablaze"),
+    "Ranseur of Torture": ("1d10", "necrotic", "against a good creature, and 1d10 piercing more "
+                                                "against one below its hit point maximum"),
+    "Ruby Rod of Asmodeus": ("2d12", "necrotic", "against a good creature"),
+    "Scourge of Shadow": ("4d4", "necrotic", "against a good creature (4d6 on a critical hit)"),
+    "Wrought-Iron Tower": ("3d6", "fire", "against a good creature"),
 }
 
 # A weapon's own extra that you choose to use: (cost, how it's paid)

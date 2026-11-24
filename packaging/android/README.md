@@ -335,6 +335,7 @@ once, and nobody has to again.
 | `git clone -b 'master', ...` in the log even though the spec sets `p4a.branch` | The spec's `p4a.branch` line got removed, or the local p4a checkout's remembered branch drifted — check `dnd_app/ui_android/buildozer.spec` |
 | A patch fails to apply deep inside the `python3` recipe | You're on p4a `master` (Python 3.14), not the pinned `v2024.01.21` — see [Why this p4a version](#why-this-p4a-version) |
 | `can't find file to patch` on `hostpython3`'s `pyconfig_detection.patch`, or `sh.CommandNotFound: .../python3/config.guess` | A half-extracted (or half-deleted) Python source in the cache. The clean build deletes it and extracts it again, so build with that rather than plain `buildozer`; by hand, delete `other_builds/hostpython3/` or `other_builds/python3/` under `dnd_app/ui_android/.buildozer/.../build/` |
+| `Cython (cython) not found, please install it.` | buildozer looks for a `cython` command on PATH, and pip's `--user` install puts it in `~/.local/bin`, which a build started from Windows may not have on PATH. The clean build now installs Cython if it's missing and puts the folder with the command on PATH itself; by hand, run `python3.11 -m pip install --user cython` and `export PATH="$HOME/.local/bin:$PATH"` before `buildozer` |
 | "ANDROID_SDK_ROOT is not set" / NDK not found | Re-run `setup_buildozer_spec.bat` — it writes the paths into the spec rather than relying on environment variables |
 | Build succeeds but the app crashes instantly on launch | `p4a_hook.py`'s `before_apk_build` step (bundling `libc++_shared.so`) didn't run |
 | Java compile fails on `QtNative.setEnvironmentVariable` / "cannot find symbol" | `p4a_hook.py`'s `before_apk_assemble` patch didn't run |
@@ -346,3 +347,22 @@ once, and nobody has to again.
 | `compileall` fails under `lib2to3/tests/` | Add `lib2to3/tests/*` to the dist's `blacklist.txt` |
 | Black screen, no crash; logcat shows `dlopen failed: library "org.kivy.android.PythonActivity" not found` | `QtNative.startApplication(params, mainLib)` got its arguments swapped, so Python never started. `p4a_hook.py` passes `("", <nativeLibraryDir>/libmain_arm64-v8a.so)`, migrates the old call in an already-patched dist, and fails the build if the old call survives |
 | `:mergeReleaseResources` fails with `AAPT2 ... Daemon startup failed` | Environment, not code — usually transient on WSL from a `/mnt/c/` path. Retry; if it persists, run `./gradlew --stop` in the dist directory first |
+
+## The launcher icon in each theme
+
+`packaging/android/theme_icons/<theme>/` holds the launcher icon for every
+theme but the default (Obsidian), written by
+`python packaging/make_theme_icons.py` (run it again after changing a
+theme's colours). `p4a_hook.py` adds each one to the APK as its own
+launcher entry, with only the default one on, and has the app switch to the
+menu's theme's entry as it goes to the background. If the manifest isn't
+laid out as the hook expects, it leaves it alone and the app keeps its one
+icon; the build log says so ("one launcher icon only").
+
+Each theme's launcher entry opens `IconTrampoline`, a tiny invisible
+activity that starts `PythonActivity` by its own name and closes. (Started
+straight through an alias, Qt looks for its start-up settings under the
+alias's name and the app dies at launch with `initAndroidQpaPlugin`.)
+
+To build with the one launcher icon instead, run the build with
+`MIMIC_THEME_ICONS=0`, e.g. `MIMIC_THEME_ICONS=0 ./clean_build_android.sh`.

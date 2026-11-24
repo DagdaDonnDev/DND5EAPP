@@ -55,6 +55,7 @@ from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
+from dnd_app.ui_desktop.popups import Ask, Tell
 
 
 
@@ -185,7 +186,7 @@ class ActionTabsMixin:
                             if res.get("key") == cd_key:
                                 res["current"] = max(0, res.get("current", 0) - 1)
                                 self._mark_dirty()
-                                QTimer.singleShot(0, self.ctrl.refresh)
+                                QTimer.singleShot(0, self, self.ctrl.refresh)
                 # Action Surge grants an extra action for the current
                 # turn per the real rule, tied into the turn-economy
                 # system here rather than existing only as a spendable resource.
@@ -255,7 +256,7 @@ class ActionTabsMixin:
                     # active_effects — not done here — so it survives every
                     # future refresh instead of being wiped by the magic
                     # item recompute that resets damage_resistances.
-                    QTimer.singleShot(0, self.ctrl.refresh)
+                    QTimer.singleShot(0, self, self.ctrl.refresh)
                 tgl.toggled.connect(_on_toggle)
                 rl.addWidget(tgl)
             rl.addWidget(minus); rl.addWidget(sp); rl.addWidget(max_l); rl.addWidget(plus)
@@ -291,7 +292,7 @@ class ActionTabsMixin:
                     self._toast(spend_portent(self.char, _v))
                     self._mark_dirty()
                     # after this click: the row (and this button) is rebuilt
-                    QTimer.singleShot(0, self.ctrl.refresh)
+                    QTimer.singleShot(0, self, self.ctrl.refresh)
                 b.clicked.connect(_use)
                 rl.addWidget(b)
             reset_l = _lbl(reset_label, TEXT3, FS_TINY-1, wrap=False)
@@ -450,11 +451,16 @@ class ActionTabsMixin:
                 return res
             opts = ask["options"]
             if len(opts) == 2 and opts[1] in ("No", "Cancel"):
-                yes = QMessageBox.question(self, title, ask["title"],
+                yes = Tell.question(self, title, ask["title"],
                                            QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes
                 answers[ask["key"]] = opts[0] if yes else opts[1]
                 continue
-            choice, ok = QInputDialog.getItem(self, title, ask["title"], opts, 0, False)
+            if len(opts) > 12:
+                # a long list (a Polymorph's creature, a summon's): one to search
+                from dnd_app.ui_desktop.widgets import pick_from_long_list
+                choice, ok = pick_from_long_list(self, title, ask["title"], opts)
+            else:
+                choice, ok = Ask.getItem(self, title, ask["title"], opts, 0, False)
             if not ok:
                 return None
             answers[ask["key"]] = choice
@@ -507,13 +513,16 @@ class ActionTabsMixin:
             return
         if res.get("slot"):
             self._mark_turn_used(res["slot"])
+            # the Attack action taken: its attacks are counted off as you hit
+            if display == "Attack" and res["slot"] == "Action" and hasattr(self, "_start_attack_action"):
+                self._start_attack_action()
         if res.get("slots_changed"):
             self._sync_slot_bars_from_char()
             if hasattr(self, "_pact_bar"):
                 self._pact_bar.set_used(self.char.get("pact_slots_used", 0))
         self._mark_dirty()
         # after this click has finished: the card's own button is rebuilt
-        QTimer.singleShot(0, self.ctrl.refresh if res.get("refresh") else self._refresh_action_tabs)
+        QTimer.singleShot(0, self, self.ctrl.refresh if res.get("refresh") else self._refresh_action_tabs)
 
     def _use_carried(self, kind, name, spends):
         """A potion drunk or a scroll read from its card (gear.py does it),
@@ -527,6 +536,11 @@ class ActionTabsMixin:
     def _refresh_action_tabs(self):
         """Rebuild the action economy tabs from current character state."""
         if not hasattr(self, '_action_bucket_widgets'):
+            return
+        # (while the sheet is opening several parts ask for this: it's done
+        # once, at the end of _load)
+        if getattr(self, "_loading", False):
+            self._action_tabs_due = True
             return
         buckets = build_action_abilities(self.char)
 
@@ -547,7 +561,7 @@ class ActionTabsMixin:
         def _restore_scroll():
             for area, value in scroll_at.items():
                 area.verticalScrollBar().setValue(value)
-        QTimer.singleShot(0, _restore_scroll)
+        QTimer.singleShot(0, self, _restore_scroll)
 
         for bucket_name, (bw, bl) in self._action_bucket_widgets.items():
             # Clear existing rows — items 0 and 1 are the permanent
@@ -660,7 +674,22 @@ class ActionTabsMixin:
                 # the tag's colour where it reads on its tint over the card's
                 ink = readable(src_color, *(tint(tint(u, src_color, 0x1e), src_color, 0x22)
                                             for u in (SURF, SURF2)))
-                src_badge = _lbl(source[:9], ink, FS_TINY, bold=True, wrap=False)
+                # a short tag: "Acid (vial)" -> "Acid", "Brown Bear" -> "Brown"
+                # (whole words that fit, never cut mid-word unless one alone
+                # is too long); the whole of it on hover
+                import re as _re
+                tag = _re.sub(r"\s*\(.*?\)", "", source).strip() or source
+                if len(tag) > 9:
+                    words, fit = tag.split(), ""
+                    for wd in words:
+                        if len((fit + " " + wd).strip()) > 9:
+                            break
+                        fit = (fit + " " + wd).strip()
+                    fit = _re.sub(r"\s+(of|the|a|an)$", "", fit, flags=_re.I)
+                    tag = fit or tag[:9]
+                src_badge = _lbl(tag, ink, FS_TINY, bold=True, wrap=False)
+                if tag != source:
+                    src_badge.setToolTip(source)
                 # wide enough for 9-letter tags ("Universal", "Barbarian") in bold
                 src_badge.setFixedWidth(76); src_badge.setAlignment(Qt.AlignCenter)
                 src_badge.setStyleSheet(
@@ -683,6 +712,7 @@ class ActionTabsMixin:
                 use_btn.setStyleSheet(
                     _btn("", src_color, variant="danger", radius=5, border_width=1,
                          hover_text="white", font_size=FS_TINY, padding="0px").styleSheet())
+                exact_height(use_btn, 32)
                 use_btn.setToolTip(tooltip_text)
 
                 if is_spell:
@@ -696,7 +726,7 @@ class ActionTabsMixin:
                     use_btn.clicked.connect(_use_ability)
                     # Row click → full rules text (button = do it)
                     card.mousePressEvent = (lambda e, _d=display, _s=source, _x=desc:
-                        QMessageBox.information(self, _d,
+                        Tell.information(self, _d,
                             f"<b>{_d}</b><br><i>Source: {_s}</i><br><br>{_x}"))
 
                 for w in (card, lbl_name, lbl_desc, src_badge):

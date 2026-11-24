@@ -58,6 +58,7 @@ from dnd_app.data.conditions import CONDITIONS
 from dnd_app.ui_desktop import icons as _icons
 from dnd_app.core.effects import WILDSHAPE_BLOCKED_FEATURES, RESOURCE_POOL_TOGGLES
 from dnd_app.core.character import rest_options
+from dnd_app.ui_desktop.popups import Ask, Tell
 
 
 ABILITIES = ["STR","DEX","CON","INT","WIS","CHA"]
@@ -137,7 +138,7 @@ class BaseSheetMixin:
         self._load()
         self.ctrl.mark_ui_ready()
         # opened from a save with Rage, Bladesong... still on: have they ended?
-        QTimer.singleShot(350, self._ask_leftover_effects)
+        QTimer.singleShot(350, self, self._ask_leftover_effects)
         # ── Accessibility: keyboard-focus rings + unambiguous disabled state ──
         self.setStyleSheet(self.styleSheet() + f"""
             QPushButton:focus, QComboBox:focus, QLineEdit:focus,
@@ -185,7 +186,7 @@ class BaseSheetMixin:
         # tick since the overlay sizes itself from self.rect(), which
         # isn't finalized yet mid-construction.
         if self.char.get("is_dead", False):
-            QTimer.singleShot(0, self._show_death_screen)
+            QTimer.singleShot(0, self, self._show_death_screen)
 
         # Immersive Health / Immersive Exhaustion: colour drains as HP
         # drops, and a dark frame closes in with exhaustion (see
@@ -228,21 +229,10 @@ class BaseSheetMixin:
         rebuild(self.char); update_all(self.char)
 
         win = self.window()
-        if hasattr(win, "_show_sheet"):
-            char = self.char
-            cur_tab_idx = self._tabs.currentIndex()
-            # The same character on a rebuilt sheet: it keeps the file it
-            # saves to and what's still unsaved. (Rebuilt without them, the
-            # next Save was refused as a name already in use -- its own --
-            # and leaving no longer asked about the changes.)
-            save_path, unsaved = self._save_path, self._dirty
-            win._show_sheet(char, save_path=save_path)
-            if win._sheet:
-                win._sheet._tabs.setCurrentIndex(cur_tab_idx)
-                if unsaved:
-                    win._sheet._mark_dirty()
-                    win._sheet._update_title()
-                win._sheet._toast("Refreshed")
+        if hasattr(win, "_rebuild_sheet"):
+            # (the window replaces this sheet once this click is done with:
+            # it mustn't go while its own code is still running)
+            QTimer.singleShot(0, win, win._rebuild_sheet)
         else:
             # Defensive fallback if this widget is ever used without a
             # CharacterCreatorApp parent (e.g. an isolated test harness).
@@ -387,7 +377,7 @@ class BaseSheetMixin:
         }
 
     def _rest(self, rest_type: str = "short"):
-        """The Rest button (and Tools → Short Rest / Long Rest): one dialog
+        """The Rest button (and Ctrl+R / Ctrl+Shift+R): one dialog
         to pick a short or long rest, see what it will restore, choose the
         hit dice to spend, and tick what to change on it -- then the rest."""
         from dnd_app.core.character import long_rest_block_reason
@@ -493,7 +483,7 @@ class BaseSheetMixin:
         clear_hp_undo(char)             # (after a rest, the last Damage or Heal stands)
         why = long_rest_block_reason(char)   # e.g. at 0 HP (the dialog won't offer it)
         if why:
-            QMessageBox.information(self, "Long Rest", f"Can't take a long rest — {why}.")
+            Tell.information(self, "Long Rest", f"Can't take a long rest — {why}.")
             return
 
         # Restore HP
@@ -631,7 +621,7 @@ class BaseSheetMixin:
                     "Infiltrator – Lightning Launcher (ranged 90/300ft, 1d6 lightning + extra 1d6 once/turn); "
                     "+5ft speed; advantage on Stealth checks"]
             current_idx = pool.index(current[0]) if current and current[0] in pool else 0
-            choice, ok = QInputDialog.getItem(
+            choice, ok = Ask.getItem(
                 self, "Arcane Armor Model", "New model:", pool, 1 - current_idx, False)
             if ok and choice:
                 char.setdefault("_choices", {})["armorer_model_3"] = [choice]
@@ -669,7 +659,7 @@ class BaseSheetMixin:
                     "Summer – Fey Step deals 2d6 fire damage to creatures within 5 ft. of your origin"]
             current = char.get("_choices", {}).get("eladrin_season", [])
             current_idx = pool.index(current[0]) if current and current[0] in pool else 0
-            choice, ok = QInputDialog.getItem(
+            choice, ok = Ask.getItem(
                 self, "Eladrin Season", "New season:", pool, current_idx, False)
             if ok and choice:
                 char.setdefault("_choices", {})["eladrin_season"] = [choice]
@@ -681,10 +671,10 @@ class BaseSheetMixin:
                             for i in char.get("magic_items", [])]
             weapon_names = [n for n in weapon_names if n]
             if not weapon_names:
-                QMessageBox.information(self, "Pact of the Blade",
+                Tell.information(self, "Pact of the Blade",
                                         "You don't own a magic weapon to bond yet.")
             else:
-                choice, ok = QInputDialog.getItem(
+                choice, ok = Ask.getItem(
                     self, "Pact of the Blade", "Bond which magic weapon?", weapon_names, 0, False)
                 if ok and choice:
                     char.setdefault("_choices", {})["pact_weapon_bond"] = [choice]
@@ -704,7 +694,7 @@ class BaseSheetMixin:
             from dnd_app.data.feature_ui_interactions import TOOLS as ALL_TOOLS
             pool = ALL_SKILLS + ALL_TOOLS
             current = char.get("_choices", {}).get("whispers_of_the_dead_prof", [])
-            choice, ok = QInputDialog.getItem(
+            choice, ok = Ask.getItem(
                 self, "Whispers of the Dead", "New proficiency:", pool,
                 pool.index(current[0]) if current and current[0] in pool else 0, False)
             if ok and choice:
@@ -715,7 +705,7 @@ class BaseSheetMixin:
         if "lunar_phase_swap" in selected:
             pool = ["Full Moon", "New Moon", "Crescent Moon"]
             current = char.get("_choices", {}).get("lunar_phase", [])
-            choice, ok = QInputDialog.getItem(
+            choice, ok = Ask.getItem(
                 self, "Lunar Embodiment", "New phase:", pool,
                 pool.index(current[0]) if current and current[0] in pool else 0, False)
             if ok and choice:
@@ -729,14 +719,14 @@ class BaseSheetMixin:
             race = char.get("species") or char.get("race", "")
             trait_name = "Astral Knowledge" if race == "Githyanki (MPMM)" else "Astral Trance"
             current_sk = char.get("_choices", {}).get("astral_knowledge_skill", [])
-            sk_choice, ok = QInputDialog.getItem(
+            sk_choice, ok = Ask.getItem(
                 self, trait_name, "New skill proficiency:", ALL_SKILLS,
                 ALL_SKILLS.index(current_sk[0]) if current_sk and current_sk[0] in ALL_SKILLS else 0, False)
             if ok and sk_choice:
                 char.setdefault("_choices", {})["astral_knowledge_skill"] = [sk_choice]
                 wt_pool = WEAPON_NAMES + ALL_TOOLS
                 current_wt = char.get("_choices", {}).get("astral_knowledge_weapon_or_tool", [])
-                wt_choice, ok2 = QInputDialog.getItem(
+                wt_choice, ok2 = Ask.getItem(
                     self, trait_name, "New weapon or tool proficiency:", wt_pool,
                     wt_pool.index(current_wt[0]) if current_wt and current_wt[0] in wt_pool else 0, False)
                 if ok2 and wt_choice:
@@ -769,7 +759,7 @@ class BaseSheetMixin:
             # a new file -- never on top of another character's
             from dnd_app.core.save_load import name_in_use, NAME_IN_USE_MESSAGE
             if os.path.exists(path) or name_in_use(self.char.get("name", "")):
-                QMessageBox.warning(self, "Name Already Used", NAME_IN_USE_MESSAGE)
+                Tell.warning(self, "Name Already Used", NAME_IN_USE_MESSAGE)
                 return
         save_character(self.char, path)
         self._save_path = path
@@ -822,7 +812,7 @@ class BaseSheetMixin:
                 from dnd_app.core.calculator import update_all
                 rebuild(self.char); update_all(self.char)
                 self.ctrl.refresh()
-                QTimer.singleShot(350, self._ask_leftover_effects)
+                QTimer.singleShot(350, self, self._ask_leftover_effects)
 
     def _export_dialog(self):
         """Export the character for a DM to review or as a personal
@@ -837,7 +827,7 @@ class BaseSheetMixin:
             "Official character sheet (PDF)",
             "Plain text summary (.txt)",
         ]
-        choice, ok = QInputDialog.getItem(
+        choice, ok = Ask.getItem(
             self, "Export Character", "Format:", options, 0, False)
         if not ok:
             return
@@ -864,14 +854,14 @@ class BaseSheetMixin:
                 f.write(text)
             self._toast(f"Exported to {os.path.basename(path)}")
         except OSError as e:
-            QMessageBox.warning(self, "Export Failed", f"Could not write file:\n{e}")
+            Tell.warning(self, "Export Failed", f"Could not write file:\n{e}")
 
     def _export_pdf_dialog(self):
         from PySide6.QtWidgets import QFileDialog
         from dnd_app.core.pdf_sheet import export_official_pdf, TEMPLATE_PATH
         import os
         if not os.path.exists(TEMPLATE_PATH):
-            QMessageBox.warning(
+            Tell.warning(
                 self, "Export Failed",
                 f"The official character sheet template is missing:\n{TEMPLATE_PATH}")
             return
@@ -887,7 +877,7 @@ class BaseSheetMixin:
             export_official_pdf(self.char, path)
             self._toast(f"Exported to {os.path.basename(path)}")
         except Exception as e:
-            QMessageBox.warning(self, "Export Failed", f"Could not write PDF:\n{e}")
+            Tell.warning(self, "Export Failed", f"Could not write PDF:\n{e}")
 
 
     def confirm_leave(self) -> bool:
@@ -906,7 +896,7 @@ class BaseSheetMixin:
             if not self._dirty:
                 return True
             name = (self.char.get("name") or "").strip() or "this character"
-            ans = QMessageBox.question(
+            ans = Tell.question(
                 self,
                 "Unsaved Changes",
                 f"Save your changes to {name} first?",
@@ -1040,6 +1030,20 @@ class BaseSheetMixin:
         refresh_btn.setFixedSize(50, 50)
         hl.addWidget(refresh_btn)
 
+        # the Dice Roller: a d20 beside Refresh
+        dice_btn = QPushButton()
+        dice_btn.setObjectName("diceRollerBtn")
+        _icons.set_button_icon(dice_btn, "dice", 24)
+        dice_btn.setToolTip("Dice Roller (Ctrl+D)")
+        dice_btn.setAccessibleName("Dice Roller")
+        dice_btn.setStyleSheet(
+            f"QPushButton{{background:{SURF2};border:1px solid {BORDER};border-radius:8px;"
+            f"padding:0;min-height:0px;}}"
+            f"QPushButton:hover{{background:{qa(TEAL,0x33)};border-color:{TEAL};}}")
+        dice_btn.clicked.connect(lambda: getattr(self.window(), "_open_dice_roller", lambda: None)())
+        dice_btn.setFixedSize(50, 50)
+        hl.addWidget(dice_btn)
+
         # Inspiration toggle
         self._insp_btn = QPushButton()
         _icons.set_button_icon(self._insp_btn, "inspiration", 22)
@@ -1087,8 +1091,7 @@ class BaseSheetMixin:
         # Each tab has a full name and a short one; _fit_tab_names() shows
         # the short ones only when the full ones don't fit the window.
         self._tab_names = []   # (full, short) per tab, in order
-        _SHORT = {"Abilities && Saves": "Abilities", "Skills && Proficiencies": "Skills",
-                  "Gear && Items": "Gear", "Traits && Notes": "Notes"}
+        _SHORT = {}
 
         def _add_tab(page, label, icon):
             idx = self._tabs.addTab(page, label)
@@ -1096,16 +1099,18 @@ class BaseSheetMixin:
             self._set_tab_tip(idx, label.replace("&&", "&"))   # the full name (if it's shortened) and its keys
             _icons.set_tab_icon(self._tabs, page, icon)
             return page
-        _add_tab(self._build_tab_abilities(),    "Abilities && Saves",      "abilities")
-        _add_tab(self._build_tab_skills(),       "Skills && Proficiencies", "skills")
+        # abilities and saves, proficiencies, skills and senses
+        _add_tab(self._build_tab_overview(),     "Overview",                "abilities")
         _add_tab(self._build_tab_combat(),       "Combat",                  "combat")
-        _add_tab(self._build_tab_gear(),         "Gear && Items",           "gear")
+        self._gear_tab_page = _add_tab(self._build_tab_gear(), "Inventory", "gear")
         self._spells_tab_page = _add_tab(self._build_tab_spells(), "Spells", "spells")
-        if self._has_infuse_item_access():
-            _add_tab(self._build_tab_infusions(), "Infusions",              "infusions")
-        self._choices_tab_page = _add_tab(self._build_tab_choices(), "Choices", "choices")
+        # your own creatures: mounts, steeds, summons, companions, Wild Shape
+        # (an Artificer's infusions are in the Inventory tab's side panel)
+        self._creatures_tab_page = _add_tab(self._build_companions_tab(), "Creatures", "paw")
         _add_tab(self._build_tab_features(),     "Features",                "features")
-        _add_tab(self._build_tab_traits_notes(), "Traits && Notes",         "notes")
+        _add_tab(self._build_tab_traits_notes(), "Notes",                   "notes")
+        # setting up and levelling up: last, out of the way during play
+        self._choices_tab_page = _add_tab(self._build_tab_choices(), "Choices", "choices")
         root.addWidget(self._tabs, 1)
         self._install_choices_pulse()
         self._tabs.installEventFilter(self)   # re-fit the tab names on resize
@@ -1433,7 +1438,7 @@ class BaseSheetMixin:
         if name == getattr(self, "_accepted_name", None):
             return
         if name and name_in_use(name, exclude_path=self._save_path):
-            QMessageBox.warning(self, "Name Already Used", NAME_IN_USE_MESSAGE)
+            Tell.warning(self, "Name Already Used", NAME_IN_USE_MESSAGE)
             self._name_edit.setText(self._accepted_name)   # textChanged puts it back in char
             return
         self._accepted_name = name
@@ -1466,7 +1471,7 @@ class BaseSheetMixin:
         from dnd_app.core.character import add_class, level_up_block_reason
         why = level_up_block_reason(self.char)   # character level 20
         if why:
-            QMessageBox.information(self, "Level Up", f"Can't gain a level — {why}.")
+            Tell.information(self, "Level Up", f"Can't gain a level — {why}.")
             return
         dlg = LevelUpMulticlassDialog(self.char, self)
         if dlg.exec() != QDialog.Accepted:
@@ -1483,7 +1488,7 @@ class BaseSheetMixin:
             # checked again in case they changed while it was open.
             why = level_up_block_reason(self.char, cls_name)
             if why:
-                QMessageBox.warning(self, "Multiclass Requirements Not Met",
+                Tell.warning(self, "Multiclass Requirements Not Met",
                                     f"You can't take a level in {cls_name} yet: {why}.")
                 return
             hd = CLASS_DICT.get(cls_name, {}).get("hit_die", 8)
@@ -1619,12 +1624,12 @@ class BaseSheetMixin:
         from dnd_app.core.calculator import update_all
         classes = self.char.get("classes", [])
         if not classes:
-            QMessageBox.warning(self, "No Class", "Add a class first."); return
+            Tell.warning(self, "No Class", "Add a class first."); return
         if len(classes) == 1:
             cls_name = classes[0]["class"]
         else:
             names = [f"{c['class']} (Lv{c['level']})" for c in classes]
-            choice, ok = QInputDialog.getItem(self, "Level Up", "Choose class:", names, 0, False)
+            choice, ok = Ask.getItem(self, "Level Up", "Choose class:", names, 0, False)
             if not ok: return
             cls_name = choice.split(" (")[0]
         entry = next(c for c in classes if c["class"] == cls_name)
@@ -1651,12 +1656,12 @@ class BaseSheetMixin:
             cls_name = classes[0]["class"]
         else:
             names = [f"{c['class']} (Lv{c['level']})" for c in classes]
-            choice, ok = QInputDialog.getItem(self, "Level Down", "Choose class:", names, 0, False)
+            choice, ok = Ask.getItem(self, "Level Down", "Choose class:", names, 0, False)
             if not ok: return
             cls_name = choice.split(" (")[0]
         entry = next(c for c in classes if c["class"] == cls_name)
         if entry["level"] <= 1:
-            QMessageBox.information(self, "Minimum", f"{cls_name} is already level 1."); return
+            Tell.information(self, "Minimum", f"{cls_name} is already level 1."); return
 
         # Diff the full set of structurally-relevant choice IDs before and
         # after the level decrement, and clear any choice from the real
@@ -1692,14 +1697,14 @@ class BaseSheetMixin:
         existing = {c["class"] for c in self.char.get("classes", [])}
         available = [n for n in CLASS_NAMES if n not in existing]
         if not available:
-            QMessageBox.information(self, "All Classes", "All classes are already added."); return
-        cls_name, ok = QInputDialog.getItem(self, "Add Multiclass", "New class:", available, 0, False)
+            Tell.information(self, "All Classes", "All classes are already added."); return
+        cls_name, ok = Ask.getItem(self, "Add Multiclass", "New class:", available, 0, False)
         if not ok: return
 
         from dnd_app.core.character import level_up_block_reason
         why = level_up_block_reason(self.char, cls_name)   # the multiclassing ability scores
         if why:
-            QMessageBox.warning(self, "Multiclass Requirements Not Met",
+            Tell.warning(self, "Multiclass Requirements Not Met",
                                 f"You can't take a level in {cls_name} yet: {why}.")
             return
 
@@ -1711,18 +1716,58 @@ class BaseSheetMixin:
         self._mark_dirty()
         self._auto_save()
 
-    def _open_remove_class(self):
-        """Remove an entire class (multiclass only — keeps at least one)."""
+    def _change_class(self, old: str):
+        """A class's ⋯ → Change class: another class in its place, at the
+        same level (core/character.py change_class). Its subclass and
+        choices are asked afresh on the Choices tab."""
+        from PySide6.QtWidgets import QInputDialog
+        from dnd_app.data.classes import CLASS_DICT
+        from dnd_app.core.character import change_class, get_class_entry, name_list
+        entry = get_class_entry(self.char, old)
+        if entry is None:
+            return
+        have = {c["class"] for c in self.char.get("classes", [])}
+        options = [n for n in sorted(CLASS_DICT) if n not in have]
+        new, ok = Ask.getItem(self, "Change Class",
+                                       f"Your {old} {entry['level']} becomes which class, at level {entry['level']}?",
+                                       options, 0, False)
+        if not ok or not new:
+            return
+        if Tell.question(self, "Change Class",
+                                f"{old} {entry['level']} becomes {new} {entry['level']}. Its subclass and the "
+                                f"choices it made go, and {new}'s are asked on the Choices tab. Continue?",
+                                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
+        lost = change_class(self.char, old, new)
+        if lost is None:
+            return
+        self.ctrl.refresh()
+        if lost:
+            self._populate_my_spells_from_char()
+        self._toast(f"{old} is now {new} {entry['level']}"
+                    + (f" — its spells went: {name_list(lost)}" if lost else ""))
+        self._mark_dirty()
+        self._auto_save()
+
+    def _open_remove_class(self, cls_name: str = ""):
+        """Remove an entire class (multiclass only — keeps at least one):
+        the one whose ⋯ was used, or asked."""
         from PySide6.QtWidgets import QInputDialog
         from dnd_app.core.builder import rebuild
         from dnd_app.core.calculator import update_all
         classes = self.char.get("classes", [])
         if len(classes) <= 1:
-            QMessageBox.information(self, "Can't Remove", "Cannot remove the only class."); return
-        names = [f"{c['class']} (Lv{c['level']})" for c in classes]
-        choice, ok = QInputDialog.getItem(self, "Remove Class", "Remove which class?", names, 0, False)
-        if not ok: return
-        cls_name = choice.split(" (")[0]
+            Tell.information(self, "Can't Remove", "Cannot remove the only class."); return
+        if cls_name:
+            lvl = next((c["level"] for c in classes if c["class"] == cls_name), 0)
+            if Tell.question(self, "Remove Class", f"Remove {cls_name} {lvl}, its levels and its spells?",
+                                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                return
+        else:
+            names = [f"{c['class']} (Lv{c['level']})" for c in classes]
+            choice, ok = Ask.getItem(self, "Remove Class", "Remove which class?", names, 0, False)
+            if not ok: return
+            cls_name = choice.split(" (")[0]
         # Same diff-and-prune as _open_level_down above, for the same
         # reason -- removing a class entirely is a bigger change than
         # levelling it down by one, so it needs this at least as much:
@@ -1792,6 +1837,15 @@ class BaseSheetMixin:
 
     # ── Hit dice: spend one to heal (short-rest style) ────────────────────────
     def _load(self):
+        self._loading, self._action_tabs_due = True, False
+        try:
+            self._load_all()
+        finally:
+            self._loading = False
+        if self._action_tabs_due and hasattr(self, "_refresh_action_tabs"):
+            self._refresh_action_tabs()
+
+    def _load_all(self):
         char = self.char
         self.ctrl.refresh()
 
@@ -1817,7 +1871,7 @@ class BaseSheetMixin:
         self._fit_name_edit()
         self._populate_subclass_combo()
         if total_level(char) == 0:
-            QMessageBox.warning(
+            Tell.warning(
                 self,
                 "Incomplete Character",
                 "This character has no class levels. Use Edit Class or reload after completing creation.",
@@ -1829,8 +1883,11 @@ class BaseSheetMixin:
         self._refresh_abilities_tab()
         self._refresh_skills()
         self._refresh_combat()
-        self._refresh_spells()
+        # (the list first: _refresh_spells adds a row for each spell not
+        # shown yet, which before the list was built was every one of them,
+        # all thrown away again a moment later)
         self._populate_my_spells_from_char()
+        self._refresh_spells()
         self._rebuild_features()
         if hasattr(self,"_refresh_optional_features"): self._refresh_optional_features()
         self._refresh_concentration()
@@ -1844,6 +1901,11 @@ class BaseSheetMixin:
             ed.blockSignals(True)
             ed.setPlainText(char.get(key,""))
             ed.blockSignals(False)
+        # (the Notes list and Character page: pages can come from elsewhere,
+        # a PDF import; the suggestions follow the background)
+        if hasattr(self, "_rebuild_notes_list"):
+            self._refresh_notes_character()
+            self._open_notes(*self._notes_sel)
 
     def _refresh_stat_bar(self):
         update_all(self.char)

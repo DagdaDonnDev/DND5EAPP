@@ -159,6 +159,7 @@ def subrace_traits(race_data: dict, subrace: str) -> list:
         if line.split("(")[0].strip() != subrace or "(" not in line:
             continue
         inner = line[line.find("(") + 1:line.rfind(")")]
+        inner = re.sub(r"^\s*[\u2013\u2014-]\s*", "", inner)     # "(– +DEX 2, ..." (Pallid)
         while True:
             m = _ASI.match(inner)
             if not m:

@@ -67,7 +67,7 @@ make that wait less painful rather than eliminating it:
 - **A native bootloader-level splash** (`Splash()` in the spec, built from
   `dnd_app/ui_desktop/splash/splash.png`) shows up *during* that extraction step itself,
   before Python has even started — so the window isn't just a blank/frozen
-  frame for several seconds. If you replace `splash.gif`, regenerate
+  frame for several seconds. If you replace `dnd_app/core/splash.gif`, regenerate
   `splash.png` from its first frame so the two stay visually consistent
   (any image tool works, or `PIL.Image.open(...).convert("RGB").save(...)`).
 - The app's own code was reordered so its in-process splash (the animated

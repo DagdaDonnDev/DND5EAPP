@@ -16,6 +16,7 @@ from ..shared import h as _h, card as _card
 from dnd_app.ui_desktop import icons as _icons
 from dnd_app.core import dice as _dice
 from dnd_app.core import roll_log as _log
+from dnd_app.ui_desktop.popups import Ask, Tell
 
 DICE = (4, 6, 8, 10, 12, 20, 100)
 MODES = (("normal", "Normal"), ("advantage", "Advantage"), ("disadvantage", "Disadvantage"))
@@ -358,7 +359,7 @@ class DiceRollerPanel(QWidget):
         self._fresh = False
 
     def _clear_history(self):
-        if QMessageBox.question(self, "Clear history", "Clear this character's roll history?",
+        if Tell.question(self, "Clear history", "Clear this character's roll history?",
                                 QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
             return
         _log.clear_roll_history(self._char)

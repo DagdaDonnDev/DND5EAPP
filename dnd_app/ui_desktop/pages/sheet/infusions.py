@@ -54,44 +54,29 @@ from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
+from dnd_app.ui_desktop.popups import Ask, Tell
 
 
 class InfusionsMixin:
     def _sync_infusions_tab(self):
-        """Add/remove the Infusions tab as eligibility changes, and refresh
-        its content while present. Needed since __init__ builds the tab
-        list once, before a freshly-created or just-leveled-up character
-        has any infusions known yet, so eligibility must be re-checked
-        on every refresh rather than only at construction."""
+        """Add/remove the Infusions tab in the Gear tab's side panel as
+        eligibility changes, and refresh its content while present. Needed
+        since the panel is built once, before a freshly-created or
+        just-leveled-up character has any infusions known yet, so
+        eligibility must be re-checked on every refresh rather than only at
+        construction."""
+        tabs = getattr(self, "_gear_side_tabs", None)
+        if tabs is None:
+            return
         eligible = self._has_infuse_item_access()
-        current_index = None
-        for i in range(self._tabs.count()):
-            if "Infusions" in self._tabs.tabText(i):
-                current_index = i
-                break
+        current_index = next((i for i in range(tabs.count()) if tabs.tabText(i) == "Infusions"), None)
         if eligible and current_index is None:
-            # Insert right after the Spells tab, before Choices — matches
-            # the original fixed ordering from __init__.
-            insert_at = None
-            for i in range(self._tabs.count()):
-                if "Spells" in self._tabs.tabText(i):
-                    insert_at = i + 1
-                    break
-            if insert_at is None:
-                insert_at = self._tabs.count()
             page = self._build_tab_infusions()
-            self._tabs.insertTab(insert_at, page, "Infusions")
-            _icons.set_tab_icon(self._tabs, page, "infusions")
-            # (the tab bar's own list of names too, or it stops fitting
-            # them to the window)
-            self._tab_names.insert(insert_at, ("Infusions", "Infusions"))
-            self._fit_tab_names(); self._refresh_tab_tips()
+            tabs.addTab(page, "Infusions")
+            _icons.set_tab_icon(tabs, page, "infusions", 15)
         elif not eligible and current_index is not None:
-            self._tabs.removeTab(current_index)
-            if current_index < len(self._tab_names):
-                del self._tab_names[current_index]
-            self._fit_tab_names(); self._refresh_tab_tips()
-        elif eligible and current_index is not None:
+            tabs.removeTab(current_index)
+        elif eligible:
             self._refresh_infusions_tab()
 
     def _build_tab_infusions(self):
@@ -154,11 +139,11 @@ class InfusionsMixin:
         tab."""
         active = self.char.get("active_infusions", [])
         if not active:
-            QMessageBox.information(self, "Soul of Artifice",
+            Tell.information(self, "Soul of Artifice",
                                     "You have no active infusions to end.")
             return
         names = [a["infusion"] for a in active]
-        choice, ok = QInputDialog.getItem(
+        choice, ok = Ask.getItem(
             self, "Soul of Artifice", "End which infusion to drop to 1 HP instead of 0?",
             names, 0, False)
         if ok and choice:
@@ -192,7 +177,7 @@ class InfusionsMixin:
         from dnd_app.data.classes import ARTIFICER_INFUSION_TARGETS
         from dnd_app.core.calculator import get_max_active_infusions
         if len(self.char.get("active_infusions", [])) >= get_max_active_infusions(self.char):
-            QMessageBox.warning(self, "Infusion Limit Reached",
+            Tell.warning(self, "Infusion Limit Reached",
                                  "You're already at your maximum number of active infusions.")
             return
         target_type = ARTIFICER_INFUSION_TARGETS.get(infusion_name, "standalone")
@@ -203,7 +188,7 @@ class InfusionsMixin:
             # another character?" prompt (you can't hand off your own
             # bonded companion).
             if infusion_name == "Homunculus Servant":
-                reply = QMessageBox.question(
+                reply = Tell.question(
                     self, infusion_name,
                     "Activate Homunculus Servant? This infuses a gem to summon your "
                     "homunculus companion.",
@@ -216,7 +201,7 @@ class InfusionsMixin:
                 return
             # No existing item needed — this infusion creates its own
             # item/effect once activated.
-            reply = QMessageBox.question(
+            reply = Tell.question(
                 self, infusion_name,
                 f"Activate {infusion_name}? This creates its own item — give it to yourself, "
                 f"or to another character?",
@@ -244,19 +229,19 @@ class InfusionsMixin:
                (target_type == "armor_or_shield" and (is_armor or is_shield)):
                 candidates.append(name)
         if not candidates:
-            QMessageBox.information(
+            Tell.information(
                 self, infusion_name,
                 f"You don't own a mundane item {infusion_name} can apply to yet. Add one from the "
                 f"Equipment Browser first, or right-click it directly once you own it.")
             return
-        choice, ok = QInputDialog.getItem(
+        choice, ok = Ask.getItem(
             self, infusion_name, "Apply to which item?", candidates, 0, False)
         if ok and choice:
             self._infuse_item(choice, infusion_name)
             # Resistant Armor: the real rule requires picking one damage
             # type when the armor is infused.
             if infusion_name == "Resistant Armor":
-                dmg_type, ok2 = QInputDialog.getItem(
+                dmg_type, ok2 = Ask.getItem(
                     self, infusion_name, "Choose a damage type to resist:",
                     ["Acid", "Cold", "Fire", "Force", "Lightning", "Necrotic",
                      "Poison", "Psychic", "Radiant", "Thunder", "Bludgeoning",

@@ -61,6 +61,7 @@ from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
+from dnd_app.ui_desktop.popups import Ask, Tell
 
 
 class SlotBar(QWidget):
@@ -373,6 +374,7 @@ class SpellsMixin:
             _btn("", PURPLE, variant="danger", radius=6, border_width=1,
                  text_color=PURP2, hover_text="white", font_size=FS_SMALL,
                  padding="4px 12px").styleSheet())
+        exact_height(self._mm_apply_btn, 40)
         self._mm_apply_btn.clicked.connect(self._apply_metamagic_selection)
         mmcl.addWidget(self._mm_apply_btn)
         self._mm_active_lbl = _lbl("", TEAL2, FS_SMALL, bold=True, wrap=True)
@@ -400,6 +402,7 @@ class SpellsMixin:
                  text_color=CRIM2, hover_text="white", font_size=FS_SMALL,
                  padding="0px").styleSheet())
         drop_btn.clicked.connect(self._drop_concentration)
+        exact_height(drop_btn, 32)
         self._conc_drop_btn = drop_btn   # enabled only while concentrating (_refresh_concentration)
         cf.addWidget(drop_btn)
         self._conc_save_btn = QPushButton("Conc. Save")
@@ -407,6 +410,7 @@ class SpellsMixin:
         self._conc_save_btn.setStyleSheet(
             _btn("", AMBER, variant="danger", border_width=1, bg_alpha=0x44,
                  hover_text="white", font_size=FS_SMALL, padding="0px").styleSheet())
+        exact_height(self._conc_save_btn, 32)
         self._conc_save_btn.clicked.connect(self._prompt_concentration_save)
         cf.addWidget(self._conc_save_btn)
         ll.addWidget(conc_frame)
@@ -421,7 +425,7 @@ class SpellsMixin:
         self._soul_artifice_btn.clicked.connect(self._use_soul_of_artifice)
         self._soul_artifice_btn.setVisible(False)  # shown only for 20th-level Artificers
         ll.addWidget(self._soul_artifice_btn)
-        ll.addStretch(); root.addWidget(left_scroll, 2)
+        ll.addStretch(); root.addWidget(left_scroll, 1)
 
         # Right: two tabs — My Spells | Spell Browser
         right = QTabWidget()
@@ -551,11 +555,15 @@ class SpellsMixin:
         self._sp_limit_note.setVisible(False)
         brcl.addWidget(self._sp_limit_note)
         self._sp_browser = QListWidget()  # no height limit — tab gives full space
-        self._sp_browser.setStyleSheet(f"QListWidget{{background:{BG};border:1px solid {BORDER};}}QListWidget::item{{padding:6px 10px;border-bottom:1px solid {BORDER};font-size:{FS_BODY}px;}}QListWidget::item:selected{{background:{INDIGO};color:{on_fill(INDIGO)};}}")
+        self._sp_browser.setStyleSheet(f"QListWidget{{background:{BG};border:1px solid {BORDER};}}QListWidget::item{{padding:6px 10px;border-bottom:1px solid {BORDER};font-size:{FS_BODY}px;}}QListWidget::item:selected{{background:{TEAL};color:{on_fill(TEAL)};}}")
         # a magnifying glass on every row: the spell's details
         self._sp_browser.setItemDelegate(InspectButtonDelegate(self._sp_browser, self._show_spell_details))
         self._populate_spell_browser(); brcl.addWidget(self._sp_browser)
-        add_btn = pill_btn("+ Add to My Spells", INDIGO); add_btn.clicked.connect(self._add_spell_from_browser)
+        # one button for the row chosen, as every browser (Inventory, Creatures)
+        add_btn = pill_btn("Add Selected to My Spells", TEAL)
+        add_btn.setObjectName("spellAddSelected")
+        _icons.set_button_icon(add_btn, "arrow_left", 16, color=on_fill(TEAL))
+        add_btn.clicked.connect(self._add_spell_from_browser)
         brcl.addWidget(add_btn); brl.addWidget(browser_card, 1)
         # Right-click context menu on browser
         self._sp_browser.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -568,7 +576,7 @@ class SpellsMixin:
         self._sp_cls_f.currentTextChanged.connect(self._filter_spell_browser)
         self._sp_lvl_f.currentTextChanged.connect(self._filter_spell_browser)
         self._filter_spell_browser()   # apply class restriction on first view
-        root.addWidget(right, 3)
+        root.addWidget(right, 1)          # half and half, as Inventory and Creatures
         # My Spells is populated once by _load() right after all tabs finish
         # building (see CharacterSheet.__init__) — NOT here too. This used
         # to also call _populate_my_spells_from_char() at the end of tab
@@ -905,22 +913,22 @@ class SpellsMixin:
         show_details(self, spell["name"], spell_details_markdown(spell))
 
     def _on_spell_browser_ctx(self, pos):
-        """Right-click on spell browser — show full details."""
+        """Right-click on a spell in the browser: Add, or Show details."""
         item = self._sp_browser.itemAt(pos)
         if not item: return
         # the row's text carries its level and school too ("L3  Fireball
         # [Evo]"), so the spell comes from the row's data, not its text
         spell = item.data(Qt.UserRole)
         if not spell: return
-        from PySide6.QtWidgets import QMenu
-        menu = QMenu(self)
-        detail_act = menu.addAction(_icons.icon("features"), f"Details: {spell['name']}")
-        add_act    = menu.addAction(f"+ Add to My Spells")
-        action = menu.exec(self._sp_browser.viewport().mapToGlobal(pos))
-        if action == detail_act:
-            self._show_spell_details(spell)
-        elif action == add_act:
+        from dnd_app.ui_desktop.widgets import browser_row_menu
+
+        def add():
+            # the spell right-clicked, not whatever else was selected
+            self._sp_browser.clearSelection()
+            item.setSelected(True)
             self._add_spell_from_browser()
+        browser_row_menu(self, self._sp_browser.viewport().mapToGlobal(pos), "Add to My Spells",
+                         add, lambda: self._show_spell_details(spell))
 
     def _filter_spell_browser(self):
         q  = self._sp_search.text().lower()
@@ -1340,38 +1348,45 @@ class SpellsMixin:
             self._toast(free_cast_message(spell["name"], free, self.char).replace(" -- ", " — ")
                         + (f"\n{fx_msg}" if fx_msg else ""))
             return
-        for l in range(lvl, 10):
-            bar = self._slot_bars.get(l)
-            if bar and bar._max > 0 and bar.get_used() < bar._max:
-                bar.set_used(bar.get_used() + 1)
-                bar._update_count()
-                self._on_slot_change()
-                if spell.get("concentration"):
-                    start_concentration(self.char, spell["name"])
-                    self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
-                    self._refresh_concentration()
-                fx_msg = self._apply_spell_active_effect(spell, l)
-                self._mark_spell_cast_time(spell)
-                self._toast(f"Cast {spell['name']} — slot expended" + (f"\n{fx_msg}" if fx_msg else ""))
+        # Which slot: the lowest free, unless the spell does more from a
+        # higher one and there's a choice -- then it asks, saying what the
+        # higher slot gives (core/spellcasting.py, the same on Android)
+        from dnd_app.core.spellcasting import slot_choices, slot_question
+        choices = slot_choices(self.char, spell)
+        if not choices:
+            self._toast(f"Can't cast {spell['name']} — no level-{lvl}+ spell slots available")
+            return
+        pick = choices[0]
+        question = slot_question(spell, choices)
+        if question:
+            labels = [c["label"] for c in choices]
+            got, ok = Ask.getItem(self, spell["name"], question, labels, 0, False)
+            if not ok:
                 return
-        if self._pact_bar._max > 0 and self._pact_bar.get_used() < self._pact_bar._max:
-            self._pact_bar.set_used(self._pact_bar.get_used() + 1)
-            self._pact_bar._update_count()
-            self._on_slot_change()
-            if spell.get("concentration"):
-                start_concentration(self.char, spell["name"])
-                self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
-                self._refresh_concentration()
-            fx_msg = self._apply_spell_active_effect(spell, self.char.get("pact_slot_level", 0) or lvl)
-            self._mark_spell_cast_time(spell)
+            pick = choices[labels.index(got)]
+        bar = self._pact_bar if pick["key"] == "pact" else self._slot_bars.get(pick["level"])
+        if bar is None or bar._max <= bar.get_used():
+            self._toast(f"Can't cast {spell['name']} — that slot is used up")
+            return
+        bar.set_used(bar.get_used() + 1)
+        bar._update_count()
+        self._on_slot_change()
+        if spell.get("concentration"):
+            start_concentration(self.char, spell["name"])
+            self.ctrl.update("concentration", self.char["concentration"], rebuild_char=False)
+            self._refresh_concentration()
+        fx_msg = self._apply_spell_active_effect(spell, pick["level"])
+        self._mark_spell_cast_time(spell)
+        self._mark_dirty()
+        if pick["key"] == "pact":
             # A little flavor for Warlocks specifically -- Pact Magic is
             # power borrowed from your patron, unlike an ordinary prepared
             # or known spell slot, so spending one gets its own tiny nod.
             self._toast(f"Cast {spell['name']} — pact slot expended\n"
                         + (fx_msg if fx_msg else "Your patron approves."))
-            self._mark_dirty()
-            return
-        self._toast(f"Can't cast {spell['name']} — no level-{lvl}+ spell slots available")
+        else:
+            at = f" at {pick['label'].split(' (')[0]}" if pick["level"] > lvl else ""
+            self._toast(f"Cast {spell['name']}{at} — slot expended" + (f"\n{fx_msg}" if fx_msg else ""))
 
     def _check_bonus_action_spell_rule(self, is_cantrip: bool, bucket: str) -> bool:
         """The real rule: casting a spell with a bonus action means the
@@ -1415,12 +1430,14 @@ class SpellsMixin:
 
     def _action_cat_btn_style(self, active: bool, small: bool = False) -> str:
         fs = FS_TINY if small else FS_SMALL
-        pad = "2px 8px" if small else "3px 12px"
+        pad = "0px 8px" if small else "0px 12px"
+        # exactly 28 tall (24 the level row): the chip size app-wide
+        hgt = f"min-height:{22 if small else 26}px;max-height:{22 if small else 26}px;"
         if active:
             return (f"QPushButton{{background:{GOLD};color:{on_fill(GOLD)};border:1px solid {GOLD};"
-                    f"border-radius:5px;font-size:{fs}px;font-weight:700;padding:{pad};min-height:0px;}}")
+                    f"border-radius:5px;font-size:{fs}px;font-weight:700;padding:{pad};{hgt}}}")
         return (f"QPushButton{{background:{SURF2};color:{TEXT2};border:1px solid {qa(AMBER,0x33)};"
-                f"border-radius:5px;font-size:{fs}px;font-weight:600;padding:{pad};min-height:0px;}}"
+                f"border-radius:5px;font-size:{fs}px;font-weight:600;padding:{pad};{hgt}}}"
                 f"QPushButton:hover{{background:{qa(AMBER,0x22)};color:{AMBE2};}}")
 
     def _classify_action_entry(self, entry):
@@ -1474,7 +1491,7 @@ class SpellsMixin:
             if res.get("toast"):
                 self._toast(res["toast"])
             return False
-        QMessageBox.information(self, spell["name"], res["message"])
+        Tell.information(self, spell["name"], res["message"])
         return True
 
     def _drop_concentration(self):
@@ -1484,9 +1501,9 @@ class SpellsMixin:
 
     def _prompt_concentration_save(self):
         if not self.char.get("concentration", {}).get("spell"):
-            QMessageBox.information(self, "Concentration", "Not concentrating on a spell.")
+            Tell.information(self, "Concentration", "Not concentrating on a spell.")
             return
-        dmg, ok = QInputDialog.getInt(self, "Concentration Save", "Damage taken this turn:", 10, 0, 999)
+        dmg, ok = Ask.getInt(self, "Concentration Save", "Damage taken this turn:", 10, 0, 999)
         if not ok:
             return
         self._concentration_save_prompt(max(10, dmg // 2))     # combat.py: the shared save

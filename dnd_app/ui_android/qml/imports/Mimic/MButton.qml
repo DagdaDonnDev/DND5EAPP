@@ -12,6 +12,8 @@ import QtQuick.Controls
 Button {
     id: control
     property bool primary: true
+    // a negative action (Cancel, Remove): red text and edge on a red tint
+    property bool danger: false
     // Optional line icon (see MIcon / IconData.js) shown before the text,
     // or on its own when the button has no text. Same colour as the text
     // on a gold primary button; the theme accent on a secondary one.
@@ -49,7 +51,7 @@ Button {
                 visible: control.iconName.length > 0
                 name: control.iconName
                 size: control.iconSize
-                color: control.primary ? Theme.bg : Theme.indigo2
+                color: control.danger ? Theme.crimson2 : control.primary ? Theme.bg : Theme.indigo2
                 anchors.verticalCenter: parent.verticalCenter
             }
             Text {
@@ -62,7 +64,7 @@ Button {
                 text: control.text
                 font.pixelSize: Theme.fsBody
                 font.bold: true
-                color: control.primary ? Theme.bg : Theme.text
+                color: control.danger ? Theme.crimson2 : control.primary ? Theme.bg : Theme.text
                 wrapMode: control.wrapText ? Text.WordWrap : Text.NoWrap
                 elide: control.wrapText ? Text.ElideNone : Text.ElideRight
                 horizontalAlignment: Text.AlignHCenter
@@ -80,11 +82,13 @@ Button {
         // slightly different roundedness (e.g. a Resources row's Use/
         // Restore buttons next to an Active toggle).
         radius: 8
-        color: control.primary
+        color: control.danger
+            ? Qt.tint(Theme.surf2, Qt.rgba(Theme.crimson.r, Theme.crimson.g, Theme.crimson.b, control.pressed ? 0.3 : 0.14))
+            : control.primary
             ? (control.pressed ? Qt.darker(Theme.gold, 1.15) : Theme.gold)
             : (control.pressed ? Theme.surf3 : Theme.surf2)
-        border.color: control.primary ? "transparent" : Theme.border
-        border.width: control.primary ? 0 : 1
+        border.color: control.danger ? Theme.crimson : control.primary ? "transparent" : Theme.border
+        border.width: control.danger ? 1 : control.primary ? 0 : 1
         opacity: control.enabled ? 1.0 : 0.5
     }
 }

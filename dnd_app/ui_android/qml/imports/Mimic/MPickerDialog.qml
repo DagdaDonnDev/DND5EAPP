@@ -40,7 +40,7 @@ Popup {
     // Matches MFullPageDialog.qml's dimming -- Qt Quick Controls'
     // default modal overlay is a much lighter wash that looked glaringly
     // bright against this app's dark theme (direct user report).
-    Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+    Overlay.modal: Rectangle { color: Theme.scrim }
 
     ColumnLayout {
         anchors.fill: parent

@@ -60,7 +60,7 @@ die()  { echo "ERROR: $*" >&2; exit 1; }
 # recipes, jars, icon). Building from any other checkout would silently
 # compile *that* path's code instead of this one's.
 SPEC_SRC="$(sed -nE 's/^source\.dir[[:space:]]*=[[:space:]]*//p' "$SPEC" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
-[ "$SPEC_SRC" = "$ROOT" ] || die "buildozer.spec source.dir is '$SPEC_SRC' but this script lives in '$ROOT'"
+[ "$SPEC_SRC" = "$ROOT" ] || die "buildozer.spec source.dir is '$SPEC_SRC' but this script lives in '$ROOT' -- run packaging\\android\\setup_buildozer_spec.bat once on this computer"
 # The hook lives next to this script; a spec written before it moved here
 # still points at the old place.
 SPEC_HOOK="$(sed -nE 's/^p4a\.hook[[:space:]]*=[[:space:]]*//p' "$SPEC" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')"
@@ -77,6 +77,34 @@ for WHL in $(sed -nE "s/.*'wheels' \/ '([^']+)'.*/\1/p" "$RECIPES"/*/__init__.py
 done
 PY="$(find_python311)" || die "python3.11 not found on PATH or under ${PYENV_ROOT:-$HOME/.pyenv}"
 echo "Python: $PY"
+# Cython: buildozer looks for a `cython` command on PATH ("Cython (cython)
+# not found") -- not just the module. Installed with `pip --user` it lands
+# in ~/.local/bin, which a shell started from Windows (wsl.exe bash -lc)
+# may not have on PATH. So: make sure it's installed for this Python, and
+# put that Python's script folders on PATH for the build.
+ensure_cython() {
+    if ! "$PY" -c 'import Cython' >/dev/null 2>&1; then
+        echo "Cython isn't installed for $PY -- installing it"
+        "$PY" -m pip install --user cython \
+            || "$PY" -m pip install --user --break-system-packages cython \
+            || "$PY" -m pip install cython \
+            || die "couldn't install Cython for $PY (try: $PY -m pip install --user cython)"
+    fi
+    local d
+    for d in $("$PY" -c 'import os, sysconfig
+for scheme in (os.name + "_user", sysconfig.get_default_scheme()):
+    try:
+        print(sysconfig.get_path("scripts", scheme))
+    except KeyError:
+        pass'); do
+        case ":$PATH:" in *":$d:"*) ;; *) [ -d "$d" ] && PATH="$d:$PATH" ;; esac
+    done
+    export PATH
+    command -v cython >/dev/null \
+        || die "Cython is installed for $PY but there's no 'cython' command on PATH ($PATH)"
+    echo "Cython: $(command -v cython) ($(cython --version 2>&1 | head -1))"
+}
+ensure_cython
 command -v rsync >/dev/null || die "rsync not found (sudo apt install rsync)"
 
 step "1/6 Stopping leftover build processes"
@@ -241,9 +269,12 @@ rsync -a --delete \
     --exclude='__pycache__' --exclude='*.pyc' --exclude='*.pyo' \
     --exclude='buildozer.spec*' --exclude='*.sh' \
     --exclude='ui_desktop' --exclude='/main.py' --exclude='/run_dnd_creator.py' \
+    --exclude='core/theme_icons' \
     "$ROOT/dnd_app/" "$STAGE/dnd_app/"
 # (ui_desktop/ is left out: the Android app shares only core/ and data/
-# with the desktop app, and never imports the desktop UI. So are the two
+# with the desktop app, and never imports the desktop UI. So are the
+# desktop's window icons (core/theme_icons/; the launcher's own go in
+# through p4a_hook.py from packaging/android/theme_icons/), and the two
 # launchers: main.py is already at the staging root, run_dnd_creator.py
 # is the desktop's.)
 [ -f "$STAGE/dnd_app/ui_android/qml/App.qml" ] || die "App.qml missing from staging"

@@ -2117,7 +2117,7 @@ def build_action_abilities(char):
             return f"Disadvantage on {sub.get('skill','?')} checks"
         if t == 'resistance_choice':
             picks = char.get('_choices', {}).get(f'item_dmgtype_{item_name}', [])
-            dtype = picks[0] if picks else "a damage type (choose one on the Gear tab)"
+            dtype = picks[0] if picks else "a damage type (choose one in your inventory)"
             return f"Resistance to {dtype} damage"
         if t == 'senses':
             return f"You have {sub.get('sense','?')} out to {sub.get('value',0)} ft. (or +{sub.get('value',0)} ft. if you already have it)"
@@ -3142,6 +3142,17 @@ def build_action_abilities(char):
     for bucket in buckets:
         buckets[bucket] = [((re.sub(r"\s*\(passive\)$", "", e[0]),) + tuple(e[1:])
                             if len(e) <= 3 or e[3] is None else e) for e in buckets[bucket]]
+    # in another creature's form (core/forms.py): its own actions, bonus
+    # actions, reactions and traits. Polymorphed, they're all you have,
+    # with the actions anyone can take (Dash, Dodge...): no features,
+    # feats, spells or items
+    from dnd_app.core.forms import form_cards, replaces_mind
+    if replaces_mind(char):
+        for bucket in list(buckets):
+            buckets[bucket] = [e for e in buckets[bucket] if len(e) > 2 and e[2] == "Universal"
+                               and e[0] not in ("Cast a Spell", "Offhand Attack")]
+    for bucket, entry in form_cards(char):
+        buckets[bucket].append(entry)
     # Portent's card: how many d20s you roll, and the ones still left
     portent = next((r for r in char.get("resources", []) if r.get("key") == "portent"), None)
     if portent is not None:

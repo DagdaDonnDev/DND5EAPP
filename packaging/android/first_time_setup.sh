@@ -110,16 +110,30 @@ EOF
 fi
 
 step "3/7 buildozer and cython"
-BZ="$("$PY" -m buildozer --version 2>/dev/null | head -1 || true)"
-if [ -n "$BZ" ]; then
-    echo "  have $BZ"
+# each checked on its own: a buildozer from before doesn't mean cython is
+# there too (the build stops with "Cython (cython) not found" without it)
+NEED=""
+"$PY" -m buildozer --version >/dev/null 2>&1 || NEED="$NEED buildozer"
+"$PY" -c 'import Cython' >/dev/null 2>&1 || NEED="$NEED cython"
+if [ -z "$NEED" ]; then
+    echo "  have $("$PY" -m buildozer --version 2>/dev/null | head -1) and Cython"
 else
     # into ~/.local; an Ubuntu Python that's "externally managed" needs the
     # flag that allows it (pyenv's doesn't)
-    "$PY" -m pip install --user buildozer cython \
-        || "$PY" -m pip install --user --break-system-packages buildozer cython \
-        || die "couldn't install buildozer and cython for $PY"
+    # shellcheck disable=SC2086
+    "$PY" -m pip install --user $NEED \
+        || "$PY" -m pip install --user --break-system-packages $NEED \
+        || "$PY" -m pip install $NEED \
+        || die "couldn't install$NEED for $PY"
     "$PY" -m buildozer --version | head -1
+fi
+# buildozer runs the `cython` command from PATH, and pip --user puts it in
+# ~/.local/bin: on PATH for new terminals too
+if ! grep -q 'MIMIC: pip --user scripts' "$HOME/.bashrc" 2>/dev/null; then
+    printf '\n%s\n%s\n' '# MIMIC: pip --user scripts (buildozer needs the cython command)' \
+        'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH" ;; esac' \
+        >> "$HOME/.bashrc"
+    echo "  added ~/.local/bin to PATH in ~/.bashrc"
 fi
 
 step "4/7 Android SDK ($SDK)"

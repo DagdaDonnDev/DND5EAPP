@@ -25,10 +25,12 @@ import copy
 
 # Everything a Damage or a Heal can alter (core/dying.py): the hit points,
 # temp HP, death saves and death itself, Relentless Rage's count, a Wild
-# Shape form's own pool, and -- dropped to 0 HP -- concentration, the
-# effects that end with it and the rounds they had left.
+# Shape or Polymorph form (its own pool, and the form itself: a hit that
+# takes it to 0 changes you back), and -- dropped to 0 HP -- concentration,
+# the effects that end with it and the rounds they had left.
 _KEYS = ("current_hp", "temp_hp", "death_saves", "is_dead", "_relentless_rage_uses",
-         "_wildshape_hp", "concentration", "active_effects", "effect_details", "durations")
+         "_wildshape_hp", "_wildshape_active", "_form_kind",
+         "concentration", "active_effects", "effect_details", "durations")
 _ABSENT = object()
 
 
@@ -41,12 +43,11 @@ def hp_state(char: dict) -> dict:
 def remember_hp_change(char: dict, before: dict, label: str) -> bool:
     """Keep what just changed (since `before`, an hp_state()) so it can be
     undone; `label` says what it was ("12 damage", "8 healing"). Returns
-    False, keeping nothing, if nothing changed -- and the earlier change is
-    then forgotten too: it's no longer the last thing that happened."""
+    False if nothing changed (Heal at full hit points): the change before
+    it is kept, since nothing has happened to it."""
     after = hp_state(char)
     changed = [k for k in _KEYS if before.get(k, _ABSENT) != after.get(k, _ABSENT)]
     if not changed:
-        char.pop("_hp_undo", None)
         return False
     char["_hp_undo"] = {
         "label": label, "keys": changed,

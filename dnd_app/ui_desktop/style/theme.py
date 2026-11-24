@@ -187,6 +187,27 @@ def apply_theme(name: str):
     # menu bar, wizard) pick up the new colour too.
     import dnd_app.ui_desktop.icons as _icons
     _icons.refresh_all()
+    # the window and taskbar icon: the d20 in this theme's colours
+    # (core/app_icon.py; the default theme's is icon.ico as drawn)
+    try:
+        from PySide6.QtWidgets import QApplication
+        from dnd_app.core.app_icon import window_icon
+        app = QApplication.instance()
+        if app is not None:
+            icon = window_icon(name)
+            app.setWindowIcon(icon)
+            # (each open window too: one with an icon of its own, or on
+            # Windows its taskbar button, doesn't follow the app's)
+            for w in app.topLevelWidgets():
+                if w.isWindow():
+                    w.setWindowIcon(icon)
+            # and on Windows, its pins and shortcuts -- in the menu's theme,
+            # not each character's (ui_desktop/win_shortcuts.py)
+            from dnd_app.ui_desktop.win_shortcuts import follow_theme
+            from dnd_app.core.app_settings import get_app_theme
+            follow_theme(get_app_theme())
+    except Exception:
+        pass
     return build_qss(t)
 
 

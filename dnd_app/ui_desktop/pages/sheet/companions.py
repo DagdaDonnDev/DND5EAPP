@@ -54,6 +54,45 @@ from dnd_app.data.conditions import CONDITIONS
 from .base import *
 from .base import _lbl, _sep, _card
 from dnd_app.ui_desktop import icons as _icons
+from dnd_app.ui_desktop.popups import Ask, Tell
+
+
+class CreatureGroup(QFrame):
+    """One group on the Creatures page: a header to open or close it (▾/▸,
+    its name and how many), and the cards under it."""
+
+    def __init__(self, name, open_, on_toggle, parent=None):
+        super().__init__(parent)
+        self.setObjectName("creatureGroup")
+        self.setStyleSheet("QFrame#creatureGroup{background:transparent;border:none;}")
+        lay = QVBoxLayout(self); lay.setContentsMargins(0, 0, 0, 4); lay.setSpacing(6)
+        self._name, self._open, self._on_toggle = name, open_, on_toggle
+        self.header = QPushButton(); self.header.setObjectName(f"creatureGroupHeader_{name}")
+        self.header.setCursor(Qt.PointingHandCursor)
+        self.header.setStyleSheet(
+            f"QPushButton{{text-align:left;background:{SURF2};border:1px solid {BORDER};border-radius:8px;"
+            f"padding:7px 12px;color:{GOLD2};font-size:{FS_BODY}px;font-weight:700;min-height:0px;}}"
+            f"QPushButton:hover{{border-color:{BORDER2};}}")
+        self.header.clicked.connect(self._toggle)
+        lay.addWidget(self.header)
+        self._holder = QWidget(); self._holder.setStyleSheet("background:transparent;")
+        self.body = QVBoxLayout(self._holder); self.body.setContentsMargins(6, 0, 0, 0); self.body.setSpacing(8)
+        lay.addWidget(self._holder)
+        self._count = 0
+        self._show()
+
+    def set_count(self, n):
+        self._count = n
+        self._show()
+
+    def _show(self):
+        self.header.setText(f"{'▾' if self._open else '▸'}  {self._name}" + (f"   ({self._count})" if self._count else ""))
+        self._holder.setVisible(self._open)
+
+    def _toggle(self):
+        self._open = not self._open
+        self._show()
+        self._on_toggle(self._name, self._open)
 
 
 class CompanionsMixin:
@@ -65,57 +104,85 @@ class CompanionsMixin:
         Companion options. Rebuilt on every refresh since most of these
         scale with class level."""
         tab = QWidget()
-        outer = QVBoxLayout(tab); outer.setContentsMargins(8,8,8,8)
+        outer = QVBoxLayout(tab); outer.setContentsMargins(16,16,16,16)
+        # yours on the left, the Bestiary to add from on the right -- the
+        # way Spells and Inventory have their browsers
+        splitter = QSplitter(Qt.Horizontal); splitter.setChildrenCollapsible(False)
         scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setFrameShape(QFrame.NoFrame)
-        inner = QWidget(); inner.setStyleSheet(f"background:{BG};")
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        inner = QWidget(); inner.setObjectName("creaturesDrop"); inner.setStyleSheet(f"QWidget#creaturesDrop{{background:{BG};}}")
         self._companions_lay = QVBoxLayout(inner); self._companions_lay.setSpacing(10)
+        # a creature dragged over from the Bestiary: onto a group, into it
+        # (see _fill_companions_tab); anywhere else, the group is asked
+        from dnd_app.ui_desktop.widgets import accept_drop
+        accept_drop(inner, "creature", self._drop_creature)
+        accept_drop(inner, "mount-vehicle", self._drop_mount_vehicle)
         scroll.setWidget(inner)
-        outer.addWidget(scroll)
+        splitter.addWidget(scroll)
+        from dnd_app.ui_desktop.dialogs.bestiary import CreatureBrowser
+        side = QTabWidget()
+        side.setAttribute(Qt.WA_StyledBackground, True)
+        side.setStyleSheet(
+            f"QTabWidget::pane{{background:{SURF};border:1px solid {BORDER};border-top-left-radius:0px;"
+            f"border-top-right-radius:8px;border-bottom-right-radius:8px;border-bottom-left-radius:8px;top:-1px;}}"
+            f"QTabBar::tab{{background:{SURF2};color:{TEXT2};padding:8px 8px;font-size:{FS_SMALL}px;"
+            f"border:1px solid {BORDER};border-top-left-radius:6px;border-top-right-radius:6px;"
+            f"border-bottom-right-radius:0px;border-bottom-left-radius:0px;margin-right:1px;}}"
+            f"QTabBar::tab:selected{{background:{SURF};color:{GOLD2};font-weight:700;border-bottom-color:{SURF};}}")
+        from dnd_app.core.summons import GROUPS
+        self._creature_browser = CreatureBrowser(self._add_creature_from_browser, "Add",
+                                                 groups=GROUPS, group="Other")
+        side.addTab(self._creature_browser, "Bestiary")
+        from dnd_app.ui_desktop import icons as _icons
+        _icons.set_tab_icon(side, self._creature_browser, "paw", 15)
+        # the mounts you can buy and every vehicle: into Mounts and Vehicles
+        from dnd_app.ui_desktop.dialogs.bestiary import MountVehicleBrowser
+        self._mount_vehicle_browser = MountVehicleBrowser(self._add_mount_or_vehicle)
+        side.addTab(self._mount_vehicle_browser, "Mounts && Vehicles")
+        _icons.set_tab_icon(side, self._mount_vehicle_browser, "wagon", 15)
+        splitter.addWidget(side)
+        # your creatures and the Bestiary half and half (still draggable)
+        splitter.setStretchFactor(0, 1); splitter.setStretchFactor(1, 1)
+        splitter.setSizes([600, 600])
+        outer.addWidget(splitter)
         self._refresh_companions_tab()
         return tab
 
+    def _add_mount_or_vehicle(self, name: str, kind: str):
+        if kind == "mount":
+            self._add_mount(name)
+        else:
+            self._add_vehicle(name)
+        self._toast(f"{name} added to your creatures ({'Mounts' if kind == 'mount' else 'Vehicles'})")
+
+    def _drop_creature(self, name: str):
+        """A creature dropped on the page but not on a group: which group?"""
+        from dnd_app.core.summons import GROUPS
+        from dnd_app.ui_desktop.dialogs.bestiary import pick_group
+        g = pick_group(self, name, GROUPS)
+        if g:
+            self._add_creature_from_browser(name, g)
+
+    def _drop_mount_vehicle(self, text: str):
+        name, _, kind = text.partition("|")
+        if name and kind in ("mount", "vehicle"):
+            self._add_mount_or_vehicle(name, kind)
+
+    def _add_creature_from_browser(self, name: str, group: str = "Other"):
+        """Add Selected to Creatures: a Bestiary creature on your page with
+        its own hit points, in the group picked beside the button -- a pet,
+        a hireling, a mount, one your DM gave."""
+        from dnd_app.core.summons import add_summons
+        real = add_summons(self.char, name, 1, "From the Bestiary", group=group)
+        self._mark_dirty()
+        self._refresh_companions_tab()
+        self._toast(f"{real} added to your creatures ({group})")
+
     def _build_mounts_section(self):
-        """Mounts get a real stat block card here instead of being treated
-        as generic carried equipment — a Warhorse has an AC, HP, and attacks
-        that matter in play, not just a weight and a price."""
-        from dnd_app.data.items import MOUNTS
+        """The mounts you've bought (Inventory's Mounts & Vehicles): a real
+        stat block each -- a Warhorse's AC, HP and attacks matter in play,
+        not just a weight and a price."""
         from dnd_app.data.statblocks import get_mount_statblock
-
-        mc = _card(qa(GOLD, 0x55))
-        mcl = QVBoxLayout(mc); mcl.setContentsMargins(14,12,14,12); mcl.setSpacing(6)
-        mcl.addWidget(_lbl("Mounts", GOLD2, FS_TITLE, bold=True))
-
-        picker_row = QHBoxLayout(); picker_row.setSpacing(8)
-        picker_row.addWidget(_lbl("Add a mount:", TEXT2, FS_SMALL, bold=True, wrap=False))
-        add_combo = QComboBox()
-        add_combo.setAccessibleName("Choose a mount to add")
-        for row in MOUNTS:
-            add_combo.addItem(row[0], row[0])
-        picker_row.addWidget(add_combo, 1)
-        add_btn = QPushButton("+ Add")
-        add_btn.clicked.connect(lambda checked=False, cb=add_combo: self._add_mount(cb.currentData()))
-        picker_row.addWidget(add_btn)
-        mcl.addLayout(picker_row)
-
-        # Find Steed / Find Greater Steed — same underlying mount system,
-        # since casting either spell is summoning a mount, just one that
-        # happens to be a celestial/fey/fiend spirit rather than a mundane
-        # animal.
-        from dnd_app.data.statblocks import FIND_GREATER_STEED_OPTIONS
-        steed_row = QHBoxLayout(); steed_row.setSpacing(8)
-        steed_row.addWidget(_lbl("Find Steed / Find Greater Steed:", TEAL2, FS_SMALL, bold=True, wrap=False))
-        steed_combo = QComboBox()
-        steed_combo.setAccessibleName("Choose a steed form to summon")
-        for name in ["Warhorse", "Pony", "Camel", "Elk", "Mastiff"]:
-            steed_combo.addItem(f"{name} (Find Steed)", name)
-        for name in FIND_GREATER_STEED_OPTIONS:
-            steed_combo.addItem(f"{name} (Find Greater Steed)", name)
-        steed_row.addWidget(steed_combo, 1)
-        steed_btn = QPushButton("+ Summon")
-        steed_btn.clicked.connect(lambda checked=False, cb=steed_combo: self._add_mount(cb.currentData()))
-        steed_row.addWidget(steed_btn)
-        mcl.addLayout(steed_row)
-        self._companions_lay.addWidget(mc)
 
         owned = self.char.get("owned_mounts", [])
         for i, mount_name in enumerate(owned):
@@ -132,13 +199,9 @@ class CompanionsMixin:
                 "senses": sb_data["senses"], "languages": "\u2014",
                 "traits": sb_data["traits"], "actions": sb_data["actions"], "reactions": [],
             }
-            card = self._build_statblock_card(sb, hp_key=f"mount_{mount_name}")
-            # than a separate row, so it's clearly tied to that one mount.
-            remove_btn = _btn("\u2715 Remove", CRIMSON, variant="danger", radius=5,
-                               border_width=1, text_color=CRIM2, hover_text="white",
-                               font_size=FS_SMALL, padding="4px 10px")
-            remove_btn.clicked.connect(lambda checked=False, idx=i: self._remove_mount(idx))
-            card.layout().insertWidget(0, remove_btn, 0, Qt.AlignRight)
+            card = self._build_statblock_card(
+                sb, hp_key=f"mount_{mount_name}",
+                context_menu=lambda m, idx=i: self._remove_action(m, lambda: self._remove_mount(idx)))
             self._companions_lay.addWidget(card)
 
     def _build_vehicles_section(self):
@@ -151,23 +214,6 @@ class CompanionsMixin:
         from dnd_app.data.items import (VEHICLES, VEHICLES_WATER, VEHICLES_AIR, VEHICLES_LAND,
                                          VEHICLES_BGDIA, VEHICLES_MAGIC, ADVENTURING_GEAR)
         from dnd_app.data.statblocks import get_vehicle_statblock
-
-        vc = _card(qa(TEAL, 0x55))
-        vcl = QVBoxLayout(vc); vcl.setContentsMargins(14,12,14,12); vcl.setSpacing(6)
-        vcl.addWidget(_lbl("Vehicles", TEAL2, FS_TITLE, bold=True))
-
-        picker_row = QHBoxLayout(); picker_row.setSpacing(8)
-        picker_row.addWidget(_lbl("Add a vehicle:", TEXT2, FS_SMALL, bold=True, wrap=False))
-        add_combo = QComboBox()
-        add_combo.setAccessibleName("Choose a vehicle to add")
-        for vname in VEHICLES:
-            add_combo.addItem(vname, vname)
-        picker_row.addWidget(add_combo, 1)
-        add_btn = QPushButton("+ Add")
-        add_btn.clicked.connect(lambda checked=False, cb=add_combo: self._add_vehicle(cb.currentData()))
-        picker_row.addWidget(add_btn)
-        vcl.addLayout(picker_row)
-        self._companions_lay.addWidget(vc)
 
         owned = self.char.get("owned_vehicles", [])
         gear_lookup = {g[0]: g for g in ADVENTURING_GEAR}
@@ -216,30 +262,34 @@ class CompanionsMixin:
                 # nothing to track, and passing one would create a phantom
                 # persistent-storage entry for a stat that doesn't exist.
                 card_hp_key = None if no_stats else f"vehicle_{vname}"
-                card = self._build_statblock_card(sb, hp_key=card_hp_key)
-                remove_btn = _btn("\u2715 Remove", CRIMSON, variant="danger", radius=5,
-                                   border_width=1, text_color=CRIM2, hover_text="white",
-                                   font_size=FS_SMALL, padding="4px 10px")
-                remove_btn.clicked.connect(lambda checked=False, idx=i: self._remove_vehicle(idx))
-                card.layout().insertWidget(0, remove_btn, 0, Qt.AlignRight)
+                card = self._build_statblock_card(
+                    sb, hp_key=card_hp_key,
+                    context_menu=lambda m, idx=i: self._remove_action(m, lambda: self._remove_vehicle(idx)))
                 self._companions_lay.addWidget(card)
             else:
                 # Land vehicle: no official combat stats — simple info row
                 # pulled from the general gear catalog (cost/weight/desc).
                 g = gear_lookup.get(vname)
                 desc = g[3] if g else ""
-                row = _card(qa(GOLD, 0x33))
+                row = QFrame(); row.setObjectName("creatureCard")
+                row.setStyleSheet(f"QFrame#creatureCard{{background:{SURF};border:1px solid {BORDER};"
+                                  f"border-left:3px solid {GOLD};border-radius:9px;}}"
+                                  f"QFrame#creatureCard QLabel{{background:transparent;border:none;}}")
                 rl = QHBoxLayout(row); rl.setContentsMargins(12,8,12,8); rl.setSpacing(10)
                 rl.addWidget(_icons.icon_label("wagon", 20))
                 name_col = QVBoxLayout(); name_col.setSpacing(0)
                 name_col.addWidget(_lbl(vname, TEXT, FS_BODY, bold=True, wrap=False))
                 name_col.addWidget(_lbl(desc, TEXT3, FS_TINY))
                 rl.addLayout(name_col, 1)
-                rm2 = _btn("\u2715 Remove", CRIMSON, variant="danger", radius=5,
-                            border_width=1, text_color=CRIM2, hover_text="white",
-                            font_size=FS_SMALL, padding="4px 10px")
-                rm2.clicked.connect(lambda checked=False, idx=i: self._remove_vehicle(idx))
-                rl.addWidget(rm2)
+                row.setContextMenuPolicy(Qt.CustomContextMenu)
+                row.setToolTip("Right-click to remove")
+
+                def _row_menu(pos, r=row, idx=i):
+                    from PySide6.QtWidgets import QMenu
+                    m = QMenu(self)
+                    self._remove_action(m, lambda: self._remove_vehicle(idx))
+                    m.exec(r.mapToGlobal(pos))
+                row.customContextMenuRequested.connect(_row_menu)
                 self._companions_lay.addWidget(row)
 
     def _add_vehicle(self, name: str):
@@ -338,64 +388,66 @@ class CompanionsMixin:
             self._mark_dirty()
             self._refresh_companions_tab()
 
-    def _build_summoned_creatures_section(self):
-        """Summon Celestial, Summon Undead, Summon Fiend, and the rest of
-        the Tasha's/Fizban's/Book of Many Things summon-a-spirit spells.
-        Each entry stores (spell, cast level, form) so the stat block
-        can be recomputed correctly if you look at it again (e.g. after
-        leveling up your spell save DC)."""
-        from dnd_app.data.statblocks import SCALING_SUMMONS, resolve_scaling_summon
-
-        sc = _card(qa(TEAL, 0x55))
-        scl = QVBoxLayout(sc); scl.setContentsMargins(14,12,14,12); scl.setSpacing(6)
-        scl.addWidget(_lbl("Summoned Creatures", TEAL2, FS_TITLE, bold=True))
-        scl.addWidget(_lbl("For Summon Celestial, Summon Undead, Summon Fiend, Summon Beast, and similar "
-                           "spells — pick the spell, the level you're casting it at, and its form.",
-                           TEXT3, FS_SMALL))
-
-        picker_row = QHBoxLayout(); picker_row.setSpacing(8)
-        spell_combo = QComboBox(); spell_combo.setAccessibleName("Choose a summon spell")
-        for name in SCALING_SUMMONS:
-            spell_combo.addItem(name, name)
-        picker_row.addWidget(spell_combo, 1)
-
-        level_combo = QComboBox(); level_combo.setAccessibleName("Choose the spell slot level")
-        form_combo = QComboBox(); form_combo.setAccessibleName("Choose the summon's form")
-
-        def _refresh_level_and_form():
-            spell_name = spell_combo.currentData()
-            spell = SCALING_SUMMONS.get(spell_name, {})
-            level_combo.clear()
-            for lvl in range(spell.get("base_level", 1), 10):
-                level_combo.addItem(f"Level {lvl}", lvl)
-            form_combo.clear()
-            for form in spell.get("forms", {}):
-                form_combo.addItem(form, form)
-        spell_combo.currentIndexChanged.connect(lambda i: _refresh_level_and_form())
-        _refresh_level_and_form()
-
-        picker_row.addWidget(level_combo)
-        picker_row.addWidget(form_combo)
-        add_btn = QPushButton("+ Summon")
-        add_btn.clicked.connect(lambda checked=False: self._add_summoned_creature(
-            spell_combo.currentData(), level_combo.currentData(), form_combo.currentData()))
-        picker_row.addWidget(add_btn)
-        scl.addLayout(picker_row)
-        self._companions_lay.addWidget(sc)
-
-        owned = self.char.get("owned_summons", [])
-        for i, entry in enumerate(owned):
-            spell_name, lvl, form = entry.get("spell"), entry.get("level"), entry.get("form")
-            sb = resolve_scaling_summon(spell_name, lvl, form)
+    def _build_owned_creature_cards(self, group: str):
+        """The creatures you've summoned or added in `group` (core/summons.py
+        group_of): each a stat block card with its hit points; right-click
+        to move it to another group, or remove it."""
+        from dnd_app.core.summons import summon_statblock, group_of, GROUPS
+        for i, entry in enumerate(self.char.get("owned_summons", [])):
+            if group_of(entry) != group:
+                continue
+            sb = summon_statblock(entry, self.char)      # a Bestiary creature, or a Tasha's spirit
             if not sb:
                 continue
-            card = self._build_statblock_card(sb, hp_key=f"summon_{i}")
-            remove_btn = _btn("✕ Remove", CRIMSON, variant="danger", radius=5,
-                               border_width=1, text_color=CRIM2, hover_text="white",
-                               font_size=FS_SMALL, padding="4px 10px")
-            remove_btn.clicked.connect(lambda checked=False, idx=i: self._remove_summoned_creature(idx))
-            card.layout().insertWidget(0, remove_btn, 0, Qt.AlignRight)
+            card = self._build_statblock_card(sb, hp_key=f"summon_{i}",
+                                              context_menu=lambda m, idx=i, g=group: self._creature_menu(m, idx, g))
             self._companions_lay.addWidget(card)
+
+    def _max_hp_actions(self, menu, sb: dict, hp_key: str):
+        """Set max HP… (its hit dice and their average to go by) and, once
+        set, Back to its own max -- on every creature card with hit points."""
+        from dnd_app.core.summons import max_hp_of, set_max_hp, dice_average
+        base = sb["hp"]
+        own = (self.char.get("summon_hp_max") or {}).get(hp_key)
+
+        def _set():
+            cur = max_hp_of(self.char, hp_key, base)
+            dice = sb.get("hit_dice") or ""
+            hint = (f"Its hit dice: {dice} (average {dice_average(dice)}). Roll them, or set any number."
+                    if dice else "Set any number.")
+            v, ok = Ask.getInt(self, f"{sb['display_name']}: max HP", hint, cur, 1, 9999, 1)
+            if ok:
+                set_max_hp(self.char, hp_key, v)
+                self._mark_dirty()
+                self._refresh_companions_tab()
+        act = menu.addAction("Set max HP…")
+        act.triggered.connect(lambda checked=False: _set())
+        if own:
+            back = menu.addAction(f"Back to its own max ({base})")
+            back.triggered.connect(lambda checked=False: (set_max_hp(self.char, hp_key, None), self._mark_dirty(),
+                                                          self._refresh_companions_tab()))
+
+    def _creature_menu(self, menu, index: int, current: str):
+        """A summoned or added creature's right-click: Move to (another
+        group), and Remove."""
+        from dnd_app.core.summons import GROUPS
+        sub = menu.addMenu(_icons.icon("paw"), "Move to")
+        for g in GROUPS:
+            act = sub.addAction(("✓ " if g == current else "   ") + g)
+            act.setEnabled(g != current)
+            act.triggered.connect(lambda checked=False, gg=g: self._move_creature(index, gg))
+        self._remove_action(menu, lambda: self._remove_summoned_creature(index))
+
+    def _remove_action(self, menu, do):
+        menu.addSeparator()
+        act = menu.addAction(_icons.icon("trash"), "Remove")
+        act.triggered.connect(lambda checked=False: do())
+
+    def _move_creature(self, index: int, group: str):
+        from dnd_app.core.summons import set_group
+        if set_group(self.char, index, group):
+            self._mark_dirty()
+            QTimer.singleShot(0, self, self._refresh_companions_tab)   # (not while its own box is still busy)
 
     def _add_summoned_creature(self, spell_name: str, level: int, form: str):
         if not (spell_name and level and form): return
@@ -414,33 +466,74 @@ class CompanionsMixin:
     def _refresh_companions_tab(self):
         if not hasattr(self, "_companions_lay"):
             return
+        self._fill_companions_tab()
+        # the pickers narrow with the page (the Bestiary beside it), rather
+        # than pushing the cards off its right edge
+        host = self._companions_lay.parentWidget()
+        if host is not None:
+            for box in host.findChildren(QComboBox):
+                box.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+                # (a group's box: "Companions" in full)
+                box.setMinimumContentsLength(6)
+
+    def _fill_companions_tab(self):
+        """The Creatures page, in groups you can open and close: Mounts
+        (bought, and a Find Steed's), Companions (a class's, and any you
+        move there), Familiars, Summons, Wild Shape, Vehicles (only once
+        you have one) and Other (added from the Bestiary). A group with
+        nothing in it isn't shown."""
         while self._companions_lay.count():
             item = self._companions_lay.takeAt(0)
             if item.widget(): item.widget().deleteLater()
+        page = self._companions_lay
+        closed = set(self.char.get("_closed_creature_groups", []))
+        made = []
 
-        # Mounts are available to any character regardless of class — shown
-        # first, always, unlike the class-gated companions/Wild Shape below.
-        self._build_mounts_section()
-        self._build_vehicles_section()
-        self._build_summoned_creatures_section()
+        from dnd_app.core.summons import GROUPS
+        from dnd_app.ui_desktop.widgets import accept_drop
 
-        from dnd_app.core.calculator import (get_available_companions, resolve_companion_statblock,
-            get_available_wildshape_beasts, get_wild_shape_info, get_summonable_but_inactive_companions)
-        keys = get_available_companions(self.char)
+        def group(name, build):
+            box = CreatureGroup(name, name not in closed, self._toggle_creature_group)
+            box.setObjectName(f"creatureGroup_{name.replace(' ', '')}")
+            box.setStyleSheet(f"QFrame#{box.objectName()}{{background:transparent;border:none;}}")
+            if name in GROUPS:
+                accept_drop(box, "creature", lambda n, g=name: self._add_creature_from_browser(n, g), TEAL)
+            else:
+                accept_drop(box, "creature", self._drop_creature)
+            accept_drop(box, "mount-vehicle", self._drop_mount_vehicle)
+            self._companions_lay = box.body
+            try:
+                build()
+            finally:
+                self._companions_lay = page
+            if box.body.count():
+                box.set_count(box.body.count())
+                page.addWidget(box)
+                made.append(name)
+            else:
+                box.deleteLater()
+
+        group("Mounts", lambda: (self._build_mounts_section(), self._build_owned_creature_cards("Mounts")))
+        group("Companions", lambda: (self._build_class_companions(), self._build_owned_creature_cards("Companions")))
+        group("Familiars", lambda: self._build_owned_creature_cards("Familiars"))
+        group("Summons", lambda: self._build_owned_creature_cards("Summons"))
+        group("Wild Shape", self._build_wildshape_section)
+        group("Vehicles", self._build_vehicles_section)
+        group("Other", lambda: self._build_owned_creature_cards("Other"))
+        if not made:
+            page.addWidget(_lbl("No creatures yet. Add one from the Bestiary, buy a mount or vehicle in "
+                                "your Inventory, or cast a spell that summons one.", TEXT3, FS_SMALL))
+        page.addStretch()
+
+    def _toggle_creature_group(self, name: str, open_: bool):
+        closed = [g for g in self.char.get("_closed_creature_groups", []) if g != name]
+        if not open_:
+            closed.append(name)
+        self.char["_closed_creature_groups"] = closed
+
+    def _build_wildshape_section(self):
+        from dnd_app.core.calculator import get_available_wildshape_beasts, get_wild_shape_info
         beast_names = get_available_wildshape_beasts(self.char)
-        summonable = get_summonable_but_inactive_companions(self.char)
-
-        if not keys and not beast_names and not summonable:
-            self._companions_lay.addWidget(_lbl(
-                "No class-granted companion, summon, or Wild Shape stat blocks apply to "
-                "your current class/subclass/level. This section fills in automatically "
-                "for Battle Smith Artificers, Circle of Wildfire Druids, Drakewarden "
-                "Rangers, Beast Master Rangers, College of Creation Bards (once you "
-                "animate an item), Artillerist Artificers, and any Druid once Wild Shape "
-                "is available.", TEXT3, FS_SMALL))
-            self._companions_lay.addStretch()
-            return
-
         if beast_names:
             info = get_wild_shape_info(self.char)
             wc = _card(qa(GREEN, 0x55))
@@ -466,6 +559,12 @@ class CompanionsMixin:
             self._companions_lay.addWidget(wc)
             self._refresh_wildshape_beast_card()
 
+
+    def _build_class_companions(self):
+        from dnd_app.core.calculator import (get_available_companions, resolve_companion_statblock,
+                                             get_summonable_but_inactive_companions)
+        keys = get_available_companions(self.char)
+        summonable = get_summonable_but_inactive_companions(self.char)
         for key in keys:
             if key == "eldritch_cannon":
                 card = self._build_eldritch_cannon_card()
@@ -517,7 +616,6 @@ class CompanionsMixin:
             summon_btn.clicked.connect(lambda checked=False, k=key: self._summon_companion(k))
             scl2.addWidget(summon_btn)
             self._companions_lay.addWidget(sc)
-        self._companions_lay.addStretch()
 
     def _refresh_wildshape_beast_card(self):
         if not hasattr(self, "_wildshape_card_host"):
@@ -547,85 +645,194 @@ class CompanionsMixin:
         self._wildshape_card_host.addWidget(card)
 
     def _build_statblock_card(self, sb: dict, start_expanded: bool = False, hp_key: str = None,
-                               companion_key: str = None) -> QFrame:
-        """An expandable tile: collapsed by default, showing just name, HP,
-        and AC so a Companions tab with several mounts/summons/wild shape
-        options stays scannable instead of every card being fully expanded
-        (and taking up a full screen of space) all the time. Click the
-        header to expand the full stat block.
+                               companion_key: str = None, context_menu=None) -> QFrame:
+        """A creature's card: one slim line when closed -- a coloured stripe,
+        its name with its size, type and where it's from, and AC, HP and
+        speed as chips -- and the whole stat block when opened (click the
+        line): the six abilities as small boxes, the rest a line each, and
+        its traits, actions and reactions under headings.
 
-        hp_key: if given, HP is shown as an editable spinbox backed by
-        persistent per-creature tracking (char['summon_hp_tracking'][hp_key])
-        instead of a static label showing only the max value forever with
-        no way to record damage actually taken. Pass a stable, unique key
-        per owned creature (e.g. f"summon_{i}", f"mount_{steed_name}",
-        f"companion_{key}"). Left as None for purely informational/preview
-        cards (e.g. the Wild Shape form preview, whose real active HP is
-        tracked separately via the Combat tab once actually transformed)."""
-        card = _card(qa(TEAL, 0x55))
-        cl = QVBoxLayout(card); cl.setContentsMargins(0,0,0,0); cl.setSpacing(0)
+        hp_key: HP is a box you can change, kept per creature in
+        char['summon_hp_tracking'][hp_key] (a stable key per creature:
+        f"summon_{i}", f"mount_{name}", f"companion_{key}"); None for a
+        preview card (the Wild Shape form's).
+        context_menu(menu): fills its right-click menu (Move to group,
+        Remove...)."""
+        card = QFrame(); card.setObjectName("creatureCard")
+        card.setStyleSheet(
+            f"QFrame#creatureCard{{background:{SURF};border:1px solid {BORDER};border-left:3px solid {TEAL};"
+            f"border-radius:9px;}}"
+            f"QFrame#creatureCard:hover{{border-color:{BORDER2};border-left-color:{TEAL2};}}"
+            f"QFrame#creatureCard QLabel{{background:transparent;border:none;}}")
+        cl = QVBoxLayout(card); cl.setContentsMargins(0, 0, 0, 0); cl.setSpacing(0)
+        if context_menu is not None or hp_key:
+            card.setContextMenuPolicy(Qt.CustomContextMenu)
+
+            def _menu(pos, c=card):
+                from PySide6.QtWidgets import QMenu
+                m = QMenu(self)
+                if hp_key:
+                    self._max_hp_actions(m, sb, hp_key)
+                if context_menu is not None:
+                    context_menu(m)
+                if not m.isEmpty():
+                    m.exec(c.mapToGlobal(pos))
+            card.customContextMenuRequested.connect(_menu)
+            card.setToolTip("Click to open or close · right-click for more")
 
         tracking = self.char.setdefault("summon_hp_tracking", {}) if hp_key else {}
-        # Some statblocks (e.g. "Tasha's Creeping Keelboat") store hp as
-        # a non-numeric placeholder like '—' rather than a real number,
-        # since the creature/vehicle has no standard numeric HP in its
-        # own source text. QSpinBox.setRange requires an int, so this
-        # falls back to 1 (still shown, but not a broken/negative
-        # range) rather than trusting the raw value to always be a real int.
+        # a stat block's hp can be a placeholder ('—', a vehicle with none):
+        # the box then runs to 1, never a broken range
+        from dnd_app.core.summons import max_hp_of
         raw_hp = sb["hp"]
-        max_hp = raw_hp if isinstance(raw_hp, int) else 1
-        if hp_key:
-            cur_hp = tracking.get(hp_key, max_hp)
-        header = QFrame()
-        header.setCursor(Qt.PointingHandCursor)
+        max_hp = max_hp_of(self.char, hp_key, raw_hp) if hp_key else \
+            (raw_hp if isinstance(raw_hp, int) else (int(raw_hp) if str(raw_hp).isdigit() else 1))
+        cur_hp = min(tracking.get(hp_key, max_hp), max_hp) if hp_key else max_hp
+
+        def chip(text, color):
+            c = _lbl(text, color, FS_SMALL, bold=True, wrap=False)
+            c.setStyleSheet(f"QLabel{{color:{color};font-size:{FS_SMALL}px;font-weight:700;"
+                            f"background:{qa(color, 0x1c)};border:1px solid {qa(color, 0x66)};"
+                            f"border-radius:6px;padding:3px 8px;}}")
+            return c
+
+        header = QFrame(); header.setCursor(Qt.PointingHandCursor)
         header.setStyleSheet("QFrame{background:transparent;border:none;}")
-        hl = QHBoxLayout(header); hl.setContentsMargins(14,12,14,12); hl.setSpacing(14)
-        chevron = _lbl("\u25b6", TEAL2, FS_BODY, bold=True, wrap=False)
+        hl = QHBoxLayout(header); hl.setContentsMargins(12, 8, 12, 8); hl.setSpacing(10)
+        chevron = _lbl("▾" if start_expanded else "▸", TEAL2, FS_BODY, bold=True, wrap=False)
+        chevron.setFixedWidth(12)
         hl.addWidget(chevron)
         name_col = QVBoxLayout(); name_col.setSpacing(0)
-        name_col.addWidget(_lbl(sb["display_name"], TEAL2, FS_BODY, bold=True, wrap=False))
-        name_col.addWidget(_lbl(sb["source"], TEXT3, FS_TINY, wrap=False))
-        hl.addLayout(name_col)
-        hl.addStretch()
-        hl.addWidget(_lbl(f"AC {sb['ac']}", GOLD2, FS_BODY, bold=True, wrap=False))
-
+        name_col.addWidget(_lbl(sb["display_name"], TEXT, FS_BODY, bold=True, wrap=False))
+        kind = " ".join(x for x in (sb.get("size", ""), sb.get("creature_type", "")) if x)
+        sub = " · ".join(x for x in (kind, sb.get("source", "")) if x)
+        name_col.addWidget(_lbl(sub, TEXT3, FS_TINY, wrap=False))
+        hl.addLayout(name_col, 1)
+        hl.addWidget(chip(f"AC {sb['ac']}", GOLD2))
         hp_spin_header = None
         if hp_key:
-            hp_row_hdr = QHBoxLayout(); hp_row_hdr.setSpacing(3)
-            hp_row_hdr.addWidget(_lbl("HP", GREEN2, FS_BODY, bold=True, wrap=False))
-            hp_spin_header = QSpinBox()
-            hp_spin_header.setRange(0, max_hp)
-            hp_spin_header.setValue(cur_hp)
-            hp_spin_header.setFixedWidth(84)   # "-  n  +"
+            hp_box = QFrame(); hp_box.setObjectName("hpChip")
+            hp_box.setStyleSheet(f"QFrame#hpChip{{background:{qa(GREEN2, 0x1c)};border:1px solid {qa(GREEN2, 0x66)};"
+                                 f"border-radius:6px;}}")
+            hb = QHBoxLayout(hp_box); hb.setContentsMargins(8, 2, 8, 2); hb.setSpacing(2)
+            hb.addWidget(_lbl("HP", GREEN2, FS_SMALL, bold=True, wrap=False))
+            hb.addSpacing(4)
+            # the chip's own − and +, flat, with the number between them
+            # (still typed into): the stock arrows were grey blocks in it
+            # the value lives in a spin box (its range and the saving hang
+            # off it), shown as a plain number field: the theme's spin box
+            # padding hid the number in a box this narrow
+            hp_spin_header = QSpinBox(hp_box)
+            hp_spin_header.setRange(0, max_hp); hp_spin_header.setValue(cur_hp)
             hp_spin_header.setAccessibleName(f"{sb['display_name']} current HP")
-            hp_spin_header.setToolTip("Current HP for this creature — edits are saved.")
-            hp_row_hdr.addWidget(hp_spin_header)
-            hp_row_hdr.addWidget(_lbl(f"/ {max_hp}", TEXT3, FS_SMALL, wrap=False))
-            # Stop clicks on the spinbox itself from also toggling the
-            # header's expand/collapse (the header's mousePressEvent is
-            # attached further down and would otherwise fire too).
-            hp_spin_hdr_host = QWidget(); hp_spin_hdr_host.setLayout(hp_row_hdr)
-            hl.addWidget(hp_spin_hdr_host)
+            hp_spin_header.hide()
+            hp_edit = QLineEdit(str(cur_hp)); hp_edit.setObjectName("hpField")
+            hp_edit.setAlignment(Qt.AlignCenter); hp_edit.setFixedWidth(38)
+            from PySide6.QtGui import QIntValidator
+            hp_edit.setValidator(QIntValidator(0, max_hp, hp_edit))
+            hp_edit.setAccessibleName(f"{sb['display_name']} current HP, typed")
+            hp_edit.setToolTip("Current HP for this creature — edits are saved.")
+            hp_edit.setStyleSheet(
+                f"QLineEdit{{background:transparent;border:none;color:{TEXT};font-size:{FS_BODY}px;"
+                f"font-weight:700;padding:0px;min-height:0px;}}"
+                f"QLineEdit:focus{{background:{qa(GREEN2, 0x22)};border-radius:4px;}}")
+            hp_edit.editingFinished.connect(
+                lambda: hp_spin_header.setValue(int(hp_edit.text() or 0)))
+            hp_spin_header.valueChanged.connect(lambda v: hp_edit.setText(str(v)))
+            def _step_btn(text, step, tip):
+                b = QToolButton(); b.setText(text); b.setAutoRaise(True)
+                b.setCursor(Qt.PointingHandCursor); b.setToolTip(tip); b.setAccessibleName(tip)
+                b.setFixedSize(22, 22)
+                b.setStyleSheet(
+                    f"QToolButton{{color:{GREEN2};font-size:{FS_BODY}px;font-weight:700;background:transparent;"
+                    f"border:none;border-radius:5px;padding:0px;}}"
+                    f"QToolButton:hover{{background:{qa(GREEN2, 0x33)};}}")
+                b.clicked.connect(lambda: hp_spin_header.stepBy(step))
+                return b
+            hb.addWidget(_step_btn("−", -1, "1 less HP"))
+            hb.addWidget(hp_edit)
+            hb.addWidget(_step_btn("+", 1, "1 more HP"))
+            hb.addWidget(_lbl(f"/ {max_hp}", TEXT3, FS_SMALL, wrap=False))
+            hl.addWidget(hp_box)
         else:
-            hl.addWidget(_lbl(f"HP {sb['hp']}", GREEN2, FS_BODY, bold=True, wrap=False))
+            hl.addWidget(chip(f"HP {sb['hp']}", GREEN2))
+        speed = str(sb.get("speed", "") or "")
+        if speed:
+            sp = _lbl(speed, TEAL2, FS_SMALL, bold=True, wrap=False)
+            sp.setMaximumWidth(150)
+            sp.setToolTip(f"Speed {speed}")
+            hl.addWidget(sp)
         cl.addWidget(header)
 
-        details = QFrame()
-        details.setStyleSheet("QFrame{background:transparent;border:none;}")
+        details = QFrame(); details.setObjectName("creatureDetails")
+        details.setStyleSheet(f"QFrame#creatureDetails{{background:transparent;border:none;border-top:1px solid {BORDER};}}")
         details.setVisible(start_expanded)
-        dl = QVBoxLayout(details); dl.setContentsMargins(14,0,14,12); dl.setSpacing(6)
+        dl = QVBoxLayout(details); dl.setContentsMargins(16, 10, 14, 12); dl.setSpacing(8)
 
-        dl.addWidget(_lbl(f"{sb['size']} {sb['creature_type']}", TEXT2, FS_SMALL, bold=True))
-        stat_row = QHBoxLayout(); stat_row.setSpacing(18)
+        # the six abilities: a small box each
+        ab_row = QHBoxLayout(); ab_row.setSpacing(6)
+        for ab, score in (sb.get("abilities") or {}).items():
+            try:
+                score = int(score)
+            except (TypeError, ValueError):
+                continue
+            mod = (score - 10) // 2
+            box = QFrame(); box.setObjectName("abBox")
+            box.setStyleSheet(f"QFrame#abBox{{background:{SURF2};border:1px solid {BORDER};border-radius:7px;}}")
+            bl = QVBoxLayout(box); bl.setContentsMargins(4, 4, 4, 4); bl.setSpacing(0)
+            bl.addWidget(_lbl(ab, TEXT3, FS_TINY, bold=True, align=Qt.AlignCenter, wrap=False))
+            bl.addWidget(_lbl(str(score), TEXT, FS_BODY, bold=True, align=Qt.AlignCenter, wrap=False))
+            bl.addWidget(_lbl(sign(mod), TEAL2 if mod > 0 else (CRIM2 if mod < 0 else TEXT2), FS_TINY,
+                              bold=True, align=Qt.AlignCenter, wrap=False))
+            ab_row.addWidget(box, 1)
+        if ab_row.count():
+            dl.addLayout(ab_row)
+
+        # the rest a line each: what it is in bold, then its value
+        facts = []
+        if sb.get("hit_dice"):
+            facts.append(("Hit Dice", sb["hit_dice"]))
+        if sb.get("saves"):
+            facts.append(("Saving Throws", ", ".join(f"{a} {v}" for a, v in sb["saves"])))
+        if sb.get("skills"):
+            facts.append(("Skills", ", ".join(f"{k} {v}" for k, v in sb["skills"])))
+        for key, label in (("damage_resistances", "Resistances"), ("damage_immunities", "Immunities"),
+                           ("condition_immunities", "Condition Immunities")):
+            if sb.get(key):
+                facts.append((label, sb[key]))
+        for key, label in (("senses", "Senses"), ("languages", "Languages")):
+            if sb.get(key) and sb[key] != "—":
+                facts.append((label, sb[key]))
+        if facts:
+            grid = QGridLayout(); grid.setHorizontalSpacing(12); grid.setVerticalSpacing(3)
+            grid.setColumnStretch(1, 1)
+            for r, (k, v) in enumerate(facts):
+                grid.addWidget(_lbl(k, TEXT2, FS_SMALL, bold=True, wrap=False), r, 0, Qt.AlignTop)
+                grid.addWidget(_lbl(str(v), TEXT, FS_SMALL, wrap=True), r, 1)
+            dl.addLayout(grid)
+
+        import html as _html
+        for section_name, entries in [("Traits", sb.get("traits")),
+                                      ("Actions", sb.get("actions")),
+                                      ("Reactions", sb.get("reactions"))]:
+            if not entries:
+                continue
+            head = QHBoxLayout(); head.setSpacing(8)
+            head.addWidget(_lbl(section_name.upper(), GOLD2, FS_TINY, bold=True, wrap=False))
+            line = QFrame(); line.setFixedHeight(1); line.setStyleSheet(f"background:{qa(GOLD, 0x55)};border:none;")
+            head.addWidget(line, 1, Qt.AlignVCenter)
+            dl.addLayout(head)
+            for name, desc in entries:
+                lab = QLabel(f"<b><i>{_html.escape(str(name))}.</i></b> {_html.escape(str(desc))}")
+                lab.setTextFormat(Qt.RichText); lab.setWordWrap(True)
+                lab.setStyleSheet(f"color:{TEXT};font-size:{FS_SMALL}px;background:transparent;border:none;")
+                dl.addWidget(lab)
+        cl.addWidget(details)
+
         if hp_key:
-            hp_lbl_detail = _lbl(f"HP {cur_hp}/{max_hp}" + (f"  ({sb['hit_dice']})" if sb.get("hit_dice") else ""),
-                                  GREEN2, FS_BODY, bold=True, wrap=False)
-            stat_row.addWidget(hp_lbl_detail)
-
             def _on_hp_spin_changed(v):
                 tracking[hp_key] = v
                 self._mark_dirty()
-                hp_lbl_detail.setText(f"HP {v}/{max_hp}" + (f"  ({sb['hit_dice']})" if sb.get("hit_dice") else ""))
                 if v <= 0 and companion_key:
                     from dnd_app.data.statblocks import COMPANION_STATBLOCKS
                     # companion_key may be an instance-suffixed "key#N" id
@@ -665,55 +872,13 @@ class CompanionsMixin:
                         self._toast(f"{sb['display_name']} has perished — a new one can be made at your next long rest.")
                         self._refresh_companions_tab()
             hp_spin_header.valueChanged.connect(_on_hp_spin_changed)
-        else:
-            hp_txt = f"HP {sb['hp']}"
-            if sb.get("hit_dice"):
-                hp_txt += f"  ({sb['hit_dice']})"
-            stat_row.addWidget(_lbl(hp_txt, GREEN2, FS_BODY, bold=True, wrap=False))
-        stat_row.addWidget(_lbl(f"Speed {sb['speed']}", TEAL2, FS_BODY, bold=True, wrap=False))
-        stat_row.addStretch()
-        dl.addLayout(stat_row)
-
-        ab_row = QHBoxLayout(); ab_row.setSpacing(10)
-        for ab, score in sb["abilities"].items():
-            mod = (score - 10) // 2
-            mod_str = f"+{mod}" if mod >= 0 else str(mod)
-            col = QVBoxLayout(); col.setSpacing(0)
-            col.addWidget(_lbl(ab, TEXT3, FS_TINY, bold=True, align=Qt.AlignCenter))
-            col.addWidget(_lbl(f"{score} ({mod_str})", TEXT, FS_SMALL, bold=True, align=Qt.AlignCenter, wrap=False))
-            ab_row.addLayout(col)
-        ab_row.addStretch()
-        dl.addLayout(ab_row)
-
-        if sb.get("saves"):
-            dl.addWidget(_lbl("Saving Throws: " + ", ".join(f"{a} {v}" for a,v in sb["saves"]), TEXT2, FS_SMALL))
-        if sb.get("skills"):
-            dl.addWidget(_lbl("Skills: " + ", ".join(f"{s} {v}" for s,v in sb["skills"]), TEXT2, FS_SMALL))
-        if sb.get("damage_resistances"):
-            dl.addWidget(_lbl("Damage Resistances: " + sb["damage_resistances"], TEXT2, FS_SMALL))
-        if sb.get("damage_immunities"):
-            dl.addWidget(_lbl("Damage Immunities: " + sb["damage_immunities"], TEXT2, FS_SMALL))
-        if sb.get("condition_immunities"):
-            dl.addWidget(_lbl("Condition Immunities: " + sb["condition_immunities"], TEXT2, FS_SMALL))
-        dl.addWidget(_lbl("Senses: " + sb["senses"], TEXT2, FS_SMALL))
-        dl.addWidget(_lbl("Languages: " + sb["languages"], TEXT2, FS_SMALL))
-
-        for section_name, entries in [("Traits", sb.get("traits")),
-                                        ("Actions", sb.get("actions")),
-                                        ("Reactions", sb.get("reactions"))]:
-            if not entries:
-                continue
-            dl.addWidget(_lbl(section_name.upper(), GOLD2, FS_SMALL, bold=True))
-            for name, desc in entries:
-                line = _lbl(f"{name}. {desc}", TEXT, FS_SMALL, wrap=True)
-                dl.addWidget(line)
-        cl.addWidget(details)
 
         def _toggle(event, d=details, chev=chevron):
+            if event.button() != Qt.LeftButton:
+                return
             d.setVisible(not d.isVisible())
-            chev.setText("\u25bc" if d.isVisible() else "\u25b6")
+            chev.setText("▾" if d.isVisible() else "▸")
         header.mousePressEvent = _toggle
-
         return card
 
     def _build_eldritch_cannon_card(self) -> QFrame:

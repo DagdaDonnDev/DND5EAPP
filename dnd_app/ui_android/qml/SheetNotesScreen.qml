@@ -3,9 +3,11 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Mimic
 
-// Ports ui_desktop's TraitsNotesMixin -- Personality Traits/Ideals/
-// Bonds/Flaws, Appearance, and Campaign Notes (Backstory always
-// present, plus up to 8 player-named/add/remove/renameable pages).
+// The Notes screen, as desktop's Notes tab: a list of pages -- Character
+// and Backstory, then your own pages in groups you open and close
+// (core/notes.py) -- and the page you tap, with a way back to the list.
+// Press and hold a page or a group for more (desktop's right-click):
+// rename it, move a page to another group, remove it.
 Page {
     id: root
     readonly property string screenTitle: "Notes"
@@ -14,33 +16,28 @@ Page {
 
     Component.onCompleted: sheetBridge.refresh()
 
-    // 0 = Backstory (always present), 1+ = notesPages[index-1]
-    property int currentPageIndex: 0
+    // "list", or the page open: "character", "backstory" or "page"
+    property string view: "list"
+    property int pageIndex: -1
+    readonly property var openPage: (view === "page" && sheetBridge.notesPages[pageIndex]) || ({})
 
-    // Jump-to-section targets for the drawer's sub-menu. Campaign notes
-    // pages are listed there by title too: picking one switches to its
-    // tab as well as scrolling to it.
+    function open(kind, index) {
+        pageArea.saveIfChanged()
+        backstoryArea.saveIfChanged()
+        view = kind
+        pageIndex = index === undefined ? -1 : index
+        if (kind === "page") pageArea.load()
+        if (kind === "backstory") backstoryArea.text = sheetBridge.traitsNotes.backstory
+        flick.contentY = 0
+    }
+
+    // The drawer's sub-menu: Character, Backstory, or a page by its title
     function scrollToSection(name) {
-        var anchorItem = null
-        if (name === "Personality") anchorItem = personalityAnchor
-        else if (name === "Appearance") anchorItem = appearanceAnchor
-        else if (name === "Backstory") {
-            root.currentPageIndex = 0
-            anchorItem = campaignAnchor
-        } else {
-            var pages = sheetBridge.notesPages
-            for (var i = 0; i < pages.length; i++) {
-                if (pages[i].title === name) {
-                    root.currentPageIndex = i + 1
-                    anchorItem = campaignAnchor
-                    break
-                }
-            }
-        }
-        if (anchorItem) {
-            var pt = anchorItem.mapToItem(flick.contentItem, 0, 0)
-            flick.contentY = Math.max(0, Math.min(pt.y - 8, flick.contentHeight - flick.height))
-        }
+        if (name === "Character" || name === "Personality" || name === "Appearance") return open("character")
+        if (name === "Backstory") return open("backstory")
+        var pages = sheetBridge.notesPages
+        for (var i = 0; i < pages.length; i++)
+            if (pages[i].title === name) return open("page", i)
     }
 
     // The text boxes grow with their text rather than scrolling inside
@@ -60,6 +57,33 @@ Page {
         }
     }
 
+    // one row of the list: a page to open
+    component NoteItem: Rectangle {
+        id: item
+        property string text: ""
+        property int indent: 0
+        signal tapped()
+        signal held()
+        Layout.fillWidth: true
+        implicitHeight: 44
+        radius: 8
+        color: tap.pressed ? Theme.surf3 : Theme.surf2
+        border.color: Theme.border
+        Label {
+            anchors { left: parent.left; leftMargin: 14 + item.indent; right: parent.right; rightMargin: 12
+                      verticalCenter: parent.verticalCenter }
+            text: item.text; color: Theme.text; font.pixelSize: Theme.fsBody; font.bold: true
+            elide: Text.ElideRight
+        }
+        MouseArea {
+            id: tap
+            anchors.fill: parent
+            pressAndHoldInterval: 450
+            onClicked: item.tapped()
+            onPressAndHold: item.held()
+        }
+    }
+
     Flickable {
         id: flick
         anchors.fill: parent
@@ -71,154 +95,303 @@ Page {
         ColumnLayout {
             id: content
             width: parent.width
-            spacing: 16
+            spacing: 12
 
             SheetHeader {}
 
-            Label { id: personalityAnchor; text: "Personality"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true }
-
-            Repeater {
-                model: [
-                    { key: "personalityTraits", label: "Personality Traits" },
-                    { key: "ideals", label: "Ideals" },
-                    { key: "bonds", label: "Bonds" },
-                    { key: "flaws", label: "Flaws" },
-                ]
-                delegate: ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
-                    Label { text: modelData.label; color: Theme.text2; font.pixelSize: Theme.fsSmall }
-                    MTextArea {
-                        id: traitArea
+            // ── the list ──────────────────────────────────────────
+            ColumnLayout {
+                visible: root.view === "list"
+                Layout.fillWidth: true
+                spacing: 6
+                Label { text: "Notes"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true }
+                Label {
+                    text: "Tap a page to open it. Press and hold a page or a group to rename, move or remove it."
+                    color: Theme.text3; font.pixelSize: Theme.fsSmall; wrapMode: Text.WordWrap; Layout.fillWidth: true
+                }
+                NoteItem { objectName: "notesItem_Character"; text: "Character"; onTapped: root.open("character") }
+                NoteItem { objectName: "notesItem_Backstory"; text: "Backstory"; onTapped: root.open("backstory") }
+                Repeater {
+                    model: sheetBridge.notesGroups
+                    delegate: ColumnLayout {
+                        id: grp
+                        readonly property string groupName: modelData.name
                         Layout.fillWidth: true
-                        Layout.preferredHeight: implicitHeight
-                        minimumHeight: 70
-                        onCursorRectangleChanged: root.keepCursorVisible(traitArea)
-                        text: sheetBridge.traitsNotes[modelData.key]
-                        placeholderText: "Enter " + modelData.label.toLowerCase() + "…"
-                        onEditingFinished: sheetBridge.setTraitField(modelData.key, text)
-                    }
-                }
-            }
-
-            ColumnLayout {
-                id: appearanceAnchor
-                Layout.fillWidth: true
-                spacing: 4
-                Label { text: "Appearance"; color: Theme.text2; font.pixelSize: Theme.fsSmall }
-                MTextArea {
-                    id: appearanceArea
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: implicitHeight
-                    minimumHeight: 90
-                    onCursorRectangleChanged: root.keepCursorVisible(appearanceArea)
-                    text: sheetBridge.traitsNotes.appearanceNotes
-                    placeholderText: "Age, height, build, eyes, notable features…"
-                    onEditingFinished: sheetBridge.setTraitField("appearanceNotes", text)
-                }
-            }
-
-            // ── Campaign Notes: Backstory (fixed) + up to 8 pages ──────
-            ColumnLayout {
-                id: campaignAnchor
-                Layout.fillWidth: true
-                spacing: 8
-                Label { text: "Campaign Notes"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true }
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 8
-                    Item { Layout.fillWidth: true }
-                    MButton {
-                        primary: false
-                        height: 32
-                        text: "Rename"
-                        visible: root.currentPageIndex > 0
-                        onClicked: renamePageDialog.open()
-                    }
-                    MButton {
-                        primary: false
-                        height: 32
-                        text: "Remove"
-                        visible: root.currentPageIndex > 0
-                        onClicked: {
-                            // Unbind first, so switching back to Backstory
-                            // doesn't save the removed page's text into the
-                            // page that slides into its slot.
-                            pageArea.boundPage = -1
-                            sheetBridge.removeNotesPage(root.currentPageIndex - 1)
-                            root.currentPageIndex = 0
+                        spacing: 6
+                        Rectangle {
+                            objectName: "notesGroup_" + grp.groupName
+                            Layout.fillWidth: true
+                            Layout.topMargin: 6
+                            implicitHeight: 36
+                            color: "transparent"
+                            Label {
+                                anchors { left: parent.left; leftMargin: 2; verticalCenter: parent.verticalCenter }
+                                text: (modelData.open ? "▾  " : "▸  ") + grp.groupName
+                                      + (modelData.open ? "" : "   (" + modelData.pages.length + ")")
+                                color: Theme.teal2; font.pixelSize: Theme.fsSmall; font.bold: true
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                pressAndHoldInterval: 450
+                                onClicked: sheetBridge.toggleNotesGroup(grp.groupName)
+                                onPressAndHold: root.groupOptions(grp.groupName)
+                            }
+                        }
+                        Repeater {
+                            model: modelData.open ? modelData.pages : []
+                            delegate: NoteItem {
+                                objectName: "notesItem_" + modelData.title
+                                text: modelData.title
+                                indent: 8
+                                onTapped: root.open("page", modelData.index)
+                                onHeld: root.pageOptions(modelData.index, modelData.title, grp.groupName)
+                            }
                         }
                     }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 8
+                    spacing: 8
                     MButton {
-                        height: 32
-                        text: "+ Page"
-                        onClicked: addPageDialog.open()
+                        objectName: "notesNewPage"
+                        Layout.fillWidth: true; primary: false; text: "+ New page"
+                        onClicked: { nameDialog.mode = "page"; nameDialog.open() }
+                    }
+                    MButton {
+                        objectName: "notesNewGroup"
+                        Layout.fillWidth: true; primary: false; text: "+ New group"
+                        onClicked: { nameDialog.mode = "group"; nameDialog.open() }
                     }
                 }
             }
 
-            // Page picker: a dropdown rather than tabs, which ran off the
-            // side of the screen (and cut titles short) once there were
-            // more than a few pages.
-            ComboBox {
-                id: notesPagePicker
-                objectName: "notesPagePicker"
+            // ── a page open: back to the list ─────────────────────
+            RowLayout {
+                visible: root.view !== "list"
                 Layout.fillWidth: true
-                model: ["Backstory"].concat(sheetBridge.notesPages.map(function(p) { return p.title }))
-                currentIndex: root.currentPageIndex
-                onActivated: (index) => root.currentPageIndex = index
-                // picking from the list replaces the binding above, and a
-                // new model resets the index -- keep it in step either way
-                onModelChanged: currentIndex = root.currentPageIndex
-                Connections {
-                    target: root
-                    function onCurrentPageIndexChanged() { notesPagePicker.currentIndex = root.currentPageIndex }
+                spacing: 8
+                MButton {
+                    objectName: "notesBack"
+                    primary: false; implicitHeight: 36; text: "‹ All notes"
+                    onClicked: root.open("list")
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: root.view === "character" ? "Character" : root.view === "backstory" ? "Backstory"
+                          : (root.openPage.title || "")
+                    color: Theme.gold2; font.pixelSize: Theme.fsHead; font.bold: true; elide: Text.ElideRight
+                    horizontalAlignment: Text.AlignRight
                 }
             }
 
+            // Character: appearance, background, and the four boxes with
+            // your background's suggestions
+            ColumnLayout {
+                visible: root.view === "character"
+                Layout.fillWidth: true
+                spacing: 12
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    Label { text: "Appearance"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true }
+                    MTextArea {
+                        id: appearanceArea
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: implicitHeight
+                        minimumHeight: 90
+                        onCursorRectangleChanged: root.keepCursorVisible(appearanceArea)
+                        text: sheetBridge.traitsNotes.appearanceNotes
+                        placeholderText: "Age, height, build, eyes, notable features…"
+                        onEditingFinished: sheetBridge.setTraitField("appearanceNotes", text)
+                    }
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    Label { text: "Background"; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true }
+                    Label { text: sheetBridge.notesBackgroundLine; color: Theme.text; font.pixelSize: Theme.fsBody
+                            wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                }
+                Repeater {
+                    model: [
+                        { key: "personalityTraits", label: "Personality Traits", die: 8 },
+                        { key: "ideals", label: "Ideals", die: 6 },
+                        { key: "bonds", label: "Bonds", die: 6 },
+                        { key: "flaws", label: "Flaws", die: 6 },
+                    ]
+                    delegate: ColumnLayout {
+                        id: traitBox
+                        readonly property var rows: sheetBridge.traitSuggestions(modelData.key)
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Label { text: modelData.label; color: Theme.gold; font.pixelSize: Theme.fsSmall; font.bold: true }
+                        MTextArea {
+                            id: traitArea
+                            objectName: "trait_" + modelData.key
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: implicitHeight
+                            minimumHeight: 70
+                            onCursorRectangleChanged: root.keepCursorVisible(traitArea)
+                            text: sheetBridge.traitsNotes[modelData.key]
+                            placeholderText: traitBox.rows.length ? "Write your own, or pick a suggestion…" : "Write your own…"
+                            onEditingFinished: sheetBridge.setTraitField(modelData.key, text)
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Item { Layout.fillWidth: true }
+                            MButton {
+                                objectName: "suggest_" + modelData.key
+                                primary: false; implicitHeight: 36; text: "☰ Suggestions"
+                                enabled: traitBox.rows.length > 0
+                                onClicked: root.suggest(modelData.key, modelData.label, traitBox.rows, traitArea)
+                            }
+                            MButton {
+                                objectName: "roll_" + modelData.key
+                                primary: false; implicitHeight: 36; text: "🎲 Roll d" + traitBox.rows.length
+                                visible: traitBox.rows.length > 0
+                                onClicked: {
+                                    sheetBridge.setTraitField(modelData.key, traitArea.text)
+                                    sheetBridge.rollTraitSuggestion(modelData.key)
+                                    traitArea.text = sheetBridge.traitsNotes[modelData.key]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Backstory
             MTextArea {
-                id: pageArea
-                objectName: "notesPageArea"
+                id: backstoryArea
+                objectName: "backstoryArea"
+                visible: root.view === "backstory"
                 Layout.fillWidth: true
                 Layout.preferredHeight: implicitHeight
-                minimumHeight: 220
-                onCursorRectangleChanged: root.keepCursorVisible(pageArea)
-                placeholderText: root.currentPageIndex === 0
-                    ? "Character backstory, allies, enemies…"
-                    : "Session notes, quest log, treasure…"
-                // Re-bind text whenever the active page changes --
-                // the text isn't a plain binding, since typing would
-                // break it. Whatever was typed on the page being left
-                // is saved first, in case the box still had focus when
-                // the tab was switched (so editingFinished hasn't fired).
-                property int boundPage: -1
-                function saveTo(pageIndex) {
-                    if (pageIndex === 0) {
+                minimumHeight: 320
+                onCursorRectangleChanged: root.keepCursorVisible(backstoryArea)
+                placeholderText: "Where they're from, who they've lost, who they owe…"
+                function saveIfChanged() {
+                    if (root.view === "backstory" && text !== sheetBridge.traitsNotes.backstory)
                         sheetBridge.setTraitField("backstory", text)
-                    } else if (pageIndex > 0) {
-                        sheetBridge.setNotesPageText(pageIndex - 1, text)
+                }
+                onEditingFinished: saveIfChanged()
+            }
+
+            // One of your pages, with New entry for today's notes
+            ColumnLayout {
+                visible: root.view === "page"
+                Layout.fillWidth: true
+                spacing: 8
+                MButton {
+                    objectName: "notesNewEntry"
+                    Layout.alignment: Qt.AlignRight
+                    primary: false; implicitHeight: 36; text: "+ New entry · today's date"
+                    onClicked: {
+                        pageArea.saveIfChanged()
+                        pageArea.text = sheetBridge.notesNewEntry(root.pageIndex)
+                        pageArea.boundIndex = root.pageIndex
                     }
                 }
-                function storedText(pageIndex) {
-                    return pageIndex === 0
-                        ? sheetBridge.traitsNotes.backstory
-                        : (sheetBridge.notesPages[pageIndex - 1] || {}).text || ""
-                }
-                function syncFromModel() {
-                    if (boundPage === root.currentPageIndex) return
-                    if (boundPage >= 0 && text !== storedText(boundPage)) {
-                        saveTo(boundPage)
+                MTextArea {
+                    id: pageArea
+                    objectName: "notesPageArea"
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: implicitHeight
+                    minimumHeight: 320
+                    onCursorRectangleChanged: root.keepCursorVisible(pageArea)
+                    placeholderText: "Write anything here…"
+                    property int boundIndex: -1
+                    function load() {
+                        text = (sheetBridge.notesPages[root.pageIndex] || {}).text || ""
+                        boundIndex = root.pageIndex
                     }
-                    text = storedText(root.currentPageIndex)
-                    boundPage = root.currentPageIndex
-                }
-                Component.onCompleted: syncFromModel()
-                onEditingFinished: saveTo(boundPage)
-                Connections {
-                    target: root
-                    function onCurrentPageIndexChanged() { pageArea.syncFromModel() }
+                    function saveIfChanged() {
+                        if (boundIndex >= 0 && text !== ((sheetBridge.notesPages[boundIndex] || {}).text || ""))
+                            sheetBridge.setNotesPageText(boundIndex, text)
+                    }
+                    onEditingFinished: saveIfChanged()
                 }
             }
+        }
+    }
+
+    // ── press and hold: a page's options, a group's ──────────────────
+    property int _page: -1
+    property string _group: ""
+    function pageOptions(index, title, group) {
+        _page = index; _group = group
+        var opts = [{key: "rename", text: "Rename page", icon: ""}]
+        var groups = sheetBridge.notesGroups
+        for (var i = 0; i < groups.length; i++)
+            if (groups[i].name !== group)
+                opts.push({key: "move:" + groups[i].name, text: "Move to " + groups[i].name, icon: ""})
+        opts.push({key: "remove", text: "Remove page", icon: "trash"})
+        notesOptions.heading = title
+        notesOptions.options = opts
+        notesOptions.open()
+    }
+    function groupOptions(name) {
+        _page = -1; _group = name
+        notesOptions.heading = name
+        notesOptions.options = [{key: "newpage", text: "New page in " + name, icon: ""},
+                                {key: "renamegroup", text: "Rename group", icon: ""},
+                                {key: "removegroup", text: "Remove group", icon: "trash"}]
+        notesOptions.open()
+    }
+    MOptionsDialog {
+        id: notesOptions
+        objectName: "notesOptions"
+        onPicked: (key) => {
+            if (key === "rename") { nameDialog.mode = "renamepage"; nameDialog.open() }
+            else if (key === "remove") confirmRemove.ask("Remove this page and everything written on it?", "page")
+            else if (key.indexOf("move:") === 0) {
+                var wasOpen = root.view === "page" && root.pageIndex === root._page
+                var at = sheetBridge.moveNotesPage(root._page, key.slice(5))
+                if (wasOpen) root.open("page", at)
+                else if (root.view === "page") root.open("list")
+            }
+            else if (key === "newpage") { nameDialog.mode = "pagein"; nameDialog.open() }
+            else if (key === "renamegroup") { nameDialog.mode = "renamegroup"; nameDialog.open() }
+            else if (key === "removegroup") confirmRemove.ask("Remove the group " + root._group + " and all its pages?", "group")
+        }
+    }
+    MOptionsDialog {
+        id: confirmRemove
+        objectName: "notesConfirmRemove"
+        property string what: ""
+        function ask(msg, w) { what = w; heading = "Remove"; message = msg
+                               options = [{key: "yes", text: "Remove", icon: "trash"}]; open() }
+        onPicked: (key) => {
+            if (what === "page") sheetBridge.removeNotesPage(root._page)
+            else sheetBridge.removeNotesGroup(root._group)
+            root.open("list")
+        }
+    }
+
+    // ── your background's suggestions ───────────────────────────────
+    property string _traitKey: ""
+    property var _traitArea: null
+    function suggest(key, label, rows, area) {
+        _traitKey = key; _traitArea = area
+        sheetBridge.setTraitField(key, area.text)
+        var opts = [{key: "roll", text: "🎲 Roll a d" + rows.length, icon: ""}]
+        for (var i = 0; i < rows.length; i++)
+            opts.push({key: "s" + i, text: (i + 1) + ".  " + rows[i], icon: ""})
+        suggestDialog.heading = label
+        suggestDialog.options = opts
+        suggestDialog.open()
+    }
+    MOptionsDialog {
+        id: suggestDialog
+        objectName: "suggestDialog"
+        message: "Tap one to use it."
+        onPicked: (key) => {
+            if (key === "roll") sheetBridge.rollTraitSuggestion(root._traitKey)
+            else sheetBridge.useTraitSuggestion(root._traitKey,
+                                                sheetBridge.traitSuggestions(root._traitKey)[parseInt(key.slice(1))])
+            if (root._traitArea) root._traitArea.text = sheetBridge.traitsNotes[root._traitKey]
         }
     }
 
@@ -235,7 +408,7 @@ Page {
         width: Math.min(parent ? parent.width - 32 : 340, 340)
         padding: 16
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
         onOpened: nameField.forceActiveFocus()
 
         contentItem: ColumnLayout {
@@ -251,7 +424,7 @@ Page {
                 id: nameField
                 objectName: "pageNameField"
                 Layout.fillWidth: true
-                placeholderText: "Page name"
+                placeholderText: "Name"
                 onAccepted: okButton.clicked()
             }
             RowLayout {
@@ -279,24 +452,21 @@ Page {
     }
 
     PageNameDialog {
-        id: addPageDialog
-        objectName: "addPageDialog"
-        heading: "New Notes Page"
-        onAboutToShow: fieldText = ""
+        id: nameDialog
+        objectName: "notesNameDialog"
+        property string mode: "page"
+        heading: mode === "group" ? "New Group" : mode === "renamegroup" ? "Rename Group"
+                 : mode === "renamepage" ? "Rename Page" : "New Page"
+        onAboutToShow: fieldText = mode === "renamegroup" ? root._group
+                       : mode === "renamepage" ? ((sheetBridge.notesPages[root._page] || {}).title || "") : ""
         onConfirmed: (text) => {
-            var before = sheetBridge.notesPages.length
-            sheetBridge.addNotesPage(text)
-            // open the page just made
-            if (sheetBridge.notesPages.length > before)
-                root.currentPageIndex = sheetBridge.notesPages.length
+            if (mode === "group") sheetBridge.addNotesGroup(text)
+            else if (mode === "renamegroup") sheetBridge.renameNotesGroup(root._group, text)
+            else if (mode === "renamepage") sheetBridge.renameNotesPage(root._page, text)
+            else {
+                var at = mode === "pagein" ? sheetBridge.addNotesPageIn(root._group, text) : sheetBridge.addNotesPage(text)
+                if (at >= 0) root.open("page", at)
+            }
         }
-    }
-
-    PageNameDialog {
-        id: renamePageDialog
-        objectName: "renamePageDialog"
-        heading: "Rename Notes Page"
-        onAboutToShow: fieldText = (sheetBridge.notesPages[root.currentPageIndex - 1] || {}).title || ""
-        onConfirmed: (text) => sheetBridge.renameNotesPage(root.currentPageIndex - 1, text)
     }
 }

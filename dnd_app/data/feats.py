@@ -623,77 +623,77 @@ ALL_FEATS = [
     # ── Sigil and the Outlands ────────────────────────────────────────────────
     # (see Scion of the Outer Planes and its 6 follow-up feats above)
 
-    # ── Expanded-content feats (round 1, non-Middle-Earth) ──────────────────────
-    feat('Adroit Crafter', 'CRB', prereq="Proficiency in a skill or tool",
+    # ── Expanded-content feats (round 1, non-Middle-Earth): no book code ─────
+    feat('Adroit Crafter', '', prereq="Proficiency in a skill or tool",
          special="Halve the time to craft an item using a proficient skill/tool. If you'd fail "
                  "and lose the components, keep them instead."),
 
-    feat('Aerial Expert', 'CRB', prereq="Glide trait",
+    feat('Aerial Expert', '', prereq="Glide trait",
          special="Long/high jumps no longer need a 10 ft. running start (choose STR or DEX for "
                  "the jump, double the normal distance). Dash while gliding for extra distance up "
                  "to your speed. Change direction freely while gliding; gain up to 10 ft. of "
                  "altitude once before your descent ends."),
 
-    feat('Bandit Cunning', 'CRB',
+    feat('Bandit Cunning', '',
          special="Reaction: add your INT modifier to a saving throw you're making (once per long "
                  "rest). Action: INT (Investigation) check (DC 10 + a creature's CR you've seen "
                  "fight) to learn one useful fact about it — a damage resistance/immunity, a "
                  "condition immunity, a damage-related special ability, an attack/legendary/"
                  "reaction option, or a special sense."),
 
-    feat('Blade Barrier', 'CRB', prereq="Proficiency with twinblades",
+    feat('Blade Barrier', '', prereq="Proficiency with twinblades",
          special="Using the Whirl bonus action with a twinblade: make one additional melee attack "
                  "(same ability modifier, 1d4 damage die). Until the start of your next turn, "
                  "creatures provoke an opportunity attack from you for entering your reach or "
                  "making a melee attack against you within it."),
 
-    feat('Careful Crafter', 'CRB', prereq="Proficiency in a skill or tool",
+    feat('Careful Crafter', '', prereq="Proficiency in a skill or tool",
          special="Advantage on all crafting ability checks; anyone assisting you also gets "
                  "advantage on theirs. If you fail to craft the item, the time it took is halved."),
 
-    feat("Cat's Caress", 'CRB', prereq="Proficiency with claw",
+    feat("Cat's Caress", '', prereq="Proficiency with claw",
          special="After using the Attack action with a claw in one hand: bonus action, up to two "
                  "melee attacks with a different claw in the other hand (no ability modifier to "
                  "the bonus attacks' damage unless negative, or you have Two-Weapon Fighting "
                  "Style). Advantage to hit a target you're grappling with a claw. Equip/unequip "
                  "one or a pair of claws as a bonus action or action."),
 
-    feat('Cruel', 'CRB',
+    feat('Cruel', '',
          special="Gain d6 cruelty dice = proficiency bonus, regained on a long rest, one rollable "
                  "per turn. Spend one: on damaging a creature, add the roll as extra damage; on a "
                  "critical hit, gain that many temp HP instead; on a CHA (Intimidation) check, add "
                  "the roll to it."),
 
-    feat('Expert Enchanter', 'CRB', asi_flex=['INT', 'WIS', 'CHA'],
+    feat('Expert Enchanter', '', asi_flex=['INT', 'WIS', 'CHA'],
          special="+1 INT/WIS/CHA (max 20). Double proficiency bonus on Enchanting checks with a "
                  "proficient skill. Apply ±half your proficiency bonus to enchanting quirk rolls. "
                  "Each hour spent enchanting counts as 2 hours toward completion."),
 
-    feat('Expert Forger', 'CRB', asi_flex=['STR', 'DEX', 'CON'],
+    feat('Expert Forger', '', asi_flex=['STR', 'DEX', 'CON'],
          special="+1 STR/DEX/CON (max 20). Double proficiency bonus on Manufacturing checks with a "
                  "proficient tool. Apply ±half your proficiency bonus to forging quirk rolls. Each "
                  "hour spent forging counts as 2 hours toward completion."),
 
-    feat('Expert Harvester', 'CRB', asi_flex=['DEX', 'INT'],
+    feat('Expert Harvester', '', asi_flex=['DEX', 'INT'],
          special="+1 DEX or INT (max 20). Double proficiency bonus on Harvesting checks with a "
                  "proficient skill. Add your proficiency bonus even without the required skill. "
                  "Helping another's Harvesting check adds your full proficiency bonus regardless "
                  "of proficiency. No disadvantage for doing Assessment and Carving checks alone."),
 
-    feat('Fearsome Flourisher', 'CRB', prereq="Proficiency with nunchaku",
+    feat('Fearsome Flourisher', '', prereq="Proficiency with nunchaku",
          special="Attacking with a nunchaku: bonus action, one additional melee attack (same "
                  "ability modifier, 1d4 damage die). Flourishing a nunchaku: bonus action to make "
                  "it intimidating — on a successful DEX check, target makes a WIS save (DC 8 + DEX "
                  "modifier, +proficiency bonus if proficient in Intimidation) or is frightened "
                  "until the start of your next turn."),
 
-    feat('Field Cook', 'CRB',
+    feat('Field Cook', '',
          special="Gain cook's utensils proficiency. Substitute any ingredient type for another in "
                  "a recipe. Before rolling quirks, replace one boon-table roll with granting "
                  "inspiration to anyone who eats a portion. After rolling quirks, remove one flaw "
                  "or add a boon (your choice)."),
 
-    feat('Field Medic', 'CRB',
+    feat('Field Medic', '',
          special="See at a glance if a creature is missing HP, and whether it's above/below half. "
                  "Advantage on WIS (Medicine)/INT (Arcana or Religion) checks to identify a curse, "
                  "disease, possession, or blinded/deafened/exhaustion/incapacitated/paralyzed/"
@@ -701,7 +701,7 @@ ALL_FEATS = [
                  "without a slot, uses = half proficiency bonus per long rest; WIS is the "
                  "spellcasting ability."),
 
-    feat('Flamewoken', 'TENDERS',
+    feat('Flamewoken', '',
          special="Speak/read/write Ignan. Learn produce flame (CHA is the spellcasting ability). "
                  "Bonus action: empower your flames — the next fire damage you deal to a creature "
                  "before the end of your next turn adds +2d10 fire (once per short or long rest). "
@@ -714,17 +714,17 @@ ALL_FEATS = [
                  "equal-or-higher-level prepared spell. Once per short or long rest. Only for "
                  "classes that prepare spells (Cleric/Druid/Paladin/Wizard, not Bard/Sorcerer)."),
 
-    feat('Forest Sage', 'TENDERS', prereq="Druid or Wizard", asi_flex=['INT', 'WIS'],
+    feat('Forest Sage', '', prereq="Druid or Wizard", asi_flex=['INT', 'WIS'],
          special="+1 INT or WIS (max 20). Use INT or WIS (your choice) for Animal Handling, "
                  "Arcana, Nature, or Survival checks. Learn two spells from the druid or wizard "
                  "list (of a level you can cast) as spells of your class."),
 
-    feat('Forgemaster', 'CRB', prereq="Expert Forger", asi_flex=['STR', 'DEX', 'CON'],
+    feat('Forgemaster', '', prereq="Expert Forger", asi_flex=['STR', 'DEX', 'CON'],
          special="+1 STR/DEX/CON (max 20). Advantage on Manufacturing checks with a proficient "
                  "tool. Gain proficiency with 2 tools of your choice. Each hour spent forging "
                  "counts as 3 hours toward completion."),
 
-    feat('Heavy Glider', 'CRB', prereq="Glide trait",
+    feat('Heavy Glider', '', prereq="Glide trait",
          special="Can glide while holding a heavy weapon and wearing heavy armor, as long as "
                  "you're not encumbered. Can land your glide in a Large-or-smaller hostile "
                  "creature's space: opposed STR check — success pushes it 10 ft. and knocks it "
@@ -732,59 +732,59 @@ ALL_FEATS = [
 
     # ── Expanded-content feats (round 3, non-Middle-Earth) ──────────────────────
 
-    feat('Jack of All Tools', 'CRB', asi_flex=['STR', 'DEX', 'CON'],
+    feat('Jack of All Tools', '', asi_flex=['STR', 'DEX', 'CON'],
          special="+1 STR/DEX/CON (max 20). Gain proficiency with 3 tools. Manufacturing checks "
                  "with a non-proficient tool add half your proficiency bonus and ignore the usual "
                  "disadvantage. Each hour spent manufacturing counts as 2 hours toward completion."),
 
-    feat('Mystic Conflux', 'CRB',
+    feat('Mystic Conflux', '',
          special="Attune to up to 4 magic items at once. Cast identify without a slot or material "
                  "components, once per long rest."),
 
-    feat('Opportunistic Thief', 'CRB', asi={'DEX': 1},
+    feat('Opportunistic Thief', '', asi={'DEX': 1},
          special="+1 DEX (max 20). When a creature misses you with a melee attack: DEX (Sleight "
                  "of Hand) check (DC 10 + its DEX modifier) to steal an item it's not holding/"
                  "wearing. Outside combat, a successful Sleight of Hand theft lets you flawlessly "
                  "conceal the item or swap in a substitute instantly."),
 
-    feat('Perfect Landing', 'CRB', asi={'DEX': 1},
+    feat('Perfect Landing', '', asi={'DEX': 1},
          special="+1 DEX (max 20). Fall damage die becomes d4 (from d6). Don't fall prone from "
                  "fall damage. No damage from the first 30 ft. of a fall."),
 
-    feat('Plantmender', 'TENDERS', prereq="WIS 13+",
+    feat('Plantmender', '', prereq="WIS 13+",
          special="Action: touch a plant/tree to see visions of what happened to it and its "
                  "vicinity in the last 24 hrs, and learn its current health/blights. Uses = twice "
                  "WIS modifier (min 1) per long rest. Learn mend plants and shillelagh (WIS is the "
                  "spellcasting ability). Cast barkskin or spike growth once per long rest (WIS)."),
 
-    feat('Reapmaster', 'CRB', prereq="Expert Harvester", asi_flex=['DEX', 'INT'],
+    feat('Reapmaster', '', prereq="Expert Harvester", asi_flex=['DEX', 'INT'],
          special="+1 DEX or INT (max 20). Gain proficiency in Arcana, Investigation, Medicine, "
                  "Nature, or Religion (choice). Advantage on Harvesting checks with a proficient skill."),
 
-    feat('Remarkable Recovery', 'CRB', asi={'CON': 1},
+    feat('Remarkable Recovery', '', asi={'CON': 1},
          special="+1 CON (max 20). Stabilizing while dying also regains HP = CON modifier (min "
                  "1). Regaining HP from a spell/potion/class feature (not this feat) regains that "
                  "much extra HP again."),
 
-    feat('Scourge Master', 'CRB', prereq="Proficiency with whip or tetherhooks",
+    feat('Scourge Master', '', prereq="Proficiency with whip or tetherhooks",
          asi_flex=['STR', 'DEX'],
          special="+1 STR or DEX (max 20). Hitting with a tetherhooks/whip: bonus action, STR or "
                  "DEX check vs. the target's STR check to disarm a shield or held item, dropping "
                  "it between you. Use your whip/tetherhooks to pull a sub-1-lb. item within reach "
                  "back to yourself."),
 
-    feat('Speech of the Ancient Beasts', 'CRB', asi={'CHA': 1},
+    feat('Speech of the Ancient Beasts', '', asi={'CHA': 1},
          special="+1 CHA (max 20). Large-or-larger beasts are friendly to you unless attacked. "
                  "Advantage on CHA checks against Large-or-larger beasts. Speak/understand Giant "
                  "Eagle, Giant Elk, Giant Owl; any Large-or-larger beast can otherwise understand "
                  "you (INT 4-or-lower beasts only grasp simple concepts)."),
 
-    feat('Spelldriver', 'CRB', prereq="11th level; Spellcasting or Pact Magic feature",
+    feat('Spelldriver', '', prereq="11th level; Spellcasting or Pact Magic feature",
          special="When you cast a 1st-level+ spell as a bonus action, also cast another 1st-level+ "
                  "spell with your action that turn. If casting two-plus spells in one turn, at "
                  "most one can be 3rd level or higher."),
 
-    feat("Spray 'n' Pray", 'CRB', prereq="Proficiency with a magitech firearm or tommybow",
+    feat("Spray 'n' Pray", '', prereq="Proficiency with a magitech firearm or tommybow",
          special="Reload firearms/tommybows as a bonus action or action. No disadvantage on "
                  "ranged attacks within 5 ft. of a hostile creature. Attack action with a "
                  "one-handed weapon: bonus action attack with a one-handed firearm/tommybow. "
@@ -792,24 +792,24 @@ ALL_FEATS = [
                  "attacks with it (two attacks = -5 to both; no ability modifier on the bonus "
                  "attacks' damage unless negative)."),
 
-    feat('Thrown Arms Master', 'CRB', asi_flex=['STR', 'DEX'],
+    feat('Thrown Arms Master', '', asi_flex=['STR', 'DEX'],
          special="+1 STR or DEX (max 20). Simple/martial melee weapons without the thrown "
                  "property gain it for you (one-handed: 20/60 ft.; two-handed: 15/30 ft.). "
                  "Weapons that already have it get +20/+40 ft. range. Missing with a thrown light "
                  "weapon: it boomerangs back to your hand at the end of your turn."),
 
-    feat('Vital Sacrifice', 'CRB',
+    feat('Vital Sacrifice', '',
          special="Bonus action: take 1d6 necrotic damage (can't be reduced) for a blood boon "
                  "(lasts 1 hr. or until spent). Spend it: +1d6 on an attack roll; +2d6 necrotic "
                  "damage on a hit with an attack or spell; or reduce a creature's STR/DEX/CON "
                  "save by 1d4."),
 
-    feat('Weavebonder', 'CRB', prereq="Expert Enchanter", asi_flex=['INT', 'WIS', 'CHA'],
+    feat('Weavebonder', '', prereq="Expert Enchanter", asi_flex=['INT', 'WIS', 'CHA'],
          special="+1 INT/WIS/CHA (max 20). Advantage on Enchanting checks with a proficient skill. "
                  "Roll a quirk's random element twice and choose either result. Each hour spent "
                  "enchanting counts as 3 hours toward completion."),
 
-    feat('Woodwise', 'CRB',
+    feat('Woodwise', '',
          special="Gain proficiency in Survival or Nature (choice). Ignore difficult terrain. Can't "
                  "become lost in natural surroundings except by magic."),
 ]

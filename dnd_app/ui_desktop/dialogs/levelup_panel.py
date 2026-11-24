@@ -81,7 +81,8 @@ class ChoiceWidget(QFrame):
             head.addWidget(_lbl(src_name, bg, bold=True, size=FS_BODY, wrap=False))
         head.addWidget(_lbl(choice_info["label"], TEXT, bold=True, size=FS_LABEL), 1)
         self._done_lbl = _lbl("✓ Done", TEAL2, bold=True, size=FS_BODY, wrap=False)
-        self._done_lbl.setVisible(self._confirmed)
+        if not self._confirmed:
+            self._done_lbl.hide()
         head.addWidget(self._done_lbl)
         self._lay.addLayout(head)
 
@@ -423,7 +424,7 @@ class ChoiceWidget(QFrame):
             if not met:
                 item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
                 item.setForeground(QColor(TEXT3))
-            item.setToolTip(f"<b>{ft['name']}</b>  [{ft.get('source','')}]"
+            item.setToolTip(f"<b>{ft['name']}</b>" + (f"  [{ft['source']}]" if ft.get('source') else "")
                            + (f"<br><i>Requires: {prereq}</i>" if prereq else "")
                            + (f"<br><b>Prerequisite not met</b>" if not met else "")
                            + f"<br>{ft.get('special','')[:200]}")
@@ -916,10 +917,11 @@ class ChoiceWidget(QFrame):
 class GrantsSummaryWidget(QFrame):
     def __init__(self, char, parent=None):
         super().__init__(parent)
-        self.setStyleSheet(f"QFrame{{background:{SURF};border:1px solid {BORDER};border-radius:6px;}}")
+        self.setObjectName("grantsCard")
+        self.setStyleSheet(f"QFrame#grantsCard{{background:{SURF};border:1px solid {BORDER};border-radius:10px;}}")
         self._outer = QVBoxLayout(self)
-        self._outer.setContentsMargins(10, 8, 10, 8)
-        self._outer.setSpacing(3)
+        self._outer.setContentsMargins(14, 12, 14, 12)
+        self._outer.setSpacing(5)
         self._build_content(char)
 
     def _build_content(self, char):
@@ -936,7 +938,7 @@ class GrantsSummaryWidget(QFrame):
         bg = char.get("background","")
         classes = char.get("classes",[])
 
-        self._outer.addWidget(_lbl("AUTO-APPLIED", GOLD, bold=True, size=FS_SMALL))
+        self._outer.addWidget(_icons.icon_header("info", _lbl("AUTO-APPLIED", GOLD, bold=True, size=FS_SMALL)))
 
         rows = []
         asi = grants.get("asi",{})
@@ -993,7 +995,10 @@ class LevelUpPanel(QWidget):
     # Spells tab and Spell Browser while one does
     spells_to_learn_changed = Signal(bool)
 
-    def __init__(self, char_ref, parent=None):
+    def __init__(self, char_ref, parent=None, fill=True):
+        """fill=False: built empty, for a caller that fills it with
+        refresh() itself straight after (the sheet's _load) -- filled twice
+        it took a noticeable part of opening a character."""
         super().__init__(parent)
         from dnd_app.ui_desktop.style.theme import sync_globals as _sg; _sg(globals())
         self.char = char_ref
@@ -1006,8 +1011,12 @@ class LevelUpPanel(QWidget):
         self._outer.addWidget(self._grants)
 
         # ── Features timeline ─────────────────────────────────────────────
-        self._features_hdr = _lbl("CLASS FEATURES BY LEVEL", IND2, bold=True, size=FS_LABEL)
-        self._outer.addWidget(self._features_hdr)
+        feat_card = QFrame(); feat_card.setObjectName("featuresCard")
+        feat_card.setStyleSheet(f"QFrame#featuresCard{{background:{SURF};border:1px solid {BORDER};border-radius:10px;}}")
+        fcl = QVBoxLayout(feat_card); fcl.setContentsMargins(14, 12, 14, 14); fcl.setSpacing(8)
+        self._features_hdr = _lbl("CLASS FEATURES BY LEVEL", IND2, bold=True, size=FS_SMALL)
+        fcl.addWidget(_icons.icon_header("features", self._features_hdr))
+        self._outer.addWidget(feat_card)
         # as tall as the list, up to 340px -- past that it scrolls
         feat_scroll = QScrollArea(); feat_scroll.setWidgetResizable(True)
         feat_scroll.setMaximumHeight(340)
@@ -1018,10 +1027,11 @@ class LevelUpPanel(QWidget):
         self._features_lay = QVBoxLayout(feat_inner)
         self._features_lay.setSpacing(2); self._features_lay.setContentsMargins(6,4,6,4)
         feat_scroll.setWidget(feat_inner)
-        self._outer.addWidget(feat_scroll)
+        fcl.addWidget(feat_scroll)
 
-        self._pending_hdr = _lbl("CHOICES FOR THIS CHARACTER", AMBER, bold=True, size=FS_HEAD)
-        self._outer.addWidget(self._pending_hdr)
+        self._pending_hdr = _lbl("CHOICES FOR THIS CHARACTER", AMBE2, bold=True, size=FS_SMALL)
+        self._pending_hdr_row = _icons.icon_header("choices", self._pending_hdr)
+        self._outer.addWidget(self._pending_hdr_row)
 
         # One card per choice, at full height (the Choices tab itself
         # scrolls); hidden when there are none.
@@ -1036,6 +1046,11 @@ class LevelUpPanel(QWidget):
         # first in the box, kept across refreshes: refresh_spells_to_learn()
         # updates it as spells are learned on the Spells tab
         self._spells_card = self._build_spells_to_learn_card()
+        # (in the box from the start: shown while it had no parent -- the
+        # sheet asks for it before filling this panel -- it was a window of
+        # its own for a moment, which took the focus from the app's window)
+        self._choices_vl.addWidget(self._spells_card)
+        self._spells_card.hide()
         self._n_unfinished = self._n_choices = 0
         self.has_spells_to_learn = False
 
@@ -1043,7 +1058,8 @@ class LevelUpPanel(QWidget):
         self._outer.addWidget(self._no_choices)
         self._refreshing = False
         self._choice_widgets = []
-        self.refresh()
+        if fill:
+            self.refresh()
 
     def _refresh_features(self):
         """Rebuild the class features timeline."""
@@ -1066,7 +1082,7 @@ class LevelUpPanel(QWidget):
             color = CLS_COLORS[ci % len(CLS_COLORS)]
             cdata = D.get(cname, {})
             feats_map = cdata.get("features", {}); choices_map = cdata.get("level_choices", {})
-            hdr = QLabel(f"{cname}" + (f" — {sub}" if sub else "") + f"  (Lv {clvl})  [Total Lv {total_lvl}]")
+            hdr = QLabel(f"{cname} {clvl}" + (f"  ·  {sub}" if sub else ""))
             hdr.setStyleSheet(f"color:{color};font-size:{FS_BODY}px;font-weight:700;background:{SURF2};"                              f"border-left:3px solid {color};padding:4px 8px;border-radius:3px;")
             hdr.setWordWrap(True)
             self._features_lay.addWidget(hdr)
@@ -1195,7 +1211,7 @@ class LevelUpPanel(QWidget):
         self._spells_card.setVisible(bool(lines))
         n = self._n_unfinished + (1 if lines else 0)
         self._no_choices.setVisible(not n)
-        self._pending_hdr.setVisible(bool(n))
+        self._pending_hdr_row.setVisible(bool(n))
         if n:
             self._pending_hdr.setText(f"PENDING CHOICES  ({n} remaining)")
         self._choices_inner.setVisible(bool(self._n_choices or lines))

@@ -371,8 +371,9 @@ def get_initiative(char: dict) -> int:
     if cl.get("Wizard", 0) >= 2 and any(w in subs.get("Wizard", "").lower() for w in ("war magic", "chronurgy")):
         bonus += ability_mod(char, "INT")
 
-    # what adds to every ability check (Stone of Good Luck)
-    bonus += char.get("magic_check_bonus", 0)
+    # what adds to every ability check (Stone of Good Luck), or to
+    # Dexterity checks
+    bonus += char.get("magic_check_bonus", 0) + (char.get("magic_ability_check_bonus") or {}).get("DEX", 0)
 
     return dex + bonus
 
@@ -391,6 +392,10 @@ def _half_proficiency(char: dict, ability: str) -> int:
 
 def get_skill_bonus(char: dict, skill: str) -> int:
     ability = SKILL_ABILITY.get(skill, "STR")
+    from .forms import form_skill
+    own = form_skill(char, skill, ability)
+    if own is not None:
+        return own                  # Polymorphed: the form's own skill
     # Forest Sage: substitutes the player's chosen INT/WIS ability for
     # Animal Handling/Arcana/Nature/Survival checks.
     if skill in ("Animal Handling", "Arcana", "Nature", "Survival") and "Forest Sage" in char.get("feats", []):
@@ -409,7 +414,10 @@ def get_skill_bonus(char: dict, skill: str) -> int:
     astral_skill = char.get("_choices", {}).get("astral_knowledge_skill")
     if astral_skill and skill == astral_skill[0]:
         prof_level = max(prof_level, 2)
+    if skill in char.get("magic_skill_profs", []):    # an Ioun stone of knowledge
+        prof_level = max(prof_level, 2)
     pb = get_prof_bonus(char)
+    mod += (char.get("magic_ability_check_bonus") or {}).get(ability, 0)
 
     mod += fey_wanderer_check_bonus(char, ability)
     # Elegant Courtier (Samurai 7): your Wisdom modifier on Persuasion
@@ -500,7 +508,7 @@ def get_tool_bonus(char: dict, tool: str, ability: str) -> int:
     every check of that ability (Otherworldly Glamour, Stone of Good Luck)."""
     pb = get_prof_bonus(char) * (2 if tool_expertise(char, tool) else 1)
     return (ability_mod(char, ability) + pb + fey_wanderer_check_bonus(char, ability)
-            + char.get("magic_check_bonus", 0))
+            + char.get("magic_check_bonus", 0) + (char.get("magic_ability_check_bonus") or {}).get(ability, 0))
 
 
 def _elegant_courtier(char: dict) -> bool:
@@ -514,10 +522,93 @@ def ability_check_bonus(char: dict, ability: str) -> int:
     Charisma checks, and an item's bonus to every check (Stone of Good
     Luck)."""
     return (ability_mod(char, ability) + fey_wanderer_check_bonus(char, ability)
-            + _half_proficiency(char, ability) + char.get("magic_check_bonus", 0))
+            + _half_proficiency(char, ability) + char.get("magic_check_bonus", 0)
+            + (char.get("magic_ability_check_bonus") or {}).get(ability, 0))
+
+
+def skill_prof_level(char: dict, skill: str) -> int:
+    """0 none, 1 half, 2 proficient, 3 expertise: the character's own,
+    with a githyanki's skill for the day and an Ioun stone's."""
+    level = (char.get("skills") or {}).get(skill, 0)
+    astral = (char.get("_choices") or {}).get("astral_knowledge_skill") or []
+    if astral and astral[0] == skill or skill in char.get("magic_skill_profs", []):
+        level = max(level, 2)
+    return level
+
+
+def known_languages(char: dict) -> list:
+    """Every language the character speaks, an item's too (a Draconic
+    Longsword's Draconic), sorted."""
+    langs = set(char.get("languages") or [])
+    langs |= {lang for lang, _src in char.get("magic_languages", []) if lang}
+    return sorted(langs)
+
+
+def defenses(char: dict) -> list:
+    """The character's resistances, immunities and vulnerabilities, for
+    both apps' badges: [{"kind": "resist" / "immune" / "vulnerable",
+    "label": "fire" or "poisoned (condition)", "tip": "Resistance to fire
+    damage\nFrom: Ring of Fire Resistance"}]. "all" and "all except X"
+    become each damage type; immunity to a type drops a resistance (or
+    vulnerability) to it, and resistance and vulnerability to one type
+    cancel out, as the rules say."""
+    from collections import defaultdict
+    types = ["acid", "bludgeoning", "cold", "fire", "force", "lightning", "necrotic",
+             "piercing", "poison", "psychic", "radiant", "slashing", "thunder"]
+
+    def expand(dmg_type):
+        low = (dmg_type or "").lower()
+        if low == "all":
+            return types
+        if low.startswith("all except"):
+            gone = {e.strip() for e in low.replace("all except", "").split("/")}
+            return [t for t in types if t not in gone]
+        return [dmg_type]
+
+    res, imm, vul = defaultdict(list), defaultdict(list), defaultdict(list)
+    for dmg_type, src in char.get("damage_resistances", []):
+        base = dmg_type.split(" (")[0]
+        qual = dmg_type[len(base):].strip()
+        for t in expand(base):
+            res[t].append((t + (f" {qual}" if qual else ""), src))
+    for dmg_type, src in char.get("damage_immunities", []):
+        for t in expand(dmg_type.split(" (")[0]):
+            imm[t].append((t, src))
+    for cond, src in char.get("condition_immunities_magic", []):
+        imm[f"{cond} (condition)"].append((f"{cond} (condition)", src))
+    for dmg_type, src in char.get("damage_vulnerabilities", []):
+        for t in expand(dmg_type.split(" (")[0]):
+            vul[t].append((t, src))
+    for t in list(res):
+        if t in imm:
+            del res[t]
+    for t in list(vul):
+        if t in imm:
+            del vul[t]
+        elif t in res and any(" (" not in lbl for lbl, _ in res[t]):
+            del vul[t], res[t]
+    out = []
+    for t, entries in sorted(res.items()):
+        # an unqualified resistance covers at least as much as a qualified one
+        label = next((lbl for lbl, _ in entries if " (" not in lbl), entries[0][0])
+        out.append({"kind": "resist", "label": label,
+                    "tip": f"Resistance to {label} damage\nFrom: " + ", ".join(s for _, s in entries)})
+    for t, entries in sorted(imm.items()):
+        label = entries[0][0]
+        what = label if "(condition)" in label else f"{label} damage"
+        out.append({"kind": "immune", "label": label,
+                    "tip": f"Immunity to {what}\nFrom: " + ", ".join(s for _, s in entries)})
+    for t, entries in sorted(vul.items()):
+        out.append({"kind": "vulnerable", "label": t,
+                    "tip": f"Vulnerable to {t} damage (it's doubled)\nFrom: " + ", ".join(s for _, s in entries)})
+    return out
 
 
 def get_saving_throw_bonus(char: dict, ability: str) -> int:
+    from .forms import form_save
+    own = form_save(char, ability)
+    if own is not None:
+        return own                  # Polymorphed: the form's own saving throw
     mod = ability_mod(char, ability)
     pb = get_prof_bonus(char)
     cl = class_levels(char)
@@ -546,7 +637,7 @@ def get_saving_throw_bonus(char: dict, ability: str) -> int:
     if cl.get("Artificer", 0) >= 20:
         base += len(char.get("attuned_items", []))
 
-    return base + char.get("magic_save_bonus", 0)
+    return base + char.get("magic_save_bonus", 0) + (char.get("magic_ability_save_bonus") or {}).get(ability, 0)
 
 
 def has_reliable_talent(char: dict) -> bool:
@@ -796,11 +887,8 @@ def armor_type_worn(char: dict) -> str:
     """What the worn armor is: "none", "light", "medium" or "heavy" --
     read from the armor table, with any +N or material stripped
     ("Plate +1", "Adamantine Splint"). Half Plate is medium."""
-    from .magic_items import parse_magic_suffix, parse_material_prefix
-    worn = char.get("armor_worn") or "No Armor"
-    base, _ = parse_magic_suffix(worn)
-    base, _ = parse_material_prefix(base)
-    armor = ARMOR_DICT.get(base) or ARMOR_DICT.get(worn)
+    from .magic_items import worn_armor
+    armor = ARMOR_DICT.get(worn_armor(char)[0])
     kind = (armor or {}).get("type", "none")
     return kind if kind in ("light", "medium", "heavy") else "none"
 
@@ -850,13 +938,12 @@ def _ac_base_parts(char: dict) -> list:
     override = char.get("ac_override")
     if override is not None:
         return [("AC set by hand", override)]
-    from .magic_items import parse_magic_suffix
-    armor_name = char.get("armor_worn", "No Armor") or "No Armor"
-    base_armor_name, armor_magic_bonus = parse_magic_suffix(armor_name)
+    from .magic_items import worn_armor, is_magic_shield, parse_magic_suffix
+    base_armor_name, armor_magic_bonus = worn_armor(char)
     dex = ability_mod(char, "DEX"); con = ability_mod(char, "CON"); wis = ability_mod(char, "WIS")
 
     shield_parts = []
-    if char.get("shield", False):
+    if char.get("shield", False) or is_magic_shield(char.get("armor_worn") or ""):
         sm = char.get("shield_magic_bonus", 0)
         shield_parts = [("Shield" if not sm else f"Shield (+{sm} enchantment)", 2 + sm)]
     # magic items (each listed), plus whatever else adds to it (infusions)
@@ -896,7 +983,10 @@ def _ac_base_parts(char: dict) -> list:
     elif armor["type"] == "shield":
         parts = [("Base (unarmored)", 10), ("Dexterity modifier", dex), ("Shield", armor["ac"])]
     else:
-        parts = [(base_armor_name, armor["ac"])]
+        worn = (char.get("armor_worn") or "").strip()
+        from .magic_items import parse_material_prefix
+        own = worn if worn and parse_material_prefix(parse_magic_suffix(worn)[0])[0] != base_armor_name else ""
+        parts = [(f"{own} ({base_armor_name.lower()})" if own else base_armor_name, armor["ac"])]
         if armor_magic_bonus:
             parts.append((f"{base_armor_name} (+{armor_magic_bonus} enchantment)", armor_magic_bonus))
         dex_cap = armor.get("dex_cap")
@@ -931,7 +1021,8 @@ def get_ac_breakdown(char: dict) -> list[tuple[str, int]]:
         from dnd_app.data.statblocks import WILDSHAPE_BEASTS
         beast = WILDSHAPE_BEASTS.get(active_beast)
         if beast:
-            return [(f"{active_beast} (Wild Shape)", beast["ac"])]
+            from .forms import form_kind
+            return [(f"{active_beast} ({form_kind(char)})", beast["ac"])]
     from .effects import effect_ac_parts, effect_ac_floor, EFFECT_TABLE
     parts = _ac_base_parts(char) + effect_ac_parts(char)
     floor = effect_ac_floor(char)
@@ -963,9 +1054,9 @@ def _heavy_armor_speed_penalty(char: dict):
     with a Strength score above theirs (PHB p.144) -- None otherwise, and
     always for a dwarf, whose speed heavy armor doesn't reduce."""
     from dnd_app.data.items import ARMOR_DICT
-    from .magic_items import parse_magic_suffix
-    name, _ = parse_magic_suffix(char.get("armor_worn", "No Armor") or "No Armor")
-    need = (ARMOR_DICT.get(name) or {}).get("str_req", 0)
+    from .magic_items import worn_armor, armor_has_drawbacks
+    name, _ = worn_armor(char)
+    need = (ARMOR_DICT.get(name) or {}).get("str_req", 0) if armor_has_drawbacks(char) else 0
     if not need or ability_score(char, "STR") >= need:
         return None
     if (char.get("species") or char.get("race", "")) == "Dwarf":
@@ -1122,6 +1213,9 @@ def spellcasting_block_reason(char: dict) -> str:
     Petrified, Surprised). Checked before any slot or free use is spent."""
     if "Rage" in char.get("active_effects", []):
         return "you're raging"
+    from .forms import replaces_mind, form_kind, form_name
+    if replaces_mind(char):
+        return f"you're a {form_name(char)} ({form_kind(char)}: no spells)"
     active = effective_conditions(char)
     if "Incapacitated" in active:
         cause = next((c for c in INCAPACITATING if c in active), "Incapacitated")
@@ -1151,6 +1245,13 @@ def on_effect_started(char: dict, name: str) -> str:
     from dnd_app.core.durations import EFFECT_ROUNDS, set_rounds
     if name in EFFECT_ROUNDS:
         set_rounds(char, "effect", name, EFFECT_ROUNDS[name])
+    if name == "Aid" and not char.get("is_dead"):
+        # an ally's Aid (put on from the Effects list): your current hit
+        # points rise with your maximum
+        gain = aid_bonus(char)
+        char["current_hp"] = char.get("current_hp", 0) + gain
+        char["max_hp"] = char.get("max_hp", 0) + gain
+        return f"your hit point maximum and current hit points are {gain} higher"
     if name == "Shifting":
         # temporary hit points: your level + CON (ERLW), or twice your
         # proficiency bonus (MPMM); a beasthide shifter gets 1d6 more
@@ -1750,8 +1851,8 @@ def get_innate_movement_grants(char: dict) -> dict:
     if barb_lvl >= 5:
         from dnd_app.data.items import ARMOR_DICT
         from .magic_items import parse_magic_suffix
-        armor_name = char.get("armor_worn", "No Armor")
-        base_armor_name, _ = parse_magic_suffix(armor_name)
+        from .magic_items import worn_armor
+        base_armor_name, _ = worn_armor(char)
         armor_entry = ARMOR_DICT.get(base_armor_name)
         is_heavy = armor_entry is not None and armor_entry.get("type") == "heavy"
         if not is_heavy:
@@ -2437,8 +2538,8 @@ def get_effective_speed(char: dict) -> dict:
     # "wearing armor" in the first place.
     barb_lvl = class_levels(char).get("Barbarian", 0)
     if barb_lvl >= 5:
-        armor_name = char.get("armor_worn", "No Armor")
-        base_armor_name, _ = parse_magic_suffix(armor_name)
+        from .magic_items import worn_armor
+        base_armor_name, _ = worn_armor(char)
         armor_entry = ARMOR_DICT.get(base_armor_name)
         is_heavy = armor_entry is not None and armor_entry.get("type") == "heavy"
         if not is_heavy:
@@ -2531,7 +2632,7 @@ def get_effective_speed(char: dict) -> dict:
     }
 
 
-def get_character_senses(char: dict) -> dict:
+def get_character_senses(char: dict, _no_devils_sight: bool = False) -> dict:
     """Returns the character's senses as a structured dict, e.g.
     {"darkvision": 60, "blindsight": 0, "tremorsense": 0, "truesight": 0}.
     Parsed from race trait text and subrace description text rather than
@@ -2562,28 +2663,8 @@ def get_character_senses(char: dict) -> dict:
                 senses[sense_name] = int(m.group(1))
         return senses
 
-    from dnd_app.data.races import get_race
-    species = char.get("species") or char.get("race", "")
-    subrace = char.get("subrace", "") or ""
-    race = get_race(species)
-    if race:
-        # Base race traits first
-        for t in race.get("traits", []):
-            for sense_name in senses:
-                m = re.search(rf"{sense_name} (\d+) ?ft", t, re.I)
-                if m:
-                    senses[sense_name] = max(senses[sense_name], int(m.group(1)))
-
-        # Subrace text can upgrade a sense (e.g. Drow/Duergar's Superior
-        # Darkvision to 120 ft) — take the higher value if both are present.
-        for sub_text in race.get("subraces", []) or []:
-            clean_name = sub_text.split("(")[0].strip()
-            if clean_name.lower() not in subrace.lower() and subrace.lower() not in clean_name.lower():
-                continue
-            for sense_name in senses:
-                m = re.search(rf"{sense_name} (\d+) ?ft", sub_text, re.I)
-                if m:
-                    senses[sense_name] = max(senses[sense_name], int(m.group(1)))
+    for sense_name, v in _race_senses(char).items():
+        senses[sense_name] = max(senses[sense_name], v)
 
     # Blind Fighting fighting style: blindsight 10 ft, a genuinely
     # different sense source from race — checked separately here rather
@@ -2592,10 +2673,15 @@ def get_character_senses(char: dict) -> dict:
     if any("blind fighting" in fs.lower() for fs in char.get("fighting_styles", [])):
         senses["blindsight"] = max(senses["blindsight"], 10)
 
+    # Umbral Sight (Gloom Stalker, 3rd level): darkvision 60 ft., or 30 ft.
+    # more if you already have it
+    if _umbral_sight(char):
+        senses["darkvision"] = senses["darkvision"] + 30 if senses["darkvision"] else 60
+
     # Devil's Sight (Eldritch Invocation): darkvision 120 ft. This system
     # doesn't distinguish magical vs nonmagical darkness, so granting 120ft
     # unconditionally is the closest accurate approximation.
-    if char.get("_devils_sight", False):
+    if char.get("_devils_sight", False) and not _no_devils_sight:
         senses["darkvision"] = max(senses["darkvision"], 120)
 
     # Keenness of the Stone Giant (feat): darkvision 60 ft., or +60 ft.
@@ -2635,6 +2721,135 @@ def get_character_senses(char: dict) -> dict:
             senses[sense_name] = max(senses[sense_name], val)
 
     return senses
+
+
+def _race_senses(char: dict) -> dict:
+    """The senses the race (and its subrace) gives, from their trait text:
+    a subrace's can upgrade the race's (Drow's and Duergar's Superior
+    Darkvision, 120 ft) -- the higher counts."""
+    import re
+    from dnd_app.data.races import get_race
+    senses = {"darkvision": 0, "blindsight": 0, "tremorsense": 0, "truesight": 0}
+    species = char.get("species") or char.get("race", "")
+    subrace = (char.get("subrace", "") or "").strip()
+    race = get_race(species)
+    if not race:
+        return senses
+    texts = list(race.get("traits", []))
+    if subrace:
+        # (no subrace picked: none of them -- an empty name matched them all)
+        for sub_text in race.get("subraces", []) or []:
+            clean_name = sub_text.split("(")[0].strip()
+            if clean_name and (clean_name.lower() in subrace.lower() or subrace.lower() in clean_name.lower()):
+                texts.append(sub_text)
+    for t in texts:
+        for sense_name in senses:
+            m = re.search(rf"{sense_name} (\d+) ?ft", t, re.I)
+            if m:
+                senses[sense_name] = max(senses[sense_name], int(m.group(1)))
+    return senses
+
+
+def _umbral_sight(char: dict) -> bool:
+    return any(c.get("class") == "Ranger" and "Gloom Stalker" in (c.get("subclass") or "")
+               and int(c.get("level", 0)) >= 3 for c in char.get("classes", []))
+
+
+def _invocation(char: dict, name: str) -> bool:
+    n = name.lower()
+    return any(str(i).lower().replace("\u2019", "'").startswith(n) for i in char.get("eldritch_invocations", []))
+
+
+def sense_list(char: dict) -> list:
+    """Every sense the character has, for both apps' Overview: [{"name",
+    "range" (feet, 0 for one with none), "source", "covered" (another sense
+    does all it does, e.g. darkvision beside Devil's Sight -- still listed,
+    greyed), "what" (a word on what it does, or "")}]. The numbers are
+    get_character_senses()'s; this says where each comes from, and adds
+    what changes how you see without being a range of its own."""
+    from .forms import form_name
+    out = []
+
+    def add(name, rng, source, what=""):
+        out.append({"name": name, "range": int(rng or 0), "source": source, "covered": False, "what": what})
+
+    if form_name(char):
+        # in a form you see with its senses alone
+        for k, v in get_character_senses(char).items():
+            if v:
+                add(k.title(), v, f"{form_name(char)}'s senses")
+        return out
+
+    base = get_character_senses(char, _no_devils_sight=True)
+    from .magic_items import _active_item_names
+    from dnd_app.data.magic_items import get_item_effect
+    items = {}
+    for name in _active_item_names(char):
+        eff = get_item_effect(name)
+        for e in (eff if isinstance(eff, list) else [eff] if eff else []):
+            if isinstance(e, dict) and e.get("type") == "senses":
+                items.setdefault(e.get("sense"), []).append(name)
+    effects = set(char.get("active_effects", []))
+    race = char.get("species") or char.get("race", "")
+    sub = char.get("subrace") or ""
+
+    def sources(sense, own):
+        got = list(own) + items.get(sense, [])
+        return ", ".join(got) if got else ""
+
+    dv = base["darkvision"]
+    race_dv = _race_senses(char)["darkvision"]
+    if dv:
+        own = []
+        if race_dv:
+            own.append(sub if sub and sub.lower() != "standard" else race)   # "Drow", "Hill Dwarf"
+        if _umbral_sight(char):
+            own.append("Umbral Sight")
+        for feat in ("Keenness of the Stone Giant",):
+            if feat in char.get("feats", []):
+                own.append(feat)
+        if "Darkvision" in effects:
+            own.append("Darkvision (spell)")
+        add("Superior Darkvision" if race_dv >= 120 else "Darkvision",
+            dv, sources("darkvision", own))
+    if char.get("_devils_sight"):
+        add("Devil's Sight", 120, "Eldritch invocation", "magical darkness too")
+        for s_ in out:
+            if s_["name"] in ("Darkvision", "Superior Darkvision") and s_["range"] <= 120:
+                s_["covered"] = True
+                s_["source"] += " · Devil's Sight covers it"
+    if base["blindsight"]:
+        own = []
+        if any("blind fighting" in fs.lower() for fs in char.get("fighting_styles", [])):
+            own.append("Blind Fighting")
+        if "Draconic Transformation" in effects:
+            own.append("Draconic Transformation")
+        add("Blindsight", base["blindsight"], sources("blindsight", own + ([race] if _race_senses(char)["blindsight"] else [])))
+    if base["tremorsense"]:
+        add("Tremorsense", base["tremorsense"], sources("tremorsense", [race] if _race_senses(char)["tremorsense"] else []))
+    truesight = max(base["truesight"], 120 if "True Seeing" in effects else 0)
+    if truesight:
+        add("Truesight", truesight, sources("truesight", (["True Seeing"] if "True Seeing" in effects else [])
+                                             + ([race] if _race_senses(char)["truesight"] else [])))
+    if "See Invisibility" in effects:
+        add("See Invisibility", 0, "See Invisibility (spell)", "invisible creatures and objects")
+    if _invocation(char, "Witch Sight"):
+        add("Witch Sight", 30, "Eldritch invocation", "true forms")
+    if _invocation(char, "Ghostly Gaze"):
+        add("Ghostly Gaze", 30, "Eldritch invocation", "through solid objects, 1 minute")
+    if _umbral_sight(char):
+        add("Umbral Sight", 0, "Gloom Stalker", "unseen by darkvision in darkness")
+    return out
+
+
+def aid_bonus(char: dict) -> int:
+    """Aid on you: your hit point maximum (and, when it's cast, your
+    current hit points) 5 higher, and 5 more for each slot level above
+    2nd. One put on you from the Effects list counts as a 2nd-level one."""
+    if "Aid" not in char.get("active_effects", []):
+        return 0
+    lvl = int(((char.get("effect_details") or {}).get("Aid") or {}).get("level") or 2)
+    return 5 * max(1, lvl - 1)
 
 
 def compute_max_hp(char: dict) -> int:
@@ -2738,6 +2953,10 @@ def update_all(char: dict) -> dict:
     Recompute all derived stats and update the character dict.
     Returns the updated character dict.
     """
+    from .forms import keep_in_step
+    keep_in_step(char)              # a Polymorph that's ended: back to yourself
+    from .summons import keep_in_step as _summons_in_step
+    _summons_in_step(char)          # a Conjure Animals no longer held: its creatures go
     cl = class_levels(char)
     subs = subclasses(char)
     # Effective ability scores (base + ability_bonuses from ASI/racial
@@ -2883,6 +3102,10 @@ def update_all(char: dict) -> dict:
             entry = (_dmg_type, _fx_name)
             if entry not in res:
                 res.append(entry)
+        for _cond in _fx_info.get("condition_immunity", []):
+            imm = char.setdefault("condition_immunities_magic", [])
+            if (_cond, _fx_name) not in imm:
+                imm.append((_cond, _fx_name))
         for _ab, _val in _fx_info.get("ability_override", {}).items():
             overrides = char.setdefault("ability_overrides", {})
             overrides[_ab] = max(overrides.get(_ab, 0), _val)
@@ -2950,6 +3173,7 @@ def update_all(char: dict) -> dict:
     override = char.get("hp_max_override")
     base_max = override if override is not None else compute_max_hp(char)
     base_max += char.get("magic_hp_max_bonus", 0)
+    base_max += aid_bonus(char)
     # Exhaustion level 4+: hit point maximum is halved (PHB p.291). Applied as
     # a display-time adjustment (not baked into the stored/override value) so
     # recovering from exhaustion correctly restores full max HP.

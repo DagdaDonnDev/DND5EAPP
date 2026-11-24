@@ -7,13 +7,13 @@
 <h1 align="center">MIMIC</h1>
 
 <p align="center">
-  <b>A complete D&D 5e character creator and character sheet</b><br>
-  for Windows, macOS, Linux and Android — offline, and free
+  <b>A D&D 5e character creator and character sheet</b><br>
+  for Windows, macOS, Linux and Android. Free, and works offline.
 </p>
 
 <!-- github-only -->
 <p align="center">
-  <img alt="Version 6.0.0" src="https://img.shields.io/badge/version-6.0.0-d4a820?style=for-the-badge">
+  <img alt="Version 7.0.0" src="https://img.shields.io/badge/version-7.0.0-d4a820?style=for-the-badge">
   <img alt="Runs on Windows, macOS, Linux and Android" src="https://img.shields.io/badge/runs%20on-Windows%20%C2%B7%20macOS%20%C2%B7%20Linux%20%C2%B7%20Android-5b7af5?style=for-the-badge">
   <img alt="D&D 5e, 2014 rules" src="https://img.shields.io/badge/rules-D%26D%205e%20(2014)-d44040?style=for-the-badge">
   <img alt="Works offline" src="https://img.shields.io/badge/works-offline-18b28a?style=for-the-badge">
@@ -36,24 +36,24 @@
 </p>
 <!-- /github-only -->
 
-Build a character, level it up and play it at the table, on your computer or
-your phone, from the same character file. MIMIC keeps the books: slots,
-uses, rests, and what every feature, item and condition does to your
-numbers. The dice, and your DM's calls, stay with you.
+MIMIC builds a character, levels it up and runs its sheet at the table,
+on desktop or Android, from the same character file. It tracks spell
+slots, uses and rests, and works out how features, items and conditions
+change your numbers. You roll the damage, and your DM makes the calls.
 
 <!-- github-only -->
 
-| 84 | 14 | 127 | 521 | 138 | 99 | 1,283 | 185 |
+| 84 | 14 | 127 | 521 | 138 | 99 | 1,374 | 263 |
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | races | classes | subclasses | spells | feats | backgrounds | magic items | Wild Shape forms |
 
 <!-- /github-only -->
 
-- **It keeps count** — spell slots, uses, ki, hit dice and the rest, each back on the right rest
-- **Change your mind freely** — level down, swap your race or drop a feat, and everything that came with it goes
-- **Bring your old sheets** — a filled-in official 5e PDF character sheet becomes a full character
-- **One character, both apps** — the same file opens on your phone and your computer
-- **Yours, offline** — no account, no internet, free
+- Tracks spell slots, uses, ki and hit dice, and restores each on the right rest
+- Levelling down, changing race or removing a feat removes everything it gave
+- Imports a filled-in official 5e PDF character sheet
+- The same character file opens on desktop and Android
+- No account or internet connection needed
 
 ---
 
@@ -72,10 +72,10 @@ python dnd_app/run_dnd_creator.py
 
 - **Windows** — `packaging\windows\build_exe.bat` makes `dist\MIMIC.exe`: one file, no Python needed
 - **macOS / Linux** — `./packaging/windows/build_exe.sh` makes `dist/MIMIC`
-- **Android** — `packaging\android\clean_build_android.bat` makes `dist\MIMIC.apk`, ready to copy to your phone
+- **Android** — `packaging\android\clean_build_android.bat` makes `dist\MIMIC.apk` to copy to your phone
 - **A new computer** — double-click `packaging\setup_new_computer.bat` once first: it installs what both builds need (Python; WSL, Java and the Android tools)
 
-The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Android](packaging/android/README.md) — cover first-time setup. The version, **6.0.0**, is set in one place (`dnd_app/ui_android/buildozer.spec`), and both the APK and the Windows EXE (right-click → Properties → Details) carry it.
+The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Android](packaging/android/README.md) — cover first-time setup. The version, **7.0.0**, is set in one place (`dnd_app/ui_android/buildozer.spec`), and both the APK and the Windows EXE (right-click → Properties → Details) carry it.
 
 ### Troubleshooting
 
@@ -91,11 +91,17 @@ The guides — [Windows, macOS & Linux](packaging/windows/README.md) and [Androi
 <details open>
 <summary><b>Your first character</b></summary>
 
-1. Press **Create New Character** on the start screen (or **File → New Character**). The wizard goes race, ability scores (point buy, standard array or your own), background, class, spells and equipment, and shows each option in full as you pick.
+1. Press **Create New Character** on the start screen (or **File → New Character**). The wizard has six steps, with a bar along the top showing where you are:
+   - **Race:** search the races, then pick one to see its bonuses, subraces and traits.
+   - **Abilities:** standard array, point buy, roll or enter your own. Your race's +1s go where you tap.
+   - **Class & Background:** your name and alignment, a class, and a background.
+   - **Spells & Choices:** what level 1 asks you to pick (a subclass for a Cleric, Sorcerer or Warlock, skills, Expertise, languages, tools) and your starting spells. A skill you already have is greyed out; hover over it (press and hold on Android) to see where it's from. A class with no spells calls this step **Choices**.
+   - **Equipment:** your class's starting gear as A or B picks, beside what you'll start with.
+   - **Summary:** the whole character, with an edit button on each card, and **Create Character**.
 2. When it finishes, the sheet opens and the character is saved.
-3. Anything the wizard didn't ask — a background's extra skill or tool, a racial language, which ability a feat raises, the spells a feat lets you pick — waits on the **Choices** tab, with any spells you still have room to learn. The Choices tab pulses until you're done.
+3. Anything the wizard didn't ask (a Variant Human's feat, say) waits on the **Choices** tab, which pulses until you're done.
 
-Playing a character from paper? **Import PDF Sheet** on the start screen turns a filled-in official character sheet into a full character (see *Saving, sharing and PDFs*).
+To bring in a paper character, use **Import PDF Sheet** on the start screen with a filled-in official character sheet (see *Saving, sharing and PDFs*).
 
 </details>
 
@@ -104,15 +110,14 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 
 | Desktop tab | Android screen | What's there |
 |---|---|---|
-| Abilities & Saves | Abilities | Scores, saving throws, and your numbers at a glance: proficiency bonus, speed, senses, passive Perception, Investigation and Insight, attacks per action, carrying capacity. The dice buttons roll; click a save to mark an extra proficiency |
-| Skills & Proficiencies | Proficiencies | Skills (right-click one to set proficiency or expertise), languages, armour, weapon and tool proficiencies, and **DM-granted proficiencies…** |
+| Overview | Overview | Each ability with its saving throw (the modifier rolls the check, the dice the save; tick a save for an extra proficiency), skills (right-click one to set proficiency or expertise), senses with passive Perception, Investigation and Insight, and your languages, armour, weapon and tool proficiencies with **DM-granted proficiencies…** |
 | Combat | Combat, Actions | HP and AC, Initiative and Speed, death saves, weapons, conditions and effects, Wild Shape, everything you can do on a turn, and **New Turn** |
-| Gear & Items | Equipment, Companions | Inventory, coins, magic items and attunement, and the Equipment, Magic Items and Companions browsers |
+| Inventory | Inventory, Infusions | Loadout (what you hold and wear, slot by slot, with attunement and tattoos), Inventory (everything else), an Artificer's Infusions, coins and carrying, and the Equipment and Magic Items browsers |
 | Spells | Spells | Slots, Spell Resources (Sorcery Points, Arcane Ward, Bardic Inspiration, Channel Divinity, free casts…), the Spellcasting table, My Spells and the Spell Browser |
-| Infusions | Infusions | Artificers only |
-| Choices | Choices | **Level Up / Multiclass**, **Level Down**, **Remove Class**, your identity, and anything still to pick |
-| Features | Features | Every class, race and feat feature, with a box to find one and what it does a click (or tap) away, and the feats and rewards your DM grants |
-| Traits & Notes | Notes | Personality, backstory and notes, and the *Imported from PDF* page |
+| Creatures | Creatures | Every stat block of yours, in groups to open and close: Mounts, Companions, Familiars, Summons, Wild Shape, Vehicles and Other. Beside them, the Bestiary (choose a creature, press Add Selected and pick its group) and Mounts & Vehicles. Right-click a creature (press and hold on Android) to move it, set its max HP or remove it |
+| Features | Features | Your race, background, feats and each class by level, the next level faded; a feature opens to all it says and your picks (Metamagic, invocations, maneuvers…), and the feats and gifts your DM grants |
+| Notes | Notes | Character (appearance, background, and personality, ideals, bonds and flaws with your background's suggestions to pick or roll), Backstory, and your own pages in groups you make; drag a page onto a group to move it |
+| Choices | Choices | **Level Up** and **Level Down**, a row per class with its subclass and ⋯ (change the class, or remove it), your identity, and anything still to pick |
 
 - **The magnifying glass opens the details** of a spell, item or feat, on both apps.
 - **On desktop, right-click a row** for everything else it can do (Cast, Study, Remove…) and hover anything for its numbers. **On Android, press and hold.**
@@ -130,11 +135,12 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **Rounds left:** a spell of a minute or less counts its own rounds once it's cast (Bless, Hold Person, a smite…), and so do Rage and the other one-minute class features. Give any effect or condition a count with its hourglass. Each New Turn takes a round off and ends what has run out, saying so. Longer spells (10 minutes, an hour) last until you end them.
 - **Use** (or **Cast**) on a card spends what it costs — a slot, ki, a use — turns its effect on, and says what it did and what's left. When there's a choice to make, it asks.
 - **Attacking:** a weapon's **Hit** button (**Roll to Hit** on Android) rolls the d20 and says what AC it hits. Under the roll is what you can add to it, each with its cost: Precision Attack, Lucky, Guided Strike, Emboldening Bond… Press **Add** and it's paid for and rolled at once, and the total updates. **If it misses** lists what can turn a miss around: Favored by the Gods, Stroke of Luck, Focused Aim… Below that is what you can add to the hit: Sneak Attack, a smite, a maneuver… The **Attack** action card asks which weapon first. On a critical hit, the dice shown are already doubled.
-- **Damage is your roll.** Every damage line says what to roll and its type; roll it yourself, or open the Dice Roller (Ctrl+D).
+- **Damage is your roll.** Every damage line says what to roll and its type; roll it yourself, or open the Dice Roller (the d20 at the top of the sheet, Ctrl+D).
 - **The Dice Roller:** pick dice or type them (2d6 + 1d4 + 3, 4d6kh3), add one of your bonuses, take advantage or disadvantage on a d20, and roll. Its **history** keeps every roll the sheet makes too: checks, saves, initiative, attacks (and whether they hit), hit dice and what your actions roll, saved with the character. Click a roll of your own to roll it again.
+- **The Bestiary** (beside your creatures on the Creatures tab, or Ctrl+B for a window of its own; on Android, in the menu): every creature, 2,754 of them, to find by name or type and narrow by type, size, challenge rating and how it moves, with the whole stat block. Where Monsters of the Multiverse reprinted one, both are there, the reprint marked (MPMM). Your own creatures are on the **Creatures** tab (Ctrl+Shift+B).
 - **Advantage and disadvantage are reminders.** Every roll is one d20, with a note of what the sheet knows applies (Reckless Attack, Poisoned, exhaustion…). Roll the second die yourself, since cover, the target and your DM can change it. Advantage you spend something on, like Inspiration, is rolled for you.
 - **Taking damage:** type the amount and press **Damage**. Halve it yourself for a resistance; yours are listed just below. Temporary hit points, concentration saves, Wild Shape hit points and death saves follow on their own.
-- **Typed the wrong number?** **Undo** on the Hit Points card puts your hit points, temp HP and death saves back as they were before the last Damage or Heal. It's there until your hit points change some other way, and on the YOU DIED screen if that's where the slip left you.
+- **Undo:** **Undo** on the Hit Points card puts your hit points, temp HP and death saves back as they were before the last Damage or Heal. It's there until your hit points change some other way, and on the YOU DIED screen if that's where the slip left you.
 - **Buffs from someone else:** when an ally casts Bless, Guidance, Haste and the like on you, add it with **＋ Add** on the Combat tab's **Effects** page (on Android, **Effects on You** on the Combat screen) so its bonuses count. Its hourglass counts down the rounds it has left, and it comes off when they run out.
 - **Conditions** go on with **＋ Add** and show up on the rolls they change. Hover one for what it does; right-click it to take it off or read the rules. Exhaustion's level is the six pips under them. On Android, tap a condition to put it on or take it off, and press and hold it for what it does.
 - **Wild Shape:** the Wild Shape card on the Combat tab lists the forms you can take, strongest first. Anything that needs hands asks before going ahead.
@@ -153,6 +159,7 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - **Preparing:** tick the spell in My Spells. Spells your class, race or a feat gives you are always prepared, and can't be removed. Nor can a Cleric's, Druid's, Paladin's or Artificer's own list spells — the class knows them all — but they prepare and unprepare like any other.
 - **Where to cast:** cantrips and bonus-action and reaction spells always have a card on the Combat tab. A leveled spell that takes an action only shows there once you pin it with ☆ (on Android, press and hold → Add to favourites), so a long spell list doesn't bury your Action tab. Anything slower is cast from My Spells: right-click → Cast, or Cast as Ritual.
 - **The Spellcasting table** lists each class, your race and each feat that gives you spells, with its own ability, save DC and attack. A racial spell uses its own row, not your class's.
+- **Which slot:** a spell that does more from a higher slot (Cure Wounds, Aid, Fireball, a smite…) asks which slot to cast it with when you have more than one level free, and says what the higher slot adds. Any other spell uses the lowest slot free.
 - **Free casts** from your race or a feat have their own counter, and Cast spends it before a slot. A spell a feat gives at will (Drow High Magic's Detect Magic) never takes one, and Strixhaven Mascot's Find Familiar is cast as a ritual.
 - **The Spell Browser** shows the spells your classes can learn now: on their lists, at a level each class learns, and with room left. Once a class has learned all its spells or cantrips, the browser says so and stops offering them; remove one (a misclick, say) and that pick is free again. A spell two of your classes share counts for whichever has room, and a Wizard's spellbook never fills up. An Eldritch Knight's spells are abjuration or evocation (an Arcane Trickster's enchantment or illusion), apart from one from any school at 3rd level and one more at 8th, 14th and 20th. **Ignore restrictions** shows every spell and lifts the limits, if your DM allows it.
 - **Spell scrolls** are read from their card on the Combat tab (Actions on Android), like any other action.
@@ -160,9 +167,9 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 </details>
 
 <details>
-<summary><b>Gear, magic items and companions</b></summary>
+<summary><b>Gear, magic items and your creatures</b></summary>
 
-- **Adding things:** pick a browser on the right of Gear & Items (Equipment, Magic Items or Companions), then double-click a row, or select it and press **Add Selected to Inventory**.
+- **Adding things:** pick a browser on the right of Inventory (Equipment or Magic Items), then double-click a row, or select it and press **Add Selected to Inventory**. An Artificer's Infusions are beside them.
 - **Equip** a weapon to give it a Hit button on the Combat tab. **Wear** armour and it goes into your AC.
 - **Every item shows what it weighs and what it's worth**, for the whole stack, from the rules' tables. The same item is one row with how many you have: the trash takes one, and setting the number lower does too (on Android, press and hold → How many). A weapon, armour or shield you no longer have isn't in hand or worn any more. Your background's artisan's tools, instrument or gaming set is the one you picked for it, so its check has a card too.
 - **Using an item** is its card on the Combat tab (Actions on Android), the same as every other action: a potion, a scroll, a tinderbox, a flask to throw, a check with a tool you carry. Drinking a potion takes your action (a bonus action under the 2024 rules). The inventory only lists them, with what each one does.
@@ -170,27 +177,27 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 - Some items ask a question when you add them: which of your own weapons a +1 goes on, which spell a scroll holds, what damage type a Ring of Resistance guards against.
 - **Manuals and tomes:** right-click → Study.
 - **Ammunition** comes out of your inventory a shot at a time. Set a magic stack's count from its right-click menu.
-- **A mount** from the Equipment browser comes with its stat block, on the Companions tab.
+- **A mount or a vehicle**: the Mounts & Vehicles tab beside the Bestiary on the Creatures page adds it, with its stat block, in Mounts or Vehicles.
 
 </details>
 
 <details>
 <summary><b>Levelling up, and changing your mind</b></summary>
 
-- **Level Up / Multiclass** is on the Choices tab: pick the class to level or add (it shows what the level adds: hit points, spell slots, spells to learn), then make that level's choices. A new class needs the multiclassing scores, for your current classes and the new one (Monk: Dexterity 13 and Wisdom 13; Fighter: Strength 13 or Dexterity 13). One you can't take yet is greyed, with what it needs.
+- **Level Up** is on the Choices tab: pick the class to level or add (it shows what the level adds: hit points, spell slots, spells to learn), then make that level's choices. A new class needs the multiclassing scores, for your current classes and the new one (Monk: Dexterity 13 and Wisdom 13; Fighter: Strength 13 or Dexterity 13). One you can't take yet is greyed, with what it needs.
 - **Swapping a spell:** a Bard, Sorcerer, Warlock, Ranger, Eldritch Knight or Arcane Trickster gaining a level can replace one of its spells with another it can learn at the new level, right in the level-up (on Android, on the Choices tab once the level is gained). A **Wizard** adds two spells to its spellbook there, free, or later from the Spell Browser.
 - **Spells to learn:** while a class has cantrips or spells left to learn (a Wizard's free spellbook spells too), a card on the Choices tab says how many, with a button to the Spell Browser. It counts as a pending choice until they're learned.
-- **Level Down** and **Remove Class** take a level or a whole class away, with everything it brought: invocations, maneuvers, the spells it alone gave. Level back up and you're asked again.
+- **Level Down** takes a level away, and a class's **⋯ → Remove** the whole class, with everything it brought: invocations, maneuvers, the spells it alone gave. Level back up and you're asked again. **⋯ → Change class** swaps it for another at the same level; the new class's subclass and choices wait on Choices.
 - Change your race, subrace, background, alignment or a feat later and the same clean-up happens. Anything new to pick waits on Choices (a new alignment asks for Divinely Favored's spell again).
-- Your own edits on the Skills tab stay until you press **↺ Reset Manual Changes**.
-- **Levelling by XP?** Settings → Advancement → Leveling → Experience Points adds an XP tracker and tells you when you can level. Levelling up is still your click.
+- Your own edits to skills and saves on the Overview stay until you press their **↺ Reset**.
+- **XP levelling:** Settings → Advancement → Leveling → Experience Points adds an XP tracker and says when you can level. You still level up yourself.
 
 </details>
 
 <details>
 <summary><b>For DMs and house rules</b></summary>
 
-- **DM-granted proficiencies…** (Skills & Proficiencies): any weapon, armour, tool or language, picked from the list or typed in.
+- **DM-granted proficiencies…** (Overview): any weapon, armour, tool or language, picked from the list or typed in.
 - **The Features tab** grants a feat outside a level-up, with all its rules (its +1 and any spells to pick wait on Choices; Remove takes it all back), or a DM reward: a Character Secret, Supernatural Gift, Dark Gift or replacement background feature.
 - **Ignore restrictions** in the Spell Browser: learn any spell, at any level, with no limits.
 - **A custom race**, in the race list.
@@ -224,16 +231,16 @@ Playing a character from paper? **Import PDF Sheet** on the start screen turns a
 
 Open them with **Ctrl+,** on desktop, or from the menu on Android.
 
-- **Appearance:** 26 themes (16 dark, 10 light), every one with readable text (WCAG AA contrast, coloured text included), and the text size (Small, Medium or Large).
+- **Appearance:** 32 themes (16 dark, 16 light, each dark theme paired with a light one), all meeting WCAG AA contrast, and the text size (Small, Medium or Large).
 - **Health bar:** the menu bar (desktop) or the top bar (Android) fills with the open character's hit points. On unless you turn it off.
 - **Immersion:** Immersive Health drains some of the colour from the sheet as you lose hit points; Immersive Exhaustion closes a dark frame in from the screen's edges with each level of exhaustion. Each is Full, Reduced or Off. The numbers never change, and Reduced never covers any text.
 - **Character Folder:** where characters are saved.
-- **Saved with each character:** levelling by milestone or XP, the table rules (see *For DMs and house rules*), and **DM Secrets**: purely cosmetic surprises, off by default. Try them and see.
+- **Saved with each character:** levelling by milestone or XP, the table rules (see *For DMs and house rules*), and **DM Secrets**: cosmetic extras, off by default.
 
 </details>
 
 <details>
-<summary><b>Keyboard shortcuts</b> (desktop; ⌘ in place of Ctrl on a Mac)</summary>
+<summary><b>Keyboard shortcuts</b> (desktop; ⌘ in place of Ctrl on a Mac; also under Reference → Shortcuts)</summary>
 
 | Keys | Does |
 |---|---|
@@ -242,7 +249,9 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 | Ctrl+S | Save |
 | Ctrl+E | Export |
 | Ctrl+Shift+D | Duplicate the character |
-| Ctrl+D | Dice Roller |
+| Ctrl+D | Dice Roller (the d20 at the top of the sheet) |
+| Ctrl+B | Bestiary, in a window of its own |
+| Ctrl+Shift+B | Your creatures (the Creatures tab) |
 | Ctrl+R | Rest, short rest picked |
 | Ctrl+Shift+R | Rest, long rest picked |
 | Ctrl+1 … Ctrl+9 | Jump to that tab (each tab's tooltip says its keys) |
@@ -255,8 +264,8 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 <details>
 <summary><b>On Android</b></summary>
 
-- **The menu** has every page of the sheet, plus Rest, the Dice Roller, Settings, Save & Export and Credits.
-- **Big buttons for what you do often** (Cast, Equip, Drink, Use), a magnifying glass for details, and press and hold for the rest: preparing, favourites, attunement, removing.
+- **The menu** has every page of the sheet, plus Rest, the Dice Roller, the Bestiary, Settings, Reference (what the book codes stand for), Save & Export and Credits.
+- **Buttons** for common actions (Cast, Equip, Drink, Use), a magnifying glass for details, and press and hold for the rest: preparing, favourites, attunement, removing.
 - **Favourite a spell** (press and hold → Add to favourites) to cast it from the Combat screen.
 - **Holding − or +** on a quantity or an ammunition count changes it by 5.
 
@@ -270,25 +279,46 @@ Open them with **Ctrl+,** on desktop, or from the menu on Android.
 - **14 classes**, Blood Hunter included, with **127 subclasses**
 - **521 spells** across all nine levels
 - **138 feats** and **99 backgrounds**, from the 2014 rules
-- **1,283 magic items**, with their effects working for over 99% of them; the few too situational to automate show as reminders
+- **1,374 magic items**, each wired to your sheet: AC, saves, skills, resistances, a weapon's bonus and extra damage, its spells, charges and uses. What's left to you and your DM shows as a reminder
 - **Every standard weapon and armour**, plus silvered and adamantine weapons
-- **185 Wild Shape forms**, each with its full stat block: every beast up to CR 6, and the four elementals for a Circle of the Moon druid
+- **263 Wild Shape forms**: every beast in the Bestiary, and the four elementals for a Circle of the Moon druid, each with its full stat block and a sound of its own for the immersive spell names
+- **2,754 creatures** in the Bestiary, each with its full stat block
 - **Companion stat blocks** for the Steel Defender, Wildfire Spirit, Drake Companion, Dancing Item, the Primal Companions, the Eldritch Cannon and mounts
-- **One engine, two apps** — desktop and Android build, level and save a character the same way
+- **Summons from the Bestiary**: Conjure Animals and the other Conjure spells, Animate Dead, Create Undead, Danse Macabre, Find Familiar, Find Steed and Find Greater Steed, Giant Insect, the demon and devil spells and Summon Beast, Summon Fey and the other spirit spells, and the Figurines of Wondrous Power, Bag of Tricks, Horn of Valhalla and the elemental bowls and braziers. Each creature is on your Creatures page with its own hit points, and one held by concentration goes when it ends
+- **Polymorph, True Polymorph and Shapechange** into any creature they allow, your sheet becoming it
+- **Shared rules code:** desktop and Android build, level and save a character the same way
 
 <!-- github-only -->
 ## Screenshots
 
 <p align="center">
-  <img src="docs/images/desktop-abilities.png" width="49%" alt="Desktop: abilities and saving throws">
+  <img src="docs/images/desktop-overview.png" width="49%" alt="Desktop: the Overview, with abilities and saves, skills, senses and proficiencies">
   <img src="docs/images/desktop-spells.png" width="49%" alt="Desktop: spellcasting, spell slots and metamagic">
 </p>
 <p align="center">
-  <img src="docs/images/desktop-gear.png" width="49%" alt="Desktop: gear, coins and the equipment browser">
+  <img src="docs/images/desktop-gear.png" width="49%" alt="Desktop: the Loadout, what is in each hand and worn slot and what is attuned, beside the magic item browser">
   <img src="docs/images/android-spells.png" width="24%" alt="Android: spells">
-  <img src="docs/images/android-equipment.png" width="24%" alt="Android: equipment">
+  <img src="docs/images/android-equipment.png" width="24%" alt="Android: the Loadout">
+</p>
+<p align="center">
+  <img src="docs/images/desktop-creatures.png" width="49%" alt="Desktop: the Creatures tab, your creatures in groups beside the Bestiary">
+  <img src="docs/images/android-menu.png" width="24%" alt="Android: the menu, with the Bestiary and Reference">
+  <img src="docs/images/android-overview.png" width="24%" alt="Android: the Overview">
+</p>
+<p align="center">
+  <img src="docs/images/desktop-features.png" width="49%" alt="Desktop: the Features tab, each class down its levels, Metamagic open to the picks">
+  <img src="docs/images/android-features.png" width="24%" alt="Android: Features">
 </p>
 <p align="center"><sub>Mat Cauthon, a level 5 Half-Elf Sorcerer (Wild Magic), on desktop and Android.</sub></p>
+<p align="center">
+  <img src="docs/images/desktop-wizard-choices.png" width="49%" alt="Desktop: making a character, the Spells & Choices step with the Sorcerous Origin, Dragon Ancestor and skills beside the starting spells">
+  <img src="docs/images/android-wizard-choices.png" width="24%" alt="Android: the Spells & Choices step">
+  <img src="docs/images/android-wizard-summary.png" width="24%" alt="Android: the Summary before Create Character">
+</p>
+<p align="center">
+  <img src="docs/images/desktop-wizard-summary.png" width="49%" alt="Desktop: the Summary step, the whole character with an edit button on each card">
+</p>
+<p align="center"><sub>Making a new character: a level 1 Half-Elf Sorcerer (Draconic Bloodline).</sub></p>
 <!-- /github-only -->
 
 ---
@@ -355,7 +385,6 @@ dist/                (made by the builds) MIMIC.exe and MIMIC.apk
 ## Roadmap
 
 - **Clickable cross-references** — a spell, feat or feature named in a description opens its details
-- **Monsters and a bestiary** — including the creatures you summon or conjure
 - **The 2024 rules** — further off
 
 ---
@@ -377,5 +406,3 @@ D&D 5e content is used under the Open Gaming License (OGL) and/or with permissio
 - PySide6 (Qt), for both the desktop and Android interfaces
 - PyInstaller, for packaging the desktop app into a single executable
 - Buildozer and python-for-android, for packaging the Android app
-
-Thank you for downloading MIMIC, and for supporting the project.

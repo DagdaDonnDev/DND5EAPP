@@ -1,0 +1,759 @@
+# Bestiary: what didn't add up
+
+Made by `python -m dnd_app.data.bestiary` from the bestiary reference files.
+Each creature's numbers are checked against each other: ability modifiers,
+hit points against hit dice, XP and proficiency against CR, initiative and
+saves against abilities, attack bonuses and damage averages. A to-hit over
+STR or DEX + proficiency is often a magic weapon (+1 to +3) or an attack
+made with another ability; the rest are worth a look in the book.
+
+302 of 2754 creatures listed.
+
+- **Aarakocra Simulacrum**
+  - HP 6 but 3d4 averages 7
+- **Aartuk Weedling**
+  - Branch: 2d6 + 2 averages 9, shown as 8
+  - Radiant Pellet: 3d4 + 1 averages 8, shown as 7
+- **Adult Sapphire Dragon**
+  - HP 207 but 18d12 + 60 averages 177
+- **Aegisaur**
+  - Tail: +7 to hit is +1 from STR or DEX + proficiency (+6)
+- **Amnizu**
+  - Taskmaster Whip: +11 to hit is +4 from STR or DEX + proficiency (+7)
+- **Amnizu (MPMM)**
+  - Taskmaster Whip: +11 to hit is +4 from STR or DEX + proficiency (+7)
+- **Angel (with Shortsword)**
+  - Shortsword: 1d10 averages 5, shown as 13
+- **Angel of Amonkhet**
+  - Staff: 1d8 + 4 averages 8, shown as 7
+- **Animated Ballista**
+  - Magic Bolt: +6 to hit is +2 from STR or DEX + proficiency (+4)
+- **Animated Halberd**
+  - Halberd: 1d10 + 1 averages 6, shown as 5
+- **Animated Object (Huge)**
+  - Slam: 2d12 + 4 averages 17, shown as 16
+  - Slam: +8 to hit is +2 from STR or DEX + proficiency (+6)
+- **Animated Object (Large)**
+  - Slam: 2d10 + 2 averages 13, shown as 12
+  - Slam: +6 to hit is +2 from STR or DEX + proficiency (+4)
+- **Animated Object (Medium)**
+  - Slam: 2d6 + 1 averages 8, shown as 7
+  - Slam: +5 to hit is +2 from STR or DEX + proficiency (+3)
+- **Animated Object (Small)**
+  - Slam: +6 to hit is +2 from STR or DEX + proficiency (+4)
+- **Animated Object (Tiny)**
+  - Slam: +8 to hit is +2 from STR or DEX + proficiency (+6)
+- **Animated Staff**
+  - Melee Attack: +5 to hit is +2 from STR or DEX + proficiency (+3)
+- **Animated Stove**
+  - Slam: +6 to hit is +2 from STR or DEX + proficiency (+4)
+- **Animated Wand**
+  - Slam: +8 to hit is +2 from STR or DEX + proficiency (+6)
+- **Ankylosaurus**
+  - Tail: +7 to hit is +1 from STR or DEX + proficiency (+6)
+- **Aquatic Ghoul**
+  - Bite: +2 to hit is -1 from STR or DEX + proficiency (+3)
+- **Armored Saber-Toothed Tiger**
+  - HP 84 but 7d10 + 14 averages 52
+- **Asmodeus**
+  - Ruby Rod: +21 to hit is +2 from STR or DEX + proficiency (+19)
+- **Aurumvorax**
+  - Claw: +5 to hit is +1 from STR or DEX + proficiency (+4)
+- **Awakened Rat**
+  - Bite:  averages 0, shown as 1
+  - Bite: +0 to hit is +2 from STR or DEX + proficiency (-2)
+- **Badger**
+  - Bite:  averages 0, shown as 1
+- **Barovian Witch**
+  - Claws (Requires Alter Self): +3 to hit is +1 from STR or DEX + proficiency (+2)
+- **Bat**
+  - Bite:  averages 0, shown as 1
+  - Bite: +0 to hit is +2 from STR or DEX + proficiency (-2)
+- **Belial**
+  - Ranseur of Torture: +18 to hit is +3 from STR or DEX + proficiency (+15)
+- **Blight Totem Elemental**
+  - HP 26 but 4d8 + 4 averages 22
+- **Blindheim**
+  - Bite: +4 to hit is +1 from STR or DEX + proficiency (+3)
+- **Blistercoil Weird**
+  - Slam: 2d8 + 3 averages 12, shown as 11
+- **Bore Worm**
+  - Grinding Jaws: +9 to hit is -5 from STR or DEX + proficiency (+14)
+- **Boss Augustus**
+  - Magic Longsword (Humanoid or Hybrid Form Only): +10 to hit is +2 from STR or DEX + proficiency (+8)
+- **Breath Drinker**
+  - Enervating Claw: +10 to hit is +1 from STR or DEX + proficiency (+9)
+- **Broken King Antigonos**
+  - HP 38 but 9d10 + 27 averages 76
+- **Bugbear Chief**
+  - Morningstar: 2d8 + 3 averages 12, shown as 11
+  - Javelin: 2d6 + 3 averages 10, shown as 9
+  - Javelin: 1d6 + 3 averages 6, shown as 5
+- **Campestri**
+  - Head Butt:  averages 0, shown as 1
+- **Carrion Crawler**
+  - Tentacles: +8 to hit is +4 from STR or DEX + proficiency (+4)
+- **Carrion Ogre**
+  - Tentacles: +8 to hit is +2 from STR or DEX + proficiency (+6)
+  - Bite: +4 to hit is -2 from STR or DEX + proficiency (+6)
+- **Cat**
+  - Claws:  averages 0, shown as 1
+  - Claws: +0 to hit is +2 from STR or DEX + proficiency (-2)
+- **Cat Skeleton**
+  - Claws:  averages 0, shown as 1
+  - Claws: +0 to hit is +2 from STR or DEX + proficiency (-2)
+- **Chain Devil**
+  - Chain: +8 to hit is +1 from STR or DEX + proficiency (+7)
+- **Chimeric Cat**
+  - Claws:  averages 0, shown as 1
+  - Claws: +0 to hit is +2 from STR or DEX + proficiency (-2)
+- **Chimeric Fox**
+  - Bite:  averages 0, shown as 1
+- **Chimeric Rat**
+  - Bite:  averages 0, shown as 1
+  - Bite: +0 to hit is +2 from STR or DEX + proficiency (-2)
+- **Chimeric Weasel**
+  - Bite:  averages 0, shown as 1
+- **Citadel Spider**
+  - HP 310 but 20d20 + 150 averages 360
+- **Clay Golem**
+  - Slam: +8 to hit is -1 from STR or DEX + proficiency (+9)
+- **Cloud Giant Smiling One**
+  - HP 262 but 21d12 + 128 averages 264
+- **Coatl**
+  - Bite: +8 to hit is +1 from STR or DEX + proficiency (+7)
+  - Constrict: +6 to hit is +1 from STR or DEX + proficiency (+5)
+- **Conclave Dryad**
+  - Vine Staff: +9 to hit is +1 from STR or DEX + proficiency (+8)
+- **Core Spawn Seer**
+  - Fission Staff: +8 to hit is +1 from STR or DEX + proficiency (+7)
+- **Couatl**
+  - Bite: +8 to hit is +1 from STR or DEX + proficiency (+7)
+  - Constrict: +6 to hit is +1 from STR or DEX + proficiency (+5)
+- **Crab**
+  - Claw:  averages 0, shown as 1
+  - Claw: +0 to hit is +2 from STR or DEX + proficiency (-2)
+- **Cranium Rat (Tiny Aberration)**
+  - Bite:  averages 0, shown as 1
+- **Cranium Rat (Tiny Beast)**
+  - Bite:  averages 0, shown as 1
+- **Cranium Rat Squeaker**
+  - Bite:  averages 0, shown as 1
+- **Crow**
+  - Beak:  averages 0, shown as 1
+- **Damaged Flesh Golem**
+  - HP 5 but 11d8 + 44 averages 93
+  - Slam: +7 to hit is +1 from STR or DEX + proficiency (+6)
+- **Darien**
+  - War Pick: +10 to hit is +1 from STR or DEX + proficiency (+9)
+- **Death's Head of Bhaal**
+  - Dagger: +7 to hit is -1 from STR or DEX + proficiency (+8)
+- **Demon Ichor**
+  - HP 120 but 10d10 + 30 averages 85
+- **Derro (version 3)**
+  - Hooked Shortspear: +2 to hit is +1 from STR or DEX + proficiency (+1)
+- **Derro Savant (version 3)**
+  - Hooked Shortspear: +2 to hit is +1 from STR or DEX + proficiency (+1)
+- **Dispater**
+  - Wrought-Iron Tower: +20 to hit is +3 from STR or DEX + proficiency (+17)
+- **Displacer Beast Kitten**
+  - Tentacles:  averages 0, shown as 2
+- **Dragon Turtle Wyrmling**
+  - Bite: 1d12 + 3 averages 9, shown as 11
+- **Dragonborn of Sardior**
+  - Mind Blade: +7 to hit is +1 from STR or DEX + proficiency (+6)
+- **Drake Companion**
+  - DEX save +1 is ability +1 + 0
+  - WIS save +2 is ability +2 + 0
+- **Drow Arachnomancer**
+  - Bite (Giant Spider Form Only): +7 to hit is -1 from STR or DEX + proficiency (+8)
+- **Drow Commander**
+  - HP 110 but 11d8 + 22 averages 71
+  - Shortsword +2: +9 to hit is +2 from STR or DEX + proficiency (+7)
+  - Hand Crossbow +1: +8 to hit is +1 from STR or DEX + proficiency (+7)
+- **Drow Inquisitor**
+  - Death Lance: +10 to hit is +3 from STR or DEX + proficiency (+7)
+- **Drow Inquisitor (MPMM)**
+  - Death Lance: +10 to hit is +3 from STR or DEX + proficiency (+7)
+- **Drow Matron Mother**
+  - Tentacle Rod: +9 to hit is -1 from STR or DEX + proficiency (+10)
+- **Drow Matron Mother (MPMM)**
+  - Tentacle Rod: +9 to hit is -1 from STR or DEX + proficiency (+10)
+- **Drow Shadowblade (MPMM)**
+  - Shadow Sword: 7d6 + 5 averages 29, shown as 27
+- **Duergar**
+  - HP 26 but 4d8 + 4 averages 22
+- **Duergar Alchemist**
+  - HP 26 but 4d8 + 4 averages 22
+- **Duergar Darkhaft**
+  - HP 26 but 4d8 + 4 averages 22
+- **Duergar Keeper of the Flame**
+  - HP 26 but 4d8 + 4 averages 22
+- **Edwin Odesseiron**
+  - INT save +12 is ability +5 + 7
+  - WIS save +9 is ability +2 + 7
+  - Staff of Power: +7 to hit is -1 from STR or DEX + proficiency (+8)
+- **Elder Black Pudding**
+  - HP 130 but 10d12 + 30 averages 95
+- **Emerald Enclave Scout**
+  - Heavy Crossbow: +3 to hit is +1 from STR or DEX + proficiency (+2)
+- **Expert (11th level)**
+  - Shortsword: +9 to hit is +2 from STR or DEX + proficiency (+7)
+  - Dagger: +9 to hit is +2 from STR or DEX + proficiency (+7)
+  - Shortbow: +9 to hit is +2 from STR or DEX + proficiency (+7)
+- **Expert (7th level)**
+  - DEX save +6 is ability +3 + 3
+  - Shortsword: +6 to hit is +1 from STR or DEX + proficiency (+5)
+  - Dagger: +6 to hit is +1 from STR or DEX + proficiency (+5)
+  - Shortbow: +6 to hit is +1 from STR or DEX + proficiency (+5)
+- **Expert (9th level)**
+  - Shortsword: +8 to hit is +2 from STR or DEX + proficiency (+6)
+  - Dagger: +8 to hit is +2 from STR or DEX + proficiency (+6)
+  - Shortbow: +8 to hit is +2 from STR or DEX + proficiency (+6)
+- **Faerie Dragon (Blue)**
+  - Bite:  averages 0, shown as 1
+- **Faerie Dragon (Green)**
+  - Bite:  averages 0, shown as 1
+- **Faerie Dragon (Indigo)**
+  - Bite:  averages 0, shown as 1
+- **Faerie Dragon (Orange)**
+  - Bite:  averages 0, shown as 1
+- **Faerie Dragon (Red)**
+  - Bite:  averages 0, shown as 1
+- **Faerie Dragon (Violet)**
+  - Bite:  averages 0, shown as 1
+- **Faerie Dragon (Yellow)**
+  - Bite:  averages 0, shown as 1
+- **Falcon**
+  - Talons:  averages 0, shown as 1
+- **Faldorn**
+  - Staff of the Woodlands: +8 to hit is +2 from STR or DEX + proficiency (+6)
+- **Fate Hag**
+  - Shears: +6 to hit is +2 from STR or DEX + proficiency (+4)
+- **Fire Giant Royal Headsman**
+  - Greataxe +2: +13 to hit is +2 from STR or DEX + proficiency (+11)
+- **Flimp Shagglecran**
+  - Magic Warhammer: +10 to hit is +4 from STR or DEX + proficiency (+6)
+- **Four-Armed Gargoyle**
+  - HP 63 but 7d8 + 21 averages 52
+- **Fox**
+  - Bite:  averages 0, shown as 1
+- **Fractine**
+  - Extradimensional Touch: 8d6 averages 28, shown as 24
+- **Frost Giant**
+  - Weighted Net: +5 to hit is +3 from STR or DEX + proficiency (+2)
+- **Frozen Golem**
+  - Slam: +13 to hit is +1 from STR or DEX + proficiency (+12)
+  - Sword: +13 to hit is +1 from STR or DEX + proficiency (+12)
+- **Gas Spore**
+  - Touch:  averages 0, shown as 1
+  - Touch: +0 to hit is +1 from STR or DEX + proficiency (-1)
+- **Gauth**
+  - Bite: +8 to hit is +3 from STR or DEX + proficiency (+5)
+- **Gazer**
+  - Bite:  averages 0, shown as 1
+- **Gazer (MPMM)**
+  - Bite:  averages 0, shown as 1
+- **Geist**
+  - Withering Touch: +5 to hit is +2 from STR or DEX + proficiency (+3)
+- **Ghast**
+  - Bite: +3 to hit is -2 from STR or DEX + proficiency (+5)
+- **Ghost**
+  - Withering Touch: +5 to hit is +2 from STR or DEX + proficiency (+3)
+- **Ghostblade Eidolon**
+  - Ghostblade: 1d8 + 3 averages 7, shown as 8
+- **Ghoul**
+  - Bite: +2 to hit is -1 from STR or DEX + proficiency (+3)
+- **Giant Slug**
+  - HP 66 but 6d10 + 18 averages 51
+  - Tentacles: +8 to hit is +4 from STR or DEX + proficiency (+4)
+- **Githyanki Knight**
+  - Silver Greatsword: +9 to hit is +3 from STR or DEX + proficiency (+6)
+- **Githyanki Supreme Commander**
+  - Silver Greatsword: +12 to hit is +3 from STR or DEX + proficiency (+9)
+- **Githyanki Supreme Commander (MPMM)**
+  - Silver Greatsword: +12 to hit is +3 from STR or DEX + proficiency (+9)
+- **Glasya**
+  - Scourge of Shadow: +20 to hit is +3 from STR or DEX + proficiency (+17)
+- **Gnome Ceremorph**
+  - Tentacles: +7 to hit is +2 from STR or DEX + proficiency (+5)
+  - Extract Brain: +7 to hit is +2 from STR or DEX + proficiency (+5)
+- **Golgari Shaman**
+  - Quarterstaff: +4 to hit is +1 from STR or DEX + proficiency (+3)
+- **Greater Star Spawn Emissary**
+  - Lashing Maw: 2d10 + 7 averages 18, shown as 20
+- **Gremishka**
+  - Bite: 1d4 + 2 averages 4, shown as 2
+- **Half-Red Dragon Veteran**
+  - Longsword: +5 to hit is -1 from STR or DEX + proficiency (+6)
+  - Shortsword: +5 to hit is -1 from STR or DEX + proficiency (+6)
+  - Heavy Crossbow: +3 to hit is -1 from STR or DEX + proficiency (+4)
+- **Hangry Otyugh**
+  - Bite: 1d10 averages 5, shown as 6
+- **Hawk**
+  - Talons:  averages 0, shown as 1
+- **Headless Iron Golem**
+  - HP 150 but 10d10 + 50 averages 105
+  - Slam: +13 to hit is +2 from STR or DEX + proficiency (+11)
+  - Sword: +13 to hit is +2 from STR or DEX + proficiency (+11)
+- **Hellfire Engine**
+  - Lightning Flail: +11 to hit is +1 from STR or DEX + proficiency (+10)
+- **Hellion (Large)**
+  - Bite: +6 to hit is -1 from STR or DEX + proficiency (+7)
+- **Hierophant of the Comet**
+  - Herald's Axe: +9 to hit is +4 from STR or DEX + proficiency (+5)
+- **Hill Giant Sergeant**
+  - HP 115 but 10d12 + 40 averages 105
+- **Hobgoblin Warlord**
+  - Longsword: +9 to hit is +3 from STR or DEX + proficiency (+6)
+  - Shield Bash: +9 to hit is +3 from STR or DEX + proficiency (+6)
+  - Javelin: +9 to hit is +3 from STR or DEX + proficiency (+6)
+- **Homunculus**
+  - Bite:  averages 0, shown as 1
+- **Homunculus Servant**
+  - DEX save +2 is ability +2 + 0
+- **Hook Horror Spore Servant**
+  - HP 75 but 10d10 + 10 averages 65
+- **Huge Giant Crab**
+  - Claw: +9 to hit is +1 from STR or DEX + proficiency (+8)
+- **Huge Polar Bear**
+  - HP 65 but 5d12 + 15 averages 47
+- **Hulking Shadow**
+  - Slam: +8 to hit is -1 from STR or DEX + proficiency (+9)
+- **Hungry Ghast**
+  - Bite: +3 to hit is -2 from STR or DEX + proficiency (+5)
+- **Hydroloth (MPMM)**
+  - Bite: 2d10 averages 11, shown as 9
+  - Claw: 2d10 averages 11, shown as 9
+- **Ice Spider Queen**
+  - HP 44 but 4d10 + 4 averages 26
+- **Illithilich**
+  - Tentacles: +12 to hit is +2 from STR or DEX + proficiency (+10)
+  - Extract Brain: +12 to hit is +2 from STR or DEX + proficiency (+10)
+- **Infant Basilisk**
+  - Bite:  averages 0, shown as 1
+- **Inquisitor of the Mind Fire**
+  - Silver Longsword: +7 to hit is +2 from STR or DEX + proficiency (+5)
+- **Inquisitor of the Sword**
+  - Silver Longsword: +7 to hit is +2 from STR or DEX + proficiency (+5)
+- **Inquisitor of the Tome**
+  - Silver Longsword: +7 to hit is +3 from STR or DEX + proficiency (+4)
+- **Intellect Snare**
+  - Tentacle: +9 to hit is +2 from STR or DEX + proficiency (+7)
+- **Iron Golem**
+  - Slam: +13 to hit is +1 from STR or DEX + proficiency (+12)
+  - Sword: +13 to hit is +1 from STR or DEX + proficiency (+12)
+- **Isolde**
+  - Nepenthe: +10 to hit is +3 from STR or DEX + proficiency (+7)
+- **Jade Giant Spider**
+  - HP 250 but 17d10 + 85 averages 178
+- **Jaheira**
+  - Quarterstaff: 1d8 + 5 averages 9, shown as 5
+  - Quarterstaff: +10 to hit is +3 from STR or DEX + proficiency (+7)
+- **Jarad Vod Savo**
+  - Staff of Svogthir: +12 to hit is +2 from STR or DEX + proficiency (+10)
+- **Jermlaine**
+  - Club: 1d4 - 3 averages -1, shown as 1
+- **Jon Irenicus**
+  - Flame Tongue (Rod of Lordly Might): +14 to hit is +3 from STR or DEX + proficiency (+11)
+  - Mace (Rod of Lordly Might): +14 to hit is +3 from STR or DEX + proficiency (+11)
+- **Kagain**
+  - Berserking Greataxe: +11 to hit is +3 from STR or DEX + proficiency (+8)
+- **Killmoulis**
+  - Slam:  averages 0, shown as 1
+- **Kobold Commoner**
+  - Club: +1 to hit is -1 from STR or DEX + proficiency (+2)
+- **Kobold Elite**
+  - HP 7 but 2d6 - 2 averages 5
+- **Kuo-toa Heretic**
+  - Bite: +6 to hit is +2 from STR or DEX + proficiency (+4)
+  - Unarmed Strike: +6 to hit is +2 from STR or DEX + proficiency (+4)
+- **Kuo-toa Monitor**
+  - Bite: +6 to hit is +2 from STR or DEX + proficiency (+4)
+  - Unarmed Strike: +6 to hit is +2 from STR or DEX + proficiency (+4)
+- **Lacedon**
+  - Bite: +2 to hit is -1 from STR or DEX + proficiency (+3)
+- **Large Mimic (CR 3)**
+  - HP 75 but 9d8 + 18 averages 58
+- **Lava Child**
+  - Claws: +7 to hit is +1 from STR or DEX + proficiency (+6)
+- **Lemure**
+  - Fist: +3 to hit is +1 from STR or DEX + proficiency (+2)
+- **Lesser Mummy Lord**
+  - CR 15 is 13000 XP, shown as 6500
+- **Living Unseen Servant**
+  - Slam:  averages 0, shown as 1
+- **Lizard**
+  - Bite:  averages 0, shown as 1
+  - Bite: +0 to hit is +2 from STR or DEX + proficiency (-2)
+- **Macaw**
+  - Beak:  averages 0, shown as 1
+- **Male Steeder (version 3)**
+  - Bite: 1d8 + 2 averages 6, shown as 7
+- **Master Thief (AC 16, 83 HP)**
+  - HP 83 but 13d8 + 26 averages 84
+- **Master of Souls**
+  - Chill Touch (Cantrip): 2d8 averages 9, shown as 13
+- **Mechanical Bird**
+  - Slam: +0 to hit is -2 from STR or DEX + proficiency (+2)
+- **Mephistopheles (version 1)**
+  - Ranseur +3: +17 to hit is +3 from STR or DEX + proficiency (+14)
+- **Mephistopheles (version 2)**
+  - Ranseur, +3: +17 to hit is +3 from STR or DEX + proficiency (+14)
+- **Mercykiller Bloodhound**
+  - HP 104 but 16d8 + 48 averages 120
+- **Merrow Extortionist**
+  - CR 1 is 200 XP, shown as 100
+- **Metal Wasp**
+  - HP 24 but 3d8 averages 13
+- **Mighty Servant of Leuk-o**
+  - WIS save +9 is ability +2 + 7
+  - CHA save +7 is ability +0 + 7
+  - Destructive Fist: +17 to hit is +5 from STR or DEX + proficiency (+12)
+- **Mimic Chair**
+  - HP 30 but 9d8 + 18 averages 58
+- **Mind Flayer**
+  - Tentacles: +7 to hit is +3 from STR or DEX + proficiency (+4)
+  - Extract Brain: +7 to hit is +3 from STR or DEX + proficiency (+4)
+- **Mind Flayer Arcanist**
+  - Tentacles: +7 to hit is +3 from STR or DEX + proficiency (+4)
+  - Extract Brain: +7 to hit is +3 from STR or DEX + proficiency (+4)
+- **Mind Flayer Clairvoyant**
+  - Tentacle: +9 to hit is +4 from STR or DEX + proficiency (+5)
+  - Extract Brain: +9 to hit is +4 from STR or DEX + proficiency (+5)
+- **Mind Flayer Prophet**
+  - Tentacles: +8 to hit is +3 from STR or DEX + proficiency (+5)
+  - Extract Brain: +8 to hit is +3 from STR or DEX + proficiency (+5)
+- **Mind Flayer Psion**
+  - Tentacles: +7 to hit is +3 from STR or DEX + proficiency (+4)
+  - Extract Brain: +7 to hit is +3 from STR or DEX + proficiency (+4)
+- **Monstrous Peryton**
+  - Gore: +9 to hit is +1 from STR or DEX + proficiency (+8)
+  - Talons: +9 to hit is +1 from STR or DEX + proficiency (+8)
+- **Nauk**
+  - Magic Maul: +10 to hit is +1 from STR or DEX + proficiency (+9)
+  - Heavy Crossbow: +6 to hit is +1 from STR or DEX + proficiency (+5)
+- **Obzedat Ghost**
+  - Life Drain: +8 to hit is +5 from STR or DEX + proficiency (+3)
+- **Octopus**
+  - Tentacles:  averages 0, shown as 1
+- **Ogre Goblin Hucker**
+  - Goblin Projectile: +3 to hit is +2 from STR or DEX + proficiency (+1)
+- **Orcus**
+  - Wand of Orcus: +19 to hit is +3 from STR or DEX + proficiency (+16)
+- **Orcus (MPMM)**
+  - Wand of Orcus: +19 to hit is +3 from STR or DEX + proficiency (+16)
+- **Owl**
+  - Talons:  averages 0, shown as 1
+- **Paper Bird**
+  - Sharp Edges:  averages 0, shown as 1
+- **Parrot**
+  - Beak:  averages 0, shown as 1
+- **Piranha**
+  - Bite:  averages 0, shown as 1
+- **Purple Wormling**
+  - Bite: 1d8 + 5 averages 9, shown as 7
+- **Quasit**
+  - Claw (Bite in Beast Form): +4 to hit is -1 from STR or DEX + proficiency (+5)
+- **Quipper**
+  - Bite:  averages 0, shown as 1
+- **Rat**
+  - Bite:  averages 0, shown as 1
+  - Bite: +0 to hit is +2 from STR or DEX + proficiency (-2)
+- **Raven**
+  - Beak:  averages 0, shown as 1
+- **Razerblast**
+  - HP 112 but 15d8 + 75 averages 142
+- **Reduced-Threat Aboleth**
+  - CR 10 is 5900 XP, shown as 2950
+  - CON save +4 is ability +2 + 2
+  - INT save +6 is ability +4 + 2
+  - WIS save +4 is ability +2 + 2
+  - Tentacle: +7 to hit is -2 from STR or DEX + proficiency (+9)
+  - Tail: +7 to hit is -2 from STR or DEX + proficiency (+9)
+- **Reduced-Threat Basilisk**
+  - CR 3 is 700 XP, shown as 350
+  - Bite: +3 to hit is -2 from STR or DEX + proficiency (+5)
+- **Reduced-Threat Behir**
+  - CR 11 is 7200 XP, shown as 3600
+  - Bite: +8 to hit is +1 from STR or DEX + proficiency (+7)
+- **Reduced-Threat Beholder**
+  - CR 13 is 10000 XP, shown as 5000
+  - INT save +6 is ability +3 + 3
+  - WIS save +5 is ability +2 + 3
+  - CHA save +6 is ability +3 + 3
+  - Bite: +3 to hit is -2 from STR or DEX + proficiency (+5)
+- **Reduced-Threat Black Pudding**
+  - CR 4 is 1100 XP, shown as 550
+  - Pseudopod: +3 to hit is -2 from STR or DEX + proficiency (+5)
+- **Reduced-Threat Carrion Crawler**
+  - CR 2 is 450 XP, shown as 225
+  - Tentacles: +6 to hit is +2 from STR or DEX + proficiency (+4)
+  - Bite: +2 to hit is -1 from STR or DEX + proficiency (+3)
+- **Reduced-Threat Clay Golem**
+  - CR 9 is 5000 XP, shown as 2500
+  - Slam: +6 to hit is -3 from STR or DEX + proficiency (+9)
+- **Reduced-Threat Darkmantle**
+  - CR 1/2 is 100 XP, shown as 50
+- **Reduced-Threat Displacer Beast**
+  - CR 3 is 700 XP, shown as 350
+- **Reduced-Threat Dragon Turtle**
+  - CR 17 is 18000 XP, shown as 9000
+  - DEX save +4 is ability +0 + 4
+  - CON save +9 is ability +5 + 4
+  - WIS save +5 is ability +1 + 4
+  - Bite: +11 to hit is -2 from STR or DEX + proficiency (+13)
+  - Claw: +11 to hit is -2 from STR or DEX + proficiency (+13)
+- **Reduced-Threat Ettercap**
+  - CR 2 is 450 XP, shown as 225
+  - Bite: +2 to hit is -2 from STR or DEX + proficiency (+4)
+  - Claws: +2 to hit is -2 from STR or DEX + proficiency (+4)
+  - Web (Recharge 5–6): +2 to hit is -2 from STR or DEX + proficiency (+4)
+- **Reduced-Threat Flesh Golem**
+  - CR 5 is 1800 XP, shown as 900
+  - Slam: +5 to hit is -2 from STR or DEX + proficiency (+7)
+- **Reduced-Threat Glabrezu**
+  - CR 9 is 5000 XP, shown as 2500
+  - STR save +7 is ability +5 + 2
+  - CON save +7 is ability +5 + 2
+  - WIS save +5 is ability +3 + 2
+  - CHA save +5 is ability +3 + 2
+  - Pincer: +7 to hit is +1 from STR or DEX + proficiency (+6)
+  - Fist: +7 to hit is +1 from STR or DEX + proficiency (+6)
+- **Reduced-Threat Gray Ooze**
+  - CR 1/2 is 100 XP, shown as 50
+  - Pseudopod: +1 to hit is +1 from STR or DEX + proficiency (+0)
+- **Reduced-Threat Helmed Horror**
+  - CR 4 is 1100 XP, shown as 550
+  - Longsword: +4 to hit is +1 from STR or DEX + proficiency (+3)
+- **Reduced-Threat Hezrou**
+  - CR 8 is 3900 XP, shown as 1950
+  - STR save +5 is ability +4 + 1
+  - CON save +6 is ability +5 + 1
+  - WIS save +2 is ability +1 + 1
+  - Bite: +5 to hit is -1 from STR or DEX + proficiency (+6)
+  - Claws: +5 to hit is -1 from STR or DEX + proficiency (+6)
+- **Reduced-Threat Hook Horror**
+  - CR 3 is 700 XP, shown as 350
+  - Hook: +4 to hit is -2 from STR or DEX + proficiency (+6)
+- **Reduced-Threat Ochre Jelly**
+  - CR 2 is 450 XP, shown as 225
+  - Pseudopod: +2 to hit is -2 from STR or DEX + proficiency (+4)
+- **Reduced-Threat Otyugh**
+  - CR 5 is 1800 XP, shown as 900
+  - CON save +5 is ability +4 + 1
+  - Bite: +4 to hit is +1 from STR or DEX + proficiency (+3)
+  - Tentacle: +4 to hit is +1 from STR or DEX + proficiency (+3)
+- **Reduced-Threat Owlbear**
+  - CR 3 is 700 XP, shown as 350
+  - Beak: +5 to hit is -2 from STR or DEX + proficiency (+7)
+  - Claws: +5 to hit is -2 from STR or DEX + proficiency (+7)
+- **Reduced-Threat Peryton**
+  - CR 2 is 450 XP, shown as 225
+- **Reduced-Threat Remorhaz**
+  - CR 11 is 7200 XP, shown as 3600
+  - Bite: +9 to hit is -2 from STR or DEX + proficiency (+11)
+- **Reduced-Threat Stone Golem**
+  - CR 10 is 5900 XP, shown as 2950
+  - Slam: +8 to hit is -2 from STR or DEX + proficiency (+10)
+- **Reduced-Threat Vrock**
+  - CR 6 is 2300 XP, shown as 1150
+  - DEX save +3 is ability +2 + 1
+  - WIS save +2 is ability +1 + 1
+  - CHA save +0 is ability -1 + 1
+  - Beak: +4 to hit is -1 from STR or DEX + proficiency (+5)
+  - Talons: +4 to hit is -1 from STR or DEX + proficiency (+5)
+- **Reduced-Threat Wight**
+  - CR 3 is 700 XP, shown as 350
+  - Life Drain: +2 to hit is -2 from STR or DEX + proficiency (+4)
+  - Longsword: +2 to hit is -2 from STR or DEX + proficiency (+4)
+  - Longbow: +2 to hit is -2 from STR or DEX + proficiency (+4)
+- **Reduced-Threat Wyvern**
+  - CR 6 is 2300 XP, shown as 1150
+  - Bite: +5 to hit is -2 from STR or DEX + proficiency (+7)
+  - Claws: +5 to hit is -2 from STR or DEX + proficiency (+7)
+  - Stinger: +5 to hit is -2 from STR or DEX + proficiency (+7)
+- **Refraction of Ilvaash**
+  - Dissonant Claw: +11 to hit is +3 from STR or DEX + proficiency (+8)
+- **Regenerating Black Pudding**
+  - Pseudopod: +5 to hit is -1 from STR or DEX + proficiency (+6)
+- **Returned Kakomantis**
+  - Underworld Bolt: 2d8 + 2 averages 11, shown as 13
+  - Underworld Bolt: 2d12 + 2 averages 15, shown as 17
+- **Rooster**
+  - Talons:  averages 0, shown as 1
+- **Sacred Statue (version 1)**
+  - Slam: +8 to hit is +2 from STR or DEX + proficiency (+6)
+  - Rock: +8 to hit is +2 from STR or DEX + proficiency (+6)
+- **Sacred Statue (version 2)**
+  - Slam: +8 to hit is +2 from STR or DEX + proficiency (+6)
+  - Rock: +8 to hit is +2 from STR or DEX + proficiency (+6)
+- **Scholarly Mastermind**
+  - Dagger of the Poisoned Mind: +7 to hit is +2 from STR or DEX + proficiency (+5)
+- **Scufflecup Teacup**
+  - Slam: 1d3 + 2 averages 4, shown as 3
+- **Sea Spawn**
+  - Bite: +5 to hit is +1 from STR or DEX + proficiency (+4)
+  - Poison Quills: +5 to hit is +1 from STR or DEX + proficiency (+4)
+  - Tentacle: +5 to hit is +1 from STR or DEX + proficiency (+4)
+- **Seal**
+  - Bite:  averages 0, shown as 1
+- **Servo**
+  - Claw:  averages 0, shown as 1
+  - Claw: +0 to hit is +1 from STR or DEX + proficiency (-1)
+- **Sibriex (MPMM)**
+  - Chain: +13 to hit is +7 from STR or DEX + proficiency (+6)
+- **Silverquill Pledgemage**
+  - Ink Blade: 1d8 + 3 averages 7, shown as 5
+- **Skeleton Lord**
+  - Greatsword: +10 to hit is +1 from STR or DEX + proficiency (+9)
+- **Skeleton Warrior**
+  - Greatsword: +7 to hit is +1 from STR or DEX + proficiency (+6)
+- **Skull Flier**
+  - HP 24 but 3d8 averages 13
+- **Sky Leviathan**
+  - Bite: +9 to hit is -4 from STR or DEX + proficiency (+13)
+- **Sorrowfish**
+  - Bite:  averages 0, shown as 1
+- **Space Guppy**
+  - Tail Slap:  averages 0, shown as 1
+- **Space Hamster (MPMM)**
+  - Bite:  averages 0, shown as 1
+- **Spellcaster (Healer) (11th level)**
+  - Quarterstaff: +4 to hit is +1 from STR or DEX + proficiency (+3)
+- **Spellcaster (Healer) (7th level)**
+  - WIS save +6 is ability +3 + 3
+- **Spellcaster (Healer) (9th level)**
+  - Quarterstaff: +4 to hit is +1 from STR or DEX + proficiency (+3)
+- **Spellcaster (Mage) (11th level)**
+  - Quarterstaff: +4 to hit is +1 from STR or DEX + proficiency (+3)
+- **Spellcaster (Mage) (7th level)**
+  - WIS save +5 is ability +2 + 3
+- **Spellcaster (Mage) (9th level)**
+  - Quarterstaff: +4 to hit is +1 from STR or DEX + proficiency (+3)
+- **Spiked Tomb Guardian**
+  - Spiked Gauntlet: 2d6 averages 7, shown as 9
+- **Spirit**
+  - Withering Touch: +5 to hit is +2 from STR or DEX + proficiency (+3)
+- **Sprite**
+  - Longsword:  averages 0, shown as 1
+  - Longsword: +2 to hit is +4 from STR or DEX + proficiency (-2)
+  - Shortbow:  averages 0, shown as 1
+- **Star Spawn Seer**
+  - Comet Staff: +11 to hit is +4 from STR or DEX + proficiency (+7)
+- **Star Spawn Seer (MPMM)**
+  - Comet Staff: +11 to hit is +4 from STR or DEX + proficiency (+7)
+- **Steel Defender**
+  - DEX save +1 is ability +1 + 0
+  - CON save +2 is ability +2 + 0
+- **Stone Cursed**
+  - HP 19 but 3d8 + 4 averages 17
+- **Stone Juggernaut**
+  - Slam: +10 to hit is +3 from STR or DEX + proficiency (+7)
+- **Stone Warrior**
+  - HP 102 but 17d10 + 85 averages 178
+  - Slam: +10 to hit is +2 from STR or DEX + proficiency (+8)
+- **Stonemelder**
+  - Black Earth Rod: +5 to hit is +1 from STR or DEX + proficiency (+4)
+- **Swarm of Sorrowfish**
+  - Swarm of Bites: +8 to hit is +1 from STR or DEX + proficiency (+7)
+- **Thessalheart Construct**
+  - Claws:  averages 0, shown as 1
+- **Thessalhydra**
+  - Flurry of Bites: +7 to hit is +1 from STR or DEX + proficiency (+6)
+  - Maw: +7 to hit is +1 from STR or DEX + proficiency (+6)
+  - Tail Pincer: +7 to hit is +1 from STR or DEX + proficiency (+6)
+- **Thopter (Bat)**
+  - Bite:  averages 0, shown as 1
+  - Bite: +0 to hit is +2 from STR or DEX + proficiency (-2)
+- **Thopter (Hawk)**
+  - Talons:  averages 0, shown as 1
+- **Thopter (Owl)**
+  - Talons:  averages 0, shown as 1
+- **Thopter (Raven)**
+  - Beak:  averages 0, shown as 1
+- **Thunderbeast Skeleton**
+  - Bite: +7 to hit is +1 from STR or DEX + proficiency (+6)
+- **Tlacatecolo**
+  - Talon: 1d8 + 3 averages 7, shown as 8
+  - Talon: 3d8 averages 13, shown as 14
+- **Tressym**
+  - Claws:  averages 0, shown as 1
+  - Claws: +0 to hit is +2 from STR or DEX + proficiency (-2)
+- **Tri-flower Frond**
+  - Red Blossom: +2 to hit is -2 from STR or DEX + proficiency (+4)
+- **Trilobite**
+  - Claw:  averages 0, shown as 1
+  - Claw: +0 to hit is +2 from STR or DEX + proficiency (-2)
+- **Trostani**
+  - Constrict: +11 to hit is +1 from STR or DEX + proficiency (+10)
+- **Two-Headed Plesiosaurus**
+  - HP 100 but 8d10 + 24 averages 68
+- **Ulitharid**
+  - HP 127 but 17d10 + 14 averages 107
+  - Tentacles: +9 to hit is +3 from STR or DEX + proficiency (+6)
+  - Extract Brain: +9 to hit is +3 from STR or DEX + proficiency (+6)
+- **Ulitharid (MPMM)**
+  - HP 127 but 17d10 + 14 averages 107
+  - Tentacles: +9 to hit is +3 from STR or DEX + proficiency (+6)
+  - Extract Brain: +9 to hit is +3 from STR or DEX + proficiency (+6)
+- **Undead Bulette**
+  - HP 125 but 9d10 + 45 averages 94
+- **Vecna the Archlich**
+  - Afterthought: +13 to hit is +2 from STR or DEX + proficiency (+11)
+- **Vellin Farstride**
+  - Silvered Shortsword: +10 to hit is +1 from STR or DEX + proficiency (+9)
+- **Verminaard**
+  - Nightbringer: +15 to hit is +3 from STR or DEX + proficiency (+12)
+- **Viconia DeVir**
+  - Magic Mace: +15 to hit is +3 from STR or DEX + proficiency (+12)
+- **Viktor**
+  - Sun Blade: +10 to hit is +2 from STR or DEX + proficiency (+8)
+  - Raven's Whisper: 4d10 + 3 averages 25, shown as 22
+- **Vine Blight**
+  - HP 26 but 4d8 + 4 averages 22
+- **Violet Fungus (version 1)**
+  - Rotting Touch: +2 to hit is +4 from STR or DEX + proficiency (-2)
+- **Violet Fungus (version 2)**
+  - Rotting Touch: +2 to hit is +4 from STR or DEX + proficiency (-2)
+- **Warrior (11th level)**
+  - Longsword: +8 to hit is +2 from STR or DEX + proficiency (+6)
+- **Warrior (7th level)**
+  - CON save +5 is ability +2 + 3
+  - Longsword: +6 to hit is +1 from STR or DEX + proficiency (+5)
+- **Warrior (9th level)**
+  - Longsword: +8 to hit is +2 from STR or DEX + proficiency (+6)
+- **Weasel**
+  - Bite:  averages 0, shown as 1
+- **Wolfwere**
+  - Longsword (Humanoid form only): 1d8 + 4 averages 8, shown as 9
+  - Longsword (Humanoid form only): +7 to hit is +1 from STR or DEX + proficiency (+6)
+  - Bite (Wolf or Hybrid form only): +7 to hit is +1 from STR or DEX + proficiency (+6)
+  - Claws (Hybrid form only): +7 to hit is +1 from STR or DEX + proficiency (+6)
+- **Wolfwere Alpha**
+  - Longsword (Humanoid form only): 1d8 + 5 averages 9, shown as 10
+- **Xan Moonblade**
+  - Moonblade: +9 to hit is +3 from STR or DEX + proficiency (+6)
+- **Young Griffon (Tiny)**
+  - Beak:  averages 0, shown as 1
+  - Beak: +0 to hit is +2 from STR or DEX + proficiency (-2)
+  - Claws:  averages 0, shown as 1
+  - Claws: +0 to hit is +2 from STR or DEX + proficiency (-2)
+- **Young Horizonback Tortoise**
+  - Bite: +7 to hit is +1 from STR or DEX + proficiency (+6)
+- **Young Purple Worm**
+  - HP 184 but 15d20 + 90 averages 247
+- **Young Remorhaz**
+  - Bite: +6 to hit is -1 from STR or DEX + proficiency (+7)
+- **Zaratan**
+  - Spit Rock: 6d8 + 10 averages 37, shown as 31
+- **Zaratan (MPMM)**
+  - Spit Rock: 6d8 + 10 averages 37, shown as 31
+- **Zegana**
+  - Prime Speaker's Trident: +10 to hit is +3 from STR or DEX + proficiency (+7)
+- **Zombie Cat**
+  - Claws:  averages 0, shown as 1
+  - Claws: +0 to hit is +2 from STR or DEX + proficiency (-2)
+- **Zombie Rat**
+  - Bite:  averages 0, shown as 1
+  - Bite: +0 to hit is +2 from STR or DEX + proficiency (-2)

@@ -17,6 +17,8 @@ Dialog {
     property color accent: Theme.border
     // the last button's text ("OK" for a message with no options)
     property string cancelText: "Cancel"
+    // a red Cancel, as the other negative buttons
+    property bool cancelDanger: false
 
     signal picked(string key)
 
@@ -26,7 +28,7 @@ Dialog {
     width: Math.min(parent ? parent.width - 32 : 340, 340)
     padding: 16
     background: Rectangle { color: Theme.surf; radius: 12; border.color: root.accent; border.width: Qt.colorEqual(root.accent, Theme.border) ? 1 : 2 }
-    Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+    Overlay.modal: Rectangle { color: Theme.scrim }
 
     contentItem: ColumnLayout {
         spacing: 10
@@ -86,6 +88,8 @@ Dialog {
                         iconName: modelData.icon || ""
                         iconSize: 16
                         text: modelData.text
+                        // an option that can't be used now shows greyed
+                        enabled: modelData.enabled !== false
                         onClicked: {
                             var key = modelData.key
                             root.close()
@@ -99,6 +103,7 @@ Dialog {
             objectName: "optionsCancel"
             Layout.fillWidth: true
             primary: false
+            danger: root.cancelDanger
             text: root.cancelText
             onClicked: root.close()
         }

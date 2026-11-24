@@ -215,7 +215,7 @@ Page {
         width: Math.min(root.width - 32, 360)
         anchors.centerIn: parent
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
         ColumnLayout {
             anchors.fill: parent
             spacing: 10

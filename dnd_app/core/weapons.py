@@ -6,15 +6,38 @@ from dnd_app.core.magic_items import parse_magic_suffix
 from dnd_app.data.items import WEAPON_DICT
 
 
-def _props(name: str) -> list:
-    # a magic weapon ("Longsword +1") has its base weapon's properties
+def _props(name: str, char: dict = None) -> list:
+    # a magic weapon ("Longsword +1", a Silver Sword) has its base weapon's properties
     base, _ = parse_magic_suffix(name)
-    w = WEAPON_DICT.get(base) or {}
+    w = WEAPON_DICT.get(base)
+    if not w:
+        from dnd_app.core.riders import named_weapon
+        w = WEAPON_DICT.get(named_weapon(name, char)[0]) or {}
     return w.get("properties", []) if isinstance(w, dict) else []
 
 
-def equip_weapon(char: dict, name: str) -> None:
-    """Take `name` in hand, following the PHB's hands:
+def hand_choice(char: dict, name: str, another: bool = False) -> list:
+    """Taking up this weapon with both hands already full of weapons, when
+    it could go in either: a light one (any one-handed weapon with Dual
+    Wielder). Returns what to ask -- ["Main hand: Longsword", "Off hand:
+    Dagger"] -- or [] when there's nothing to choose (equip_weapon decides)."""
+    equipped = char.get("equipped_weapons") or []
+    if name in equipped and not another:
+        return []
+    props = _props(name, char)
+    if "Two-handed" in props or char.get("shield"):
+        return []
+    if not ("Light" in props or "Dual Wielder" in (char.get("feats") or [])):
+        return []
+    h = hands(char)
+    if not (h["main"] and h["off"]):
+        return []
+    return [f"Main hand: {h['main']}", f"Off hand: {h['off']}"]
+
+
+def equip_weapon(char: dict, name: str, another: bool = False, hand: str = "") -> None:
+    """Take `name` in hand (`another`: a second one of it, for two daggers
+    -- one in each hand), following the PHB's hands:
       1. a two-handed weapon needs both hands -- every other weapon (and a
          shield) is put away
       2. with a shield there's one hand free -- any weapon already in it is
@@ -23,29 +46,91 @@ def equip_weapon(char: dict, name: str) -> None:
          one if not -- the longest-held is put away to make room, and a
          two-handed weapon already held always is"""
     equipped = char.setdefault("equipped_weapons", [])
-    others = [w for w in equipped if w != name]
-    props = _props(name)
+    if name in equipped and not another:
+        return
+    h = hands(char)
+    if hand in ("main", "off") and h["main"] and h["off"]:
+        # both hands full: this one takes the hand chosen (hand_choice)
+        equipped[:] = [name, h["off"]] if hand == "main" else [h["main"], name]
+        return
+    others = list(equipped) if another else [w for w in equipped if w != name]
+    props = _props(name, char)
     if "Two-handed" in props:
         drop = others
         char["shield"] = False
     elif char.get("shield"):
         drop = others
     else:
-        drop = [w for w in others if "Two-handed" in _props(w)]
+        drop = [w for w in others if "Two-handed" in _props(w, char)]
         room = 2 if ("Light" in props or "Dual Wielder" in char.get("feats", [])) else 1
         keep = [w for w in others if w not in drop]
         drop += keep[:max(0, len(keep) - (room - 1))]
     for w in drop:
         if w in equipped:
             equipped.remove(w)
-    if name not in equipped:
+    if another or name not in equipped:
         equipped.append(name)
 
 
-def unequip_weapon(char: dict, name: str) -> None:
+def can_hold_another(char: dict, name: str, qty: int) -> bool:
+    """One of a stack is in hand and a second could go in the other: two
+    light weapons (any one-handed pair with Dual Wielder), no shield."""
+    props = _props(name, char)
+    held = (char.get("equipped_weapons") or []).count(name)
+    return (held == 1 and qty >= 2 and not char.get("shield") and "Two-handed" not in props
+            and ("Light" in props or "Dual Wielder" in char.get("feats", [])))
+
+
+def unequip_weapon(char: dict, name: str, every: bool = True) -> None:
+    """Put it away -- every one of it in hand, or just one (`every`=False:
+    one of two daggers, the other staying in your main hand)."""
     equipped = char.setdefault("equipped_weapons", [])
-    if name in equipped:
+    while name in equipped:
         equipped.remove(name)
+        if not every:
+            break
+
+
+# ── Two weapons: which hand each is in ────────────────────────────────────
+# Holding two (equip_weapon's hands), the one taken up first is in your
+# main hand and the other in your off hand -- the order of
+# char["equipped_weapons"], as the Combat page has always listed them. The
+# off hand's is the weapon your bonus action attacks with (two-weapon
+# fighting), and a few items care (the True-Ice dagger's +3 AC). Swapping
+# hands swaps the order.
+def hands(char: dict) -> dict:
+    """{"main": name, "off": name} -- "" for an empty hand. Two of the same
+    weapon (two daggers) are one in each hand."""
+    held = list(char.get("equipped_weapons", []) or [])
+    return {"main": held[0] if held else "", "off": held[1] if len(held) > 1 else ""}
+
+
+def hand_of(char: dict, name: str) -> str:
+    """"main hand", "off hand", "one in each hand" -- or "" when it isn't
+    one of two weapons held."""
+    h = hands(char)
+    if not h["off"] or name not in (h["main"], h["off"]):
+        return ""
+    if h["main"] == h["off"]:
+        return "one in each hand"
+    return "off hand" if name == h["off"] else "main hand"
+
+
+def can_swap_hands(char: dict, name: str) -> bool:
+    h = hands(char)
+    return bool(h["off"]) and h["main"] != h["off"] and name in (h["main"], h["off"])
+
+
+def swap_hands(char: dict) -> str:
+    """The main-hand weapon to your off hand and the other way round.
+    Returns the weapon now in your off hand ("" if you aren't holding two
+    different weapons)."""
+    held = char.get("equipped_weapons", []) or []
+    h = hands(char)
+    if not h["off"] or h["main"] == h["off"]:
+        return ""
+    held[0], held[1] = held[1], held[0]
+    return held[1]
 
 
 def equipped_note(char: dict, name: str, qty: int) -> str:
@@ -82,7 +167,7 @@ def weapon_base(name: str) -> str:
 def inventory_notes(char: dict, name: str, qty: int) -> list:
     """What a weapon's inventory row says beside its name: how many are in
     hand, and whether it's the Dedicated Weapon."""
-    notes = [equipped_note(char, name, qty)]
+    notes = [equipped_note(char, name, qty), hand_of(char, name)]
     if dedicated_weapon(char) and weapon_base(name) == dedicated_weapon(char):
         notes.append("dedicated weapon")
     return [n for n in notes if n]

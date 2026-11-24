@@ -27,15 +27,15 @@ ApplicationWindow {
     // long a Timer delayed the retry). A plain property assigned after
     // load doesn't have that failure mode -- QML's normal property
     // binding/notify system correctly retries dependents once it's
-    // set. Screens reference these via Window.window.raceBridge /
-    // Window.window.abilityBridge rather than a bare identifier.
-    property QtObject raceBridge: null
-    property QtObject abilityBridge: null
-    property QtObject classBridge: null
-    property QtObject equipmentBridge: null
+    // set. Screens reference these via Window.window.wizardBridge /
+    // Window.window.sheetBridge rather than a bare identifier.
+    // wizardBridge: the new-character wizard's (bridge/wizard.py), all
+    // six steps.
+    property QtObject wizardBridge: null
     property QtObject saveLoadBridge: null
     property QtObject sheetBridge: null
     property QtObject diceRollerBridge: null
+    property QtObject bestiaryBridge: null
     property QtObject creditsBridge: null
     property QtObject easterEggBridge: null
     property QtObject appSettingsBridge: null
@@ -95,10 +95,11 @@ ApplicationWindow {
     readonly property string abilitiesComp: "AbilitiesScreen.qml"
     readonly property string classComp: "ClassScreen.qml"
     readonly property string equipmentComp: "EquipmentScreen.qml"
+    readonly property string choicesComp: "ChoicesScreen.qml"
+    readonly property string summaryComp: "SummaryScreen.qml"
     readonly property string sheetComp: "SheetCombatScreen.qml"
     readonly property string sheetActionsComp: "SheetActionsScreen.qml"
-    readonly property string sheetAbilitiesComp: "SheetAbilitiesScreen.qml"
-    readonly property string sheetProficienciesComp: "SheetProficienciesScreen.qml"
+    readonly property string sheetOverviewComp: "SheetOverviewScreen.qml"
     readonly property string sheetSpellsComp: "SheetSpellsScreen.qml"
     readonly property string sheetEquipmentComp: "SheetEquipmentScreen.qml"
     readonly property string sheetCompanionsComp: "SheetCompanionsScreen.qml"
@@ -123,9 +124,9 @@ ApplicationWindow {
         return c
     }
     function preloadScreens() {
-        var files = [sheetComp, raceListComp, abilitiesComp, classComp, equipmentComp,
-                     sheetActionsComp, sheetSpellsComp, sheetEquipmentComp, sheetAbilitiesComp,
-                     sheetProficienciesComp, sheetFeaturesComp, sheetChoicesComp, sheetNotesComp,
+        var files = [sheetComp, raceListComp, abilitiesComp, classComp, equipmentComp, choicesComp, summaryComp,
+                     sheetActionsComp, sheetSpellsComp, sheetEquipmentComp, sheetOverviewComp,
+                     sheetFeaturesComp, sheetChoicesComp, sheetNotesComp,
                      sheetCompanionsComp, sheetInfusionsComp]
         for (var i = 0; i < files.length; ++i) {
             if (!_screenCache[files[i]])
@@ -160,43 +161,44 @@ ApplicationWindow {
     // below), which is what advances *Bridge.*ConfirmedOnce in the
     // first place; the drawer is a shortcut back to an already-done
     // step, not a way to skip ahead of one that isn't.
+    readonly property int wizardReached: wizardBridge !== null ? wizardBridge.reached : 0
     readonly property var wizardNavItems: [
         { label: "Race", icon: "identity", screen: raceListComp, enabled: true },
-        { label: "Abilities", icon: "abilities", screen: abilitiesComp,
-          enabled: raceBridge !== null && raceBridge.raceConfirmedOnce },
-        { label: "Class", icon: "features", screen: classComp,
-          enabled: abilityBridge !== null && abilityBridge.abilitiesConfirmedOnce },
-        { label: "Equipment", icon: "gear", screen: equipmentComp,
-          enabled: classBridge !== null && classBridge.classConfirmedOnce },
+        { label: "Abilities", icon: "abilities", screen: abilitiesComp, enabled: wizardReached >= 1 },
+        { label: "Class & Background", icon: "features", screen: classComp, enabled: wizardReached >= 2 },
+        { label: wizardBridge !== null ? wizardBridge.spellsStepName : "Spells & Choices", icon: "spells",
+          screen: choicesComp, enabled: wizardReached >= 3 },
+        { label: "Equipment", icon: "gear", screen: equipmentComp, enabled: wizardReached >= 4 },
+        { label: "Summary", icon: "notes", screen: summaryComp, enabled: wizardReached >= 5 },
     ]
+    // The sheet's pages, in the desktop tabs' order: Overview, Combat
+    // (and its Actions), Inventory (an Artificer's Infusions after it),
+    // Spells, Creatures, Features, Notes -- and Choices last, the setting
+    // up and levelling up kept out of the way during play.
     readonly property var sheetNavItemsBase: [
+        { label: "Overview", icon: "abilities", screen: sheetOverviewComp, enabled: true,
+          sections: ["Skills", "Senses", "Proficiencies"] },
         { label: "Combat", icon: "combat", screen: sheetComp, enabled: true },
         { label: "Actions", icon: "bolt", screen: sheetActionsComp, enabled: true,
           sections: ["Resources", "Action", "Bonus Action", "Reaction", "Passive / Other"] },
-        { label: "Abilities", icon: "abilities", screen: sheetAbilitiesComp, enabled: true },
-        { label: "Proficiencies", icon: "skills", screen: sheetProficienciesComp, enabled: true },
-        { label: "Spells", icon: "spells", screen: sheetSpellsComp, enabled: true,
-          sections: ["Spell Slots", "Known Spells", "Add a Spell"],
-          pulse: window.spellsPending },
-        { label: "Equipment", icon: "gear", screen: sheetEquipmentComp, enabled: true,
-          sections: ["Inventory", "Add Equipment", "Magic Items", "Add a Magic Item"] },
-        { label: "Companions", icon: "paw", screen: sheetCompanionsComp, enabled: true,
-          sections: ["Mounts", "Vehicles", "Summoned Creatures", "Wild Shape"] },
-        { label: "Features", icon: "features", screen: sheetFeaturesComp, enabled: true },
+        { label: "Inventory", icon: "gear", screen: sheetEquipmentComp, enabled: true,
+          sections: ["Loadout", "Inventory", "Add Equipment", "Add a Magic Item"] },
     ]
-    // Infusions only makes sense for Artificers -- everyone else never
-    // sees the entry at all, rather than a permanently "(finish
-    // previous step)"-style disabled one that would never unlock.
     readonly property var sheetNavItems:
         (sheetBridge !== null && sheetBridge.isArtificer
             ? sheetNavItemsBase.concat([{ label: "Infusions", icon: "infusions", screen: sheetInfusionsComp, enabled: true }])
             : sheetNavItemsBase
         ).concat([
+            { label: "Spells", icon: "spells", screen: sheetSpellsComp, enabled: true,
+              sections: ["Spell Slots", "Known Spells", "Add a Spell"],
+              pulse: window.spellsPending },
+            { label: "Creatures", icon: "paw", screen: "SheetCompanionsScreen.qml", enabled: true },
+            { label: "Features", icon: "features", screen: sheetFeaturesComp, enabled: true },
+            { label: "Notes", icon: "notes", screen: sheetNotesComp, enabled: true,
+              sections: ["Character", "Backstory"].concat(
+                  sheetBridge !== null ? sheetBridge.notesPages.map(p => p.title) : []) },
             { label: "Choices", icon: "choices", screen: sheetChoicesComp, enabled: true,
               pulse: window.choicesPending },
-            { label: "Notes", icon: "notes", screen: sheetNotesComp, enabled: true,
-              sections: ["Personality", "Appearance", "Backstory"].concat(
-                  sheetBridge !== null ? sheetBridge.notesPages.map(p => p.title) : []) },
         ])
     readonly property var navItems: sheetMode ? sheetNavItems : wizardNavItems
 
@@ -277,10 +279,7 @@ ApplicationWindow {
     function startNewCharacter() {
         characterActive = false
         saveLoadBridge.newCharacter()
-        abilityBridge.resetToDefaults()
-        raceBridge.refresh()
-        classBridge.refresh()
-        equipmentBridge.refresh()
+        wizardBridge.reset()
         sheetBridge.refresh()
         stackView.replace(screenComp(raceListComp))
     }
@@ -311,7 +310,7 @@ ApplicationWindow {
         stackView.replace(screenComp(sheetComp))
     }
     function finishCharacterCreation() {
-        if (equipmentBridge.confirmEquipment()) {
+        if (wizardBridge.finish()) {
             sheetBridge.refresh()
             // First time this character is shown -- it has no theme of
             // its own yet, so it inherits whatever was active during
@@ -334,9 +333,21 @@ ApplicationWindow {
     // rather than popping back to a list or just sitting still. Named
     // per-destination (instead of one generic "advance" helper) so
     // each screen states in plain text which step it's headed to.
-    function advanceToAbilities() { stackView.replace(screenComp(abilitiesComp)) }
-    function advanceToClass() { stackView.replace(screenComp(classComp)) }
-    function advanceToEquipment() { stackView.replace(screenComp(equipmentComp)) }
+    function advanceToAbilities() { wizardBridge.reach(1); stackView.replace(screenComp(abilitiesComp)) }
+    function advanceToClass() { wizardBridge.reach(2); stackView.replace(screenComp(classComp)) }
+    // a class with nothing to pick at level 1 goes straight on to its gear
+    function advanceToChoices() {
+        if (!wizardBridge.hasLevel1()) { advanceToEquipment(); return }
+        wizardBridge.reach(3); stackView.replace(screenComp(choicesComp))
+    }
+    function advanceToEquipment() { wizardBridge.reach(4); stackView.replace(screenComp(equipmentComp)) }
+    function advanceToSummary() { wizardBridge.reach(5); stackView.replace(screenComp(summaryComp)) }
+    // a wizard step by number (the Summary's edit buttons, Back)
+    function goToWizardStep(i) {
+        var comps = [raceListComp, abilitiesComp, classComp, choicesComp, equipmentComp, summaryComp]
+        if (i === 3 && !wizardBridge.hasLevel1()) i = 2
+        stackView.replace(screenComp(comps[i]))
+    }
     // Another sheet page, scrolled to one of its sections -- as the menu's
     // section entries do (e.g. the Choices page's Spells to learn card to
     // the Spells page's Add a Spell list)
@@ -351,7 +362,9 @@ ApplicationWindow {
     // out as a 2x2 tile grid in the drawer's own bottom section.
     readonly property var utilityNavItems: [
         { label: "Dice Roller", icon: "dice", enabled: true, onOpen: function() { diceRollerDialog.open() } },
+        { label: "Bestiary", icon: "paw", enabled: true, onOpen: function() { bestiaryDialog.open() } },
         { label: "Settings", icon: "settings", enabled: true, onOpen: function() { settingsDialog.open() } },
+        { label: "Reference", icon: "features", enabled: true, onOpen: function() { referenceDialog.open() } },
         { label: "Save & Export", icon: "save", enabled: true, onOpen: function() { saveLoadDialog.open(); window.saveLoadBridge.refresh() } },
         { label: "Credits", icon: "credits", enabled: true, onOpen: function() { creditsDialog.open() } },
     ]
@@ -364,7 +377,7 @@ ApplicationWindow {
         width: 300
         anchors.centerIn: parent
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
 
         ColumnLayout {
             anchors.fill: parent
@@ -477,7 +490,7 @@ ApplicationWindow {
         width: Math.min(parent ? parent.width - 32 : 320, 340)
         anchors.centerIn: parent
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
         ColumnLayout {
             anchors.fill: parent
             spacing: 12
@@ -532,6 +545,18 @@ ApplicationWindow {
         contentSource: Qt.resolvedUrl("DiceRollerScreen.qml")
     }
     MFullPageDialog {
+        id: bestiaryDialog
+        objectName: "bestiaryDialog"
+        dialogTitle: "Bestiary"
+        contentSource: Qt.resolvedUrl("BestiaryScreen.qml")
+    }
+    MFullPageDialog {
+        id: referenceDialog
+        objectName: "referenceDialog"
+        dialogTitle: "Reference"
+        contentSource: Qt.resolvedUrl("ReferenceScreen.qml")
+    }
+    MFullPageDialog {
         id: creditsDialog
         objectName: "creditsDialog"
         dialogTitle: "Credits"
@@ -567,7 +592,7 @@ ApplicationWindow {
         width: Math.min(parent ? parent.width - 32 : 360, 360)
         padding: 16
         background: Rectangle { color: Theme.surf; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
         contentItem: ColumnLayout {
             spacing: 10
             Label {
@@ -913,6 +938,14 @@ ApplicationWindow {
         objectName: "actionQuestionDialog"
         onPicked: (key) => window.sheetBridge.answerActionQuestion(key)
     }
+    // the same question with a long list of answers: searchable
+    MPickerDialog {
+        id: actionPickerDialog
+        objectName: "actionPickerDialog"
+        property bool answered: false
+        onPicked: (value) => { answered = true; window.sheetBridge.answerActionQuestion(value) }
+        onClosed: if (!answered) window.sheetBridge.answerActionQuestion("")
+    }
     // After an attack roll (core/attacks.py attack_report, the same as
     // desktop's dialog), top to bottom:
     //   the roll: a card with the total, big; a bar down its left side says
@@ -979,7 +1012,7 @@ ApplicationWindow {
         height: Math.min(attackCol.implicitHeight + 32, (parent ? parent.height : 800) - 72)
         padding: 16
         background: Rectangle { color: Theme.bg; radius: 12; border.color: Theme.border }
-        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.8) }
+        Overlay.modal: Rectangle { color: Theme.scrim }
         contentItem: Flickable {
             clip: true
             contentHeight: attackCol.implicitHeight
@@ -1258,6 +1291,14 @@ ApplicationWindow {
     Connections {
         target: window.sheetBridge
         function onActionQuestion(title, question, options) {
+            if (options.length > 12) {
+                // a long list (a Polymorph's creature, a summon's): one to search
+                actionPickerDialog.dialogTitle = question
+                actionPickerDialog.options = options
+                actionPickerDialog.answered = false
+                actionPickerDialog.open()
+                return
+            }
             actionQuestionDialog.heading = title
             actionQuestionDialog.message = question
             actionQuestionDialog.options = options.map(function(o) { return {key: o, text: o} })
@@ -1388,6 +1429,13 @@ ApplicationWindow {
         if (settingsDialog.opened) { settingsDialog.close(); return }
         if (saveLoadDialog.opened) { saveLoadDialog.close(); return }
         if (diceRollerDialog.opened) { diceRollerDialog.close(); return }
+        if (bestiaryDialog.opened) {
+            // back from a stat block goes to the list first
+            var bi = bestiaryDialog.loadedItem
+            if (bi && bi.shown !== "") bi.shown = ""
+            else bestiaryDialog.close()
+            return
+        }
         if (creditsDialog.opened) { creditsDialog.close(); return }
         if (stackView.depth > 1) {
             stackView.pop()

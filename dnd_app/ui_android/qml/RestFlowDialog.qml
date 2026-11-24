@@ -202,12 +202,22 @@ MFullPageDialog {
         }
     }
 
-    Flickable {
+    // The cards scroll; Cancel and the rest's button stay at the bottom,
+    // in reach however much this rest has to show
+    ColumnLayout {
         anchors.fill: parent
         anchors.margins: 16
+        spacing: 12
+
+    Flickable {
+        id: restFlick
+        Layout.fillWidth: true
+        Layout.fillHeight: true
         contentWidth: width
         contentHeight: col.height
         clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollIndicator.vertical: ScrollIndicator {}
 
         ColumnLayout {
             id: col
@@ -366,18 +376,22 @@ MFullPageDialog {
                 }
             }
 
-            RowLayout {
-                Layout.fillWidth: true
-                Layout.topMargin: 8
-                Item { Layout.fillWidth: true }
-                MButton { text: "Cancel"; primary: false; onClicked: root.close() }
-                MButton {
-                    objectName: "restConfirm"
-                    text: root.restType === "long" ? "Take a Long Rest" : "Take a Short Rest"
-                    onClicked: root.confirmRest()
-                }
-            }
         }
+    }
+
+    RowLayout {
+        objectName: "restButtons"
+        Layout.fillWidth: true
+        spacing: 8
+        MButton { Layout.fillWidth: true; Layout.preferredWidth: 1; text: "Cancel"; primary: false; onClicked: root.close() }
+        MButton {
+            objectName: "restConfirm"
+            Layout.fillWidth: true
+            Layout.preferredWidth: 2
+            text: root.restType === "long" ? "Take a Long Rest" : "Take a Short Rest"
+            onClicked: root.confirmRest()
+        }
+    }
     }
 
     MPickerDialog {

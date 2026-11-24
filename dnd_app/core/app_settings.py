@@ -43,6 +43,10 @@ def set_app_theme(name: str) -> None:
     data = _load()
     data["theme"] = name
     _save(data)
+    # Android: the launcher icon follows the menu's theme (switched as the
+    # app goes to the background -- core/app_icon.py)
+    from .app_icon import remember_launcher_icon
+    remember_launcher_icon(name)
 
 
 def get_custom_save_dir() -> str:
